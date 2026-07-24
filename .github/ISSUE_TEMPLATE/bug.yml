@@ -2,7 +2,7 @@ name: 버그
 description: 재현 가능한 장애를 Jira와 연결해 기록합니다.
 title: "[JIRA] "
 labels:
-  - bug
+  - "type: bug"
 body:
   - type: input
     id: parent_jira

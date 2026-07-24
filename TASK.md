@@ -240,3 +240,49 @@ python3 scripts/validate-conventions.py \
 - 자동 생성 branch가 Husky와 CI의 branch 검증을 통과한다.
 - Jira 키나 GitHub Issue 번호는 고정하지 않고 이벤트에서 가져온다.
 - 한글 제목만 있는 Issue도 유효한 fallback branch를 생성한다.
+
+## Compact GitHub label policy follow-up
+
+### Objective
+
+- 참고 저장소의 반복 라벨을 현재 팀 규모에 맞는 15개로 축소한다.
+- 모든 Issue와 PR은 canonical `type: *` 라벨을 정확히 하나 가진다.
+- Jira가 우선순위와 스프린트의 기준이며 이를 GitHub 라벨로 복제하지 않는다.
+- PR type은 현재 branch 접두사에서 자동 파생한다.
+
+### Owned files
+
+- `.github/label-catalog.json`
+- `.github/workflows/label-policy.yml`
+- `.github/ISSUE_TEMPLATE/`
+- `.github/PULL_REQUEST_TEMPLATE.md`
+- `scripts/validate-labels.py`
+- `scripts/validate-workflows.py`
+- `scripts/harness.py`
+- `.github/workflows/harness-policy.yml`
+- `docs/harness/LABELS.md`
+- `docs/harness/GITHUB_ENFORCEMENT.md`
+
+### Safety
+
+- label sync는 기존 저장소 라벨을 자동 삭제하지 않는다.
+- `pull_request_target` job은 외부 PR 코드를 checkout하거나 실행하지 않는다.
+- GitHub Ruleset이 저장소 파일만으로 적용됐다고 주장하지 않는다.
+- `.dockerignore`의 기존 사용자 변경은 이 작업에 포함하지 않는다.
+
+### Validation
+
+```bash
+python3 scripts/validate-labels.py
+python3 scripts/validate-workflows.py
+./harness check
+git diff --check
+```
+
+### Completion criteria
+
+- canonical 라벨은 type 8개, area 4개, status 3개로 제한된다.
+- Issue Form과 범용 작업 유형 응답이 type 라벨을 자동 적용한다.
+- PR type은 branch 접두사와 항상 일치한다.
+- type 누락이나 알 수 없는 branch 접두사는 Label Policy가 실패한다.
+- 실제 병합 강제를 위한 Ruleset required check 설정이 문서에 명시된다.

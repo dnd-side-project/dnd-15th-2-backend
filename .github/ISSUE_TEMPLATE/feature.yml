@@ -2,7 +2,7 @@ name: 기능 작업
 description: Jira 요구사항을 구현 가능한 백엔드 작업으로 연결합니다.
 title: "[JIRA] "
 labels:
-  - enhancement
+  - "type: feature"
 body:
   - type: markdown
     attributes:

@@ -73,6 +73,23 @@ def main() -> int:
                     errors.append(
                         f"{relative}: missing dynamic Jira/GitHub branch marker"
                     )
+        if path.name == "label-policy.yml":
+            required = (
+                "pull_request_target:",
+                "classify-issue:",
+                "classify-pull-request:",
+                "type: feature",
+                "status: needs-triage",
+            )
+            for marker in required:
+                if marker not in text:
+                    errors.append(f"{relative}: missing label gate {marker}")
+            if "actions/checkout" in text.split(
+                "classify-pull-request:", maxsplit=1
+            )[1]:
+                errors.append(
+                    f"{relative}: pull_request_target job must not checkout PR code"
+                )
 
     if errors:
         print("Workflow validation failed.")

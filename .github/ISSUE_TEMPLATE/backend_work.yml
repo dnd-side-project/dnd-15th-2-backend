@@ -1,6 +1,8 @@
 name: 백엔드 작업
 description: 상위 Jira 티켓 아래에 백엔드 하위 작업과 브랜치를 자동 생성합니다.
 title: "[JIRA] "
+labels:
+  - "area: api"
 body:
   - type: markdown
     attributes:

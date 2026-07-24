@@ -15,6 +15,7 @@ GitHub 저장소에서 `Settings → Rules → Rulesets → New branch ruleset`:
 6. Require status checks:
    - `Harness Policy / policy`
    - `Harness Policy / test`
+   - `Label Policy / classify-pull-request`
    - 인프라 변경 시 `Infrastructure Static Checks / safety`
 7. Block force pushes and deletions
 
@@ -87,3 +88,17 @@ Confirmation: APPLY <JIRA-KEY> PR-<PR-NUMBER>
 Jira 연동 workflow가 사용하는 `JIRA_BASE_URL`, `JIRA_EMAIL`,
 `JIRA_API_TOKEN`은 GitHub Actions Secret으로만 관리한다. 이 하네스의
 preflight는 값을 출력하지 않고 명백한 노출 패턴만 보고한다.
+
+## 8. Label policy
+
+라벨 정의와 자동 분류 규칙은
+[`LABELS.md`](./LABELS.md)와 `.github/label-catalog.json`을 기준으로 한다.
+
+- 모든 Issue와 PR은 `type: *` 라벨을 정확히 하나 가져야 한다.
+- PR의 type은 branch 접두사에서 자동 산출한다.
+- Jira가 우선순위와 스프린트의 원본이므로 GitHub 우선순위 라벨은 만들지
+  않는다.
+- label sync는 기존 라벨을 삭제하지 않고 canonical 라벨만 생성·갱신한다.
+
+저장소 파일만 추가해서는 병합 차단이 활성화되지 않는다. Ruleset의 required
+status checks에 `Label Policy / classify-pull-request`를 추가해야 한다.

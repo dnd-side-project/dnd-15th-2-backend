@@ -57,6 +57,9 @@ jobs:
       - name: Validate workflow safety
         run: python scripts/validate-workflows.py
 
+      - name: Validate label catalog and templates
+        run: python scripts/validate-labels.py
+
       - name: Validate Husky contract
         run: python scripts/validate-husky.py
 
