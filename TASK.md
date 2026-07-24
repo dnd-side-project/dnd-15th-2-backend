@@ -1,288 +1,66 @@
-# MIR-82 Harness Engineering Contract
+# MIR-83 Task Contract
 
-> 이 파일은 저장소 전체에 고정되는 설정이 아니라 현재 작업 브랜치의 계약이다.
-> 새 Jira 작업을 시작할 때 `h task-init`으로 현재 브랜치의 Jira 키와 GitHub
-> Issue 번호를 반영해 교체한다. 전역 컨벤션은 `AGENTS.md`에만 둔다.
-
-## Objective
-
-MacBook을 사용하는 두 명의 백엔드 개발자가 Jira, GitHub, Claude Code,
-Codex를 같은 규칙으로 운용하도록 저장소 기반 하네스를 구성한다.
+> Generated at: `2026-07-24T19:19:07+09:00`
+>
+> 이 파일은 현재 작업 브랜치의 계약이다. 저장소 전역 정책은 `AGENTS.md`를
+> 따른다.
 
 ## Work gate
 
-- Jira: `MIR-82`
+- Title: `CodeRabbit 코드 리뷰 설정`
+- Jira: `MIR-83`
 - Parent Jira: `MIR-66`
-- GitHub Issue: `#1`
-- Expected branch:
-  `chore/MIR-82-gh-1-macos-harness`
-- Jira가 일정·우선순위·상태·범위의 기준이다.
-- GitHub Issue와 PR은 구현 과정과 검증 증거를 남긴다.
+- GitHub Issue: `#3`
+- Branch: `chore/MIR-83-gh-3-coderabbit-review-setup`
+
+## Objective
+
+- 기존 하네스와 GitHub Actions의 형식 및 정적 검증을 중복하지 않고,
+  CodeRabbit이 의미 기반 코드 리뷰에 집중하도록 저장소 설정을 추가한다.
 
 ## Scope
 
-- macOS 설치 진단, Homebrew 기반 도구 설치, zsh 단축 명령과 자동완성
-- 테스트 및 AWS 인프라의 오케스트레이터/실행자 역할 분리
-- Claude Code와 Codex가 공유하는 저장소 계약과 역할별 명령
-- 구성 가능한 논리 모델 프로필
-- JUnit 5 테스트 메타데이터, `@DisplayName`, 단위·통합 테스트 정책
-- 테스트 보고서, AWS 설계 보고서, 의사결정 기록 템플릿
-- Jira 키, GitHub Issue, 브랜치, 커밋, PR 규칙과 비밀값 사전 검사
-- Terraform 설계/plan과 apply의 분리 및 수동 승인 게이트
-- 전체 설명, 치트시트, 아키텍처, 일상 사용, 실패 복구 문서
-- Husky 기반 `pre-commit`, `commit-msg`, `pre-push` 로컬 Git Hook
-- staged 파일 전용 비밀정보·메타데이터 검사와 CI 이중 검증
+- 저장소 루트에 버전 관리되는 `.coderabbit.yaml`을 추가한다.
+- draft가 아닌 PR을 대상으로 자동 리뷰를 활성화한다.
+- 운영 코드는 도메인 정확성, 트랜잭션과 동시성, 인증과 권한, API 호환성을
+  중심으로 리뷰한다.
+- 테스트 코드는 중요한 동작, 실패 경로, 경계 조건, 동시성 위험을 충분히
+  보호하는지 중심으로 리뷰한다.
+- 초기 설정은 짧게 유지하고 운영 결과에 따라 후속 PR로 조정할 수 있게 한다.
 
 ## Explicit exclusions
 
-- AWS 리소스를 생성·변경·삭제하지 않는다.
-- Terraform apply, 배포, 운영 변경은 실행하지 않는다.
-- 제품 API, DB 스키마, 도메인 동작은 변경하지 않는다.
-- 모델 공급자의 실제 모델 ID를 저장소에 고정하지 않는다.
-- Secret, 계정 ID, IAM ID/ARN, 서버 주소, 토큰, `.env` 값은 기록하지
-  않는다.
-- GitHub Ruleset, 보호 환경, 필수 리뷰가 저장소 파일만으로 활성화됐다고
-  주장하지 않는다.
+- branch, commit, PR 형식과 기존 하네스 정책을 CodeRabbit에서 재구현하지 않는다.
+- Jira 연동과 CodeRabbit 유료 기능은 이번 작업에서 활성화하지 않는다.
+- 제품 API, 데이터베이스 스키마, 애플리케이션 동작을 변경하지 않는다.
+- 인프라 apply, 배포, 프로덕션 변경은 별도 승인 없이는 실행하지 않는다.
+- Secret, 계정 식별자, 토큰, `.env` 값은 기록하지 않는다.
 
 ## Ownership
 
 | Area | Owner | Required review |
 | --- | --- | --- |
-| Shared harness and documents | PM/reviewer | Backend owners |
-| Test plan | Test orchestrator | PM/reviewer |
-| Test implementation/report | Test executor | Test orchestrator |
-| AWS design and IaC | Infrastructure executor | `@Byuntil`, `@tkv00` |
-| Infrastructure apply | Human operator only | Both reviewers and protected environment |
+| CodeRabbit repository configuration | Backend | Backend owners |
+| GitHub App installation and permissions | Repository admin | Backend owners |
 
 ## Existing user-owned changes
 
-The following concurrent local changes were present before harness files were
-created and must not be staged or overwritten by this task:
-
-- `.github/ISSUE_TEMPLATE/backend_work.yml`
-- `.github/PULL_REQUEST_TEMPLATE.md`
-- `.github/scripts/jira-common.js`
-- `.github/scripts/sync-backend-issue.js`
-- `.github/scripts/sync-backend-pr.js`
-- `.github/workflows/jira-backend-issue.yml`
-- `.github/workflows/jira-backend-pr.yml`
-- `.github/workflows/jira-sync.yml`
-- `.dockerignore`
-
-The later Jira branch-automation request explicitly brings the listed Jira
-Issue/PR templates, scripts, and workflows into the Jira-sync commit so the old
-split workflows can be replaced atomically. `.dockerignore` remains excluded
-and must not be staged.
+- `.gitignore`
 
 ## Validation
 
 ```bash
-./harness doctor
 ./harness check
-./gradlew test
+./harness pr-ready --project-tests
 npm run hooks:validate
 git diff --check
 ```
-
-Infrastructure validation is plan-only:
-
-```bash
-terraform fmt -check -recursive
-terraform init -backend=false
-terraform validate
-terraform plan
-```
-
-`terraform apply` is not an ordinary validation step.
 
 ## Completion criteria
 
-- A new developer can complete macOS setup from
-  `docs/harness/MACOS_SETUP.md`.
-- `h` provides short commands for gate checks, plans, reports, and validation.
-- Claude Code and Codex follow the same role contracts.
-- Test classes fail policy validation when timestamp, scenario ID, or
-  `@DisplayName` is missing.
-- Infrastructure apply remains disabled unless all external and human gates are
-  satisfied.
-- The requested documentation and templates exist and contain no sensitive
-  values.
-- Only files owned by `MIR-82` are staged in its commits.
-- `npm ci` 또는 `npm install` 후 Husky Hook이 자동 설치된다.
-- commit 전에 branch/staged secret/테스트·workflow 정책을 빠르게 검사한다.
-- commit message와 push 전에 저장소 컨벤션 및 전체 테스트를 검사한다.
-- `--no-verify` 우회와 무관하게 GitHub Actions가 동일한 핵심 규칙을 재검증한다.
-
-## Dynamic Jira context follow-up
-
-### Objective
-
-- 하네스는 특정 Jira 키나 스프린트에 종속되지 않는다.
-- 현재 Jira 키와 GitHub Issue 번호는 작업 브랜치에서 파생한다.
-- branch, commit, PR title, PR body의 Jira/Issue 문맥이 서로 일치해야 한다.
-- 새 작업은 기존 `TASK.md`를 명시적으로 새 계약으로 교체할 수 있다.
-
-### Owned files
-
-- `scripts/validate-conventions.py`
-- `scripts/harness.py`
-- `.github/workflows/harness-policy.yml`
-- `templates/task-contract.md`
-- `AGENTS.md`, `CODEX.md`
-- `docs/harness/`
-- `shell/harness.zsh`, `completions/_harness`
-
-### Validation
-
-```bash
-python3 scripts/validate-conventions.py --self-test
-python3 scripts/validate-conventions.py \
-  --branch "feat/PAY-314-gh-42-dynamic-jira" \
-  --commit "feat(harness): [PAY-314] use branch context (#42)" \
-  --pr-title "[PAY-314] feat: use branch context" \
-  --pr-body "Closes #42"
-./harness context
-npm run hooks:validate
-```
-
-### Completion criteria
-
-- `MIR-82` 외 Jira 키가 모든 컨벤션 검사에서 통과한다.
-- branch와 commit/PR의 Jira 키 또는 Issue 번호가 다르면 실패한다.
-- 오류 메시지와 공통 문서가 특정 Jira 키를 정답처럼 제시하지 않는다.
-- `h task-init`이 현재 branch 문맥으로 `TASK.md` 초안을 생성한다.
-
-## Automatic commit message follow-up
-
-### Objective
-
-- 개발자는 `git commit -m "요약"`만 입력해도 규칙형 메시지를 생성할 수 있다.
-- type, Jira 키, GitHub Issue는 현재 branch에서 파생한다.
-- `type(scope): 요약`을 입력하면 type과 scope는 유지하고 Jira/Issue를 채운다.
-- 이미 완성된 메시지는 변경하지 않으며 잘못된 Jira/Issue는 기존 검증으로
-  차단한다.
-
-### Owned files
-
-- `.husky/prepare-commit-msg`
-- `scripts/format-commit-msg.py`
-- `scripts/run-hook.py`
-- `scripts/validate-husky.py`
-- `package.json`
-- `AGENTS.md`
-- `docs/harness/HUSKY.md`
-- `docs/harness/CHEATSHEET.md`
-
-### Exclusions
-
-- 커밋 내용을 AI가 분류하거나 요약하지 않는다.
-- scope를 branch slug에서 임의 추측하지 않는다.
-- 완성된 커밋 메시지의 Jira 키나 Issue 번호를 조용히 교체하지 않는다.
-
-### Validation
-
-```bash
-python3 scripts/format-commit-msg.py --self-test
-npm run hooks:validate
-git commit -m "커밋 메시지 자동 조립 구현"
-```
-
-### Completion criteria
-
-- 짧은 한글 메시지가 branch 문맥을 포함한 커밋 제목으로 변환된다.
-- `type(scope): 요약` 형식은 type과 scope를 보존한다.
-- 완성된 규칙형 메시지는 그대로 유지한다.
-- 다른 Jira 키나 Issue가 포함된 완성 메시지는 `commit-msg`에서 실패한다.
-- 메시지 본문과 Git comment는 그대로 유지한다.
-
-## Jira-generated branch follow-up
-
-### Objective
-
-- GitHub Issue에서 Jira 하위 티켓을 만들 때 생성되는 branch도 저장소 하네스
-  규칙을 따른다.
-- 자동 생성 branch는 Jira 하위 티켓 키와 GitHub Issue 번호를 함께 포함한다.
-- 영문 제목은 안전한 kebab-case slug로 변환하고, 영문 slug를 만들 수 없는
-  제목은 `issue-<number>`를 사용한다.
-
-### Contract
-
-```text
-<type>/<JIRA-KEY>-gh-<ISSUE-NUMBER>-<short-slug>
-```
-
-예:
-
-```text
-feat/MIR-123-gh-42-order-create
-feat/MIR-123-gh-42-issue-42
-```
-
-`config` 작업은 현재 허용된 branch/commit type과 충돌하지 않도록 `chore`로
-매핑한다. 알 수 없는 작업 유형도 임의의 `task` type을 만들지 않고 `chore`를
-사용한다.
-
-### Owned files
-
-- `.github/workflows/jira-sync.yml`
-- `scripts/validate-workflows.py`
-
-### Validation
-
-```bash
-python3 scripts/validate-workflows.py .github/workflows/jira-sync.yml
-python3 scripts/validate-conventions.py \
-  --branch "feat/MIR-123-gh-42-order-create"
-```
-
-### Completion criteria
-
-- 자동 생성 branch가 Husky와 CI의 branch 검증을 통과한다.
-- Jira 키나 GitHub Issue 번호는 고정하지 않고 이벤트에서 가져온다.
-- 한글 제목만 있는 Issue도 유효한 fallback branch를 생성한다.
-
-## Compact GitHub label policy follow-up
-
-### Objective
-
-- 참고 저장소의 반복 라벨을 현재 팀 규모에 맞는 15개로 축소한다.
-- 모든 Issue와 PR은 canonical `type: *` 라벨을 정확히 하나 가진다.
-- Jira가 우선순위와 스프린트의 기준이며 이를 GitHub 라벨로 복제하지 않는다.
-- PR type은 현재 branch 접두사에서 자동 파생한다.
-
-### Owned files
-
-- `.github/label-catalog.json`
-- `.github/workflows/label-policy.yml`
-- `.github/ISSUE_TEMPLATE/`
-- `.github/PULL_REQUEST_TEMPLATE.md`
-- `scripts/validate-labels.py`
-- `scripts/validate-workflows.py`
-- `scripts/harness.py`
-- `.github/workflows/harness-policy.yml`
-- `docs/harness/LABELS.md`
-- `docs/harness/GITHUB_ENFORCEMENT.md`
-
-### Safety
-
-- label sync는 기존 저장소 라벨을 자동 삭제하지 않는다.
-- `pull_request_target` job은 외부 PR 코드를 checkout하거나 실행하지 않는다.
-- GitHub Ruleset이 저장소 파일만으로 적용됐다고 주장하지 않는다.
-- `.dockerignore`의 기존 사용자 변경은 이 작업에 포함하지 않는다.
-
-### Validation
-
-```bash
-python3 scripts/validate-labels.py
-python3 scripts/validate-workflows.py
-./harness check
-git diff --check
-```
-
-### Completion criteria
-
-- canonical 라벨은 type 8개, area 4개, status 3개로 제한된다.
-- Issue Form과 범용 작업 유형 응답이 type 라벨을 자동 적용한다.
-- PR type은 branch 접두사와 항상 일치한다.
-- type 누락이나 알 수 없는 branch 접두사는 Label Policy가 실패한다.
-- 실제 병합 강제를 위한 Ruleset required check 설정이 문서에 명시된다.
+- `.coderabbit.yaml`이 CodeRabbit v2 스키마를 참조한다.
+- 자동 리뷰는 활성화되고 draft PR은 제외된다.
+- 리뷰 지침은 하네스가 검증하는 형식 규칙을 반복하지 않는다.
+- 운영 코드와 테스트 코드의 의미 기반 리뷰 기준이 분리되어 있다.
+- 기본 하네스와 프로젝트 테스트가 통과한다.
+- GitHub App 설치 여부와 남은 관리자 작업이 명확히 보고된다.
