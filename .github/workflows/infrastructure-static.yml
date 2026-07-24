@@ -1,0 +1,55 @@
+name: Infrastructure Static Checks
+
+on:
+  pull_request:
+    paths:
+      - "infra/**"
+      - ".github/workflows/infrastructure-*.yml"
+      - "scripts/confirm-infra-apply.py"
+      - "scripts/verify-infra-approvals.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  safety:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Scan tracked files
+        run: python scripts/preflight.py
+
+      - name: Validate workflow gates
+        run: python scripts/validate-workflows.py
+
+  terraform:
+    if: ${{ hashFiles('infra/**/*.tf') != '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Check formatting
+        run: terraform fmt -check -recursive infra
+
+      - name: Validate each root module
+        shell: bash
+        run: |
+          set -euo pipefail
+          while IFS= read -r directory; do
+            terraform -chdir="$directory" init -backend=false -input=false >/dev/null
+            terraform -chdir="$directory" validate
+          done < <(find infra -name '*.tf' -print0 |
+            xargs -0 -n1 dirname |
+            sort -u)
