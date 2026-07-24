@@ -1,0 +1,68 @@
+name: 테스트 시나리오
+description: 오케스트레이터가 설계하고 실행 에이전트가 구현할 테스트 계획입니다.
+title: "[JIRA] "
+labels:
+  - test
+body:
+  - type: input
+    id: parent_jira
+    attributes:
+      label: 상위 Jira 티켓
+      placeholder: PROJ-123
+    validations:
+      required: true
+  - type: dropdown
+    id: work_type
+    attributes:
+      label: 작업 유형
+      options:
+        - 테스트 시나리오
+    validations:
+      required: true
+  - type: input
+    id: plan_id
+    attributes:
+      label: 테스트 계획 식별자
+      description: 예) TEST-PLAN-<JIRA-KEY>-ORDER
+      placeholder: TEST-PLAN-PROJ-123-NAME
+    validations:
+      required: true
+  - type: textarea
+    id: work
+    attributes:
+      label: 작업 내용
+      description: 검증 대상과 실패 위험을 작성합니다.
+    validations:
+      required: true
+  - type: checkboxes
+    id: test_scope
+    attributes:
+      label: 테스트 범위
+      options:
+        - label: 단위 테스트
+        - label: 통합 테스트
+        - label: 동시성·트랜잭션
+        - label: 외부 API·장애 복구
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: 완료 조건
+      placeholder: |
+        - [ ] 모든 테스트에 @DisplayName
+        - [ ] 클래스 헤더 timestamp/source scenario
+        - [ ] 표준 테스트 보고서
+        - [ ] 잠재 문제와 후속 작업
+    validations:
+      required: true
+  - type: textarea
+    id: backend_impact
+    attributes:
+      label: 백엔드 영향
+    validations:
+      required: true
+  - type: textarea
+    id: blockers
+    attributes:
+      label: 의존성 또는 블로커
+    validations:
+      required: true
