@@ -1,0 +1,77 @@
+name: Backend work item
+description: 상위 Jira 티켓 아래에 백엔드 작업을 자동 생성합니다.
+title: "[JIRA] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        상위 Jira 티켓을 입력하면 하위 Jira 작업과 PR 연결 정보가 자동 생성됩니다.
+
+  - type: input
+    id: parent_jira
+    attributes:
+      label: Parent Jira ticket
+      placeholder: ORDER-100
+    validations:
+      required: true
+
+  - type: dropdown
+    id: work_type
+    attributes:
+      label: Work type
+      options:
+        - API
+        - Domain logic
+        - Database
+        - External integration
+        - Bug
+        - Refactoring
+        - Infrastructure
+    validations:
+      required: true
+
+  - type: textarea
+    id: details
+    attributes:
+      label: Details
+      description: 구현 대상과 필요한 이유를 간단히 작성합니다.
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance_criteria
+    attributes:
+      label: Acceptance criteria
+      placeholder: |
+        - [ ] 완료 조건 1
+        - [ ] 완료 조건 2
+    validations:
+      required: true
+
+  - type: textarea
+    id: backend_impact
+    attributes:
+      label: Backend impact
+      description: API·이벤트 계약, DB, 트랜잭션, 권한, 외부 연동 영향을 작성합니다. 없으면 N/A.
+      placeholder: |
+        API/이벤트:
+        DB/트랜잭션:
+        권한/보안:
+        외부 연동:
+    validations:
+      required: true
+
+  - type: textarea
+    id: blockers
+    attributes:
+      label: Dependencies or blockers
+      description: 선행 작업이나 미결정 사항이 없으면 비워둘 수 있습니다.
+
+  - type: checkboxes
+    id: confirmation
+    attributes:
+      label: Confirmation
+      options:
+        - label: 일정·우선순위·상태는 Jira에서 관리합니다.
+          required: true
+

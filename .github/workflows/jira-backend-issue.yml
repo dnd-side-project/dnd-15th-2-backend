@@ -1,0 +1,38 @@
+name: Jira - create backend task
+
+on:
+  issues:
+    types:
+      - opened
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: GitHub Issue number to retry
+        required: true
+        type: number
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  create-jira-task:
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.event.issue.title, '[JIRA]')
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      ISSUE_NUMBER: ${{ inputs.issue_number || github.event.issue.number }}
+      JIRA_BASE_URL: ${{ vars.JIRA_BASE_URL }}
+      JIRA_EMAIL: ${{ secrets.JIRA_EMAIL }}
+      JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+      JIRA_CHILD_ISSUE_TYPE_ID: ${{ vars.JIRA_CHILD_ISSUE_TYPE_ID }}
+      JIRA_CHILD_ISSUE_TYPE_NAME: ${{ vars.JIRA_CHILD_ISSUE_TYPE_NAME }}
+    steps:
+      - name: Check out workflow scripts
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Create Jira backend task
+        run: node .github/scripts/sync-backend-issue.js
+
