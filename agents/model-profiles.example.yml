@@ -1,0 +1,31 @@
+# Logical profiles only. Copy to model-profiles.local.yml and map each profile
+# to a model that is actually available in your Claude Code or Codex account.
+profiles:
+  orchestrator_high:
+    capability: high
+    usage_budget: high
+    provider: configurable
+    model: configure-locally
+
+  executor_claude_medium:
+    capability: cost-efficient
+    usage_budget: medium
+    provider: anthropic
+    family_hint: sonnet
+    model: configure-locally
+
+  executor_codex_medium:
+    capability: cost-efficient
+    usage_budget: medium
+    provider: openai
+    family_hint: gpt-5.6
+    model: configure-locally
+
+assignments:
+  test_orchestrator: orchestrator_high
+  test_executor_primary: executor_claude_medium
+  test_executor_secondary: executor_codex_medium
+  infrastructure_orchestrator: orchestrator_high
+  infrastructure_executor_primary: executor_claude_medium
+  infrastructure_executor_secondary: executor_codex_medium
+  pm_reviewer: orchestrator_high

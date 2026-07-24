@@ -1,0 +1,28 @@
+#compdef h harness
+
+_arguments \
+  '1:command:(doctor status context start task-init test-plan test-run infra-design check pr-ready cheatsheet)' \
+  '*::argument:->args'
+
+case "$words[2]" in
+  start)
+    _arguments \
+      '--jira[Jira key]:key:' \
+      '--issue[GitHub issue number]:number:' \
+      '--type[branch type]:(feat fix test infra docs refactor chore ci build perf)' \
+      '--slug[branch slug]:slug:' \
+      '--confirm-jira-linked[confirm reciprocal links]'
+    ;;
+  task-init)
+    _arguments \
+      '--title[current task title]:title:' \
+      '--parent-jira[optional parent Jira key]:key:' \
+      '--replace[replace the committed previous TASK.md]'
+    ;;
+  test-plan|test-run|infra-design)
+    _arguments '--id[stable plan or design identifier]:identifier:'
+    ;;
+  pr-ready)
+    _arguments '--project-tests[run configured full project checks]'
+    ;;
+esac
