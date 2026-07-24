@@ -1,0 +1,10 @@
+.git
+.gitattributes
+.gradle
+.idea
+.vscode
+build
+outputs
+work
+*.iml
+README.md
