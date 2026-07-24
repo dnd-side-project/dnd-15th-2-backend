@@ -1,0 +1,83 @@
+name: Harness Policy
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+  push:
+    branches-ignore:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  policy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Validate branch and pull request
+        if: github.event_name == 'pull_request'
+        env:
+          VALIDATION_BRANCH: ${{ github.head_ref }}
+          VALIDATION_PR_TITLE: ${{ github.event.pull_request.title }}
+          VALIDATION_PR_BODY: ${{ github.event.pull_request.body }}
+        run: >-
+          python scripts/validate-conventions.py
+          --branch "$VALIDATION_BRANCH"
+          --pr-title "$VALIDATION_PR_TITLE"
+          --pr-body "$VALIDATION_PR_BODY"
+
+      - name: Validate branch and commit
+        if: github.event_name == 'push'
+        env:
+          VALIDATION_BRANCH: ${{ github.ref_name }}
+          VALIDATION_COMMIT: ${{ github.event.head_commit.message }}
+        run: >-
+          python scripts/validate-conventions.py
+          --branch "$VALIDATION_BRANCH"
+          --commit "$VALIDATION_COMMIT"
+
+      - name: Run convention self-tests
+        run: python scripts/validate-conventions.py --self-test
+
+      - name: Scan tracked files without exposing values
+        run: python scripts/preflight.py
+
+      - name: Validate JUnit 5 metadata
+        run: python scripts/validate-java-tests.py
+
+      - name: Validate workflow safety
+        run: python scripts/validate-workflows.py
+
+      - name: Validate label catalog and templates
+        run: python scripts/validate-labels.py
+
+      - name: Validate Husky contract
+        run: python scripts/validate-husky.py
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+
+      - name: Make Gradle wrapper executable
+        run: chmod +x gradlew
+
+      - name: Run project tests
+        run: ./gradlew check

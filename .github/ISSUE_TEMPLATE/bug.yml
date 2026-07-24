@@ -1,0 +1,63 @@
+name: 버그
+description: 재현 가능한 장애를 Jira와 연결해 기록합니다.
+title: "[JIRA] "
+labels:
+  - "type: bug"
+body:
+  - type: input
+    id: parent_jira
+    attributes:
+      label: 상위 Jira 티켓
+      placeholder: PROJ-123
+    validations:
+      required: true
+  - type: dropdown
+    id: work_type
+    attributes:
+      label: 작업 유형
+      options:
+        - 버그
+        - 장애 복구
+    validations:
+      required: true
+  - type: textarea
+    id: work
+    attributes:
+      label: 작업 내용
+      description: 기대 결과와 실제 결과를 포함합니다.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: 재현 절차
+      description: 비밀정보와 운영 데이터는 제거합니다.
+      placeholder: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: 완료 조건
+      placeholder: |
+        - [ ] 재현 테스트 추가
+        - [ ] 수정 후 회귀 테스트 통과
+        - [ ] 잠재 영향 분석
+    validations:
+      required: true
+  - type: textarea
+    id: backend_impact
+    attributes:
+      label: 백엔드 영향
+      description: 데이터 정합성, 트랜잭션, 동시성, 외부 API, 복구 영향
+    validations:
+      required: true
+  - type: textarea
+    id: blockers
+    attributes:
+      label: 의존성 또는 블로커
+    validations:
+      required: true

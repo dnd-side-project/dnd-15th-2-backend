@@ -1,0 +1,8 @@
+# CODEOWNERS requests review. Two approvals must be enforced separately through
+# GitHub Rulesets and the protected `infrastructure-apply` Environment.
+/infra/ @Byuntil @tkv00
+/.github/workflows/infrastructure-*.yml @Byuntil @tkv00
+/scripts/confirm-infra-apply.py @Byuntil @tkv00
+/scripts/verify-infra-approvals.py @Byuntil @tkv00
+/templates/infrastructure-design-report.md @Byuntil @tkv00
+/agents/infrastructure-*.md @Byuntil @tkv00

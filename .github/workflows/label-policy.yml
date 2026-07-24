@@ -1,0 +1,240 @@
+name: Label Policy
+
+on:
+  push:
+    paths:
+      - ".github/label-catalog.json"
+      - ".github/workflows/label-policy.yml"
+  issues:
+    types: [opened, edited, labeled, unlabeled, reopened]
+  pull_request_target:
+    types: [opened, edited, synchronize, reopened, ready_for_review, converted_to_draft, labeled, unlabeled]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  sync-labels:
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout trusted repository files
+        uses: actions/checkout@v5
+
+      - name: Create or update canonical labels
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const fs = require("fs");
+            const catalog = JSON.parse(
+              fs.readFileSync(".github/label-catalog.json", "utf8")
+            );
+            const { owner, repo } = context.repo;
+
+            for (const label of catalog.labels) {
+              try {
+                await github.rest.issues.getLabel({
+                  owner,
+                  repo,
+                  name: label.name
+                });
+                await github.rest.issues.updateLabel({
+                  owner,
+                  repo,
+                  name: label.name,
+                  new_name: label.name,
+                  color: label.color,
+                  description: label.description
+                });
+              } catch (error) {
+                if (error.status !== 404) throw error;
+                await github.rest.issues.createLabel({
+                  owner,
+                  repo,
+                  name: label.name,
+                  color: label.color,
+                  description: label.description
+                });
+              }
+            }
+
+  classify-issue:
+    if: github.event_name == 'issues'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require one canonical type label
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const issue = context.payload.issue;
+            const { owner, repo } = context.repo;
+            const issue_number = issue.number;
+            const typeLabels = [
+              "type: feature",
+              "type: bug",
+              "type: refactor",
+              "type: test",
+              "type: docs",
+              "type: infrastructure",
+              "type: performance",
+              "type: chore"
+            ];
+            const formTypeMap = {
+              feat: "type: feature",
+              fix: "type: bug",
+              refactor: "type: refactor",
+              test: "type: test",
+              docs: "type: docs",
+              chore: "type: chore",
+              config: "type: chore",
+              infrastructure: "type: infrastructure",
+              performance: "type: performance"
+            };
+            const current = issue.labels.map(label => label.name);
+            let selected = current.filter(label => typeLabels.includes(label));
+
+            if (selected.length === 0 && issue.body) {
+              const match = issue.body.match(
+                /###\s*작업 유형\s*\n+\s*([a-zA-Z-]+)/i
+              );
+              const inferred = match && formTypeMap[match[1].toLowerCase()];
+              if (inferred) {
+                await github.rest.issues.addLabels({
+                  owner,
+                  repo,
+                  issue_number,
+                  labels: [inferred]
+                });
+                selected = [inferred];
+              }
+            }
+
+            if (selected.length === 1) {
+              if (current.includes("status: needs-triage")) {
+                await github.rest.issues.removeLabel({
+                  owner,
+                  repo,
+                  issue_number,
+                  name: "status: needs-triage"
+                }).catch(error => {
+                  if (error.status !== 404) throw error;
+                });
+              }
+              return;
+            }
+
+            await github.rest.issues.addLabels({
+              owner,
+              repo,
+              issue_number,
+              labels: ["status: needs-triage"]
+            });
+
+            const marker = "<!-- label-policy:issue -->";
+            const comments = await github.paginate(
+              github.rest.issues.listComments,
+              { owner, repo, issue_number, per_page: 100 }
+            );
+            if (!comments.some(comment => comment.body?.includes(marker))) {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number,
+                body: `${marker}\n필수 \`type: *\` 라벨이 없거나 여러 개입니다. 정확히 하나만 선택해 주세요.`
+              });
+            }
+            core.setFailed("Issue must have exactly one canonical type label.");
+
+  classify-pull-request:
+    if: github.event_name == 'pull_request_target'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Derive and enforce pull request labels
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const pull = context.payload.pull_request;
+            const { owner, repo } = context.repo;
+            const issue_number = pull.number;
+            const prefix = pull.head.ref.split("/", 1)[0].toLowerCase();
+            const branchTypeMap = {
+              feat: "type: feature",
+              feature: "type: feature",
+              fix: "type: bug",
+              refactor: "type: refactor",
+              test: "type: test",
+              docs: "type: docs",
+              infra: "type: infrastructure",
+              perf: "type: performance",
+              chore: "type: chore",
+              ci: "type: chore",
+              build: "type: chore"
+            };
+            const typeLabels = [...new Set(Object.values(branchTypeMap))];
+            const expected = branchTypeMap[prefix];
+            const current = pull.labels.map(label => label.name);
+
+            for (const label of current.filter(
+              label => typeLabels.includes(label) && label !== expected
+            )) {
+              await github.rest.issues.removeLabel({
+                owner,
+                repo,
+                issue_number,
+                name: label
+              });
+            }
+
+            if (!expected) {
+              await github.rest.issues.addLabels({
+                owner,
+                repo,
+                issue_number,
+                labels: ["status: needs-triage"]
+              });
+              core.setFailed(
+                `Unsupported branch prefix '${prefix}'. Use the repository branch convention.`
+              );
+              return;
+            }
+
+            if (!current.includes(expected)) {
+              await github.rest.issues.addLabels({
+                owner,
+                repo,
+                issue_number,
+                labels: [expected]
+              });
+            }
+
+            if (current.includes("status: needs-triage")) {
+              await github.rest.issues.removeLabel({
+                owner,
+                repo,
+                issue_number,
+                name: "status: needs-triage"
+              }).catch(error => {
+                if (error.status !== 404) throw error;
+              });
+            }
+
+            if (pull.draft && current.includes("status: needs-review")) {
+              await github.rest.issues.removeLabel({
+                owner,
+                repo,
+                issue_number,
+                name: "status: needs-review"
+              }).catch(error => {
+                if (error.status !== 404) throw error;
+              });
+            } else if (!pull.draft && !current.includes("status: needs-review")) {
+              await github.rest.issues.addLabels({
+                owner,
+                repo,
+                issue_number,
+                labels: ["status: needs-review"]
+              });
+            }

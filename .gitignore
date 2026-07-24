@@ -4,7 +4,11 @@ build/
 .env
 /outputs/
 /work/
-/.agents/
+/node_modules/
+__pycache__/
+/.agents/*
+!/.agents/skills/
+!/.agents/skills/**
 /.codex/
 !gradle/wrapper/gradle-wrapper.jar
 !**/src/main/**/build/
@@ -40,3 +44,8 @@ out/
 
 ### VS Code ###
 .vscode/
+
+### Harness local configuration ###
+agents/model-profiles.local.yml
+.harness-local/
+docs/reports/**/*.local.md

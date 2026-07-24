@@ -1,0 +1,21 @@
+{
+  "name": "miri-repository-hooks",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Repository-local Git hooks for the Miri backend harness.",
+  "scripts": {
+    "prepare": "husky",
+    "hooks:install": "husky",
+    "hooks:validate": "node scripts/python.mjs scripts/validate-husky.py",
+    "hooks:pre-commit": "node scripts/python.mjs scripts/run-hook.py pre-commit",
+    "hooks:prepare-commit-msg": "node scripts/python.mjs scripts/format-commit-msg.py --self-test",
+    "hooks:commit-msg": "node scripts/python.mjs scripts/run-hook.py commit-msg .git/COMMIT_EDITMSG",
+    "hooks:pre-push": "node scripts/python.mjs scripts/run-hook.py pre-push"
+  },
+  "devDependencies": {
+    "husky": "9.1.7"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

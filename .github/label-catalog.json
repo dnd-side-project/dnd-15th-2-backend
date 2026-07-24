@@ -1,0 +1,79 @@
+{
+  "labels": [
+    {
+      "name": "type: feature",
+      "color": "A2EEEF",
+      "description": "새로운 사용자 가치 또는 기능"
+    },
+    {
+      "name": "type: bug",
+      "color": "D73A4A",
+      "description": "기대 동작과 다른 결함 수정"
+    },
+    {
+      "name": "type: refactor",
+      "color": "F29A4E",
+      "description": "외부 동작을 유지하는 구조 개선"
+    },
+    {
+      "name": "type: test",
+      "color": "CCFFC4",
+      "description": "테스트 시나리오, 구현 또는 품질 검증"
+    },
+    {
+      "name": "type: docs",
+      "color": "1D76DB",
+      "description": "문서 또는 설계 산출물 변경"
+    },
+    {
+      "name": "type: infrastructure",
+      "color": "C5DEF5",
+      "description": "AWS, IaC, 배포 기반 변경"
+    },
+    {
+      "name": "type: performance",
+      "color": "FBCA04",
+      "description": "성능 또는 비용 효율 개선"
+    },
+    {
+      "name": "type: chore",
+      "color": "EDEDED",
+      "description": "도구, 자동화, 의존성 등 유지보수"
+    },
+    {
+      "name": "area: api",
+      "color": "BFDADC",
+      "description": "백엔드 API와 애플리케이션 영역"
+    },
+    {
+      "name": "area: database",
+      "color": "BFDADC",
+      "description": "데이터 모델, 마이그레이션, 쿼리 영역"
+    },
+    {
+      "name": "area: security",
+      "color": "8B0000",
+      "description": "인증, 권한, 비밀정보, 보안 영역"
+    },
+    {
+      "name": "area: operations",
+      "color": "8A2BE2",
+      "description": "AWS, 배포, 관측 및 운영 영역"
+    },
+    {
+      "name": "status: blocked",
+      "color": "B60205",
+      "description": "외부 의존성 또는 결정으로 진행 불가"
+    },
+    {
+      "name": "status: needs-review",
+      "color": "5319E7",
+      "description": "사람의 검토 또는 승인이 필요함"
+    },
+    {
+      "name": "status: needs-triage",
+      "color": "D93F0B",
+      "description": "유형 또는 범위 분류가 필요함"
+    }
+  ]
+}
