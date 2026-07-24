@@ -1,6 +1,6 @@
-# dnd-15th-2-backend
+# miri
 
-DND 15기 2조 백엔드 프로젝트의 초기 실행 환경입니다. 도메인 또는 계층별 패키지 구조는 아직 추가하지 않았습니다.
+Miri 백엔드 프로젝트의 초기 실행 환경입니다. 도메인 또는 계층별 패키지 구조는 아직 추가하지 않았습니다.
 
 ## 기술 구성
 
@@ -36,7 +36,7 @@ docker compose up --build
 Docker 이미지의 `build` 단계에서 JUnit 5 테스트가 자동으로 실행됩니다.
 
 ```powershell
-docker build --target build -t dnd-15th-2-backend:test .
+docker build --target build -t miri:test .
 ```
 
 호스트에 JDK 21이 설치되어 있다면 Gradle Wrapper로 직접 실행할 수도 있습니다.

@@ -6,7 +6,7 @@ plugins {
 
 group = 'com.dnd'
 version = '0.0.1-SNAPSHOT'
-description = 'DND 15th Team 2 backend'
+description = 'Miri backend'
 
 java {
 	toolchain {

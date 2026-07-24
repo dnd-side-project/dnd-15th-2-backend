@@ -1,8 +1,8 @@
-name: dnd-15th-2-backend
+name: miri
 
 services:
   app:
-    image: dnd-15th-2-backend:local
+    image: miri:local
     build:
       context: .
       dockerfile: Dockerfile
