@@ -5,8 +5,8 @@ description: Design a risk-based JUnit 5 test plan before implementation.
 
 # Test Plan Orchestration
 
-Read `AGENTS.md`, `TASK.md`, `agents/test-orchestrator.md`, the Jira ticket, and
-linked GitHub Issue. Inspect the relevant code without changing it.
+Read `AGENTS.md`, `TASK.md`, `agents/test-orchestrator.md`, and the GitHub Issue.
+Inspect the relevant code without changing it.
 
 Run:
 

@@ -1,4 +1,4 @@
-# <JIRA-KEY> Task Contract
+# GitHub Issue #<GITHUB-ISSUE> Task Contract
 
 > Generated at: `<CREATED-AT>`
 >
@@ -8,8 +8,6 @@
 ## Work gate
 
 - Title: `<TASK-TITLE>`
-- Jira: `<JIRA-KEY>`
-- Parent Jira: `<PARENT-JIRA>`
 - GitHub Issue: `#<GITHUB-ISSUE>`
 - Branch: `<BRANCH>`
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Safe, repository-scoped shortcuts for the Miri engineering harness."""
+"""Safe, repository-scoped shortcuts for the Qello engineering harness."""
 
 from __future__ import annotations
 
@@ -17,11 +17,9 @@ from typing import Sequence
 
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG = json.loads((ROOT / "harness.config.json").read_text(encoding="utf-8"))
-JIRA_RE = re.compile(r"^[A-Z][A-Z0-9]+-\d+$")
 BRANCH_RE = re.compile(
     r"^(?:feat|feature|fix|test|infra|docs|refactor|chore|ci|build|perf)/"
-    r"(?P<jira>[A-Z][A-Z0-9]+-\d+)-gh-(?P<issue>\d+)-"
-    r"[a-z0-9]+(?:-[a-z0-9]+)*$"
+    r"gh-(?P<issue>\d+)-[a-z0-9]+(?:-[a-z0-9]+)*$"
 )
 SLUG_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 ID_RE = re.compile(r"^[A-Z0-9]+(?:-[A-Z0-9]+)*$")
@@ -58,13 +56,11 @@ def current_branch() -> str:
     return git_text("branch", "--show-current")
 
 
-def branch_context() -> tuple[str, int]:
+def branch_context() -> int:
     match = BRANCH_RE.fullmatch(current_branch())
     if not match:
-        raise HarnessError(
-            "current branch must be <type>/<JIRA>-gh-<issue>-<slug>"
-        )
-    return match.group("jira"), int(match.group("issue"))
+        raise HarnessError("current branch must be <type>/gh-<issue>-<slug>")
+    return int(match.group("issue"))
 
 
 def ensure_clean_worktree() -> None:
@@ -101,7 +97,7 @@ def scaffold(template: str, destination: Path, replacements: dict[str, str]) -> 
 
 
 def command_doctor(_: argparse.Namespace) -> None:
-    print("Miri harness doctor")
+    print("Qello harness doctor")
     required = ("git", "python3", "java")
     optional = (
         "gh",
@@ -132,15 +128,13 @@ def command_status(_: argparse.Namespace) -> None:
     print(f"worktree: {'dirty' if git_text('status', '--porcelain') else 'clean'}")
     match = BRANCH_RE.fullmatch(branch)
     if match:
-        print(f"jira: {match.group('jira')}")
         print(f"github issue: #{match.group('issue')}")
     else:
         print("gate: branch convention not satisfied")
 
 
 def command_context(_: argparse.Namespace) -> None:
-    jira, issue = branch_context()
-    print(f"JIRA_KEY={jira}")
+    issue = branch_context()
     print(f"GITHUB_ISSUE={issue}")
     print(f"BRANCH={current_branch()}")
 
@@ -148,58 +142,45 @@ def command_context(_: argparse.Namespace) -> None:
 def command_start(args: argparse.Namespace) -> None:
     ensure_tool("git")
     ensure_tool("gh")
-    jira = args.jira.upper()
-    if not JIRA_RE.fullmatch(jira):
-        raise HarnessError("Jira key must look like PROJ-123")
     if args.issue <= 0:
         raise HarnessError("GitHub issue must be positive")
     slug = args.slug.lower()
     if not SLUG_RE.fullmatch(slug):
         raise HarnessError("slug must use lowercase letters, digits, and hyphens")
-    if not args.confirm_jira_linked:
-        raise HarnessError("--confirm-jira-linked is required")
     ensure_clean_worktree()
-    issue = run(
+    result = run(
         [
             "gh",
             "issue",
             "view",
             str(args.issue),
             "--json",
-            "number,title,url",
+            "number,state,url",
         ],
         capture=True,
         check=False,
     )
-    if issue.returncode != 0:
-        raise HarnessError("unable to read the GitHub issue with gh")
-    issue_data = json.loads(issue.stdout)
-    if jira not in issue_data.get("title", ""):
-        raise HarnessError("GitHub issue title does not contain the Jira key")
-    branch = f"{args.type}/{jira}-gh-{args.issue}-{slug}"
-    result = run(["git", "switch", "-c", branch], check=False)
     if result.returncode != 0:
+        raise HarnessError("unable to read the GitHub issue with gh")
+    issue_data = json.loads(result.stdout)
+    if issue_data.get("state") != "OPEN":
+        raise HarnessError("GitHub issue must be open before starting work")
+    branch = f"{args.type}/gh-{args.issue}-{slug}"
+    switch = run(["git", "switch", "-c", branch], check=False)
+    if switch.returncode != 0:
         raise HarnessError(f"unable to create branch: {branch}")
     print(branch)
 
 
 def command_task_init(args: argparse.Namespace) -> None:
-    jira, issue = branch_context()
-    parent_jira = "N/A"
-    if args.parent_jira:
-        parent_jira = args.parent_jira.upper()
-        if not JIRA_RE.fullmatch(parent_jira):
-            raise HarnessError("parent Jira key must look like PROJ-123")
-
+    issue = branch_context()
     destination = ROOT / "TASK.md"
     if destination.exists() and not args.replace:
         raise HarnessError(
             "TASK.md already exists; pass --replace after confirming the old "
             "task contract is committed"
         )
-    if destination.exists() and git_text(
-        "status", "--porcelain", "--", "TASK.md"
-    ):
+    if destination.exists() and git_text("status", "--porcelain", "--", "TASK.md"):
         raise HarnessError(
             "TASK.md has uncommitted changes; commit or preserve them before "
             "using --replace"
@@ -210,9 +191,7 @@ def command_task_init(args: argparse.Namespace) -> None:
         render_template(
             "templates/task-contract.md",
             {
-                "<JIRA-KEY>": jira,
                 "<GITHUB-ISSUE>": str(issue),
-                "<PARENT-JIRA>": parent_jira,
                 "<TASK-TITLE>": args.title,
                 "<BRANCH>": current_branch(),
                 "<CREATED-AT>": created_at,
@@ -224,14 +203,13 @@ def command_task_init(args: argparse.Namespace) -> None:
 
 
 def command_test_plan(args: argparse.Namespace) -> None:
-    jira, issue = branch_context()
+    issue = branch_context()
     identifier = safe_identifier(args.id)
     created_at = datetime.now().astimezone().isoformat(timespec="seconds")
     scaffold(
         "templates/test-plan.md",
-        ROOT / "docs" / "test-plans" / f"{jira}-{identifier}.md",
+        ROOT / "docs" / "test-plans" / f"gh-{issue}-{identifier}.md",
         {
-            "<JIRA-KEY>": jira,
             "<GITHUB-ISSUE>": str(issue),
             "<TEST-PLAN-ID>": identifier,
             "<CREATED-AT>": created_at,
@@ -240,7 +218,7 @@ def command_test_plan(args: argparse.Namespace) -> None:
 
 
 def command_test_run(args: argparse.Namespace) -> None:
-    jira, issue = branch_context()
+    issue = branch_context()
     identifier = safe_identifier(args.id)
     unit_command = CONFIG["commands"]["unit"]
     if not unit_command:
@@ -252,9 +230,8 @@ def command_test_run(args: argparse.Namespace) -> None:
     created_at = datetime.now().astimezone().isoformat(timespec="seconds")
     scaffold(
         "templates/test-report.md",
-        ROOT / "docs" / "reports" / "tests" / f"{jira}-{identifier}.md",
+        ROOT / "docs" / "reports" / "tests" / f"gh-{issue}-{identifier}.md",
         {
-            "<JIRA-KEY>": jira,
             "<GITHUB-ISSUE>": str(issue),
             "<TEST-PLAN-ID>": identifier,
             "<CREATED-AT>": created_at,
@@ -265,14 +242,13 @@ def command_test_run(args: argparse.Namespace) -> None:
 
 
 def command_infra_design(args: argparse.Namespace) -> None:
-    jira, issue = branch_context()
+    issue = branch_context()
     identifier = safe_identifier(args.id)
     created_at = datetime.now().astimezone().isoformat(timespec="seconds")
     scaffold(
         "templates/infrastructure-design-report.md",
-        ROOT / "docs" / "reports" / "infrastructure" / f"{jira}-{identifier}.md",
+        ROOT / "docs" / "reports" / "infrastructure" / f"gh-{issue}-{identifier}.md",
         {
-            "<JIRA-KEY>": jira,
             "<GITHUB-ISSUE>": str(issue),
             "<DESIGN-ID>": identifier,
             "<CREATED-AT>": created_at,
@@ -325,20 +301,28 @@ def parser() -> argparse.ArgumentParser:
     sub.add_parser("context").set_defaults(handler=command_context)
 
     start = sub.add_parser("start")
-    start.add_argument("--jira", required=True)
     start.add_argument("--issue", required=True, type=int)
     start.add_argument(
         "--type",
         required=True,
-        choices=("feat", "fix", "test", "infra", "docs", "refactor", "chore", "ci", "build", "perf"),
+        choices=(
+            "feat",
+            "fix",
+            "test",
+            "infra",
+            "docs",
+            "refactor",
+            "chore",
+            "ci",
+            "build",
+            "perf",
+        ),
     )
     start.add_argument("--slug", required=True)
-    start.add_argument("--confirm-jira-linked", action="store_true")
     start.set_defaults(handler=command_start)
 
     task_init = sub.add_parser("task-init")
     task_init.add_argument("--title", required=True)
-    task_init.add_argument("--parent-jira")
     task_init.add_argument("--replace", action="store_true")
     task_init.set_defaults(handler=command_task_init)
 

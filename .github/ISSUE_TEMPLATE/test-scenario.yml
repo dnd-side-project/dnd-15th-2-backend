@@ -1,16 +1,9 @@
 name: 테스트 시나리오
 description: 오케스트레이터가 설계하고 실행 에이전트가 구현할 테스트 계획입니다.
-title: "[JIRA] "
+title: ""
 labels:
   - "type: test"
 body:
-  - type: input
-    id: parent_jira
-    attributes:
-      label: 상위 Jira 티켓
-      placeholder: PROJ-123
-    validations:
-      required: true
   - type: dropdown
     id: work_type
     attributes:
@@ -23,8 +16,8 @@ body:
     id: plan_id
     attributes:
       label: 테스트 계획 식별자
-      description: 예) TEST-PLAN-<JIRA-KEY>-ORDER
-      placeholder: TEST-PLAN-PROJ-123-NAME
+      description: 예) TEST-PLAN-GH-42-FEED
+      placeholder: TEST-PLAN-GH-42-NAME
     validations:
       required: true
   - type: textarea

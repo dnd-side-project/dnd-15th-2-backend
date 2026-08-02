@@ -1,7 +1,6 @@
 # Decision Record: <DECISION-ID>
 
 > Created at: `<CREATED-AT>`
-> Jira: `<JIRA-KEY>`
 > GitHub Issue: `#<GITHUB-ISSUE>`
 > Status: Proposed
 
@@ -35,7 +34,7 @@
 
 ## Affected work
 
-- Jira:
+- GitHub Issue:
 - Code / design:
 - Operations:
 

@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import re
 import sys
 from pathlib import Path
 
@@ -14,16 +13,15 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--jira-key", required=True)
     parser.add_argument("--pr-number", required=True, type=int)
     parser.add_argument("--confirmation", required=True)
     parser.add_argument("--terraform-dir", required=True)
     args = parser.parse_args()
 
-    if not re.fullmatch(r"[A-Z][A-Z0-9]+-\d+", args.jira_key):
-        print("Invalid Jira key.", file=sys.stderr)
+    if args.pr_number <= 0:
+        print("PR number must be positive.", file=sys.stderr)
         return 1
-    if args.confirmation != f"APPLY {args.jira_key} PR-{args.pr_number}":
+    if args.confirmation != f"APPLY PR-{args.pr_number}":
         print("Confirmation phrase did not match.", file=sys.stderr)
         return 1
 

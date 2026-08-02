@@ -1,17 +1,10 @@
 name: AWS 인프라 설계·구축
 description: 비용, 보안, 대안을 먼저 검토하고 적용은 수동 승인합니다.
-title: "[JIRA] "
+title: ""
 labels:
   - "type: infrastructure"
   - "area: operations"
 body:
-  - type: input
-    id: parent_jira
-    attributes:
-      label: 상위 Jira 티켓
-      placeholder: PROJ-123
-    validations:
-      required: true
   - type: dropdown
     id: work_type
     attributes:

@@ -62,17 +62,6 @@ def main() -> int:
         elif TERRAFORM_APPLY_RE.search(text):
             errors.append(f"{relative}: apply exists outside the gated workflow")
 
-        if path.name == "jira-sync.yml":
-            required = (
-                "function branchSlug(value, issueNumber)",
-                'branchName = `${prefix}/${childKey}-gh-${issue.number}-${slug}`;',
-                'return slug || `issue-${issueNumber}`;',
-            )
-            for marker in required:
-                if marker not in text:
-                    errors.append(
-                        f"{relative}: missing dynamic Jira/GitHub branch marker"
-                    )
         if path.name == "label-policy.yml":
             required = (
                 "pull_request_target:",

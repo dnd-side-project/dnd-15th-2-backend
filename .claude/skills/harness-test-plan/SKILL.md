@@ -5,8 +5,7 @@ description: Design a risk-based JUnit 5 test plan before implementation.
 
 # Test Plan Orchestration
 
-1. Read `AGENTS.md`, `TASK.md`, `agents/test-orchestrator.md`, the Jira ticket,
-   and linked GitHub Issue.
+1. Read `AGENTS.md`, `TASK.md`, `agents/test-orchestrator.md`, and the GitHub Issue.
 2. Inspect relevant source, tests, schema, transactions, and external API
    boundaries without changing implementation.
 3. Run `./harness test-plan --id <TEST-PLAN-ID>` to scaffold the plan.

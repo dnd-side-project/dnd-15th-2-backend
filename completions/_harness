@@ -7,16 +7,13 @@ _arguments \
 case "$words[2]" in
   start)
     _arguments \
-      '--jira[Jira key]:key:' \
       '--issue[GitHub issue number]:number:' \
       '--type[branch type]:(feat fix test infra docs refactor chore ci build perf)' \
-      '--slug[branch slug]:slug:' \
-      '--confirm-jira-linked[confirm reciprocal links]'
+      '--slug[branch slug]:slug:'
     ;;
   task-init)
     _arguments \
       '--title[current task title]:title:' \
-      '--parent-jira[optional parent Jira key]:key:' \
       '--replace[replace the committed previous TASK.md]'
     ;;
   test-plan|test-run|infra-design)

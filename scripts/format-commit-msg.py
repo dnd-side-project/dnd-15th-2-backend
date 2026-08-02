@@ -14,18 +14,18 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 BRANCH_RE = re.compile(
     r"^(?P<type>feat|feature|fix|test|infra|docs|refactor|chore|ci|build|perf)/"
-    r"(?P<jira>[A-Z][A-Z0-9]+-\d+)-gh-(?P<issue>\d+)-"
+    r"gh-(?P<issue>\d+)-"
     r"[a-z0-9]+(?:-[a-z0-9]+)*$"
 )
 FULL_COMMIT_RE = re.compile(
     r"^(?:feat|fix|test|infra|docs|refactor|chore|ci|build|perf)"
-    r"(?:\([a-z0-9-]+\))?: \[[A-Z][A-Z0-9]+-\d+\] .+ \(#\d+\)$"
+    r"(?:\([a-z0-9-]+\))?: .+ \(#\d+\)$"
 )
 PARTIAL_COMMIT_RE = re.compile(
     r"^(?P<type>feat|feature|fix|test|infra|docs|refactor|chore|ci|build|perf)"
     r"(?P<scope>\([a-z0-9-]+\))?: (?P<summary>.+)$"
 )
-CONTEXT_TOKEN_RE = re.compile(r"\[[A-Z][A-Z0-9]+-\d+\]|\(#\d+\)")
+CONTEXT_TOKEN_RE = re.compile(r"\(#\d+\)")
 TYPE_ALIASES = {"feature": "feat"}
 
 
@@ -50,7 +50,7 @@ def format_subject(subject: str, branch: str) -> str:
     branch_match = BRANCH_RE.fullmatch(branch)
     if not branch_match:
         raise FormatError(
-            "branch must match <type>/<JIRA-KEY>-gh-<ISSUE>-<slug>"
+            "branch must match <type>/gh-<ISSUE>-<slug>"
         )
 
     normalized = subject.strip()
@@ -65,7 +65,7 @@ def format_subject(subject: str, branch: str) -> str:
         return normalized
     if CONTEXT_TOKEN_RE.search(normalized):
         raise FormatError(
-            "partially specified Jira/Issue context is ambiguous; either use "
+            "partially specified Issue context is ambiguous; either use "
             "a short summary or a complete conventional message"
         )
 
@@ -80,9 +80,8 @@ def format_subject(subject: str, branch: str) -> str:
         summary = normalized
 
     commit_type = TYPE_ALIASES.get(commit_type, commit_type)
-    jira = branch_match.group("jira")
     issue = branch_match.group("issue")
-    return f"{commit_type}{scope}: [{jira}] {summary} (#{issue})"
+    return f"{commit_type}{scope}: {summary} (#{issue})"
 
 
 def rewrite_message(
@@ -119,19 +118,19 @@ def rewrite_message(
 
 
 def self_test() -> list[str]:
-    branch = "feat/PAY-314-gh-42-order-feature"
+    branch = "feat/gh-42-order-feature"
     cases = (
         (
             "기능1 개발",
-            "feat: [PAY-314] 기능1 개발 (#42)",
+            "feat: 기능1 개발 (#42)",
         ),
         (
             "test(order): 예약 테스트 추가",
-            "test(order): [PAY-314] 예약 테스트 추가 (#42)",
+            "test(order): 예약 테스트 추가 (#42)",
         ),
         (
-            "feat: [PAY-314] 완성 메시지 (#42)",
-            "feat: [PAY-314] 완성 메시지 (#42)",
+            "feat: 완성 메시지 (#42)",
+            "feat: 완성 메시지 (#42)",
         ),
     )
     errors: list[str] = []
@@ -146,17 +145,17 @@ def self_test() -> list[str]:
     else:
         errors.append("invalid branch was accepted")
     try:
-        format_subject("[BILL-9] 잘못된 문맥", branch)
+        format_subject("부분 문맥 (#7)", branch)
     except FormatError:
         pass
     else:
-        errors.append("partial Jira context was accepted")
+        errors.append("partial Issue context was accepted")
     with tempfile.TemporaryDirectory() as directory:
         path = Path(directory) / "COMMIT_EDITMSG"
         body = "\n본문은 유지한다.\n# Git comment\n"
         path.write_text("기능1 개발" + body, encoding="utf-8")
         rewrite_message(path, branch)
-        expected = "feat: [PAY-314] 기능1 개발 (#42)" + body
+        expected = "feat: 기능1 개발 (#42)" + body
         actual = path.read_text(encoding="utf-8")
         if actual != expected:
             errors.append("message body or Git comment was changed")

@@ -1,7 +1,7 @@
 # Codex Entry Point
 
 Codex는 먼저 `AGENTS.md`, `TASK.md`, 해당 `agents/` 역할 문서를 읽는다.
-저장소의 Codex 스킬은 `.agents/skills/`에 있으며 다음과 같이 호출한다.
+저장소의 Codex 스킬은 `.agents/skills/`에 있다.
 
 - `$harness-test-plan`
 - `$harness-test-run`
@@ -12,17 +12,15 @@ Codex는 먼저 `AGENTS.md`, `TASK.md`, 해당 `agents/` 역할 문서를 읽는
 ## 시작 명령
 
 ```bash
-export JIRA_KEY=PAY-314
 export GITHUB_ISSUE=42
 ./harness doctor
 ./harness status
-./harness start --jira "$JIRA_KEY" --issue "$GITHUB_ISSUE" --type test \
-  --slug order-reservation --confirm-jira-linked
-./harness task-init --title "주문 예약 테스트" --replace
+./harness start --issue "$GITHUB_ISSUE" --type test --slug direction-feed
+./harness task-init --title "방향 피드 테스트" --replace
 ```
 
-`JIRA_KEY`와 `GITHUB_ISSUE`는 작업마다 입력하는 예시 변수다. 저장소 설정에
-저장하지 않으며 이후 명령은 생성된 branch에서 현재 문맥을 파생한다.
+GitHub Issue 번호는 작업마다 입력하는 예시 변수다. 이후 명령은 생성된
+`<type>/gh-<issue>-<slug>` branch에서 현재 문맥을 파생한다.
 
 ## 운용 원칙
 

@@ -19,7 +19,7 @@
 
 `templates/infrastructure-design-report.md`를 사용해 다음을 기록한다.
 
-- 설계 ID, Jira/Issue, 정확한 생성 시각
+- 설계 ID, GitHub Issue, 정확한 생성 시각
 - 컨텍스트와 제약
 - 선택안과 대안
 - 네트워크, 컴퓨팅, RDS, 저장소, 관측성, 백업

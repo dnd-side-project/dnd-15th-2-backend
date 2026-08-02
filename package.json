@@ -1,8 +1,8 @@
 {
-  "name": "miri-repository-hooks",
+  "name": "qello-repository-hooks",
   "version": "1.0.0",
   "private": true,
-  "description": "Repository-local Git hooks for the Miri backend harness.",
+  "description": "Repository-local Git hooks for the Qello backend harness.",
   "scripts": {
     "prepare": "husky",
     "hooks:install": "husky",

@@ -3,10 +3,6 @@ name: Infrastructure Apply
 on:
   workflow_dispatch:
     inputs:
-      jira_key:
-        description: Jira key approved for this change
-        required: true
-        type: string
       pr_number:
         description: Open, approved infrastructure PR number
         required: true
@@ -16,7 +12,7 @@ on:
         required: true
         type: string
       confirmation:
-        description: Type "APPLY <JIRA-KEY> PR-<NUMBER>"
+        description: Type "APPLY PR-<NUMBER>"
         required: true
         type: string
 
@@ -47,7 +43,6 @@ jobs:
       - name: Validate explicit confirmation and path
         run: >-
           python scripts/confirm-infra-apply.py
-          --jira-key "${{ inputs.jira_key }}"
           --pr-number "${{ inputs.pr_number }}"
           --confirmation "${{ inputs.confirmation }}"
           --terraform-dir "${{ inputs.terraform_dir }}"

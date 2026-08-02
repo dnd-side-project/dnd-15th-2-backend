@@ -6,7 +6,7 @@ plugins {
 
 group = 'com.dnd'
 version = '0.0.1-SNAPSHOT'
-description = 'Miri backend'
+description = 'Qello backend'
 
 java {
 	toolchain {

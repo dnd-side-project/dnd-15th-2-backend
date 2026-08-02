@@ -1,7 +1,6 @@
 # Infrastructure Design Report: <DESIGN-ID>
 
 > Created at: `<CREATED-AT>`
-> Jira: `<JIRA-KEY>`
 > GitHub Issue: `#<GITHUB-ISSUE>`
 > Status: Design / Plan only — apply disabled
 

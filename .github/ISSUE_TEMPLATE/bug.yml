@@ -1,16 +1,9 @@
 name: 버그
-description: 재현 가능한 장애를 Jira와 연결해 기록합니다.
-title: "[JIRA] "
+description: 재현 가능한 결함과 기대 동작을 기록합니다.
+title: ""
 labels:
   - "type: bug"
 body:
-  - type: input
-    id: parent_jira
-    attributes:
-      label: 상위 Jira 티켓
-      placeholder: PROJ-123
-    validations:
-      required: true
   - type: dropdown
     id: work_type
     attributes:

@@ -1,7 +1,6 @@
 # Test Report: <TEST-PLAN-ID>
 
 > Created at: `<CREATED-AT>`
-> Jira: `<JIRA-KEY>`
 > GitHub Issue: `#<GITHUB-ISSUE>`
 > Branch: `<BRANCH>`
 > Commit: `<COMMIT>`
@@ -88,5 +87,5 @@
 
 - [ ] 보고서에 `.env` 값이나 비밀정보가 없음
 - [ ] 미실행 테스트가 명시됨
-- [ ] 잠재 문제에 후속 Jira 이슈가 연결됨
+- [ ] 잠재 문제에 후속 GitHub Issue가 연결됨
 - [ ] 실행 결과와 PR 설명이 일치함

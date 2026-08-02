@@ -2,11 +2,11 @@
 set -euo pipefail
 
 ROOT="${0:A:h:h}"
-TARGET_DIR="${HOME}/.config/miri-harness"
+TARGET_DIR="${HOME}/.config/qello-harness"
 TARGET_FILE="${TARGET_DIR}/env.zsh"
 ZSHRC="${HOME}/.zshrc"
-BEGIN_MARKER="# >>> miri harness >>>"
-END_MARKER="# <<< miri harness <<<"
+BEGIN_MARKER="# >>> qello harness >>>"
+END_MARKER="# <<< qello harness <<<"
 
 if [[ "${1:-}" != "--install" ]]; then
   cat <<EOF
@@ -23,12 +23,12 @@ fi
 
 mkdir -p "$TARGET_DIR"
 cat > "$TARGET_FILE" <<EOF
-export MIRI_HARNESS_ROOT="${ROOT}"
-fpath=("\${MIRI_HARNESS_ROOT}/completions" \$fpath)
+export QELLO_HARNESS_ROOT="${ROOT}"
+fpath=("\${QELLO_HARNESS_ROOT}/completions" \$fpath)
 autoload -Uz compinit
 compinit
 h() {
-  "\${MIRI_HARNESS_ROOT}/harness" "\$@"
+  "\${QELLO_HARNESS_ROOT}/harness" "\$@"
 }
 alias hd='h doctor'
 alias hs='h status'
@@ -50,7 +50,7 @@ touch "$ZSHRC"
 if grep -Fq "$BEGIN_MARKER" "$ZSHRC"; then
   echo "Managed block already exists in ${ZSHRC}."
 else
-  backup="${ZSHRC}.miri-harness.$(date +%Y%m%d%H%M%S).bak"
+  backup="${ZSHRC}.qello-harness.$(date +%Y%m%d%H%M%S).bak"
   cp "$ZSHRC" "$backup"
   {
     echo

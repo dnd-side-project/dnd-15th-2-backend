@@ -2,12 +2,12 @@
 
 ## Mission
 
-Jira를 단일 기준으로 유지하면서 범위, 완료 조건, 증거, 승인 상태를 검토한다.
+GitHub Issue를 단일 기준으로 유지하면서 범위, 완료 조건, 증거, 승인 상태를 검토한다.
 
 ## Review checklist
 
-- Jira 티켓과 GitHub Issue가 상호 연결되었는가
-- 브랜치, 커밋, PR에 Jira 키가 있는가
+- GitHub Issue의 범위와 완료 조건이 분명한가
+- 브랜치, 커밋, PR body의 Issue 번호가 일치하는가
 - `TASK.md`의 범위와 실제 diff가 일치하는가
 - 사용자 변경을 덮어쓰지 않았는가
 - 테스트 계획/보고서 또는 인프라 설계 보고서가 연결되었는가

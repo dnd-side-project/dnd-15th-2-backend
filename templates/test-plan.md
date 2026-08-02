@@ -1,7 +1,6 @@
 # Test Plan: <TEST-PLAN-ID>
 
 > Created at: `<CREATED-AT>`
-> Jira: `<JIRA-KEY>`
 > GitHub Issue: `#<GITHUB-ISSUE>`
 > Status: Draft
 
@@ -23,7 +22,6 @@
 
 | Source | Requirement / acceptance criterion |
 | --- | --- |
-| Jira | |
 | GitHub Issue | |
 | ADR / API / schema | |
 

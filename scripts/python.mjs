@@ -9,7 +9,7 @@ if (argumentsToPython.length === 0) {
 }
 
 const candidates = [
-  process.env.MIRI_PYTHON,
+  process.env.QELLO_PYTHON,
   process.env.PYTHON,
   "python3",
   "python",
@@ -31,6 +31,6 @@ for (const candidate of [...new Set(candidates)]) {
 }
 
 console.error(
-  "Python 3 was not found. Set MIRI_PYTHON or install Python with the Brewfile.",
+  "Python 3 was not found. Set QELLO_PYTHON or install Python with the Brewfile.",
 );
 process.exit(127);
