@@ -7,7 +7,7 @@ description: Design a minimal-cost AWS baseline and prepare a plan-only PR.
 
 1. Read `AGENTS.md`, `TASK.md`, and
    `agents/infrastructure-orchestrator.md`.
-2. Confirm Jira and GitHub Issue links.
+2. Confirm the GitHub Issue scope and acceptance criteria.
 3. Run `./harness infra-design --id <DESIGN-ID>`.
 4. Compare the lowest practical single EC2 workload with ECS, and managed RDS
    with self-hosting.

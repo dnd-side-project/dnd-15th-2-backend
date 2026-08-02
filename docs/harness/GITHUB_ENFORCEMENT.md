@@ -67,10 +67,9 @@ exact-head 두 명 승인 검사가 함께 필요하다.
 `Actions → Infrastructure Apply → Run workflow`에서 입력한다.
 
 ```text
-Jira: <JIRA-KEY>
 PR: 123
 Terraform dir: infra/environments/dev
-Confirmation: APPLY <JIRA-KEY> PR-<PR-NUMBER>
+Confirmation: APPLY PR-<PR-NUMBER>
 ```
 
 다음 중 하나라도 없으면 workflow가 실패해야 한다.
@@ -83,20 +82,14 @@ Confirmation: APPLY <JIRA-KEY> PR-<PR-NUMBER>
 - protected Environment 승인
 - OIDC role
 
-## 7. Jira sync
-
-Jira 연동 workflow가 사용하는 `JIRA_BASE_URL`, `JIRA_EMAIL`,
-`JIRA_API_TOKEN`은 GitHub Actions Secret으로만 관리한다. 이 하네스의
-preflight는 값을 출력하지 않고 명백한 노출 패턴만 보고한다.
-
-## 8. Label policy
+## 7. Label policy
 
 라벨 정의와 자동 분류 규칙은
 [`LABELS.md`](./LABELS.md)와 `.github/label-catalog.json`을 기준으로 한다.
 
 - 모든 Issue와 PR은 `type: *` 라벨을 정확히 하나 가져야 한다.
 - PR의 type은 branch 접두사에서 자동 산출한다.
-- Jira가 우선순위와 스프린트의 원본이므로 GitHub 우선순위 라벨은 만들지
+- GitHub Project가 우선순위와 스프린트의 원본이므로 우선순위 라벨은 만들지
   않는다.
 - label sync는 기존 라벨을 삭제하지 않고 canonical 라벨만 생성·갱신한다.
 

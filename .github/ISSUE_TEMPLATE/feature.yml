@@ -1,21 +1,13 @@
 name: 기능 작업
-description: Jira 요구사항을 구현 가능한 백엔드 작업으로 연결합니다.
-title: "[JIRA] "
+description: 사용자 요구사항을 구현 가능한 백엔드 작업으로 연결합니다.
+title: ""
 labels:
   - "type: feature"
 body:
   - type: markdown
     attributes:
       value: |
-        Jira가 일정과 범위의 기준입니다. 상위 Jira 티켓을 먼저 확인하고 작성해 주세요.
-  - type: input
-    id: parent_jira
-    attributes:
-      label: 상위 Jira 티켓
-      description: 예) PAY-314
-      placeholder: PROJ-123
-    validations:
-      required: true
+        GitHub Issue가 범위와 완료 조건의 기준입니다. 일정은 GitHub Project에서 관리합니다.
   - type: dropdown
     id: work_type
     attributes:

@@ -1,6 +1,6 @@
 # Agent Roles
 
-Miri 하네스는 설계와 실행을 분리한다.
+Qello 하네스는 설계와 실행을 분리한다.
 
 | 역할 | 책임 | 기본 권한 |
 | --- | --- | --- |
@@ -8,7 +8,7 @@ Miri 하네스는 설계와 실행을 분리한다.
 | Test Executor | 승인된 JUnit 5 테스트 구현·실행·보고 | 테스트 파일과 보고서 |
 | Infrastructure Orchestrator | AWS 설계, 대안, 비용, 위험 분석 | 설계 문서와 계획 |
 | Infrastructure Executor | 승인된 IaC 구현과 plan | IaC 파일, apply 금지 |
-| PM/Reviewer | Jira 범위, 증거, 승인, 완료 조건 검토 | 읽기와 리뷰 |
+| PM/Reviewer | GitHub Issue 범위, 증거, 승인, 완료 조건 검토 | 읽기와 리뷰 |
 
 실제 모델 식별자는 저장소에 고정하지 않는다. 팀은
 `model-profiles.example.yml`을 복사해 `model-profiles.local.yml`을 만들고

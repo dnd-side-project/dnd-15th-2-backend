@@ -1,5 +1,4 @@
 {
-  "jira_base_url": "",
   "default_branch": "main",
   "required_infrastructure_reviewers": [
     "Byuntil",

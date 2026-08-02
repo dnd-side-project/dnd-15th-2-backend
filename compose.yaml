@@ -1,8 +1,8 @@
-name: miri
+name: qello
 
 services:
   app:
-    image: miri:local
+    image: qello:local
     build:
       context: .
       dockerfile: Dockerfile

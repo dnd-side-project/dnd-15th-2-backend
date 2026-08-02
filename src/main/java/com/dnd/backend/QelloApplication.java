@@ -4,10 +4,10 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 @SpringBootApplication
-public class MiriApplication {
+public class QelloApplication {
 
 	public static void main(String[] args) {
-		SpringApplication.run(MiriApplication.class, args);
+		SpringApplication.run(QelloApplication.class, args);
 	}
 
 }

@@ -7,13 +7,13 @@ Claude Code는 작업 시작 시 `AGENTS.md`, `TASK.md`, 대상 역할 문서를
 
 ```bash
 ./harness doctor
-source ~/.config/miri-harness/env.zsh
+source ~/.config/qello-harness/env.zsh
 h status
 h context
 ```
 
-Jira 키와 GitHub Issue 번호는 저장소 설정에 고정하지 않고 현재 branch에서
-파생한다. 새 작업마다 `h start` 후 `h task-init`으로 `TASK.md`를 갱신한다.
+GitHub Issue 번호는 저장소 설정에 고정하지 않고 현재 branch에서 파생한다.
+새 작업마다 `h start` 후 `h task-init`으로 `TASK.md`를 갱신한다.
 
 프로젝트 스킬:
 
@@ -31,7 +31,7 @@ Jira 키와 GitHub Issue 번호는 저장소 설정에 고정하지 않고 현�
 
 ## 금지
 
-- Jira/Issue 게이트 없이 구현 시작
+- GitHub Issue 게이트 없이 구현 시작
 - 승인 없이 인프라 적용 또는 프로덕션 변경
 - `.env`, 토큰, 계정/서버 식별자를 대화·파일·로그에 복사
 - 다른 사용자의 변경을 자동 정리하거나 되돌리기

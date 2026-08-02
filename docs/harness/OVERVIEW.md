@@ -2,14 +2,14 @@
 
 ## 목적
 
-백엔드 개발자 두 명이 Claude Code와 Codex를 병행하더라도 Jira 범위, 파일
+백엔드 개발자 두 명이 Claude Code와 Codex를 병행하더라도 GitHub Issue 범위, 파일
 소유권, 검증 증거, 사람 승인이 사라지지 않게 만드는 저장소 수준 운영 체계다.
 
 하네스는 다섯 층으로 구성된다.
 
 | 층 | 구성 | 역할 |
 | --- | --- | --- |
-| 업무 게이트 | Jira, GitHub Issue, 브랜치 규칙 | 왜·무엇을 하는지 고정 |
+| 업무 게이트 | GitHub Project, Issue, 브랜치 규칙 | 왜·무엇을 하는지 고정 |
 | 에이전트 계약 | `AGENTS.md`, `agents/`, 도구별 스킬 | 설계와 실행 분리 |
 | 실행 명령 | `harness`, Mac 단축키 | 반복 작업 단순화 |
 | 로컬 게이트 | Husky `pre-commit`, `prepare-commit-msg`, `commit-msg`, `pre-push` | 자동 조립과 규칙 위반 조기 차단 |
@@ -18,13 +18,12 @@
 
 ## 동적 작업 문맥
 
-하네스에는 기본 Jira 키를 저장하지 않는다. 작업을 시작할 때 사용자가 전달한
-Jira 키와 GitHub Issue 번호로 branch를 만들고, 이후 명령은 branch에서 두 값을
-파생한다.
+하네스에는 기본 Issue 번호를 저장하지 않는다. 작업을 시작할 때 사용자가 전달한
+GitHub Issue 번호로 branch를 만들고 이후 명령은 branch에서 값을 파생한다.
 
 ```text
-feat/PAY-314-gh-42-refund-policy
-     └ PAY-314  └ #42
+feat/gh-42-direction-post
+        └ #42
 ```
 
 commit, PR title, PR body가 이 문맥과 다르면 Husky 또는 CI가 거부한다.
@@ -45,7 +44,7 @@ commit, PR title, PR body가 이 문맥과 다르면 Husky 또는 CI가 거부�
 
 ### PM/리뷰어
 
-Jira 범위, 변경 증거, 민감정보, 복구 경로, 승인 상태를 검토한다. 실행 역할과
+GitHub Issue 범위, 변경 증거, 민감정보, 복구 경로, 승인 상태를 검토한다. 실행 역할과
 검토 역할을 한 턴에서 섞지 않는다.
 
 실제 모델 ID는 `agents/model-profiles.local.yml`에만 설정한다. 팀 계정에 없는

@@ -1,13 +1,13 @@
 # Repository-local helper for developers who prefer manual dotfile management.
-# Add `source /absolute/path/to/miri/shell/harness.zsh` to ~/.zshrc.
+# Add `source /absolute/path/to/qello/shell/harness.zsh` to ~/.zshrc.
 
-typeset -g MIRI_HARNESS_ROOT="${${(%):-%N}:A:h:h}"
-fpath=("${MIRI_HARNESS_ROOT}/completions" $fpath)
+typeset -g QELLO_HARNESS_ROOT="${${(%):-%N}:A:h:h}"
+fpath=("${QELLO_HARNESS_ROOT}/completions" $fpath)
 autoload -Uz compinit
 compinit
 
 h() {
-  "${MIRI_HARNESS_ROOT}/harness" "$@"
+  "${QELLO_HARNESS_ROOT}/harness" "$@"
 }
 
 alias hd='h doctor'

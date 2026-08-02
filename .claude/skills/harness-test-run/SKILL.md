@@ -7,7 +7,7 @@ description: Implement and run approved JUnit 5 scenarios and create a safe repo
 
 1. Read `AGENTS.md`, `TASK.md`, `agents/test-executor.md`, and the approved test
    plan.
-2. Confirm the current branch includes the Jira key and GitHub Issue context.
+2. Confirm the current branch includes the GitHub Issue number.
 3. Modify only assigned test/report files. Ask before changing production code.
 4. Use JUnit 5, `@DisplayName` on every test, and a class header containing the
    exact ISO 8601 creation timestamp and source scenario ID.

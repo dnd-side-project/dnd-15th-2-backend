@@ -22,14 +22,14 @@ ADR은 **Architecture Decision Record**의 약자입니다.
 - 왜 Kafka가 아니라 SQS를 사용했나요?
 - 왜 이 기능을 비동기로 처리하나요?
 
-이러한 결정이 Jira 댓글, Slack 대화, 회의록, PR 본문에 흩어져 있으면 나중에 찾기 어렵습니다.
+이러한 결정이 GitHub Issue 댓글, Slack 대화, 회의록, PR 본문에 흩어져 있으면 나중에 찾기 어렵습니다.
 
 이 프로젝트에서는 중요한 기술적 결정을 `docs/adr` 디렉터리에 모아 관리합니다.
 
 역할은 다음과 같이 구분합니다.
 
 ```text
-Jira
+GitHub Issue
 → 무엇을 개발할 것인지 관리
 
 Pull Request
@@ -241,7 +241,7 @@ related: []
 
 ## 관련 자료
 
-- Jira:
+- GitHub Issue:
 - PR:
 - 문서:
 ```
@@ -373,12 +373,12 @@ ADR은 선택한 기술을 홍보하는 문서가 아닙니다. 선택에 따른
 
 ### 관련 자료
 
-관련 Jira 이슈, PR, 테스트 결과, 벤치마크 문서를 연결합니다.
+관련 GitHub Issue 이슈, PR, 테스트 결과, 벤치마크 문서를 연결합니다.
 
 ```markdown
 ## 관련 자료
 
-- Jira: BILLING-123
+- GitHub Issue: #123
 - PR: #84
 - 문서: `docs/benchmark/settlement-jdbc.md`
 ```
@@ -479,7 +479,7 @@ status: proposed
 ### 3단계. 코드와 ADR을 같은 브랜치에서 작성
 
 ```bash
-git checkout -b feature/BILLING-123-settlement-jdbc
+git checkout -b feature/gh-123-settlement-jdbc
 ```
 
 같은 브랜치에 다음 변경을 포함합니다.
@@ -656,7 +656,7 @@ tags:
   - spring-batch
   - settlement
 related:
-  - BILLING-123
+  - "#123"
 ---
 
 # ADR-0003. 정산 배치에 JdbcTemplate을 사용한다
@@ -702,7 +702,7 @@ related:
 
 ## 관련 자료
 
-- Jira: BILLING-123
+- GitHub Issue: #123
 - PR: #84
 - 문서: `docs/benchmark/settlement-jdbc.md`
 ```

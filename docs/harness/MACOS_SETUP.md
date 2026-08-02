@@ -4,7 +4,7 @@
 
 - macOS
 - 저장소를 로컬에 clone할 권한
-- GitHub 조직과 Jira 프로젝트 접근
+- GitHub 조직과 GitHub Project 접근
 - Java 21 기반 Spring Boot 개발
 
 먼저 Xcode Command Line Tools를 설치한다.
@@ -82,7 +82,7 @@ codex --login
 exec zsh
 ```
 
-스크립트는 `~/.config/miri-harness/env.zsh`를 만들고 `.zshrc`를 timestamp가
+스크립트는 `~/.config/qello-harness/env.zsh`를 만들고 `.zshrc`를 timestamp가
 붙은 파일로 백업한다. 같은 관리 블록을 중복 추가하지 않는다.
 
 점검:
@@ -95,23 +95,21 @@ hcheat
 npm run hooks:validate
 ```
 
-새 작업에서는 Jira 키를 고정 설정하지 않고 시작할 때 전달한다.
+새 작업에서는 GitHub Issue 번호를 시작할 때 전달한다.
 
 ```bash
-export JIRA_KEY=PAY-314
 export GITHUB_ISSUE=42
-h start --jira "$JIRA_KEY" --issue "$GITHUB_ISSUE" \
-  --type feat --slug refund-policy --confirm-jira-linked
+h start --issue "$GITHUB_ISSUE" --type feat --slug direction-post
 h task-init --title "환불 정책 구현" --replace
 ```
 
-이후 `hctx`는 현재 branch에서 Jira 키와 Issue 번호를 다시 계산해 보여준다.
+이후 `hctx`는 현재 branch에서 GitHub Issue 번호를 다시 계산해 보여준다.
 
 ## 5. 제거
 
-1. `~/.zshrc`에서 `miri harness` 시작/끝 사이 블록을 제거한다.
-2. `~/.config/miri-harness`를 삭제한다.
-3. 필요하면 생성된 `.zshrc.miri-harness.*.bak`으로 복구한다.
+1. `~/.zshrc`에서 `qello harness` 시작/끝 사이 블록을 제거한다.
+2. `~/.config/qello-harness`를 삭제한다.
+3. 필요하면 생성된 `.zshrc.qello-harness.*.bak`으로 복구한다.
 
 패키지 제거는 다른 프로젝트가 사용할 수 있으므로 자동화하지 않는다.
 

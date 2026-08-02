@@ -38,7 +38,7 @@ flowchart LR
     Metadata --> Prepare["prepare-commit-msg"]
     Prepare --> Auto["Branch context auto-format"]
     Auto --> Message["commit-msg"]
-    Message --> Format["Jira + Issue validation"]
+    Message --> Format["GitHub Issue validation"]
     Format --> Commit["Commit created"]
     Commit --> Push["pre-push"]
     Push --> Full["Harness checks + Gradle check"]
@@ -66,10 +66,10 @@ staged 내용은 working tree가 아니라 Git index blob에서 읽는다.
 git commit -m "기능1 개발"
 ```
 
-현재 branch가 `feat/PAY-314-gh-42-order-feature`이면 실제 제목은 다음과 같다.
+현재 branch가 `feat/gh-42-order-feature`이면 실제 제목은 다음과 같다.
 
 ```text
-feat: [PAY-314] 기능1 개발 (#42)
+feat: 기능1 개발 (#42)
 ```
 
 type과 scope만 직접 선택할 수도 있다.
@@ -81,13 +81,13 @@ git commit -m "test(order): 예약 테스트 추가"
 결과:
 
 ```text
-test(order): [PAY-314] 예약 테스트 추가 (#42)
+test(order): 예약 테스트 추가 (#42)
 ```
 
 - plain summary의 type은 branch 앞부분에서 가져온다.
 - scope는 추측하지 않으며 필요한 경우 개발자가 입력한다.
 - 이미 완성된 규칙형 메시지는 변경하지 않는다.
-- 일부 Jira/Issue만 직접 적은 모호한 메시지는 자동 수정하지 않고 실패한다.
+- 일부 Issue 문맥만 직접 적은 모호한 메시지는 자동 수정하지 않고 실패한다.
 - 커밋 본문과 Git comment는 그대로 유지한다.
 - `git commit`으로 편집기를 여는 경우 빈 템플릿은 통과시키고, 편집이 끝난 뒤
   `commit-msg`에서 같은 자동 조립을 수행한다.
@@ -100,18 +100,17 @@ summary는 이 단계에서 자동 조립한 다음 형식을 검증한다.
 형식:
 
 ```text
-<type>(<scope>): [<JIRA-KEY>] <summary> (#<ISSUE>)
+<type>(<scope>): <summary> (#<ISSUE>)
 ```
 
 예:
 
 ```text
-chore(hooks): [PAY-314] add Husky convention gates (#42)
+chore(hooks): add Husky convention gates (#42)
 ```
 
-`PAY-314`와 `#42`는 예시다. 실제 값은 현재 branch
-`<type>/<JIRA-KEY>-gh-<ISSUE>-<slug>`에서 파생하며 서로 다르면 commit이
-거부된다.
+`#42`는 예시다. 실제 값은 현재 branch
+`<type>/gh-<ISSUE>-<slug>`에서 파생하며 서로 다르면 commit이 거부된다.
 
 ### pre-push
 

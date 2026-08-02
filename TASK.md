@@ -1,51 +1,50 @@
-# MIR-83 Task Contract
+# GitHub Issue #6 Task Contract
 
-> Generated at: `2026-07-24T19:19:07+09:00`
+> Created at: `2026-08-03T00:00:00+09:00`
 >
-> 이 파일은 현재 작업 브랜치의 계약이다. 저장소 전역 정책은 `AGENTS.md`를
-> 따른다.
+> 저장소 전역 정책은 `AGENTS.md`를 따른다.
 
 ## Work gate
 
-- Title: `CodeRabbit 코드 리뷰 설정`
-- Jira: `MIR-83`
-- Parent Jira: `MIR-66`
-- GitHub Issue: `#3`
-- Branch: `chore/MIR-83-gh-3-coderabbit-review-setup`
+- Title: `Qello 프로젝트 전환 및 GitHub 기반 개발 워크플로 구성`
+- GitHub Issue: `#6`
+- Branch: `chore/gh-6-qello-project-migration`
 
 ## Objective
 
-- 기존 하네스와 GitHub Actions의 형식 및 정적 검증을 중복하지 않고,
-  CodeRabbit이 의미 기반 코드 리뷰에 집중하도록 저장소 설정을 추가한다.
+- 기존 프로젝트명과 Jira 기반 저장소를 Qello/GitHub Issues·Projects 기반으로
+  전환한다.
+- 첨부 제품 기능과 콘텐츠 안전 기능을 5~8주차 백엔드·인프라 실행 계획으로
+  구성한다.
 
 ## Scope
 
-- 저장소 루트에 버전 관리되는 `.coderabbit.yaml`을 추가한다.
-- draft가 아닌 PR을 대상으로 자동 리뷰를 활성화한다.
-- 운영 코드는 도메인 정확성, 트랜잭션과 동시성, 인증과 권한, API 호환성을
-  중심으로 리뷰한다.
-- 테스트 코드는 중요한 동작, 실패 경로, 경계 조건, 동시성 위험을 충분히
-  보호하는지 중심으로 리뷰한다.
-- 초기 설정은 짧게 유지하고 운영 결과에 따라 후속 PR로 조정할 수 있게 한다.
+- 애플리케이션, 빌드, 로컬 도구의 기존 프로젝트명을 Qello로 교체
+- Jira workflow, 필드, 검증, 템플릿 제거
+- GitHub Issue 기반 branch/commit/PR 규칙과 Husky·CI 동기화
+- README 및 하네스 문서 갱신
+- canonical label policy 검증
+- 기능 F01~F09와 텍스트·이미지 안전 필터를 반영한 로드맵 작성
+- GitHub Project에 5~8주차 스프린트와 draft item 백로그 설정
 
 ## Explicit exclusions
 
-- branch, commit, PR 형식과 기존 하네스 정책을 CodeRabbit에서 재구현하지 않는다.
-- Jira 연동과 CodeRabbit 유료 기능은 이번 작업에서 활성화하지 않는다.
-- 제품 API, 데이터베이스 스키마, 애플리케이션 동작을 변경하지 않는다.
-- 인프라 apply, 배포, 프로덕션 변경은 별도 승인 없이는 실행하지 않는다.
-- Secret, 계정 식별자, 토큰, `.env` 값은 기록하지 않는다.
+- 제품 API 및 DB 스키마 구현
+- AWS 리소스 생성·변경, Terraform apply, 배포, 프로덕션 변경
+- GitHub Ruleset 또는 보호 Environment가 자동 활성화되었다는 주장
+- Secret, 계정 식별자, 토큰, `.env` 값 기록
 
 ## Ownership
 
 | Area | Owner | Required review |
 | --- | --- | --- |
-| CodeRabbit repository configuration | Backend | Backend owners |
-| GitHub App installation and permissions | Repository admin | Backend owners |
+| 저장소 규칙·문서·GitHub Project | 현재 작업 에이전트 | Backend owners |
+| 제품 백로그 | PM/reviewer | Backend owners |
+| 인프라 apply | Human operator only | `@Byuntil`, `@tkv00` |
 
 ## Existing user-owned changes
 
-- `.gitignore`
+- 작업 시작 시 worktree는 clean 상태였다.
 
 ## Validation
 
@@ -58,9 +57,9 @@ git diff --check
 
 ## Completion criteria
 
-- `.coderabbit.yaml`이 CodeRabbit v2 스키마를 참조한다.
-- 자동 리뷰는 활성화되고 draft PR은 제외된다.
-- 리뷰 지침은 하네스가 검증하는 형식 규칙을 반복하지 않는다.
-- 운영 코드와 테스트 코드의 의미 기반 리뷰 기준이 분리되어 있다.
-- 기본 하네스와 프로젝트 테스트가 통과한다.
-- GitHub App 설치 여부와 남은 관리자 작업이 명확히 보고된다.
+- [x] 기존 프로젝트명과 Jira 런타임 의존이 저장소에서 제거된다.
+- [x] 새 branch/commit/PR 규칙을 Husky와 CI가 검사한다.
+- [x] README에 팀 규칙이 명시된다.
+- [x] Qello 5~8주차 백엔드·인프라 draft item이 GitHub Project에 배치된다.
+- [x] 비속어·선정성·폭력성 필터 요구사항이 계획에 포함된다.
+- [x] 모든 기본 검증이 통과한다.

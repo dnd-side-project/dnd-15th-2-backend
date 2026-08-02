@@ -7,7 +7,7 @@
 - AWS access key
 - AWS account ID와 IAM ID
 - 서버 주소, 내부 endpoint, 데이터베이스 연결 주소
-- GitHub/Jira/Slack 비밀정보
+- GitHub/Slack 비밀정보
 
 대상:
 

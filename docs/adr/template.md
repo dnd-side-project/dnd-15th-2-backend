@@ -42,6 +42,6 @@ related: []
 
 ## 관련 자료
 
-- Jira:
+- GitHub Issue:
 - PR:
 - 문서:

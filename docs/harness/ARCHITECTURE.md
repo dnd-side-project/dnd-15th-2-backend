@@ -4,8 +4,8 @@
 
 ```mermaid
 flowchart LR
-    Jira["Jira<br/>scope and schedule"] --> Issue["GitHub Issue<br/>execution context"]
-    Issue --> Branch["Convention branch<br/>Jira + Issue"]
+    Project["GitHub Project<br/>schedule and priority"] --> Issue["GitHub Issue<br/>scope and acceptance"]
+    Issue --> Branch["Convention branch<br/>Issue number"]
     Branch --> Router{"Work type"}
     Router --> TestO["Test orchestrator"]
     Router --> InfraO["Infrastructure orchestrator"]
@@ -20,8 +20,8 @@ flowchart LR
     PR --> Review["PM and human review"]
 ```
 
-Jira는 목적과 일정의 원본이고 GitHub는 실행 증거의 원본이다. 에이전트 모델은
-도구에 종속되지 않은 논리 프로필로 선택한다.
+GitHub Project는 일정과 우선순위의 원본이고 GitHub Issue는 범위와 완료 조건의
+원본이다. 에이전트 모델은 도구에 종속되지 않은 논리 프로필로 선택한다.
 
 ## 테스트 경로
 
@@ -32,7 +32,7 @@ sequenceDiagram
     participant E as Execution Agent
     participant CI as GitHub Actions
 
-    H->>O: Jira + Issue + risks
+    H->>O: GitHub Issue + risks
     O->>O: unit/integration scenario design
     O-->>H: test plan for approval
     H->>E: approved plan and owned files
@@ -51,7 +51,7 @@ sequenceDiagram
 
 ```mermaid
 flowchart TD
-    Ticket["Jira + infrastructure issue"] --> Design["High-capability design"]
+    Ticket["Infrastructure Issue"] --> Design["High-capability design"]
     Design --> Compare["EC2/ECS and RDS/self-hosted comparison"]
     Compare --> Cost["Official AWS one-month cost assumptions"]
     Cost --> IaC["Terraform or AWS CDK"]
@@ -62,7 +62,7 @@ flowchart TD
     A1 -- Yes --> A2{"@tkv00 approved exact head?"}
     A2 -- No --> Stop
     A2 -- Yes --> Env["Protected environment review"]
-    Env --> Phrase["Human types APPLY Jira PR-number"]
+    Env --> Phrase["Human types APPLY PR-number"]
     Phrase --> OIDC["Short-lived AWS OIDC"]
     OIDC --> Apply["Apply exact saved plan"]
 ```

@@ -3,7 +3,7 @@
 참고 저장소의 실제 PR에서 반복적으로 쓰인 `feat`, `fix`, `test`, `docs`,
 `infra`, 영역, 우선순위 패턴을 분석한 뒤 이 저장소에는 15개만 남겼다.
 
-Jira가 일정과 우선순위의 기준이므로 `P0` 같은 우선순위 라벨은 GitHub에
+GitHub Project가 일정과 우선순위의 기준이므로 `P0` 같은 우선순위 라벨은 GitHub에
 복제하지 않는다. 팀명, 배포 대상, 릴리스 버전도 현재 두 명 규모에서는
 상시 유지 비용이 더 크므로 제외한다.
 
@@ -82,5 +82,5 @@ python3 scripts/validate-labels.py
 ./harness check
 ```
 
-Jira 필드로 관리 가능한 일정, 스프린트, 우선순위는 GitHub 라벨로 다시
+GitHub Project 필드로 관리 가능한 일정, 스프린트, 우선순위는 GitHub 라벨로 다시
 만들지 않는다.

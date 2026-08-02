@@ -6,7 +6,7 @@ description: Design a minimal-cost AWS baseline and prepare a plan-only PR.
 # Infrastructure Design
 
 Read `AGENTS.md`, `TASK.md`, and
-`agents/infrastructure-orchestrator.md`. Confirm Jira/Issue links and run:
+`agents/infrastructure-orchestrator.md`. Confirm the GitHub Issue and run:
 
 ```bash
 ./harness infra-design --id <DESIGN-ID>

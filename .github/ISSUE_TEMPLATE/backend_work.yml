@@ -1,23 +1,14 @@
 name: 백엔드 작업
-description: 상위 Jira 티켓 아래에 백엔드 하위 작업과 브랜치를 자동 생성합니다.
-title: "[JIRA] "
+description: 구현 가능한 백엔드 작업과 완료 조건을 기록합니다.
+title: ""
 labels:
   - "area: api"
 body:
   - type: markdown
     attributes:
       value: |
-        상위 Jira 티켓을 입력하면 Jira 하위 작업과 작업 브랜치가 자동 생성됩니다.
-        일정·우선순위·상태의 기준은 Jira입니다.
-
-  - type: input
-    id: parent_jira
-    attributes:
-      label: 상위 Jira 티켓
-      description: 하위 작업을 생성할 Jira 티켓 키를 입력합니다.
-      placeholder: MIRI-100
-    validations:
-      required: true
+        일정·우선순위·스프린트·상태는 GitHub Project 필드에서 관리합니다.
+        이슈에는 canonical type 라벨이 정확히 하나 필요합니다.
 
   - type: dropdown
     id: work_type
@@ -31,6 +22,8 @@ body:
         - docs
         - chore
         - config
+        - infrastructure
+        - performance
     validations:
       required: true
 

@@ -18,7 +18,7 @@ def request_json(url: str, token: str) -> object:
             "Accept": "application/vnd.github+json",
             "Authorization": f"Bearer {token}",
             "X-GitHub-Api-Version": "2022-11-28",
-            "User-Agent": "miri-infrastructure-approval-gate",
+            "User-Agent": "qello-infrastructure-approval-gate",
         },
     )
     with urllib.request.urlopen(request, timeout=30) as response:

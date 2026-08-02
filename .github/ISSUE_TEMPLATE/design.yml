@@ -1,16 +1,9 @@
 name: 기술 설계
 description: 구현 전에 아키텍처와 의사결정을 검토합니다.
-title: "[JIRA] "
+title: ""
 labels:
   - "type: docs"
 body:
-  - type: input
-    id: parent_jira
-    attributes:
-      label: 상위 Jira 티켓
-      placeholder: PROJ-123
-    validations:
-      required: true
   - type: dropdown
     id: work_type
     attributes:

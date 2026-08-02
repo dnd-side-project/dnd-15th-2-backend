@@ -7,7 +7,7 @@
 
 ## Contract
 
-1. Jira/Issue, 브랜치, 테스트 계획 ID를 확인한다.
+1. GitHub Issue, 브랜치, 테스트 계획 ID를 확인한다.
 2. 소유 파일 밖의 변경이 필요하면 중지하고 오케스트레이터에게 반환한다.
 3. 모든 테스트 메서드에 `@DisplayName`을 작성한다.
 4. 모든 테스트 클래스 헤더에 정확한 ISO 8601 생성 시각과 `Source scenario`를
