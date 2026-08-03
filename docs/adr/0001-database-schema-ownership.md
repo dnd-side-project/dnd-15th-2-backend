@@ -1,7 +1,7 @@
 ---
 id: ADR-0001
 title: Flyway가 실행 데이터베이스 스키마 변경을 소유한다
-status: proposed
+status: accepted
 category: DATA
 date: 2026-08-03
 tags: [postgresql, postgis, flyway, schema]

@@ -1,7 +1,7 @@
 ---
 id: ADR-0002
 title: Aggregate CRUD는 JPA, 데이터베이스 특화 연산은 JDBC를 사용한다
-status: proposed
+status: accepted
 category: DATA
 date: 2026-08-03
 tags: [jpa, jdbc, postgis, transaction]

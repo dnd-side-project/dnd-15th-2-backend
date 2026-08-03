@@ -4,7 +4,7 @@
 >
 > Snapshot date: 2026-08-03
 >
-> Status: review candidate — 사용자 검토 전에는 구현 기준으로 승인된 것으로 간주하지 않는다.
+> Status: accepted — 2026-08-03 사용자 검토 완료
 
 ## 1. 목적
 
