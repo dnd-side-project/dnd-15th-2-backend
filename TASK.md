@@ -1,48 +1,38 @@
-# GitHub Issue #31 Task Contract
+# GitHub Issue #35 Task Contract
 
-> Generated at: `2026-08-03T16:03:19+09:00`
+> Generated at: `2026-08-03T17:18:17+09:00`
 >
 > 이 파일은 현재 작업 브랜치의 계약이다. 저장소 전역 정책은 `AGENTS.md`를
 > 따른다.
 
 ## Work gate
 
-- Title: `PostgreSQL/PostGIS 로컬 개발 환경 구성`
-- GitHub Issue: `#31`
-- Branch: `build/gh-31-postgres-postgis-local`
+- Title: `DB 스키마 계약 동기화와 Persistence ADR`
+- GitHub Issue: `#35`
+- Branch: `docs/gh-35-persistence-schema-contract`
 
 ## Objective
 
-- 실제 비밀정보를 추적하지 않고 PostgreSQL 16/PostGIS 3.5를 로컬에서 실행한다.
-- 애플리케이션의 `local` profile과 격리된 `test` profile이 동일한 PostgreSQL 계열
-  연결 계약을 사용하도록 구성한다.
-- Testcontainers로 개발자 로컬 DB 상태와 무관하게 JDBC 연결과 PostGIS 확장을
-  검증한다.
+- 방향 소통 DBML·ERD·기준 DDL을 저장소 안의 검토 가능한 schema 계약으로
+  동기화하고, 후속 Flyway/JPA 구현이 따라야 할 소유권과 기술 경계를 ADR로
+  고정한다.
 
 ## Scope
 
-- 검증된 digest로 고정한 `postgis/postgis:16-3.5-alpine` DB 서비스, named volume,
-  health check
-- 공식 이미지가 `amd64`만 제공하므로 Compose와 Testcontainers에서
-  `linux/amd64` 플랫폼을 명시하고 Apple Silicon은 Docker emulation을 사용
-- placeholder만 포함하는 `.env.example`과 Git에서 제외되는 `.env`
-- Compose의 `app`과 `db` 연결 및 health dependency
-- Spring JDBC와 PostgreSQL runtime driver
-- `application-local.properties`의 환경변수 기반 datasource 설정
-- `application-test.properties`와 Testcontainers service connection
-- PostgreSQL 연결 및 `PostGIS_Version()` 통합 테스트
-- fresh clone 기준 시작·중지·초기화·검증 명령 문서
-- 데이터 접근 및 migration 결정:
-  - JDBC는 연결 smoke test와 이후 명시적 SQL 사용 기반으로 지금 도입한다.
-  - JPA는 실제 Entity와 aggregate persistence 요구가 생기는 기능 Issue에서 결정한다.
-  - Flyway는 첫 추적 DB schema 또는 extension migration을 추가하는 Issue에서 도입한다.
+- 기준 DBML과 ERD 설명을 원본과 동일한 내용으로 저장소에 보관한다.
+- DBML·ERD·독립 실행형 DDL의 원본 경로, SHA-256, 오브젝트 목록을 schema
+  manifest에 기록한다.
+- `sql/001~004` 계보가 후속 migration의 입력이 아님을 명시한다.
+- Flyway schema 소유권과 JPA/JDBC 책임 경계를 ADR로 기록한다.
+- 인증, 만료, 보관·삭제, `updated_at`, FK 삭제, 지역 seed, 방향 coverage,
+  PostGIS extension 권한의 결정 또는 명시적 제외를 기록한다.
 
 ## Explicit exclusions
 
-- 제품 ERD, 테이블, Entity, Repository 및 migration 구현
-- JPA/Hibernate와 Flyway 의존성 도입
-- 운영 DB, AWS RDS, Terraform/CDK 변경
-- 위치·사진·알림 외부 서비스 연동
+- JPA/Flyway 의존성, migration SQL, 제품 Entity/Repository/API는 변경하지 않는다.
+- 운영 DB를 조회하거나 변경하지 않는다.
+- 폐기된 `sql/001~004`를 복사하거나 migration 입력으로 사용하지 않는다.
+- 인증·개인정보·보관 기간 등 미승인 제품 정책을 임의 상수로 확정하지 않는다.
 - 인프라 apply, 배포, 프로덕션 변경은 별도 승인 없이는 실행하지 않는다.
 - Secret, 계정 식별자, 토큰, `.env` 값은 기록하지 않는다.
 
@@ -50,24 +40,19 @@
 
 | Area | Owner | Required review |
 | --- | --- | --- |
-| Compose·profile·Gradle·통합 테스트 | 현재 작업 에이전트 | Backend owners |
-| 제품 스키마·영속성 선택 | 후속 기능 Issue | Backend owners |
+| Schema source and manifest | Issue #35 | Backend + product policy review |
+| Persistence ADR | Issue #35 | Backend review |
+| Product policy pending values | Product/Security | Human approval before enforcement |
+| Flyway/JPA implementation | Issues #36+ | Issue-by-issue user review |
 
 ## Existing user-owned changes
 
-- 작업 시작 시 `git status --short`는 clean이었다.
-- Issue #30 merge 후 최신 `main`에서 브랜치를 생성했다.
+- 작업 시작 시 `main`은 clean 상태였다.
+- `.harness-local/`의 로컬 계획 파일은 ignore 상태이며 변경하지 않는다.
 
 ## Validation
 
 ```bash
-docker compose config
-docker compose up -d db
-docker compose ps
-docker compose exec db sh -c 'pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
-docker compose exec db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT PostGIS_Version();"'
-
-./gradlew check
 ./harness check
 ./harness pr-ready --project-tests
 npm run hooks:validate
@@ -76,11 +61,12 @@ git diff --check
 
 ## Completion criteria
 
-- [x] `.env.example`만으로 필요한 환경변수 이름과 placeholder를 알 수 있다.
-- [x] Compose DB가 named volume과 health check로 재실행 가능하게 구성된다.
-- [x] local profile이 추적되지 않는 환경변수로 PostgreSQL에 연결된다.
-- [x] test profile이 Testcontainers DB를 사용하고 개발자 로컬 DB에 의존하지 않는다.
-- [x] 통합 테스트가 PostgreSQL 연결과 PostGIS 확장을 확인한다.
-- [x] 시작·중지·초기화·검증 명령과 볼륨 삭제 위험이 문서화된다.
-- [x] Java 21에서 Gradle, Harness, Hook, diff 검증이 모두 통과한다.
-- [x] 제품 스키마, JPA, Flyway, 운영 인프라가 포함되지 않는다.
+- DBML/ERD/DDL source와 SHA-256이 기록되어 있다.
+- baseline의 테이블, FK, unique/check, index, trigger 목록과 수가 manifest에
+  기록되어 있다.
+- 인증·만료·보관·삭제·timestamp·seed·extension 권한이 결정 또는 명시적
+  제외 상태다.
+- Flyway/JPA/JDBC 책임 경계 ADR이 후속 Issue에서 바로 사용할 수 있다.
+- 제품 코드와 migration은 변경하지 않았다.
+- Validation 명령이 통과하고 변경은 Issue #35 브랜치에 로컬 커밋된다.
+- origin push와 PR 생성 없이 사용자 검토를 기다린다.

@@ -1,0 +1,993 @@
+Project direction_connected_communication {
+  database_type: 'PostgreSQL'
+
+  Note: '''
+    # 방향으로 연결되는 소통
+
+    dbdocs 게시용 DBML 문서다.
+
+    - 이 파일이 스키마의 기준(source of truth)이다. `docs/sql/direction_communication_ddl.sql`은 여기서 파생한다.
+    - 범위: 사용자가 확정한 실제 테이블 26개
+    - DB: PostgreSQL 16+ / PostGIS 3+
+    - DBML의 Enum은 SQL DDL의 `VARCHAR + CHECK` 값 집합을 문서화한 것이다.
+    - DBML로 표현되지 않는 PostgreSQL 기능은 아래 위치의 Note에 기록했다.
+      - trigger 9종: 해당 테이블(`approved_question`, `question_proposal`, `direction_post`, `post_recipient`, `answer`, `media_asset`, `media_attachment`)의 테이블 Note "트리거 불변식" 문단
+      - GiST index: `active_user_presence`의 `position` 컬럼 Note와 테이블 Note
+      - partial index / partial unique index: 각 인덱스의 Note
+      - 인덱스 컬럼 DESC 정렬: 각 인덱스의 Note
+    - `report`와 `push_device`의 `unique` 인덱스는 다이어그램상 무조건 unique로 보이지만 실제로는 partial unique다. 각 인덱스 Note의 "주의" 항목을 확인해야 한다.
+    - P02 거리, P03 수신자 수, P04 만료 기간, P10 연령 수집, P15 질문 배정량·주기는 정책 미정이다.
+
+    ## P06 위치 정책 (2026-08-03 확정: 1안)
+
+    짧은 TTL의 정확 좌표를 `active_user_presence`에 저장하고 외부에는 흐린 값만 제공한다.
+
+    - `active_user_presence.position`과 `post_audience.origin_position`은 실제 사용자 좌표를 담는 운영 컬럼이다. 더 이상 합성 데이터 전용이 아니다.
+    - 정확 좌표는 `expires_at`이 지나면 후보 탐색에서 제외하고, 보존 기간은 P07에서 확정한다.
+    - 정확 좌표는 API 응답·로그·분석 이벤트·Outbox payload에 넣지 않는다. 외부에는 `distance_band`와 `coarse_region_code`만 나간다.
+    - `coarse_cell_id` / `origin_cell_id`는 폐기하지 않고 선택적 보조 컬럼으로 남긴다. 2안(셀만 저장)은 채택하지 않았다.
+
+    ## 2026-08-03 스키마 변경
+
+    - `post_media` + `answer_media` → `media_attachment` 한 테이블로 통합. `media_id`가 PK이므로 "한 미디어는 한 콘텐츠에만" 불변식이 트리거 없이 원자적으로 성립한다. 기존 count 기반 constraint trigger 2종은 동시 삽입에서 둘 다 통과할 수 있어 제거했다.
+    - FK 컬럼 인덱스 일괄 추가. PostgreSQL은 FK에 인덱스를 자동 생성하지 않는다.
+    - `direction_scheme`에 `status = 'ACTIVE'` partial unique 추가. 같은 `code`의 두 버전이 동시에 ACTIVE가 될 수 없다.
+    - `post_recipient`에 상태와 타임스탬프를 묶는 CHECK와 용량 해제 constraint trigger 추가.
+  '''
+}
+
+// -----------------------------------------------------------------------------
+// 값 집합
+// -----------------------------------------------------------------------------
+
+Enum region_level {
+  COUNTRY [note: '국가 단위 최상위 지역']
+  REGION [note: '광역 권역 또는 시도 단위']
+  CITY [note: '도시 또는 시군구 단위']
+  DISTRICT [note: '서비스가 사용하는 세부 지역 단위']
+}
+
+Enum user_role {
+  USER [note: '일반 서비스 기능을 이용하는 사용자 권한']
+  OPERATOR [note: '질문 승인과 신고 검토를 수행하는 운영자 권한']
+}
+
+Enum user_status {
+  ACTIVE [note: '로그인과 서비스 활동이 가능한 계정']
+  BLOCKED [note: '운영 정책에 따라 서비스 이용이 제한된 계정']
+  DELETED [note: '탈퇴 처리되어 신규 활동이 금지된 계정']
+}
+
+Enum gender {
+  MALE [note: '사용자가 선택한 남성 값']
+  FEMALE [note: '사용자가 선택한 여성 값']
+  OTHER [note: '남성·여성 외 사용자가 선택한 값']
+  UNDISCLOSED [note: '공개 또는 응답하지 않음을 선택한 값']
+}
+
+Enum age_band {
+  "10S" [note: '10대 연령 구간']
+  "20S" [note: '20대 연령 구간']
+  "30S" [note: '30대 연령 구간']
+  "40S" [note: '40대 연령 구간']
+  "50S" [note: '50대 연령 구간']
+  "60S" [note: '60대 연령 구간']
+  "70S_PLUS" [note: '70대 이상 연령 구간']
+}
+
+Enum question_proposal_status {
+  DRAFT [note: '사용자가 아직 제출하지 않은 작성 중 제안']
+  SUBMITTED [note: '운영 검토를 요청해 대기열에 들어간 제안']
+  UNDER_REVIEW [note: '운영자가 판정을 진행 중인 제안']
+  APPROVED [note: '검토를 통과해 승인 질문으로 승격된 제안']
+  REJECTED [note: '운영 검토에서 반려된 제안']
+  ARCHIVED [note: '처리가 끝나 활성 조회에서 제외한 제안']
+}
+
+Enum question_review_decision {
+  APPROVED [note: '제안을 승인 질문으로 승격하는 판정']
+  REJECTED [note: '제안을 승인하지 않는 판정']
+}
+
+Enum approved_question_source_type {
+  OPERATOR [note: '운영자가 직접 만든 질문']
+  USER_PROPOSAL [note: '사용자 제안을 승인해 생성한 출처']
+  GENERATED_CANDIDATE [note: '자동 생성 후보를 검토해 생성한 출처']
+}
+
+Enum approved_question_status {
+  PENDING_REVIEW [note: '승인 전 운영 검토가 필요한 질문']
+  ACTIVE [note: '현재 사용자 배정과 방향 글 작성에 사용할 수 있는 질문']
+  INACTIVE [note: '신규 배정과 작성을 중단하고 과거 참조만 유지하는 질문']
+  ARCHIVED [note: '장기 보관 대상으로 활성 질문 풀에서 제외한 질문']
+}
+
+Enum answer_format {
+  PHOTO [note: '사진 응답을 안내하는 형식']
+  TEXT [note: '글 응답을 안내하는 형식']
+  BOTH [note: '사진과 글을 모두 허용하는 형식']
+}
+
+Enum question_assignment_cycle_status {
+  ACTIVE [note: '현재 사용자에게 노출되는 질문 배정 주기']
+  COMPLETED [note: '유효 기간 또는 질문 사용이 정상 종료된 주기']
+  CANCELLED [note: '운영 판단이나 오류 처리로 취소한 주기']
+}
+
+Enum direction_scheme_type {
+  EQUAL_SEGMENTS [note: '전체 방위를 동일한 각도 구간으로 분할하는 방식']
+  CONTINUOUS [note: '고정 구간 없이 연속 각도를 사용하는 방식']
+}
+
+Enum direction_scheme_status {
+  ACTIVE [note: '신규 방향 글 발송에서 선택할 수 있는 방향 정책']
+  INACTIVE [note: '신규 선택은 막고 과거 발송 참조만 유지하는 정책']
+  ARCHIVED [note: '장기 보관 대상으로 전환한 방향 정책 버전']
+}
+
+Enum content_moderation_status {
+  PENDING [note: '안전 검사가 아직 끝나지 않은 콘텐츠']
+  PASSED [note: '안전 검사를 통과해 다음 처리로 진행할 수 있는 콘텐츠']
+  REVIEW_HELD [note: '자동 판정이 어려워 사람 검토를 기다리는 콘텐츠']
+  REJECTED [note: '안전 정책 위반으로 공개하지 않는 콘텐츠']
+}
+
+Enum media_asset_status {
+  UPLOADING [note: '스토리지 업로드 또는 후처리가 진행 중인 미디어']
+  READY [note: '콘텐츠에 첨부하고 공개할 수 있는 미디어']
+  REJECTED [note: '검사 실패로 콘텐츠에 첨부할 수 없는 미디어']
+  DELETED [note: '삭제 처리되어 더 이상 사용할 수 없는 미디어']
+}
+
+Enum direction_post_status {
+  SUBMITTED [note: '사용자가 발송 요청을 완료한 초기 방향 글']
+  SAFETY_CHECKING [note: '본문과 미디어 안전 검사를 수행 중인 방향 글']
+  MATCHING [note: '방향과 거리 조건으로 수신자를 선정 중인 방향 글']
+  ACTIVE [note: '수신자가 열람하고 답변할 수 있도록 공개된 방향 글']
+  MATCH_FAILED [note: '조건을 만족하는 수신자 확정에 실패한 방향 글']
+  REVIEW_HELD [note: '운영자 확인을 위해 공개를 보류한 방향 글']
+  REJECTED [note: '안전 또는 운영 정책으로 발송을 거절한 방향 글']
+  EXPIRED [note: '답변 가능 시간이 끝난 방향 글']
+  HIDDEN [note: '신고나 운영 조치로 노출을 중단한 방향 글']
+  DELETED [note: '삭제 처리된 방향 글']
+}
+
+Enum post_recipient_status {
+  AVAILABLE [note: '수신 권한이 생성됐지만 사용자가 아직 발견하지 않은 상태']
+  DISCOVERED [note: '사용자가 수신 항목의 존재를 확인한 상태']
+  OPENED [note: '사용자가 방향 글을 열람한 상태']
+  ANSWERED [note: '사용자가 답변을 완료해 수신 용량을 해제한 상태']
+  SKIPPED [note: '사용자가 답변하지 않고 넘겨 수신 용량을 해제한 상태']
+  EXPIRED [note: '방향 글 만료로 답변 권한과 수신 용량이 끝난 상태']
+  BLOCKED [note: '차단 관계 또는 안전 조치로 접근을 막은 상태']
+}
+
+Enum answer_status {
+  SUBMITTED [note: '사용자가 답변 제출을 완료한 초기 상태']
+  SAFETY_CHECKING [note: '답변 본문과 미디어를 검사하는 상태']
+  PUBLISHED [note: '답변이 방향 글 발신자에게 공개된 상태']
+  REJECTED [note: '안전 정책 위반으로 공개하지 않는 답변']
+  HIDDEN [note: '신고나 운영 조치로 노출을 중단한 답변']
+  DELETED [note: '삭제 처리된 답변']
+}
+
+Enum report_status {
+  RECEIVED [note: '신고가 접수된 초기 상태']
+  AUTO_HIDDEN [note: '자동 기준으로 신고 대상을 우선 숨긴 상태']
+  UNDER_REVIEW [note: '운영자가 신고를 검토 중인 상태']
+  ACTIONED [note: '위반을 확인하고 조치를 완료한 신고']
+  NO_VIOLATION [note: '정책 위반이 없다고 판정한 신고']
+  MORE_INFO_REQUIRED [note: '판정을 위해 추가 정보가 필요한 신고']
+}
+
+Enum moderation_review_decision {
+  ACTIONED [note: '위반을 확인하고 제재 또는 숨김 조치를 수행한 판정']
+  NO_VIOLATION [note: '신고 대상이 정책을 위반하지 않았다는 판정']
+  MORE_INFO_REQUIRED [note: '현재 정보만으로 판정할 수 없다는 결정']
+}
+
+Enum push_platform {
+  IOS [note: 'Apple Push Notification Service를 사용하는 iOS 기기']
+  ANDROID [note: 'Firebase Cloud Messaging을 사용하는 Android 기기']
+}
+
+Enum push_device_status {
+  ACTIVE [note: '현재 푸시 발송 대상으로 사용할 수 있는 기기']
+  INVALID [note: '공급자가 토큰을 유효하지 않다고 응답한 기기']
+  REVOKED [note: '로그아웃 또는 사용자 요청으로 토큰 사용을 철회한 기기']
+}
+
+Enum notification_type {
+  ANSWER_RECEIVED [note: '내 방향 글에 새 답변이 공개됐음을 알리는 종류']
+  DIRECTION_POST_RECEIVED [note: '새 방향 글의 수신 권한이 생겼음을 알리는 종류']
+  REPORT_RESOLVED [note: '내 신고의 처리 결과가 확정됐음을 알리는 종류']
+  QUESTION_PROPOSAL_REVIEWED [note: '내 질문 제안의 검토가 끝났음을 알리는 종류']
+  DAILY_QUESTION_ASSIGNED [note: '새 질문 세트가 배정됐음을 알리는 종류']
+}
+
+Enum outbox_aggregate_type {
+  DIRECTION_POST [note: '방향 글 애그리거트']
+  POST_RECIPIENT [note: '수신 권한 애그리거트']
+  ANSWER [note: '답변 애그리거트']
+  QUESTION_ASSIGNMENT [note: '질문 배정 애그리거트']
+  QUESTION_PROPOSAL [note: '질문 제안 애그리거트']
+  REPORT [note: '신고 애그리거트']
+}
+
+Enum outbox_event_type {
+  RECIPIENT_MATCH_REQUESTED [note: '방향 글 수신자 매칭 작업을 요청하는 이벤트']
+  RECIPIENTS_CONFIRMED [note: '수신자 확정 후 알림 생성을 요청하는 이벤트']
+  DIRECTION_POST_EXPIRED [note: '글 만료와 수신 용량 해제를 요청하는 이벤트']
+  ANSWER_PUBLISHED [note: '답변 공개 후 발신자 알림을 요청하는 이벤트']
+  DAILY_QUESTION_ASSIGNED [note: '질문 세트 배정 확정 후 대상 사용자 알림 생성을 요청하는 이벤트']
+  QUESTION_PROPOSAL_REVIEWED [note: '질문 제안 판정 확정 후 제안자 알림 생성을 요청하는 이벤트']
+  REPORT_RESOLVED [note: '신고 처리 결과 확정 후 신고자 알림 생성을 요청하는 이벤트']
+}
+
+Enum outbox_status {
+  PENDING [note: '워커가 아직 가져가지 않은 발행 대기 이벤트']
+  PROCESSING [note: '워커가 선점해 처리 중인 이벤트']
+  PROCESSED [note: '외부 전달 또는 후속 처리가 완료된 이벤트']
+  FAILED [note: '재시도 가능한 처리 실패 이벤트']
+  DEAD [note: '최대 재시도를 초과해 수동 확인이 필요한 이벤트']
+}
+
+Enum notification_status {
+  UNREAD [note: '사용자가 아직 확인하지 않은 앱 내 알림']
+  READ [note: '사용자가 내용을 확인한 앱 내 알림']
+  DISMISSED [note: '사용자가 목록에서 닫거나 숨긴 앱 내 알림']
+  REVOKED [note: '접근 권한 취소 등으로 더 이상 유효하지 않은 앱 내 알림']
+}
+
+Enum notification_delivery_status {
+  PENDING [note: '푸시 발송을 기다리는 기기 전달 작업']
+  PROCESSING [note: '워커가 선점해 푸시 발송 중인 작업']
+  SENT [note: '푸시 공급자가 발송 요청을 수락한 작업']
+  FAILED [note: '재시도 가능한 푸시 발송 실패 작업']
+  CANCELLED [note: '설정 변경 또는 권한 소멸로 취소한 전달 작업']
+  DEAD [note: '최대 재시도를 초과해 중단한 전달 작업']
+}
+
+// -----------------------------------------------------------------------------
+// 지역과 계정
+// -----------------------------------------------------------------------------
+
+Table region_code [headercolor: #4E79A7] {
+  code varchar(100) [pk, not null, note: '서비스와 외부 지역 데이터가 공통으로 사용하는 지역 식별 코드']
+  parent_code varchar(100) [note: '지역 계층에서 바로 위 부모 지역 코드이며 국가는 비어 있음']
+  display_name text [not null, note: '화면에 표시할 지역 이름']
+  level region_level [not null, note: '국가부터 세부 지역까지의 계층 단계']
+  created_at timestamptz [not null, default: `clock_timestamp()`, note: '행이 생성된 시각']
+
+  indexes {
+    parent_code [name: 'region_code_parent_idx', note: 'SQL DDL은 parent_code IS NOT NULL인 partial index']
+  }
+
+  checks {
+    `parent_code IS NULL OR parent_code <> code` [name: 'ck_region_code_not_self_parent']
+    `btrim(display_name) <> ''` [name: 'ck_region_code_display_name']
+    `(level = 'COUNTRY') = (parent_code IS NULL)` [name: 'ck_region_code_root']
+  }
+
+  Note: '테이블 설명: 국가부터 세부 지역까지의 계층과 화면 표시 이름을 관리하는 지역 코드 마스터 테이블이다. 필요 이유: 지역 문자열을 여러 테이블에 제각각 저장하지 않고 하나의 코드 체계로 통일해 위치 조회와 공개 지역 표현의 일관성을 지킨다.'
+}
+
+Table user_account [headercolor: #4E79A7] {
+  id bigint [pk, increment, not null, note: '행을 식별하는 기본키']
+  role user_role [not null, default: 'USER', note: '일반 사용자와 운영자를 구분하는 권한']
+  status user_status [not null, default: 'ACTIVE', note: '현재 처리 상태']
+  coarse_region_code varchar(100) [not null, note: '사용자의 공개용 기준 지역 코드']
+  locale varchar(35) [not null, note: '언어와 지역별 표시 형식을 결정하는 로케일']
+  timezone varchar(64) [not null, note: '날짜 경계와 알림 계산에 사용하는 IANA 시간대']
+  nickname varchar(50) [note: '다른 사용자에게 표시할 익명 닉네임']
+  created_at timestamptz [not null, default: `clock_timestamp()`, note: '행이 생성된 시각']
+  updated_at timestamptz [not null, default: `clock_timestamp()`, note: '마지막으로 변경된 시각']
+  deleted_at timestamptz [note: '삭제 처리된 시각']
+
+  indexes {
+    coarse_region_code [name: 'user_account_region_idx', note: 'region_code 삭제 시 RESTRICT 검사와 지역 단위 조회용 FK 인덱스']
+  }
+
+  checks {
+    `nickname IS NULL OR btrim(nickname) <> ''` [name: 'ck_user_account_nickname']
+    `(status = 'DELETED' AND deleted_at IS NOT NULL) OR (status <> 'DELETED' AND deleted_at IS NULL)` [name: 'ck_user_account_deleted_at']
+  }
+
+  Note: '테이블 설명: 사용자의 기본 식별자, 권한, 계정 상태, 기준 지역과 시간대를 관리하는 계정 테이블이다. 필요 이유: 사용자 식별자와 서비스 공통 권한·계정 상태를 한곳에서 관리해 모든 도메인이 동일한 계정 기준을 참조하게 한다.'
+}
+
+Table user_private_attribute [headercolor: #4E79A7] {
+  user_id bigint [pk, not null, note: '대상 사용자 식별자']
+  gender gender [note: '사용자가 선택적으로 제공한 성별 값']
+  age_band age_band [note: '생년월일 대신 최소한으로 저장하는 연령대 구간']
+  updated_at timestamptz [not null, default: `clock_timestamp()`, note: '마지막으로 변경된 시각']
+
+  Note: '테이블 설명: 사용자가 선택적으로 제공한 성별과 연령대 같은 민감 속성을 보관하는 1대1 확장 테이블이다. 필요 이유: 성별·연령대 같은 선택형 민감 정보를 일반 계정과 분리해 수집 승인, 접근 권한, 삭제 범위를 독립 관리한다. P10 승인 전 연령대는 수집하지 않는다.'
+}
+
+Table active_user_presence [headercolor: #4E79A7] {
+  user_id bigint [pk, not null, note: '대상 사용자 식별자']
+  position geography(Point,4326) [note: 'P06 1안 확정에 따라 실제 사용자 좌표를 담는 운영 컬럼이다. 거리와 방위 계산에 사용한다. SQL DDL은 이 컬럼에 partial GiST 인덱스 active_user_presence_position_gix(USING GIST ... WHERE receive_allowed)를 두어 방향·거리 후보 탐색을 가속한다. DBML은 GiST를 표현하지 못해 아래 인덱스 블록에 나타나지 않는다. 이 값은 API 응답·로그·분석 이벤트·Outbox payload에 넣지 않는다.']
+  coarse_cell_id varchar(100) [note: '정확 좌표를 대체하지 않고 보조로 두는 공간 셀 식별자. P06 2안을 채택하지 않았으므로 선택 입력이다.']
+  coarse_region_code varchar(100) [not null, note: '외부 응답에 노출하는 흐린 지역 코드']
+  accuracy_m numeric(10,2) [note: '측정 위치의 예상 오차 반경 미터']
+  receive_allowed boolean [not null, default: false, note: '현재 수신 후보에 포함할 수 있는지 여부']
+  location_at timestamptz [not null, note: '위치가 실제 측정된 시각']
+  expires_at timestamptz [not null, note: '이 위치를 후보 탐색에 쓰지 않을 시각']
+
+  indexes {
+    expires_at [name: 'active_user_presence_expiry_idx', note: 'SQL DDL은 receive_allowed=true인 partial index']
+    coarse_region_code [name: 'active_user_presence_region_idx', note: 'region_code 삭제 시 RESTRICT 검사와 지역 단위 후보 조회용 FK 인덱스']
+  }
+
+  checks {
+    `num_nonnulls(position, coarse_cell_id) >= 1` [name: 'ck_active_user_presence_location']
+    `accuracy_m IS NULL OR accuracy_m >= 0` [name: 'ck_active_user_presence_accuracy']
+    `expires_at > location_at` [name: 'ck_active_user_presence_expiry']
+  }
+
+  Note: '테이블 설명: 수신자 매칭에 사용할 사용자의 최근 위치와 수신 가능 여부를 TTL 형태로 보관하는 테이블이다. 필요 이유: 자주 바뀌고 짧게 유효한 위치와 수신 가능 상태를 계정 원본에서 분리해 TTL 기반 수신자 탐색을 빠르게 수행한다. P06 정책: 1안(짧은 TTL 정확 좌표 저장, 외부에는 흐린 값만 제공)으로 2026-08-03 확정했다. 이 테이블이 서비스 전체에서 정확 좌표를 보관하는 유일한 곳이며 접근 경로를 매칭 워커로 제한한다. 인덱스 보충: SQL DDL에는 아래 인덱스 블록 외에 position 컬럼의 partial GiST 인덱스 active_user_presence_position_gix(WHERE receive_allowed)가 있으며, 이것이 방향·거리 후보 탐색의 핵심 인덱스다.'
+}
+
+Table recipient_receive_state [headercolor: #4E79A7] {
+  user_id bigint [pk, not null, note: '대상 사용자 식별자']
+  active_unhandled_count smallint [not null, default: 0, note: '답변·넘기기·만료로 해제되지 않은 활성 수신 건수']
+  recent_received_count integer [not null, default: 0, note: '공정한 수신자 선택에 사용하는 최근 수신 누적 건수']
+  recent_window_started_at timestamptz [not null, default: `clock_timestamp()`, note: '최근 수신 건수 집계를 시작한 기준 시각']
+  last_received_at timestamptz [note: '가장 최근에 수신 권한을 받은 시각']
+  updated_at timestamptz [not null, default: `clock_timestamp()`, note: '마지막으로 변경된 시각']
+
+  indexes {
+    (active_unhandled_count, recent_received_count, last_received_at) [name: 'recipient_receive_selection_idx']
+  }
+
+  checks {
+    `active_unhandled_count BETWEEN 0 AND 5` [name: 'ck_recipient_receive_state_active_count']
+    `recent_received_count >= 0` [name: 'ck_recipient_receive_state_recent_count']
+    `last_received_at IS NULL OR last_received_at >= recent_window_started_at` [name: 'ck_recipient_receive_state_last_received']
+  }
+
+  Note: '테이블 설명: 사용자별 활성 미처리 수신 건수와 최근 수신 이력을 집계한 용량 관리 테이블이다. 필요 이유: 활성 미처리 방향 글 최대 5개를 매칭 트랜잭션에서 원자적으로 예약해 동시 발송 시 상한 초과를 막는다.'
+}
+
+// -----------------------------------------------------------------------------
+// 질문 제안, 승인 질문과 배정
+// -----------------------------------------------------------------------------
+
+Table question_proposal [headercolor: #59A14F] {
+  id bigint [pk, increment, not null, note: '행을 식별하는 기본키']
+  proposer_id bigint [not null, note: '질문을 제안한 사용자 식별자']
+  status question_proposal_status [not null, default: 'DRAFT', note: '현재 처리 상태']
+  proposed_text text [not null, note: '사용자가 제출한 질문 문구 원문']
+  decision_reason text [note: '운영 판정 결과를 사용자에게 설명할 사유']
+  submitted_at timestamptz [note: '사용자가 제출을 완료한 시각']
+  created_at timestamptz [not null, default: `clock_timestamp()`, note: '행이 생성된 시각']
+  updated_at timestamptz [not null, default: `clock_timestamp()`, note: '마지막으로 변경된 시각']
+
+  indexes {
+    (status, updated_at) [name: 'question_proposal_review_queue_idx', note: 'SQL DDL은 SUBMITTED, UNDER_REVIEW만 포함하는 partial index. updated_at 정렬에 의존하므로 애플리케이션이 상태 변경 시 updated_at을 반드시 갱신해야 한다']
+    proposer_id [name: 'question_proposal_proposer_idx', note: '제안자별 목록 조회와 FK RESTRICT 검사용']
+  }
+
+  checks {
+    `btrim(proposed_text) <> ''` [name: 'ck_question_proposal_text']
+    `status = 'DRAFT' OR submitted_at IS NOT NULL` [name: 'ck_question_proposal_submission']
+  }
+
+  Note: '테이블 설명: 사용자가 운영 검토를 요청한 질문 문구와 현재 처리 상태를 저장하는 테이블이다. 필요 이유: 사용자 제안을 승인 질문과 분리해 승인 전 비공개 원칙과 제안자의 처리 상태 조회를 보장한다. 트리거 불변식: SQL DDL의 tr_question_proposal_text_immutable_after_submit(BEFORE UPDATE OF proposed_text)이 DRAFT를 벗어난 제안의 문구 변경을 거부해, 운영자가 검토한 문구와 실제 문구가 달라지지 않는다.'
+}
+
+Table question_proposal_review [headercolor: #59A14F] {
+  id bigint [pk, increment, not null, note: '행을 식별하는 기본키']
+  proposal_id bigint [not null, note: '검토 대상 질문 제안 식별자']
+  reviewer_id bigint [not null, note: '판정을 수행한 운영자 식별자']
+  decision question_review_decision [not null, note: '승인 또는 반려 판정']
+  reason text [note: '판정 근거이며 반려일 때 필수']
+  reviewed_at timestamptz [not null, default: `clock_timestamp()`, note: '판정을 확정한 시각']
+
+  indexes {
+    (proposal_id, reviewed_at) [name: 'question_proposal_review_history_idx', note: 'SQL DDL은 reviewed_at DESC 정렬이며 DBML은 컬럼 정렬 방향을 표현하지 않는다']
+    reviewer_id [name: 'question_proposal_review_reviewer_idx', note: '운영자별 검토 이력 조회와 FK RESTRICT 검사용']
+  }
+
+  checks {
+    `decision = 'APPROVED' OR NULLIF(btrim(reason), '') IS NOT NULL` [name: 'ck_question_proposal_review_reason']
+  }
+
+  Note: '테이블 설명: 운영자가 질문 제안을 승인하거나 반려한 판정과 사유를 기록하는 검토 이력 테이블이다. 필요 이유: 질문 제안 상태를 덮어쓰는 데 그치지 않고 누가 언제 어떤 이유로 승인·반려했는지 감사 이력으로 남긴다.'
+}
+
+Table approved_question [headercolor: #59A14F] {
+  id bigint [pk, increment, not null, note: '행을 식별하는 기본키']
+  source_proposal_id bigint [unique, note: '사용자 제안에서 승격된 경우 원본 제안 식별자. SQL DDL의 제약명은 uq_approved_question_source_proposal다']
+  source_type approved_question_source_type [not null, note: '운영자·사용자 제안·자동 생성 중 질문 출처']
+  status approved_question_status [not null, default: 'PENDING_REVIEW', note: '현재 처리 상태']
+  question_text text [not null, note: '사용자에게 제시되는 변경 불가 질문 문구']
+  answer_format answer_format [not null, note: '사진·글 등 질문이 안내하는 응답 형식']
+  active_from timestamptz [note: '신규 배정 가능 시작 시각']
+  active_until timestamptz [note: '신규 배정 중단 시각']
+  approved_at timestamptz [note: '운영 승인이 확정된 시각']
+  approved_by bigint [note: '승인을 수행한 운영자 식별자']
+  created_at timestamptz [not null, default: `clock_timestamp()`, note: '행이 생성된 시각']
+
+  indexes {
+    (active_from, active_until) [name: 'approved_question_active_idx', note: 'SQL DDL은 status=ACTIVE인 partial index']
+    approved_by [name: 'approved_question_approver_idx', note: 'SQL DDL은 approved_by IS NOT NULL인 partial index. 승인자별 조회와 FK RESTRICT 검사용']
+  }
+
+  checks {
+    `(source_type = 'USER_PROPOSAL' AND source_proposal_id IS NOT NULL) OR (source_type <> 'USER_PROPOSAL' AND source_proposal_id IS NULL)` [name: 'ck_approved_question_source']
+    `btrim(question_text) <> ''` [name: 'ck_approved_question_text']
+    `active_until IS NULL OR active_from IS NULL OR active_until > active_from` [name: 'ck_approved_question_active_range']
+    `status <> 'ACTIVE' OR (approved_at IS NOT NULL AND approved_by IS NOT NULL AND active_from IS NOT NULL)` [name: 'ck_approved_question_approval']
+  }
+
+  Note: '테이블 설명: 운영 검토를 통과해 사용자 배정과 방향 글 작성에 사용할 수 있는 질문 풀 테이블이다. 필요 이유: 검토를 통과한 질문만 배정과 글 작성에 사용하도록 질문 풀의 기준점을 제공하고 과거 콘텐츠가 참조한 문구를 보존한다. 트리거 불변식: SQL DDL의 tr_approved_question_text_immutable(BEFORE UPDATE OF question_text)이 승인 이후 question_text 변경을 거부해, 과거 방향 글이 참조한 문구가 사후에 바뀌지 않는다.'
+}
+
+Table question_assignment_cycle [headercolor: #59A14F] {
+  id bigint [pk, increment, not null, note: '행을 식별하는 기본키']
+  user_id bigint [not null, note: '대상 사용자 식별자']
+  cycle_key varchar(100) [not null, note: '같은 사용자에게 같은 주기를 중복 생성하지 않는 멱등키']
+  pool_version varchar(100) [not null, note: '배정 당시 승인 질문 풀의 스냅샷 버전']
+  status question_assignment_cycle_status [not null, default: 'ACTIVE', note: '현재 처리 상태']
+  starts_at timestamptz [not null, note: '질문 세트 유효 시작 시각']
+  ends_at timestamptz [not null, note: '질문 세트 유효 종료 시각']
+  created_at timestamptz [not null, default: `clock_timestamp()`, note: '행이 생성된 시각']
+
+  indexes {
+    (user_id, cycle_key) [unique, name: 'uq_question_assignment_cycle_user_key']
+  }
+
+  checks {
+    `ends_at > starts_at` [name: 'ck_question_assignment_cycle_range']
+  }
+
+  Note: '테이블 설명: 특정 사용자에게 일정 기간 유지되는 질문 세트의 주기와 풀 버전을 관리하는 테이블이다. 필요 이유: 한 주기 동안 같은 사용자에게 같은 질문 세트를 유지하고 배정 결과를 버전과 기간으로 재현한다.'
+}
+
+Table question_assignment [headercolor: #59A14F] {
+  id bigint [pk, increment, not null, note: '행을 식별하는 기본키']
+  cycle_id bigint [not null, note: '이 질문이 속한 사용자별 배정 주기']
+  approved_question_id bigint [not null, note: '배정된 승인 질문 식별자']
+  display_order integer [not null, note: '화면에 표시할 순서']
+  assigned_at timestamptz [not null, default: `clock_timestamp()`, note: '질문이 주기에 포함된 시각']
+  first_viewed_at timestamptz [note: '사용자가 질문을 처음 확인한 시각']
+  used_at timestamptz [note: '이 질문으로 방향 글을 작성한 시각']
+
+  indexes {
+    (cycle_id, approved_question_id) [unique, name: 'uq_question_assignment_cycle_question']
+    (cycle_id, display_order) [unique, name: 'uq_question_assignment_cycle_order']
+    (approved_question_id, assigned_at) [name: 'question_assignment_history_idx', note: 'SQL DDL은 assigned_at DESC 정렬이며 DBML은 컬럼 정렬 방향을 표현하지 않는다']
+  }
+
+  checks {
+    `display_order > 0` [name: 'ck_question_assignment_display_order']
+    `first_viewed_at IS NULL OR first_viewed_at >= assigned_at` [name: 'ck_question_assignment_viewed_at']
+    `used_at IS NULL OR used_at >= assigned_at` [name: 'ck_question_assignment_used_at']
+  }
+
+  Note: '테이블 설명: 배정 주기 안에 포함된 승인 질문, 표시 순서, 노출과 사용 시각을 저장하는 테이블이다. 필요 이유: 배정 주기와 승인 질문의 다대다 관계, 화면 순서, 최초 노출과 사용 여부를 행 단위로 기록한다.'
+}
+
+// -----------------------------------------------------------------------------
+// 방향 글, 수신 권한, 답변과 미디어
+// -----------------------------------------------------------------------------
+
+Table direction_scheme [headercolor: #F28E2B] {
+  id bigint [pk, increment, not null, note: '행을 식별하는 기본키']
+  code varchar(50) [not null, note: '같은 방향 정책 계열을 묶는 코드']
+  version integer [not null, note: '정책 변경 순서를 나타내는 버전']
+  type direction_scheme_type [not null, note: '동일 구간 분할 또는 연속 각도 방식']
+  segment_count integer [note: '동일 분할 정책의 방향 구간 수']
+  start_offset_deg numeric(7,3) [not null, note: '첫 구간 경계 계산의 시작 오프셋 각도']
+  status direction_scheme_status [not null, default: 'ACTIVE', note: '현재 처리 상태']
+
+  indexes {
+    (code, version) [unique, name: 'uq_direction_scheme_code_version']
+    code [unique, name: 'uq_direction_scheme_active', note: '주의: 실제 제약은 무조건 unique가 아니다. SQL DDL은 status=ACTIVE인 행에만 적용되는 partial unique index다. 같은 code의 두 버전이 동시에 ACTIVE가 되는 것을 막아 애플리케이션이 현재 방향 정책을 모호하지 않게 고를 수 있다. INACTIVE·ARCHIVED 버전은 code가 겹쳐도 된다']
+  }
+
+  checks {
+    `version > 0` [name: 'ck_direction_scheme_version']
+    `(type = 'EQUAL_SEGMENTS' AND segment_count > 0) OR (type = 'CONTINUOUS' AND segment_count IS NULL)` [name: 'ck_direction_scheme_segment_count']
+    `start_offset_deg >= 0 AND start_offset_deg < 360` [name: 'ck_direction_scheme_start_offset']
+  }
+
+  Note: '테이블 설명: 방향 분할 방식, 구간 수, 시작 각도와 버전을 정의하는 방향 정책 마스터 테이블이다. 필요 이유: 방향 수와 분할 방식이 바뀌어도 정책을 버전 관리해 과거 발송을 새로운 규칙으로 재해석하지 않게 한다.'
+}
+
+Table direction_segment [headercolor: #F28E2B] {
+  id bigint [pk, increment, not null, note: '행을 식별하는 기본키']
+  scheme_id bigint [not null, note: '이 구간이 속한 방향 정책 버전']
+  segment_key varchar(20) [not null, note: 'API와 클라이언트가 사용하는 구간 코드']
+  display_name varchar(50) [not null, note: '화면에 표시할 방향 이름']
+  center_bearing_deg numeric(7,3) [not null, note: '정북 0도 기준 구간 중심 방위각']
+  angular_width_deg numeric(7,3) [not null, note: '구간이 차지하는 전체 각도 폭']
+  sort_order integer [not null, note: '구간 정렬 순서']
+
+  indexes {
+    (scheme_id, segment_key) [unique, name: 'uq_direction_segment_key']
+    (scheme_id, sort_order) [unique, name: 'uq_direction_segment_order']
+  }
+
+  checks {
+    `center_bearing_deg >= 0 AND center_bearing_deg < 360` [name: 'ck_direction_segment_center']
+    `angular_width_deg > 0 AND angular_width_deg <= 360` [name: 'ck_direction_segment_width']
+    `sort_order >= 0` [name: 'ck_direction_segment_order']
+  }
+
+  Note: '테이블 설명: 방향 정책에 속한 각 구간의 코드, 이름, 중심 방위각과 각도 폭을 정의하는 테이블이다. 필요 이유: 방향 구간을 코드에 고정하지 않고 데이터로 관리해 방향 수, 이름, 중심각과 폭 변경을 지원한다.'
+}
+
+Table media_asset [headercolor: #F28E2B] {
+  id bigint [pk, increment, not null, note: '행을 식별하는 기본키']
+  owner_id bigint [not null, note: '소유 사용자 식별자']
+  status media_asset_status [not null, default: 'UPLOADING', note: '현재 처리 상태']
+  storage_key varchar(500) [not null, unique, note: '오브젝트 스토리지 내부 파일 키. SQL DDL의 제약명은 uq_media_asset_storage_key다']
+  mime_type varchar(100) [not null, note: '파일 형식 검증에 사용하는 MIME 타입']
+  byte_size bigint [not null, note: '업로드 제한과 비용 계산에 쓰는 파일 크기']
+  checksum varchar(128) [not null, note: '무결성과 중복 확인에 쓰는 해시']
+  exif_stripped boolean [not null, default: false, note: '사진 EXIF 민감 정보 제거 완료 여부']
+  moderation_status content_moderation_status [not null, default: 'PENDING', note: '콘텐츠 안전 검사 결과']
+  created_at timestamptz [not null, default: `clock_timestamp()`, note: '행이 생성된 시각']
+  deleted_at timestamptz [note: '삭제 처리된 시각']
+
+  indexes {
+    (id, owner_id) [unique, name: 'uq_media_asset_id_owner']
+    owner_id [name: 'media_asset_owner_idx', note: '소유자별 미디어 조회와 FK RESTRICT 검사용']
+  }
+
+  checks {
+    `byte_size > 0` [name: 'ck_media_asset_size']
+    `(status = 'DELETED') = (deleted_at IS NOT NULL)` [name: 'ck_media_asset_deleted_at']
+  }
+
+  Note: '테이블 설명: 업로드된 파일의 소유자, 저장 위치, 형식, 크기, 검사와 삭제 상태를 관리하는 미디어 테이블이다. 필요 이유: 파일 업로드·검사·삭제 생명주기를 콘텐츠에서 분리하고 소유자와 안전 검사 결과를 공통 관리한다. 트리거 불변식: SQL DDL의 ct_media_status_preserves_content(DEFERRABLE INITIALLY DEFERRED)가 status 변경으로 이 미디어가 붙은 ACTIVE 글이나 PUBLISHED 답변이 콘텐츠 없는 상태가 되는 것을 막는다. media_attachment.media_id가 PK이므로 이 트리거는 최대 한 건의 첨부만 확인한다.'
+}
+
+Table direction_post [headercolor: #F28E2B] {
+  id bigint [pk, increment, not null, note: '행을 식별하는 기본키']
+  sender_id bigint [not null, note: '방향 글을 작성하고 발송한 사용자']
+  approved_question_id bigint [not null, note: '글 작성의 출발점이 된 승인 질문']
+  status direction_post_status [not null, default: 'SUBMITTED', note: '현재 처리 상태']
+  idempotency_key varchar(200) [not null, note: '동일 요청의 중복 처리를 막는 멱등키']
+  body_text text [note: '사용자가 작성한 글 본문']
+  coarse_region_code varchar(100) [not null, note: '글에 공개할 흐린 발송 지역']
+  moderation_status content_moderation_status [not null, default: 'PENDING', note: '콘텐츠 안전 검사 결과']
+  submitted_at timestamptz [not null, default: `clock_timestamp()`, note: '사용자가 제출을 완료한 시각']
+  published_at timestamptz [note: '상대 사용자에게 공개된 시각']
+  expires_at timestamptz [not null, note: '새 답변 작성을 차단할 만료 시각']
+  deleted_at timestamptz [note: '삭제 처리된 시각']
+
+  indexes {
+    (sender_id, idempotency_key) [unique, name: 'uq_direction_post_idempotency']
+    (id, sender_id) [unique, name: 'uq_direction_post_id_sender']
+    (sender_id, submitted_at) [name: 'direction_post_sender_idx', note: 'SQL DDL은 submitted_at DESC 정렬이며 DBML은 컬럼 정렬 방향을 표현하지 않는다']
+    (expires_at, id) [name: 'direction_post_expiry_idx', note: 'SQL DDL은 MATCHING, ACTIVE인 partial index']
+    approved_question_id [name: 'direction_post_question_idx', note: '질문별 발송 글 조회와 FK RESTRICT 검사용']
+    coarse_region_code [name: 'direction_post_region_idx', note: 'region_code 삭제 시 RESTRICT 검사용 FK 인덱스']
+  }
+
+  checks {
+    `body_text IS NULL OR btrim(body_text) <> ''` [name: 'ck_direction_post_body']
+    `expires_at > submitted_at` [name: 'ck_direction_post_expiry']
+    `status <> 'ACTIVE' OR published_at IS NOT NULL` [name: 'ck_direction_post_published_at']
+    `(status = 'DELETED') = (deleted_at IS NOT NULL)` [name: 'ck_direction_post_deleted_at']
+  }
+
+  Note: '테이블 설명: 사용자가 승인 질문에 글이나 사진을 붙여 특정 방향으로 발송한 원문 콘텐츠 테이블이다. 필요 이유: 사용자가 승인 질문에 붙여 한 방향으로 보내는 원문 콘텐츠와 발행·검사·만료 상태의 기준 행을 제공한다. 트리거 불변식: SQL DDL의 ct_direction_post_question_active는 참조하는 approved_question의 status가 ACTIVE일 때만 INSERT와 approved_question_id 변경을 허용한다. ct_direction_post_has_content는 status=ACTIVE인 글에 body_text 또는 status=READY인 첨부 미디어가 최소 하나 있어야 커밋되게 한다. 둘 다 DEFERRABLE INITIALLY DEFERRED constraint trigger이므로 트랜잭션 커밋 시점에 검사한다.'
+}
+
+Table post_audience [headercolor: #F28E2B] {
+  post_id bigint [pk, not null, note: '방향 글 식별자이며 1대1 스냅샷 기본키']
+  direction_scheme_id bigint [not null, note: '발송 시 사용한 방향 정책 버전']
+  selected_segment_key varchar(20) [not null, note: '사용자가 선택한 방향 구간 코드']
+  center_bearing_deg numeric(7,3) [not null, note: '발송 당시 선택 구간 중심각']
+  angular_width_deg numeric(7,3) [not null, note: '발송 당시 선택 구간 각도 폭']
+  min_distance_m bigint [not null, note: '수신 후보 최소 거리 미터']
+  max_distance_m bigint [not null, note: '수신 후보 최대 거리 미터']
+  origin_position geography(Point,4326) [note: 'P06 1안 확정에 따라 실제 발송 원점 좌표를 담는 운영 컬럼이다. 거리·방위 계산에 사용하며 외부 응답에는 노출하지 않는다.']
+  origin_cell_id varchar(100) [note: '정확 좌표를 대체하지 않고 보조로 두는 발송 원점 공간 셀. 선택 입력이다.']
+  snapshotted_at timestamptz [not null, default: `clock_timestamp()`, note: '발송 조건을 확정한 시각']
+
+  indexes {
+    (direction_scheme_id, selected_segment_key) [name: 'post_audience_segment_idx', note: 'direction_segment 복합 FK의 RESTRICT 검사와 방향 구간별 집계용']
+  }
+
+  checks {
+    `center_bearing_deg >= 0 AND center_bearing_deg < 360` [name: 'ck_post_audience_center']
+    `angular_width_deg > 0 AND angular_width_deg <= 360` [name: 'ck_post_audience_width']
+    `min_distance_m >= 0 AND max_distance_m > min_distance_m` [name: 'ck_post_audience_distance']
+    `num_nonnulls(origin_position, origin_cell_id) >= 1` [name: 'ck_post_audience_origin']
+  }
+
+  Note: '테이블 설명: 방향 글 발송 당시 선택한 방향, 거리 범위와 발송 원점을 고정한 1대1 조건 스냅샷 테이블이다. 필요 이유: 발송 당시 방향·거리·원점을 스냅샷으로 고정해 이후 정책이나 위치가 바뀌어도 매칭 조건을 재현한다.'
+}
+
+Table media_attachment [headercolor: #F28E2B] {
+  media_id bigint [pk, not null, note: '첨부한 미디어 식별자이며 이 테이블의 기본키다. PK가 곧 "한 미디어는 한 콘텐츠에만 붙는다"는 불변식이므로 별도 트리거 없이 동시 삽입에서도 성립한다.']
+  owner_id bigint [not null, note: '콘텐츠 작성자와 미디어 소유자 일치 검증용 사용자 식별자']
+  post_id bigint [note: '방향 글에 첨부한 경우 대상 글 식별자']
+  answer_id bigint [note: '답변에 첨부한 경우 대상 답변 식별자']
+  display_order integer [not null, note: '한 콘텐츠 안에서 화면에 표시할 순서']
+
+  indexes {
+    (post_id, display_order) [unique, name: 'uq_media_attachment_post_order', note: 'SQL DDL은 post_id IS NOT NULL인 partial unique index. 방향 글 첨부 조회의 FK 인덱스 역할도 겸한다']
+    (answer_id, display_order) [unique, name: 'uq_media_attachment_answer_order', note: 'SQL DDL은 answer_id IS NOT NULL인 partial unique index. 답변 첨부 조회의 FK 인덱스 역할도 겸한다']
+  }
+
+  checks {
+    `num_nonnulls(post_id, answer_id) = 1` [name: 'ck_media_attachment_exactly_one_target']
+    `display_order >= 0` [name: 'ck_media_attachment_order']
+  }
+
+  Note: '테이블 설명: 미디어를 방향 글 또는 답변 중 정확히 하나에 연결하고 표시 순서를 관리하는 첨부 테이블이다. 필요 이유: 2026-08-03 이전에는 post_media와 answer_media 두 테이블로 나뉘어 있었고 "한 미디어는 한 콘텐츠에만"을 count 기반 constraint trigger로 검사했다. 그 방식은 서로의 미커밋 행을 볼 수 없는 두 트랜잭션이 같은 미디어를 각각 다른 콘텐츠에 붙일 때 둘 다 통과하는 구멍이 있었다. 한 테이블로 합치고 media_id를 PK로 두어 DB가 원자적으로 강제하도록 바꿨다. 소유권 불변식: (media_id, owner_id) → media_asset(id, owner_id) 복합 FK가 미디어 소유자를 고정하고, (post_id, owner_id) → direction_post(id, sender_id)와 (answer_id, owner_id) → answer(id, author_id) 복합 FK가 콘텐츠 작성자와의 일치를 강제한다. 뒤의 두 FK는 MATCH SIMPLE이므로 해당 대상 컬럼이 NULL이면 검사를 건너뛰고, 값이 있을 때만 owner_id 일치를 요구한다. 트리거 불변식: SQL DDL의 ct_media_attachment_preserves_content(DEFERRABLE INITIALLY DEFERRED)가 첨부를 붙이거나 떼어낸 뒤에도 ACTIVE 글과 PUBLISHED 답변의 콘텐츠 조건이 유지되는지 재검사한다.'
+}
+
+Table post_recipient [headercolor: #F28E2B] {
+  id bigint [pk, increment, not null, note: '행을 식별하는 기본키']
+  post_id bigint [not null, note: '수신자가 접근할 방향 글']
+  recipient_id bigint [not null, note: '열람·답변 권한을 받은 사용자']
+  status post_recipient_status [not null, default: 'AVAILABLE', note: '현재 처리 상태']
+  distance_band varchar(50) [not null, note: '정확 거리 대신 노출할 거리 구간']
+  matched_bearing_deg numeric(7,3) [not null, note: '발송 원점에서 수신자까지 계산한 방위각']
+  matched_region_code varchar(100) [not null, note: '매칭 당시 수신자의 흐린 지역']
+  matched_at timestamptz [not null, default: `clock_timestamp()`, note: '수신자로 최종 확정된 시각']
+  discovered_at timestamptz [note: '수신 항목 존재를 처음 확인한 시각']
+  opened_at timestamptz [note: '방향 글을 처음 열람한 시각']
+  skipped_at timestamptz [note: '답변하지 않고 넘긴 시각']
+  capacity_released_at timestamptz [note: '활성 미처리 수신 용량을 반환한 시각']
+  expired_at timestamptz [note: '만료로 수신 권한이 종료된 시각']
+  blocked_at timestamptz [note: '차단 관계로 접근을 중단한 시각']
+
+  indexes {
+    (post_id, recipient_id) [unique, name: 'uq_post_recipient_post_user']
+    (id, recipient_id) [unique, name: 'uq_post_recipient_id_user']
+    (recipient_id, status, matched_at) [name: 'post_recipient_inbox_idx', note: 'SQL DDL은 matched_at DESC 정렬이며 DBML은 컬럼 정렬 방향을 표현하지 않는다']
+    (recipient_id, matched_at) [name: 'post_recipient_capacity_idx', note: 'SQL DDL은 capacity_released_at IS NULL인 partial index이며 matched_at DESC 정렬']
+    matched_region_code [name: 'post_recipient_region_idx', note: 'region_code 삭제 시 RESTRICT 검사용 FK 인덱스']
+  }
+
+  checks {
+    `matched_bearing_deg >= 0 AND matched_bearing_deg < 360` [name: 'ck_post_recipient_bearing']
+    `btrim(distance_band) <> ''` [name: 'ck_post_recipient_distance_band']
+    `(discovered_at IS NULL OR discovered_at >= matched_at) AND (opened_at IS NULL OR opened_at >= matched_at) AND (skipped_at IS NULL OR skipped_at >= matched_at) AND (capacity_released_at IS NULL OR capacity_released_at >= matched_at) AND (expired_at IS NULL OR expired_at >= matched_at) AND (blocked_at IS NULL OR blocked_at >= matched_at)` [name: 'ck_post_recipient_timestamps']
+    `(status = 'SKIPPED') = (skipped_at IS NOT NULL) AND (status = 'EXPIRED') = (expired_at IS NOT NULL) AND (status = 'BLOCKED') = (blocked_at IS NOT NULL) AND (status <> 'DISCOVERED' OR discovered_at IS NOT NULL) AND (status <> 'OPENED' OR opened_at IS NOT NULL) AND (status <> 'AVAILABLE' OR (discovered_at IS NULL AND opened_at IS NULL))` [name: 'ck_post_recipient_status_timestamps']
+  }
+
+  Note: '테이블 설명: 방향 글별로 최종 선정된 수신자와 열람·답변 권한 및 처리 상태를 저장하는 테이블이다. 필요 이유: 매칭 결과를 실제 열람·답변 권한으로 고정해 매 조회마다 위치를 재계산하지 않고 수신 상태와 용량을 추적한다. 트리거 불변식: SQL DDL의 ct_post_recipient_not_sender(DEFERRABLE INITIALLY DEFERRED)가 direction_post.sender_id와 같은 사용자를 수신자로 넣는 것을 거부해, 발신자가 자기 글을 수신하지 못한다. ct_post_recipient_capacity_release(DEFERRABLE INITIALLY DEFERRED)는 status가 ANSWERED·SKIPPED·EXPIRED·BLOCKED인 것과 capacity_released_at이 채워진 것이 서로 동치임을 커밋 시점에 검사한다. 즉시 검사하는 CHECK가 아니라 지연 트리거인 이유는 T6·T6A·T6B가 상태 전이와 조건부 용량 해제를 같은 트랜잭션 안의 서로 다른 문장으로 수행하기 때문이다. 이 트리거는 NEW가 아니라 post_recipient를 다시 조회해 판정한다. 지연 AFTER ROW 트리거는 실행 시점만 커밋으로 미룰 뿐 전달받는 튜플은 자신을 큐에 넣은 문장 당시의 버전이라, NEW로 판정하면 해제 직전의 중간 상태를 보고 잘못 실패한다. 상태 대응: ck_post_recipient_status_timestamps는 SKIPPED·EXPIRED·BLOCKED를 각자의 타임스탬프와 동치로 묶고, DISCOVERED·OPENED에는 해당 타임스탬프를 요구하며, AVAILABLE에는 열람 흔적이 없어야 함을 강제한다. 2026-08-03 이전에는 이 테이블만 상태와 타임스탬프를 연결하는 제약이 없어 status=SKIPPED인데 skipped_at이 비어 있는 행이 허용됐다.'
+}
+
+Table answer [headercolor: #F28E2B] {
+  id bigint [pk, increment, not null, note: '행을 식별하는 기본키']
+  post_recipient_id bigint [not null, note: '답변 권한의 근거가 되는 수신 권한']
+  author_id bigint [not null, note: '답변을 작성한 수신 사용자']
+  status answer_status [not null, default: 'SUBMITTED', note: '현재 처리 상태']
+  idempotency_key varchar(200) [not null, note: '동일 요청의 중복 처리를 막는 멱등키']
+  body_text text [note: '사용자가 작성한 글 본문']
+  coarse_region_code varchar(100) [not null, note: '정확 위치 대신 사용하는 흐린 지역 코드']
+  bearing_from_sender_deg numeric(7,3) [not null, note: '발신자 원점에서 답변자까지의 방위각 스냅샷']
+  distance_band varchar(50) [not null, note: '정확 거리 대신 노출할 거리 구간']
+  moderation_status content_moderation_status [not null, default: 'PENDING', note: '콘텐츠 안전 검사 결과']
+  submitted_at timestamptz [not null, default: `clock_timestamp()`, note: '사용자가 제출을 완료한 시각']
+  published_at timestamptz [note: '상대 사용자에게 공개된 시각']
+  deleted_at timestamptz [note: '삭제 처리된 시각']
+
+  indexes {
+    (author_id, idempotency_key) [unique, name: 'uq_answer_idempotency']
+    (id, author_id) [unique, name: 'uq_answer_id_author']
+    (post_recipient_id, published_at) [name: 'answer_recipient_idx', note: 'SQL DDL은 published_at DESC 정렬이며 DBML은 컬럼 정렬 방향을 표현하지 않는다']
+    coarse_region_code [name: 'answer_region_idx', note: 'region_code 삭제 시 RESTRICT 검사용 FK 인덱스']
+  }
+
+  checks {
+    `body_text IS NULL OR btrim(body_text) <> ''` [name: 'ck_answer_body']
+    `bearing_from_sender_deg >= 0 AND bearing_from_sender_deg < 360` [name: 'ck_answer_bearing']
+    `btrim(distance_band) <> ''` [name: 'ck_answer_distance_band']
+    `status <> 'PUBLISHED' OR published_at IS NOT NULL` [name: 'ck_answer_published_at']
+    `(status = 'DELETED') = (deleted_at IS NOT NULL)` [name: 'ck_answer_deleted_at']
+  }
+
+  Note: '테이블 설명: 방향 글 수신자가 작성한 글·사진 답변과 검사·공개·삭제 상태를 관리하는 테이블이다. 필요 이유: 수신 권한을 가진 사용자만 응답하게 하고 답변의 검사·공개·삭제와 멱등 제출을 독립 관리한다. 트리거 불변식: SQL DDL의 ct_answer_has_content(DEFERRABLE INITIALLY DEFERRED)가 status=PUBLISHED인 답변에 body_text 또는 status=READY인 첨부 미디어가 최소 하나 있어야 커밋되게 한다. 미확정 사항: 한 수신 권한당 답변 개수 상한이 결정되지 않아 post_recipient_id에 unique를 걸지 않았다. 현재는 멱등 키만 중복 제출을 막는다.'
+}
+
+// -----------------------------------------------------------------------------
+// 차단, 신고와 운영 검토
+// -----------------------------------------------------------------------------
+
+Table user_block [headercolor: #E15759] {
+  blocker_id bigint [not null, note: '차단을 실행한 사용자 식별자']
+  blocked_id bigint [not null, note: '차단 대상 사용자 식별자']
+  created_at timestamptz [not null, default: `clock_timestamp()`, note: '행이 생성된 시각']
+  released_at timestamptz [note: '차단 해제 시각이며 비어 있으면 현재 차단 중']
+
+  indexes {
+    (blocker_id, blocked_id) [pk, name: 'pk_user_block']
+    (blocked_id, blocker_id) [name: 'user_block_reverse_idx', note: 'SQL DDL은 released_at IS NULL인 partial index']
+  }
+
+  checks {
+    `blocker_id <> blocked_id` [name: 'ck_user_block_not_self']
+    `released_at IS NULL OR released_at >= created_at` [name: 'ck_user_block_release']
+  }
+
+  Note: '테이블 설명: 차단한 사용자와 차단된 사용자 쌍, 차단 시작과 해제 시각을 관리하는 관계 테이블이다. 필요 이유: 현재 차단 관계를 매칭·조회·알림에서 공통 확인해 차단한 사용자가 다시 연결되는 것을 막는다.'
+}
+
+Table report [headercolor: #E15759] {
+  id bigint [pk, increment, not null, note: '행을 식별하는 기본키']
+  reporter_id bigint [not null, note: '신고를 제출한 사용자']
+  target_user_id bigint [note: '사용자를 신고한 경우 대상 사용자']
+  direction_post_id bigint [note: '방향 글을 신고한 경우 대상 글']
+  answer_id bigint [note: '답변을 신고한 경우 대상 답변']
+  reason_code varchar(50) [not null, note: '신고 사유 분류 코드']
+  detail text [note: '신고자가 작성한 상세 설명']
+  status report_status [not null, default: 'RECEIVED', note: '현재 처리 상태']
+  created_at timestamptz [not null, default: `clock_timestamp()`, note: '행이 생성된 시각']
+  resolved_at timestamptz [note: '운영 판정이 끝난 시각']
+
+  indexes {
+    (reporter_id, target_user_id) [unique, name: 'uq_open_report_user', note: '주의: 실제 제약은 무조건 unique가 아니다. SQL DDL은 target_user_id IS NOT NULL이고 status IN (RECEIVED, AUTO_HIDDEN, UNDER_REVIEW)인 행에만 적용되는 partial unique index이므로, 신고가 종결되면 같은 사용자를 다시 신고할 수 있다']
+    (reporter_id, direction_post_id) [unique, name: 'uq_open_report_post', note: '주의: 실제 제약은 무조건 unique가 아니다. SQL DDL은 direction_post_id IS NOT NULL이고 status IN (RECEIVED, AUTO_HIDDEN, UNDER_REVIEW)인 행에만 적용되는 partial unique index이므로, 신고가 종결되면 같은 글을 다시 신고할 수 있다']
+    (reporter_id, answer_id) [unique, name: 'uq_open_report_answer', note: '주의: 실제 제약은 무조건 unique가 아니다. SQL DDL은 answer_id IS NOT NULL이고 status IN (RECEIVED, AUTO_HIDDEN, UNDER_REVIEW)인 행에만 적용되는 partial unique index이므로, 신고가 종결되면 같은 답변을 다시 신고할 수 있다']
+    (status, created_at) [name: 'report_queue_idx', note: '운영 검토 대기열 조회용. SQL DDL은 RECEIVED, AUTO_HIDDEN, UNDER_REVIEW인 partial index']
+    target_user_id [name: 'report_target_user_idx', note: 'SQL DDL은 target_user_id IS NOT NULL인 partial index. 대상별 누적 신고 조회와 FK RESTRICT 검사용']
+    direction_post_id [name: 'report_direction_post_idx', note: 'SQL DDL은 direction_post_id IS NOT NULL인 partial index. 대상별 누적 신고 조회와 FK RESTRICT 검사용']
+    answer_id [name: 'report_answer_idx', note: 'SQL DDL은 answer_id IS NOT NULL인 partial index. 대상별 누적 신고 조회와 FK RESTRICT 검사용']
+  }
+
+  checks {
+    `num_nonnulls(target_user_id, direction_post_id, answer_id) = 1` [name: 'ck_report_exactly_one_target']
+    `btrim(reason_code) <> ''` [name: 'ck_report_reason']
+    `resolved_at IS NULL OR resolved_at >= created_at` [name: 'ck_report_resolution']
+  }
+
+  Note: '테이블 설명: 사용자, 방향 글 또는 답변에 대해 접수된 신고 대상·사유·처리 상태를 관리하는 테이블이다. 필요 이유: 사용자·방향 글·답변 중 하나에 대한 신고를 사건 단위로 접수하고 상태와 중복 미해결 신고를 관리한다.'
+}
+
+Table moderation_review [headercolor: #E15759] {
+  id bigint [pk, increment, not null, note: '행을 식별하는 기본키']
+  report_id bigint [not null, note: '판정 대상 신고 사건']
+  reviewer_id bigint [not null, note: '검토를 수행한 운영자']
+  decision moderation_review_decision [not null, note: '위반 조치·위반 없음·추가 정보 필요 판정']
+  action_type varchar(50) [not null, note: '숨김·계정 제한 등 실제 조치 코드']
+  internal_note text [note: '사용자에게 공개하지 않는 내부 메모']
+  reviewed_at timestamptz [not null, default: `clock_timestamp()`, note: '운영 판정을 확정한 시각']
+
+  indexes {
+    (report_id, reviewed_at) [name: 'moderation_review_report_idx', note: 'SQL DDL은 reviewed_at DESC 정렬. 신고별 판정 이력 조회와 FK RESTRICT 검사용']
+    reviewer_id [name: 'moderation_review_reviewer_idx', note: '운영자별 판정 이력 조회와 FK RESTRICT 검사용']
+  }
+
+  checks {
+    `btrim(action_type) <> ''` [name: 'ck_moderation_review_action_type']
+  }
+
+  Note: '테이블 설명: 신고 사건에 대한 운영자의 판정, 실제 조치와 내부 메모를 기록하는 검토 이력 테이블이다. 필요 이유: 신고 상태와 별도로 운영자의 판정·조치 이력을 남겨 변경 과정과 책임자를 감사할 수 있게 한다.'
+}
+
+// -----------------------------------------------------------------------------
+// 알림과 Outbox
+// -----------------------------------------------------------------------------
+
+Table push_device [headercolor: #B07AA1] {
+  id bigint [pk, increment, not null, note: '행을 식별하는 기본키']
+  user_id bigint [not null, note: '대상 사용자 식별자']
+  platform push_platform [not null, note: 'iOS 또는 Android 푸시 공급자 구분']
+  token_ciphertext bytea [not null, note: '암호화해 저장한 푸시 토큰 원문']
+  token_fingerprint varchar(128) [not null, note: '복호화 없이 중복을 확인하는 토큰 지문']
+  device_status push_device_status [not null, default: 'ACTIVE', note: '현재 발송 가능·무효·철회 상태']
+  last_seen_at timestamptz [not null, default: `clock_timestamp()`, note: '앱이 토큰을 마지막으로 확인한 시각']
+  revoked_at timestamptz [note: '토큰 사용을 철회한 시각']
+
+  indexes {
+    token_fingerprint [unique, name: 'uq_active_push_token', note: '주의: 실제 제약은 무조건 unique가 아니다. SQL DDL은 device_status=ACTIVE인 행에만 적용되는 partial unique index이므로, INVALID·REVOKED 기기는 같은 지문을 여러 행 가질 수 있다']
+    user_id [name: 'push_device_user_idx', note: 'SQL DDL은 device_status=ACTIVE인 partial index. 사용자별 발송 대상 기기 조회와 user_account CASCADE 삭제용']
+  }
+
+  checks {
+    `(device_status = 'REVOKED') = (revoked_at IS NOT NULL)` [name: 'ck_push_device_revoked_at']
+  }
+
+  Note: '테이블 설명: 사용자 기기별 플랫폼, 암호화된 푸시 토큰과 토큰 유효 상태를 관리하는 테이블이다. 필요 이유: 한 사용자의 여러 기기 토큰과 유효성·철회 상태를 분리해 기기별 푸시 대상을 관리한다.'
+}
+
+Table notification_preference [headercolor: #B07AA1] {
+  notification_type notification_type [not null, note: '사용자가 설정하는 알림 종류']
+  user_id bigint [not null, note: '대상 사용자 식별자']
+  enabled boolean [not null, default: true, note: '외부 알림 수신 허용 여부']
+  quiet_start time [note: '푸시를 즉시 보내지 않을 시간대 시작']
+  quiet_end time [note: '조용한 시간대 종료']
+  updated_at timestamptz [not null, default: `clock_timestamp()`, note: '마지막으로 변경된 시각']
+
+  indexes {
+    (notification_type, user_id) [pk, name: 'pk_notification_preference']
+    user_id [name: 'notification_preference_user_idx', note: 'PK의 선두 컬럼이 notification_type이라 user_id 단독 조회를 커버하지 못한다. 사용자별 설정 일괄 조회와 CASCADE 삭제용']
+  }
+
+  checks {
+    `num_nonnulls(quiet_start, quiet_end) IN (0, 2)` [name: 'ck_notification_preference_quiet_hours']
+  }
+
+  Note: '테이블 설명: 사용자별 알림 종류 수신 여부와 조용한 시간대를 관리하는 설정 테이블이다. 필요 이유: 사용자가 알림 종류별 수신 여부와 조용한 시간대를 독립적으로 설정하게 한다.'
+}
+
+Table outbox_event [headercolor: #B07AA1] {
+  id bigint [pk, increment, not null, note: '행을 식별하는 기본키']
+  aggregate_type outbox_aggregate_type [not null, note: '이벤트가 발생한 도메인 주체 종류']
+  aggregate_id bigint [not null, note: '이벤트가 발생한 도메인 주체 식별자']
+  event_type outbox_event_type [not null, note: '워커가 수행할 후속 작업 종류']
+  dedup_key varchar(255) [not null, unique, note: '같은 논리 이벤트의 중복을 막는 키. SQL DDL의 제약명은 uq_outbox_event_dedup다']
+  payload jsonb [not null, default: `'{}'::jsonb`, note: '후속 처리에 사용할 JSON 스냅샷']
+  status outbox_status [not null, default: 'PENDING', note: '현재 처리 상태']
+  attempt_count integer [not null, default: 0, note: '처리를 시도한 누적 횟수']
+  next_attempt_at timestamptz [not null, default: `clock_timestamp()`, note: '실패 후 다시 처리할 수 있는 시각']
+  created_at timestamptz [not null, default: `clock_timestamp()`, note: '행이 생성된 시각']
+  processed_at timestamptz [note: '후속 처리가 완료된 시각']
+
+  indexes {
+    (status, next_attempt_at, id) [name: 'outbox_event_dispatch_idx', note: 'SQL DDL은 PENDING, FAILED인 partial index']
+  }
+
+  checks {
+    `jsonb_typeof(payload) = 'object'` [name: 'ck_outbox_event_payload']
+    `attempt_count >= 0` [name: 'ck_outbox_event_attempt_count']
+    `(status = 'PROCESSED') = (processed_at IS NOT NULL) AND (processed_at IS NULL OR processed_at >= created_at)` [name: 'ck_outbox_event_processed_at']
+  }
+
+  Note: '테이블 설명: 도메인 트랜잭션에서 발생한 비동기 후속 작업을 안전하게 전달하기 위한 이벤트 테이블이다. 필요 이유: 도메인 변경과 비동기 작업 요청을 같은 트랜잭션에 저장해 커밋 후 매칭·알림 이벤트가 유실되는 문제를 막는다.'
+}
+
+Table notification [headercolor: #B07AA1] {
+  id bigint [pk, increment, not null, note: '행을 식별하는 기본키']
+  recipient_id bigint [not null, note: '알림을 확인할 사용자']
+  outbox_event_id bigint [not null, note: '알림 생성을 유발한 Outbox 이벤트']
+  notification_type notification_type [not null, note: '화면 문구와 이동 목적지를 결정하는 종류']
+  dedup_key varchar(255) [not null, note: '같은 사용자에게 동일 알림이 중복 생성되는 것을 막는 키']
+  direction_post_id bigint [note: '방향 글 관련 알림의 이동 대상']
+  answer_id bigint [note: '답변 관련 알림의 이동 대상']
+  status notification_status [not null, default: 'UNREAD', note: '현재 처리 상태']
+  created_at timestamptz [not null, default: `clock_timestamp()`, note: '행이 생성된 시각']
+  read_at timestamptz [note: '사용자가 알림을 확인한 시각']
+
+  indexes {
+    (recipient_id, dedup_key) [unique, name: 'uq_notification_recipient_dedup']
+    (recipient_id, read_at, created_at) [name: 'notification_inbox_idx', note: 'SQL DDL은 created_at DESC 정렬이며 DBML은 컬럼 정렬 방향을 표현하지 않는다']
+    outbox_event_id [name: 'notification_outbox_idx', note: 'Outbox 이벤트별 생성 알림 추적과 FK RESTRICT 검사용']
+    direction_post_id [name: 'notification_post_idx', note: 'SQL DDL은 direction_post_id IS NOT NULL인 partial index. direction_post 삭제 시 SET NULL 갱신 대상을 찾는 데 필요하다']
+    answer_id [name: 'notification_answer_idx', note: 'SQL DDL은 answer_id IS NOT NULL인 partial index. answer 삭제 시 SET NULL 갱신 대상을 찾는 데 필요하다']
+  }
+
+  checks {
+    `num_nonnulls(direction_post_id, answer_id) <= 1` [name: 'ck_notification_target']
+    `read_at IS NULL OR (read_at >= created_at AND status IN ('READ', 'DISMISSED'))` [name: 'ck_notification_read_at']
+  }
+
+  Note: '테이블 설명: 사용자에게 노출되는 앱 내 알림의 종류, 이동 대상, 읽음 상태를 관리하는 테이블이다. 필요 이유: 푸시 성공 여부와 무관한 앱 내 알림의 진실의 원천을 제공하고 사용자별 중복 생성을 막는다.'
+}
+
+Table notification_delivery [headercolor: #B07AA1] {
+  id bigint [pk, increment, not null, note: '행을 식별하는 기본키']
+  notification_id bigint [not null, note: '푸시로 전달할 앱 내 알림']
+  push_device_id bigint [not null, note: '발송을 시도할 대상 기기']
+  status notification_delivery_status [not null, default: 'PENDING', note: '현재 처리 상태']
+  attempt_count integer [not null, default: 0, note: '처리를 시도한 누적 횟수']
+  next_attempt_at timestamptz [not null, default: `clock_timestamp()`, note: '실패 후 다시 처리할 수 있는 시각']
+  created_at timestamptz [not null, default: `clock_timestamp()`, note: '행이 생성된 시각']
+  sent_at timestamptz [note: '푸시 공급자가 요청을 수락한 시각']
+  provider_message_id varchar(255) [note: '푸시 공급자가 반환한 추적 메시지 식별자']
+
+  indexes {
+    (notification_id, push_device_id) [unique, name: 'uq_notification_delivery_device']
+    (status, next_attempt_at, id) [name: 'notification_delivery_dispatch_idx', note: 'SQL DDL은 PENDING, FAILED인 partial index']
+    push_device_id [name: 'notification_delivery_device_idx', note: 'uq_notification_delivery_device의 선두 컬럼이 notification_id라 push_device_id 단독 조회를 커버하지 못한다. 기기 철회 시 전달 작업 취소와 FK RESTRICT 검사용']
+  }
+
+  checks {
+    `attempt_count >= 0` [name: 'ck_notification_delivery_attempt_count']
+    `(status = 'SENT') = (sent_at IS NOT NULL) AND (sent_at IS NULL OR sent_at >= created_at)` [name: 'ck_notification_delivery_sent_at']
+  }
+
+  Note: '테이블 설명: 앱 내 알림을 개별 푸시 기기로 전달한 시도, 재시도와 공급자 응답을 기록하는 테이블이다. 필요 이유: 하나의 앱 내 알림을 여러 기기에 보내는 개별 시도와 재시도·실패·공급자 응답을 추적한다.'
+}
+
+// -----------------------------------------------------------------------------
+// 관계
+// -----------------------------------------------------------------------------
+
+Ref fk_region_code_parent: region_code.parent_code > region_code.code [delete: restrict]
+
+Ref fk_user_account_region: user_account.coarse_region_code > region_code.code [delete: restrict]
+Ref fk_user_private_attribute_user: user_account.id - user_private_attribute.user_id [delete: cascade]
+Ref fk_active_user_presence_user: user_account.id - active_user_presence.user_id [delete: cascade]
+Ref fk_active_user_presence_region: active_user_presence.coarse_region_code > region_code.code [delete: restrict]
+Ref fk_recipient_receive_state_user: user_account.id - recipient_receive_state.user_id [delete: cascade]
+
+Ref fk_question_proposal_proposer: question_proposal.proposer_id > user_account.id [delete: restrict]
+Ref fk_question_proposal_review_proposal: question_proposal_review.proposal_id > question_proposal.id [delete: restrict]
+Ref fk_question_proposal_review_reviewer: question_proposal_review.reviewer_id > user_account.id [delete: restrict]
+Ref fk_approved_question_source_proposal: approved_question.source_proposal_id > question_proposal.id [delete: restrict]
+Ref fk_approved_question_approver: approved_question.approved_by > user_account.id [delete: restrict]
+Ref fk_question_assignment_cycle_user: question_assignment_cycle.user_id > user_account.id [delete: restrict]
+Ref fk_question_assignment_cycle: question_assignment.cycle_id > question_assignment_cycle.id [delete: cascade]
+Ref fk_question_assignment_question: question_assignment.approved_question_id > approved_question.id [delete: restrict]
+
+Ref fk_direction_segment_scheme: direction_segment.scheme_id > direction_scheme.id [delete: restrict]
+Ref fk_media_asset_owner: media_asset.owner_id > user_account.id [delete: restrict]
+Ref fk_direction_post_sender: direction_post.sender_id > user_account.id [delete: restrict]
+Ref fk_direction_post_question: direction_post.approved_question_id > approved_question.id [delete: restrict]
+Ref fk_direction_post_region: direction_post.coarse_region_code > region_code.code [delete: restrict]
+Ref fk_post_audience_post: direction_post.id - post_audience.post_id [delete: cascade]
+Ref fk_post_audience_segment: post_audience.(direction_scheme_id, selected_segment_key) > direction_segment.(scheme_id, segment_key) [delete: restrict]
+Ref fk_media_attachment_asset_owner: media_attachment.(media_id, owner_id) > media_asset.(id, owner_id) [delete: restrict]
+Ref fk_media_attachment_post_owner: media_attachment.(post_id, owner_id) > direction_post.(id, sender_id) [delete: cascade]
+Ref fk_media_attachment_answer_owner: media_attachment.(answer_id, owner_id) > answer.(id, author_id) [delete: cascade]
+Ref fk_post_recipient_post: post_recipient.post_id > direction_post.id [delete: cascade]
+Ref fk_post_recipient_user: post_recipient.recipient_id > user_account.id [delete: restrict]
+Ref fk_post_recipient_region: post_recipient.matched_region_code > region_code.code [delete: restrict]
+Ref fk_answer_recipient_author: answer.(post_recipient_id, author_id) > post_recipient.(id, recipient_id) [delete: restrict]
+Ref fk_answer_region: answer.coarse_region_code > region_code.code [delete: restrict]
+
+Ref fk_user_block_blocker: user_block.blocker_id > user_account.id [delete: cascade]
+Ref fk_user_block_blocked: user_block.blocked_id > user_account.id [delete: cascade]
+Ref fk_report_reporter: report.reporter_id > user_account.id [delete: restrict]
+Ref fk_report_target_user: report.target_user_id > user_account.id [delete: restrict]
+Ref fk_report_direction_post: report.direction_post_id > direction_post.id [delete: restrict]
+Ref fk_report_answer: report.answer_id > answer.id [delete: restrict]
+Ref fk_moderation_review_report: moderation_review.report_id > report.id [delete: restrict]
+Ref fk_moderation_review_reviewer: moderation_review.reviewer_id > user_account.id [delete: restrict]
+
+Ref fk_push_device_user: push_device.user_id > user_account.id [delete: cascade]
+Ref fk_notification_preference_user: notification_preference.user_id > user_account.id [delete: cascade]
+Ref fk_notification_recipient: notification.recipient_id > user_account.id [delete: restrict]
+Ref fk_notification_outbox: notification.outbox_event_id > outbox_event.id [delete: restrict]
+Ref fk_notification_post: notification.direction_post_id > direction_post.id [delete: set null]
+Ref fk_notification_answer: notification.answer_id > answer.id [delete: set null]
+Ref fk_notification_delivery_notification: notification_delivery.notification_id > notification.id [delete: cascade]
+Ref fk_notification_delivery_device: notification_delivery.push_device_id > push_device.id [delete: restrict]
+
+// -----------------------------------------------------------------------------
+// dbdocs 그룹
+// -----------------------------------------------------------------------------
+
+TableGroup account_and_location [color: #D9EAF7, note: '계정, 지역, 위치 TTL, 수신 용량'] {
+  region_code
+  user_account
+  user_private_attribute
+  active_user_presence
+  recipient_receive_state
+}
+
+TableGroup question_supply [color: #DFF2D8, note: '질문 제안, 운영 검토, 승인 질문, 사용자별 배정'] {
+  question_proposal
+  question_proposal_review
+  approved_question
+  question_assignment_cycle
+  question_assignment
+}
+
+TableGroup direction_communication [color: #FCE4CC, note: '방향 정책, 발송 콘텐츠, 수신 권한, 답변과 미디어'] {
+  direction_scheme
+  direction_segment
+  media_asset
+  direction_post
+  post_audience
+  media_attachment
+  post_recipient
+  answer
+}
+
+TableGroup safety_and_moderation [color: #F8D7DA, note: '차단, 신고, 운영 판정'] {
+  user_block
+  report
+  moderation_review
+}
+
+TableGroup notification_and_outbox [color: #EADCF0, note: '앱 내 알림, 푸시 기기·전달, 트랜잭셔널 Outbox'] {
+  push_device
+  notification_preference
+  outbox_event
+  notification
+  notification_delivery
+}
