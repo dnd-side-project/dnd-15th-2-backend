@@ -1,0 +1,107 @@
+package com.dnd.qello.account.repository.jpa;
+
+import java.time.Instant;
+
+import com.dnd.qello.account.domain.AccountRole;
+import com.dnd.qello.account.domain.AccountStatus;
+import com.dnd.qello.common.persistence.JpaAuditableEntity;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+
+@Entity
+@Table(name = "user_account")
+public class AccountJpaEntity extends JpaAuditableEntity {
+
+	@Id
+	@GeneratedValue(strategy = GenerationType.IDENTITY)
+	private Long id;
+
+	@Enumerated(EnumType.STRING)
+	@Column(name = "role", nullable = false, length = 20)
+	private AccountRole role;
+
+	@Enumerated(EnumType.STRING)
+	@Column(name = "status", nullable = false, length = 20)
+	private AccountStatus status;
+
+	@Column(name = "coarse_region_code", nullable = false, length = 100)
+	private String coarseRegionCode;
+
+	@Column(name = "locale", nullable = false, length = 35)
+	private String locale;
+
+	@Column(name = "timezone", nullable = false, length = 64)
+	private String timezone;
+
+	@Column(name = "nickname", length = 50)
+	private String nickname;
+
+	@Column(name = "deleted_at")
+	private Instant deletedAt;
+
+	protected AccountJpaEntity() {
+	}
+
+	AccountJpaEntity(
+		Long id,
+		AccountRole role,
+		AccountStatus status,
+		String coarseRegionCode,
+		String locale,
+		String timezone,
+		String nickname,
+		Instant createdAt,
+		Instant updatedAt,
+		Instant deletedAt
+	) {
+		super(createdAt, updatedAt);
+		this.id = id;
+		this.role = role;
+		this.status = status;
+		this.coarseRegionCode = coarseRegionCode;
+		this.locale = locale;
+		this.timezone = timezone;
+		this.nickname = nickname;
+		this.deletedAt = deletedAt;
+	}
+
+	Long getId() {
+		return id;
+	}
+
+	AccountRole getRole() {
+		return role;
+	}
+
+	AccountStatus getStatus() {
+		return status;
+	}
+
+	String getCoarseRegionCode() {
+		return coarseRegionCode;
+	}
+
+	String getLocale() {
+		return locale;
+	}
+
+	String getTimezone() {
+		return timezone;
+	}
+
+	String getNickname() {
+		return nickname;
+	}
+
+	Instant getDeletedAt() {
+		return deletedAt;
+	}
+
+}

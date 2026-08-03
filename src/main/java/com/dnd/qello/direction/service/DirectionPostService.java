@@ -1,0 +1,147 @@
+package com.dnd.qello.direction.service;
+
+import java.math.BigDecimal;
+import java.time.Instant;
+import java.util.List;
+import java.util.Objects;
+
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import com.dnd.qello.direction.domain.ActiveUserPresence;
+import com.dnd.qello.direction.domain.DirectionCandidate;
+import com.dnd.qello.direction.domain.DirectionPost;
+import com.dnd.qello.direction.domain.DirectionPostStatus;
+import com.dnd.qello.direction.domain.DirectionScheme;
+import com.dnd.qello.direction.domain.DirectionSegment;
+import com.dnd.qello.direction.domain.PostAudience;
+import com.dnd.qello.direction.domain.PostRecipient;
+import com.dnd.qello.direction.domain.RecipientReceiveState;
+import com.dnd.qello.direction.repository.ActiveUserPresenceRepository;
+import com.dnd.qello.direction.repository.DirectionPostRepository;
+import com.dnd.qello.direction.repository.DirectionSchemeRepository;
+import com.dnd.qello.direction.repository.PostAudienceRepository;
+import com.dnd.qello.direction.repository.PostRecipientRepository;
+import com.dnd.qello.direction.repository.RecipientReceiveStateRepository;
+import com.dnd.qello.question.repository.ApprovedQuestionRepository;
+
+/** 방향 preview를 참고값으로만 사용하고, send transaction에서 다시 계산한다. */
+@Service
+public class DirectionPostService {
+
+	private final DirectionSchemeRepository schemeRepository;
+	private final ActiveUserPresenceRepository presenceRepository;
+	private final RecipientReceiveStateRepository receiveStateRepository;
+	private final DirectionPostRepository postRepository;
+	private final PostAudienceRepository audienceRepository;
+	private final PostRecipientRepository recipientRepository;
+	private final ApprovedQuestionRepository approvedQuestionRepository;
+
+	public DirectionPostService(DirectionSchemeRepository schemeRepository, ActiveUserPresenceRepository presenceRepository,
+		RecipientReceiveStateRepository receiveStateRepository, DirectionPostRepository postRepository,
+		PostAudienceRepository audienceRepository, PostRecipientRepository recipientRepository,
+		ApprovedQuestionRepository approvedQuestionRepository) {
+		this.schemeRepository = schemeRepository;
+		this.presenceRepository = presenceRepository;
+		this.receiveStateRepository = receiveStateRepository;
+		this.postRepository = postRepository;
+		this.audienceRepository = audienceRepository;
+		this.recipientRepository = recipientRepository;
+		this.approvedQuestionRepository = approvedQuestionRepository;
+	}
+
+	@Transactional(readOnly = true)
+	public List<DirectionCandidate> preview(PreviewCommand command) {
+		Objects.requireNonNull(command, "command는 필수입니다");
+		ActiveUserPresence sender = activeSender(command.senderId(), command.at());
+		DirectionSegment segment = segment(command.schemeId(), command.segmentKey());
+		return candidates(command, sender, segment);
+	}
+
+	@Transactional
+	public SendResult send(SendCommand command) {
+		Objects.requireNonNull(command, "command는 필수입니다");
+		var existing = postRepository.findBySenderAndIdempotencyKey(command.senderId(), command.idempotencyKey());
+		if (existing.isPresent()) return new SendResult(existing.get(), audienceRepository.findByPostId(existing.get().getId()).orElse(null), recipientRepository.findAllByPostId(existing.get().getId()));
+
+		if (approvedQuestionRepository.findAssignableAt(command.submittedAt()).stream()
+			.noneMatch(question -> question.getId().equals(command.approvedQuestionId()))) {
+			throw new IllegalStateException("전송 시각에 활성인 질문이 아닙니다: " + command.approvedQuestionId());
+		}
+		ActiveUserPresence sender = activeSender(command.senderId(), command.submittedAt());
+		DirectionSegment segment = segment(command.schemeId(), command.segmentKey());
+		DirectionPost post = postRepository.save(DirectionPost.submit(command.senderId(), command.approvedQuestionId(),
+			command.idempotencyKey(), command.bodyText(), command.coarseRegionCode(), command.submittedAt(), command.expiresAt()));
+		PostAudience audience = audienceRepository.save(PostAudience.create(post.getId(), command.schemeId(), segment.getSegmentKey(),
+			segment.getCenterBearingDegrees(), segment.getAngularWidthDegrees(), command.minDistanceMeters(), command.maxDistanceMeters(),
+			sender.getLatitude(), sender.getLongitude(), sender.getCoarseCellId(), command.submittedAt()));
+
+		PreviewCommand candidateCommand = new PreviewCommand(command.senderId(), command.schemeId(), command.segmentKey(),
+			command.minDistanceMeters(), command.maxDistanceMeters(), command.coarseRegionCode(), command.submittedAt());
+		List<PostRecipient> recipients = candidates(candidateCommand, sender, segment).stream()
+			.filter(candidate -> reserve(candidate.userId(), command.submittedAt()))
+			.map(candidate -> recipientRepository.save(PostRecipient.available(post.getId(), candidate.userId(), command.distanceBand(),
+				candidate.bearingDegrees(), candidate.matchedRegionCode(), command.submittedAt())))
+			.toList();
+		return new SendResult(post, audience, recipients);
+	}
+
+	private List<DirectionCandidate> candidates(PreviewCommand command, ActiveUserPresence sender, DirectionSegment segment) {
+		double center = segment.getCenterBearingDegrees().doubleValue();
+		double half = segment.getAngularWidthDegrees().doubleValue() / 2.0;
+		double start = DirectionScheme.normalize(center - half);
+		double end = DirectionScheme.normalize(center + half);
+		if (sender.getLatitude() == null || sender.getLongitude() == null) throw new IllegalStateException("정확 위치가 없는 presence는 후보를 계산할 수 없습니다");
+		return presenceRepository.findCandidates(command.senderId(), sender.getLatitude().doubleValue(), sender.getLongitude().doubleValue(),
+			command.minDistanceMeters(), command.maxDistanceMeters(), start, end, command.at(), command.coarseRegionCode());
+	}
+
+	private DirectionSegment segment(long schemeId, String segmentKey) {
+		DirectionScheme scheme = schemeRepository.findById(schemeId).orElseThrow(() -> new IllegalArgumentException("direction scheme을 찾을 수 없습니다: " + schemeId));
+		List<DirectionSegment> segments = schemeRepository.findSegments(schemeId);
+		scheme.validateCoverage(segments);
+		return segments.stream().filter(candidate -> candidate.getSegmentKey().equals(segmentKey)).findFirst()
+			.orElseThrow(() -> new IllegalArgumentException("direction segment을 찾을 수 없습니다: " + segmentKey));
+	}
+
+	private ActiveUserPresence activeSender(long senderId, Instant at) {
+		ActiveUserPresence sender = presenceRepository.findByUserId(senderId)
+			.orElseThrow(() -> new IllegalStateException("sender presence를 찾을 수 없습니다: " + senderId));
+		if (!sender.isCurrentAt(at)) throw new IllegalStateException("sender presence가 만료되었거나 수신 허용이 아닙니다");
+		return sender;
+	}
+
+	private boolean reserve(long userId, Instant at) {
+		if (receiveStateRepository.findByUserId(userId).isEmpty()) {
+			receiveStateRepository.save(RecipientReceiveState.restore(userId, 0, 0, at, null, at));
+		}
+		return receiveStateRepository.reserve(userId, at);
+	}
+
+	public record PreviewCommand(Long senderId, Long schemeId, String segmentKey, long minDistanceMeters,
+		long maxDistanceMeters, String coarseRegionCode, Instant at) {
+		public PreviewCommand {
+			if (senderId == null || senderId <= 0 || schemeId == null || schemeId <= 0) throw new IllegalArgumentException("ID가 유효하지 않습니다");
+			if (minDistanceMeters < 0 || maxDistanceMeters <= minDistanceMeters) throw new IllegalArgumentException("거리 범위가 유효하지 않습니다");
+			Objects.requireNonNull(segmentKey, "segmentKey는 필수입니다");
+			Objects.requireNonNull(at, "at은 필수입니다");
+		}
+	}
+
+	public record SendCommand(Long senderId, Long approvedQuestionId, Long schemeId, String segmentKey,
+		long minDistanceMeters, long maxDistanceMeters, String coarseRegionCode, String idempotencyKey,
+		String bodyText, String distanceBand, Instant submittedAt, Instant expiresAt) {
+		public SendCommand {
+			if (senderId == null || senderId <= 0 || approvedQuestionId == null || approvedQuestionId <= 0 || schemeId == null || schemeId <= 0) throw new IllegalArgumentException("ID가 유효하지 않습니다");
+			if (minDistanceMeters < 0 || maxDistanceMeters <= minDistanceMeters) throw new IllegalArgumentException("거리 범위가 유효하지 않습니다");
+			if (segmentKey == null || segmentKey.isBlank() || coarseRegionCode == null || coarseRegionCode.isBlank() || idempotencyKey == null || idempotencyKey.isBlank() || distanceBand == null || distanceBand.isBlank()) throw new IllegalArgumentException("필수 command 값이 없습니다");
+			Objects.requireNonNull(submittedAt, "submittedAt은 필수입니다");
+			Objects.requireNonNull(expiresAt, "expiresAt은 필수입니다");
+			if (!expiresAt.isAfter(submittedAt)) throw new IllegalArgumentException("expiresAt은 submittedAt보다 늦어야 합니다");
+		}
+	}
+
+	public record SendResult(DirectionPost post, PostAudience audience, List<PostRecipient> recipients) {
+		public SendResult { recipients = List.copyOf(recipients); }
+	}
+}

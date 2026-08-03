@@ -37,8 +37,9 @@ Qello 백엔드는 하나의 Spring Boot 애플리케이션 안에서 Package-by
 
 `local` profile은 Git에서 제외되는 `.env`로 Compose PostgreSQL/PostGIS에 연결합니다.
 `test` profile은 Testcontainers가 임시 PostGIS DB를 공급하므로 개발자 로컬 DB에
-의존하지 않습니다. JDBC는 연결과 명시적 SQL 기반으로 사용하며, JPA와 Flyway는
-실제 Entity 또는 추적 schema를 추가하는 후속 Issue에서 결정합니다.
+의존하지 않습니다. Flyway가 schema 변경을 단독 소유하고 Hibernate는 시작 시
+schema를 검증만 합니다. 일반 aggregate CRUD는 JPA, PostGIS·락·조건부 갱신·bulk
+처리는 명시적 JDBC를 사용합니다.
 
 ## 시작하기
 
