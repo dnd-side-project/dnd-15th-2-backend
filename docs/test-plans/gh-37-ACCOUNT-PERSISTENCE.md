@@ -2,7 +2,7 @@
 
 > Created at: `2026-08-03T18:03:23+09:00`
 > GitHub Issue: `#37`
-> Status: Draft — human approval required before implementation
+> Status: Approved
 
 ## 1. Objective
 
@@ -119,7 +119,7 @@ check constraint를 실제 PostgreSQL에서 정확히 지킨다는 증거를 만
 
 | Order | Executor | Owned files | Scenario IDs | Verification |
 | --- | --- | --- | --- | --- |
-| 1 | Configuration executor | `build.gradle`, `src/main/resources/application.properties`, `src/main/java/com/dnd/qello/common/persistence/**` | UNIT-004, INT-001 prerequisite | `compileJava`, context startup |
+| 1 | Configuration executor | `build.gradle`, `README.md`, `src/main/resources/application.properties`, `src/main/java/com/dnd/qello/common/persistence/**` | UNIT-004, INT-001 prerequisite | `compileJava`, context startup |
 | 2 | Account executor | `src/main/java/com/dnd/qello/account/**` | UNIT-001~002, INT-002~003 prerequisite | `compileJava`, account unit tests |
 | 3 | Test executor | `src/test/**`, `src/integrationTest/**`, `docs/reports/tests/gh-37-*.md` | UNIT-003~004, INT-001~005 | `test`, `integrationTest`, report |
 | 4 | Orchestrator | `TASK.md`, test plan/report review only | all | Harness, Hook, diff checks |
@@ -129,17 +129,17 @@ check constraint를 실제 PostgreSQL에서 정확히 지킨다는 증거를 만
 
 ## 10. Completion criteria
 
-- [ ] 모든 P0 시나리오 구현
-- [ ] 모든 테스트 메서드에 `@DisplayName`
-- [ ] 테스트 클래스 헤더의 timestamp와 source scenario 검증
-- [ ] 단위 테스트 통과
-- [ ] 통합 테스트 통과
-- [ ] 잠재 문제 분석
-- [ ] 테스트 보고서 생성
-- [ ] JDK 21로 `./harness pr-ready --project-tests` 통과
+- [x] 모든 P0 시나리오 구현
+- [x] 모든 테스트 메서드에 `@DisplayName`
+- [x] 테스트 클래스 헤더의 timestamp와 source scenario 검증
+- [x] 단위 테스트 통과
+- [x] 통합 테스트 통과
+- [x] 잠재 문제 분석
+- [x] 테스트 보고서 생성
+- [x] JDK 21로 `./harness pr-ready --project-tests` 통과
 
 ## 11. Human approval
 
-- Reviewer: pending
-- Decision: pending
-- Approved at: pending
+- Reviewer: Byuntil
+- Decision: Approved
+- Approved at: `2026-08-03T18:10:07+09:00`
