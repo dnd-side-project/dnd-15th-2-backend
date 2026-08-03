@@ -31,8 +31,6 @@ tasks.named('test') {
 
 sourceSets {
 	integrationTest {
-		java.srcDir file('src/integrationTest/java')
-		resources.srcDir file('src/integrationTest/resources')
 		compileClasspath += sourceSets.main.output
 		runtimeClasspath += output + compileClasspath
 	}
