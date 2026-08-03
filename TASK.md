@@ -1,48 +1,58 @@
-# GitHub Issue #37 Task Contract
+# GitHub Issue #38 Task Contract
 
-> Generated at: `2026-08-03T18:01:08+09:00`
+> Generated at: `2026-08-03T18:47:24+09:00`
 >
 > 이 파일은 현재 작업 브랜치의 계약이다. 저장소 전역 정책은 `AGENTS.md`를
 > 따른다.
 
 ## Work gate
 
-- Title: `JPA 공통 규칙과 Account 첫 수직 슬라이스`
-- GitHub Issue: `#37`
-- Branch: `feat/gh-37-account-persistence`
+- Title: `Question persistence`
+- GitHub Issue: `#38`
+- Branch: `feat/gh-38-question-persistence`
 
 ## Objective
 
-- 승인된 Flyway schema 위에 JPA 공통 매핑 규칙을 도입하고 `user_account`를
-  domain model → repository port → JPA adapter로 연결하는 첫 persistence 수직
-  슬라이스를 구현한다.
+- 승인된 질문 schema 위에 QuestionProposal → Review → ApprovedQuestion →
+  AssignmentCycle/Assignment 흐름을 domain model과 repository port/JPA adapter로
+  구현하고, 검토되지 않은 질문의 노출과 중복 배정을 transaction·constraint로
+  차단한다.
 
 ## Scope
 
-- Spring Boot가 관리하는 Spring Data JPA 의존성을 추가한다.
-- Hibernate는 Flyway가 만든 schema를 `validate`만 하고 생성·수정하지 않게 한다.
-- Open EntityManager in View를 끄고 PostgreSQL `TIMESTAMPTZ`를 `Instant`로 매핑한다.
-- JPA write의 `created_at`, `updated_at`을 Spring Data auditing으로 관리한다.
-- `account` feature 안에 Spring/JPA에 의존하지 않는 Account domain model과
-  repository port를 둔다.
-- `user_account` 전용 JPA Entity, Spring Data repository, mapper, adapter를 둔다.
-- `role`, `status`는 ordinal이 아닌 문자열 enum으로 매핑한다.
-- `coarse_region_code`는 다른 Entity 관계가 아닌 scalar FK ID로 매핑한다.
-- PostgreSQL/PostGIS Testcontainers에서 저장·조회·갱신·제약 위반·rollback과
-  Flyway/Hibernate schema 경계를 검증한다.
+- `question_proposal`, `question_proposal_review`, `approved_question`,
+  `question_assignment_cycle`, `question_assignment` 5개 테이블을 JPA로 매핑한다.
+- 제안, 승인 질문, 배정 주기를 분리된 aggregate로 두고 repository port와 JPA
+  adapter를 제공한다.
+- Account 및 aggregate 간 연결은 Entity 관계가 아닌 scalar ID로 보관한다.
+- 제안은 `DRAFT → SUBMITTED → UNDER_REVIEW → APPROVED/REJECTED` 최소 검수 흐름을
+  domain에서 검증하고, 제출 후 문구 불변 trigger를 함께 검증한다.
+- 승인·반려 시 review append, proposal 상태 변경, 승인 질문 생성을 한 transaction
+  경계에서 처리한다.
+- 사용자 제안에서 생성된 승인 질문은 최종 승인 transaction이 끝나기 전에는
+  `ACTIVE` 질문 조회에 노출하지 않는다.
+- 활성 질문 조회는 `status = ACTIVE`와 `[active_from, active_until)` 절대 시각을
+  기준으로 한다.
+- 배정 주기는 서버가 계산해 전달한 절대 `startsAt`/`endsAt`을 저장하고 사용자와
+  `cycleKey` 중복을 차단한다.
+- 같은 주기에서 질문과 표시 순서 중복, 잘못된 노출·사용 시각을 domain과 DB
+  constraint로 검증한다.
+- PostgreSQL/PostGIS Testcontainers에서 상태 전이, trigger, unique/check constraint,
+  transaction rollback과 repository query를 검증한다.
 
 ## Explicit exclusions
 
-- 적용된 V1 migration과 DBML/ERD/schema manifest는 수정하지 않는다.
-- 새 schema migration이나 Hibernate DDL 생성·수정은 추가하지 않는다.
-- `region_code`, `user_private_attribute`, `active_user_presence`,
-  `recipient_receive_state` Entity/Repository는 구현하지 않는다.
-- schema에 version column이 없으므로 이번 Issue에서는 `@Version` 낙관적 잠금을
-  도입하지 않는다. 동시 수정 lost-update 검증은 잔여 위험으로 기록한다.
-- 닉네임 고유성·변경 주기, 인증·세션, API와 제품 상태 전이 정책을 만들지 않는다.
-- Question, Direction, Answer, Safety, Notification persistence를 구현하지 않는다.
-- 다른 feature가 Account JPA Entity 또는 Spring Data Repository를 참조하게 하지
+- 적용된 V1 migration과 DBML/ERD/schema manifest를 수정하지 않는다.
+- 질문 배정 주기 길이, 주기당 질문 개수, 검수 SLA와 만료 기본값을 만들지 않는다.
+- 추천·랜덤 선택·최근 질문 제외·fallback 알고리즘을 구현하지 않는다.
+- 비속어·중복 의미·콘텐츠 안전 검사는 후속 safety pipeline 범위로 남긴다.
+- Question API, 운영 검수 UI, 인증·권한 검사를 구현하지 않는다.
+- Direction/PostGIS, Answer, Safety, Notification persistence를 구현하지 않는다.
+- Account JPA Entity/Repository를 직접 참조하지 않고 `Long` account ID만 사용한다.
+- 다른 feature가 Question JPA Entity 또는 Spring Data Repository를 참조하게 하지
   않는다.
+- 동시 상태 갱신용 version column이나 row lock을 임의 추가하지 않는다. 검수자
+  경합은 별도 concurrency 정책이 승인될 때까지 잔여 위험으로 기록한다.
 - 인프라 apply, 배포, 프로덕션 변경은 별도 승인 없이는 실행하지 않는다.
 - Secret, 계정 식별자, 토큰, `.env` 값은 기록하지 않는다.
 
@@ -50,16 +60,16 @@
 
 | Area | Owner | Required review |
 | --- | --- | --- |
-| JPA dependency, Hibernate safety config, auditing | Issue #37 configuration executor | Backend review |
-| Account domain model and repository port | Issue #37 account executor | Domain boundary review |
-| Account JPA Entity, mapper and adapter | Issue #37 account executor | Persistence review |
-| Unit/integration tests and report | TEST-PLAN-GH-37-ACCOUNT-PERSISTENCE | Test-plan approval |
+| Question domain models and transition rules | Issue #38 domain executor | Domain policy review |
+| Five JPA mappings, mappers and repository adapters | Issue #38 persistence executor | Schema mapping review |
+| Review approval and assignment transaction services | Issue #38 service executor | Transaction boundary review |
+| Unit/integration tests and report | TEST-PLAN-GH-38-QUESTION-PERSISTENCE | Test-plan approval |
 
 ## Existing user-owned changes
 
-- Issue #36 승인 commit `49b1d3c`을 origin에 push한 clean 상태에서 분기했다.
-- Issue #35/#36의 ADR, schema manifest, Flyway V1과 migration tests를 선행 계약으로
-  보존한다.
+- Issue #37 승인 commit `9e98dbc`을 origin에 push한 clean 상태에서 분기했다.
+- Issue #35~#37의 ADR, Flyway V1, JPA auditing과 Account domain/adapter를 선행
+  계약으로 보존한다.
 
 ## Validation
 
@@ -72,16 +82,17 @@ git diff --check
 
 ## Completion criteria
 
-- Account 저장 후 identity ID와 auditing timestamp가 생성된다.
-- Account를 ID로 조회하고 domain model로 복원할 수 있다.
-- enum은 `USER`/`OPERATOR`, `ACTIVE`/`BLOCKED`/`DELETED` 문자열로 저장된다.
-- nickname과 상태를 순차 갱신하면 `updated_at`이 갱신되고 다시 조회된다.
-- 없는 region FK, 공백 nickname, status/deleted_at 불일치가 DB 또는 domain
-  경계에서 거절되고 transaction이 부분 반영되지 않는다.
-- Hibernate `ddl-auto=validate`, `generate-ddl=false`, `open-in-view=false`가
-  설정되고 startup 후 Flyway schema inventory가 변경되지 않는다.
-- domain 계층이 Spring Data/JPA에 의존하지 않고 다른 feature가 Account Entity나
-  Spring Data Repository를 직접 참조하지 않는다.
+- 질문 제안 저장과 최소 검수 상태 전이가 domain 및 실제 DB에서 검증된다.
+- 제출 후 제안 문구와 승인 질문 문구를 변경하면 V1 trigger가 거절한다.
+- 반려 review는 사유가 필수이고 승인/반려 이력이 append-only로 저장된다.
+- 승인 transaction이 review, proposal, ApprovedQuestion을 모두 반영하거나 모두
+  rollback한다.
+- 승인되지 않았거나 활성 기간 밖인 질문은 assignable query에서 반환되지 않는다.
+- `activeUntil`과 배정 주기 `endsAt`은 서버가 전달한 절대 `Instant` 그대로 보존되며
+  임의 기본 기간을 계산하지 않는다.
+- 같은 사용자/cycleKey, 같은 주기의 질문 및 displayOrder 중복이 거절된다.
+- assignment의 firstViewedAt/usedAt은 assignedAt보다 빠를 수 없다.
+- 모든 외부 aggregate 참조가 scalar ID이고 feature 간 JPA 구현 직접 참조가 없다.
 - 모든 JUnit 5 테스트와 Harness, Gradle check, Hook 검증이 통과한다.
 - 구현과 테스트 보고서를 로컬 commit까지만 만들고 origin에는 push하지 않은 채
   사용자 검토를 기다린다.
