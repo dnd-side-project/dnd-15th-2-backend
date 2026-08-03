@@ -1,38 +1,37 @@
-# GitHub Issue #35 Task Contract
+# GitHub Issue #36 Task Contract
 
-> Generated at: `2026-08-03T17:18:17+09:00`
+> Generated at: `2026-08-03T17:39:09+09:00`
 >
 > 이 파일은 현재 작업 브랜치의 계약이다. 저장소 전역 정책은 `AGENTS.md`를
 > 따른다.
 
 ## Work gate
 
-- Title: `DB 스키마 계약 동기화와 Persistence ADR`
-- GitHub Issue: `#35`
-- Branch: `docs/gh-35-persistence-schema-contract`
+- Title: `Flyway와 최초 schema migration`
+- GitHub Issue: `#36`
+- Branch: `chore/gh-36-flyway-baseline`
 
 ## Objective
 
-- 방향 소통 DBML·ERD·기준 DDL을 저장소 안의 검토 가능한 schema 계약으로
-  동기화하고, 후속 Flyway/JPA 구현이 따라야 할 소유권과 기술 경계를 ADR로
-  고정한다.
+- 승인된 schema 계약을 Flyway 최초 versioned migration으로 구현하고, 빈
+  PostgreSQL/PostGIS에서 전체 schema가 재현되고 재실행 가능한지 검증한다.
 
 ## Scope
 
-- 기준 DBML과 ERD 설명을 원본과 동일한 내용으로 저장소에 보관한다.
-- DBML·ERD·독립 실행형 DDL의 원본 경로, SHA-256, 오브젝트 목록을 schema
-  manifest에 기록한다.
-- `sql/001~004` 계보가 후속 migration의 입력이 아님을 명시한다.
-- Flyway schema 소유권과 JPA/JDBC 책임 경계를 ADR로 기록한다.
-- 인증, 만료, 보관·삭제, `updated_at`, FK 삭제, 지역 seed, 방향 coverage,
-  PostGIS extension 권한의 결정 또는 명시적 제외를 기록한다.
+- Spring Boot가 관리하는 Flyway core/PostgreSQL 의존성을 추가한다.
+- Flyway가 startup 시 `db/migration`의 schema를 적용하도록 안전 설정을 추가한다.
+- 승인된 독립 DDL을 빈 DB 전용 `V1` migration으로 고정한다.
+- PostgreSQL/PostGIS Testcontainers에서 migration 성공, 재실행, checksum,
+  schema history, 오브젝트 inventory를 검증한다.
+- 실패 migration이 성공 상태로 남지 않는 복구 시나리오를 검증한다.
+- 실행 증거와 잠재 위험을 Issue #36 테스트 보고서에 기록한다.
 
 ## Explicit exclusions
 
-- JPA/Flyway 의존성, migration SQL, 제품 Entity/Repository/API는 변경하지 않는다.
-- 운영 DB를 조회하거나 변경하지 않는다.
-- 폐기된 `sql/001~004`를 복사하거나 migration 입력으로 사용하지 않는다.
-- 인증·개인정보·보관 기간 등 미승인 제품 정책을 임의 상수로 확정하지 않는다.
+- JPA 의존성, Entity, Spring Data Repository, 제품 API를 추가하지 않는다.
+- 기존 운영 DB baseline, Flyway repair/clean, 과거 migration 수정은 하지 않는다.
+- 폐기된 `sql/001~004`를 migration 입력으로 사용하지 않는다.
+- `region_code` 운영 seed와 미승인 보관·만료 정책 값을 넣지 않는다.
 - 인프라 apply, 배포, 프로덕션 변경은 별도 승인 없이는 실행하지 않는다.
 - Secret, 계정 식별자, 토큰, `.env` 값은 기록하지 않는다.
 
@@ -40,15 +39,15 @@
 
 | Area | Owner | Required review |
 | --- | --- | --- |
-| Schema source and manifest | Issue #35 | Backend + product policy review |
-| Persistence ADR | Issue #35 | Backend review |
-| Product policy pending values | Product/Security | Human approval before enforcement |
-| Flyway/JPA implementation | Issues #36+ | Issue-by-issue user review |
+| Flyway dependency and configuration | Issue #36 | Backend review |
+| V1 schema migration | Issue #36 | Schema contract review |
+| Migration integration tests | TEST-PLAN-GH-36-FLYWAY-BASELINE | Test-plan approval |
+| Production extension/role provisioning | Future infrastructure issue | Explicit human approval |
 
 ## Existing user-owned changes
 
-- 작업 시작 시 `main`은 clean 상태였다.
-- `.harness-local/`의 로컬 계획 파일은 ignore 상태이며 변경하지 않는다.
+- 작업 시작 시 Issue #35 승인 커밋 위에서 clean 상태였다.
+- Issue #35의 accepted ADR과 schema manifest는 선행 계약으로 보존한다.
 
 ## Validation
 
@@ -61,12 +60,11 @@ git diff --check
 
 ## Completion criteria
 
-- DBML/ERD/DDL source와 SHA-256이 기록되어 있다.
-- baseline의 테이블, FK, unique/check, index, trigger 목록과 수가 manifest에
-  기록되어 있다.
-- 인증·만료·보관·삭제·timestamp·seed·extension 권한이 결정 또는 명시적
-  제외 상태다.
-- Flyway/JPA/JDBC 책임 경계 ADR이 후속 Issue에서 바로 사용할 수 있다.
-- 제품 코드와 migration은 변경하지 않았다.
-- Validation 명령이 통과하고 변경은 Issue #35 브랜치에 로컬 커밋된다.
-- origin push와 PR 생성 없이 사용자 검토를 기다린다.
+- 빈 PostgreSQL/PostGIS에서 V1 migration이 성공한다.
+- 같은 DB에서 두 번째 migrate가 신규 migration 없이 성공한다.
+- `flyway_schema_history`에 V1이 성공 상태와 고정 checksum으로 기록된다.
+- DBML/manifest의 26 tables, 45 FK, 18 unique constraint, 95 check,
+  47 index, 9 trigger가 실제 schema와 일치한다.
+- Hibernate/JPA 자동 DDL이 도입되지 않는다.
+- 실패 migration 복구 동작과 남은 위험이 테스트 보고서에 기록된다.
+- 모든 검증이 통과하고 로컬 커밋만 생성한 뒤 사용자 검토를 기다린다.
