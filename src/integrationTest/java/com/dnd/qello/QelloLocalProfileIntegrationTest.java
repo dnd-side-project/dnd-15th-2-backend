@@ -7,23 +7,31 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.core.env.Environment;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 
 /**
  * Created at: 2026-08-03T15:39:58+09:00
  * Source scenario: TEST-PLAN-GH-30-LOCAL-PROFILE-INTEGRATION
+ * Extended at: 2026-08-03T16:09:35+09:00
+ * Extension scenario: TEST-PLAN-GH-31-LOCAL-PROFILE-CONTAINER-INTEGRATION
  */
 @SpringBootTest
 @ActiveProfiles("local")
-class QelloLocalProfileIntegrationTest {
+class QelloLocalProfileIntegrationTest extends PostgisContainerIntegrationTestSupport {
 
 	@Autowired
 	private Environment environment;
 
+	@Autowired
+	private JdbcTemplate jdbcTemplate;
+
 	@Test
-	@DisplayName("local 프로필에서 외부 인프라 없이 Spring 애플리케이션 컨텍스트가 로드된다")
+	@DisplayName("local 프로필이 추적되지 않는 설정 대신 Testcontainers PostgreSQL에 연결된다")
 	void contextLoadsWithLocalProfile() {
 		assertThat(environment.matchesProfiles("local")).isTrue();
+		assertThat(jdbcTemplate.queryForObject("SELECT current_database()", String.class))
+			.isEqualTo("qello_test");
 	}
 
 }

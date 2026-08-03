@@ -12,4 +12,34 @@ services:
       - "${APP_PORT:-8080}:8080"
     environment:
       SPRING_PROFILES_ACTIVE: "${SPRING_PROFILES_ACTIVE:-local}"
+      QELLO_DB_HOST: db
+      QELLO_DB_PORT: 5432
+      QELLO_DB_NAME: "${QELLO_DB_NAME:-qello}"
+      QELLO_DB_USERNAME: "${QELLO_DB_USERNAME:-qello}"
+      QELLO_DB_PASSWORD: "${QELLO_DB_PASSWORD:?copy .env.example to .env and set QELLO_DB_PASSWORD}"
+    depends_on:
+      db:
+        condition: service_healthy
     stop_grace_period: 30s
+
+  db:
+    image: postgis/postgis:16-3.5-alpine@sha256:0d14e6c83a1bde7e453c2a5fb41785279992cb5793073a686f4f9e8ec2c5b077
+    platform: linux/amd64
+    ports:
+      - "${QELLO_DB_PORT:-5432}:5432"
+    environment:
+      POSTGRES_DB: "${QELLO_DB_NAME:-qello}"
+      POSTGRES_USER: "${QELLO_DB_USERNAME:-qello}"
+      POSTGRES_PASSWORD: "${QELLO_DB_PASSWORD:?copy .env.example to .env and set QELLO_DB_PASSWORD}"
+    volumes:
+      - qello-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    stop_grace_period: 30s
+
+volumes:
+  qello-postgres-data:
