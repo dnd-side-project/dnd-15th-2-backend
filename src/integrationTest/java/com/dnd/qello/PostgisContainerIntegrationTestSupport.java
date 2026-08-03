@@ -1,6 +1,7 @@
 package com.dnd.qello;
 
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.springframework.test.annotation.DirtiesContext;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -11,6 +12,7 @@ import org.testcontainers.utility.DockerImageName;
  * Source scenario: TEST-PLAN-GH-31-POSTGIS-TESTCONTAINERS-SUPPORT
  */
 @Testcontainers
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 abstract class PostgisContainerIntegrationTestSupport {
 
 	private static final DockerImageName POSTGIS_IMAGE = DockerImageName
