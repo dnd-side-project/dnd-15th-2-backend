@@ -35,17 +35,48 @@ Qello 백엔드는 하나의 Spring Boot 애플리케이션 안에서 Package-by
 직접 참조하지 않습니다. `common`에는 설정, 오류 표현, 공통 응답처럼 기능 정책이
 없는 코드만 둡니다.
 
-`local`과 `test` profile은 외부 인프라 없이 먼저 로드됩니다. PostgreSQL/PostGIS와
-테스트 DB 연결은 GitHub Issue #31에서 구성합니다.
+`local` profile은 Git에서 제외되는 `.env`로 Compose PostgreSQL/PostGIS에 연결합니다.
+`test` profile은 Testcontainers가 임시 PostGIS DB를 공급하므로 개발자 로컬 DB에
+의존하지 않습니다. JDBC는 연결과 명시적 SQL 기반으로 사용하며, JPA와 Flyway는
+실제 Entity 또는 추적 schema를 추가하는 후속 Issue에서 결정합니다.
 
 ## 시작하기
 
 ```bash
+cp .env.example .env
+docker compose pull db
+docker compose up -d db
+docker compose ps
+
 ./gradlew check
 npm ci
 ./harness doctor
 ./harness check
 ```
+
+`local` profile 애플리케이션은 다음처럼 실행합니다. `.env`는
+`application-local.properties`가 선택적으로 읽으며 Git에는 포함되지 않습니다.
+
+```bash
+./gradlew bootRun --args='--spring.profiles.active=local'
+```
+
+PostGIS와 종료 상태는 다음 명령으로 확인합니다.
+
+```bash
+docker compose exec db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT PostGIS_Version();"'
+docker compose down
+```
+
+PostGIS 프로젝트의 `postgis/postgis:16-3.5-alpine` 이미지는 Compose에서 검증된
+digest까지 고정하며 현재 `amd64`만 제공합니다. Testcontainers는 라이브러리의
+image-name 제약 때문에 같은 tag를 사용합니다. 두 경로 모두 `linux/amd64`를
+명시하므로 Apple Silicon 개발 환경에서는 Docker Desktop의 x86_64 에뮬레이션이
+필요합니다. 이미지 업데이트는 tag와 Compose digest를 함께 바꾸고 통합 테스트로
+검증합니다.
+
+데이터까지 초기화할 때만 `docker compose down --volumes`를 사용합니다. 이 명령은
+named volume의 로컬 데이터를 삭제하므로 일반 종료 명령에는 포함하지 않습니다.
 
 ## GitHub 작업 흐름
 
