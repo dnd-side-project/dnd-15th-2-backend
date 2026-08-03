@@ -2,7 +2,7 @@
 
 > Created at: `2026-08-03T17:40:39+09:00`
 > GitHub Issue: `#36`
-> Status: Draft — human approval required before implementation
+> Status: Approved
 
 ## 1. Objective
 
@@ -115,17 +115,17 @@ PostgreSQL/PostGIS에 재현되고, 재실행·검증·실패 복구 시에도 �
 
 ## 10. Completion criteria
 
-- [ ] 모든 P0 시나리오 구현
-- [ ] 모든 테스트 메서드에 `@DisplayName`
-- [ ] 테스트 클래스 헤더의 timestamp와 source scenario 검증
-- [ ] 단위 테스트 통과
-- [ ] 통합 테스트 통과
-- [ ] 잠재 문제 분석
-- [ ] 테스트 보고서 생성
-- [ ] JDK 21로 `./harness pr-ready --project-tests` 통과
+- [x] 모든 P0 시나리오 구현
+- [x] 모든 테스트 메서드에 `@DisplayName`
+- [x] 테스트 클래스 헤더의 timestamp와 source scenario 검증
+- [x] 단위 테스트 통과
+- [x] 통합 테스트 통과
+- [x] 잠재 문제 분석
+- [x] 테스트 보고서 생성
+- [x] JDK 21로 `./harness pr-ready --project-tests` 통과
 
 ## 11. Human approval
 
-- Reviewer: pending
-- Decision: pending
-- Approved at: pending
+- Reviewer: Byuntil
+- Decision: Approved
+- Approved at: `2026-08-03T17:45:39+09:00`

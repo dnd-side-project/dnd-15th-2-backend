@@ -1,0 +1,3 @@
+ALTER TABLE migration_probe ADD COLUMN transient_value TEXT;
+
+THIS IS INTENTIONALLY INVALID SQL;
