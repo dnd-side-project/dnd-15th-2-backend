@@ -1,50 +1,57 @@
-# GitHub Issue #6 Task Contract
+# GitHub Issue #30 Task Contract
 
-> Created at: `2026-08-03T00:00:00+09:00`
+> Generated at: `2026-08-03T15:37:58+09:00`
 >
-> 저장소 전역 정책은 `AGENTS.md`를 따른다.
+> 이 파일은 현재 작업 브랜치의 계약이다. 저장소 전역 정책은 `AGENTS.md`를
+> 따른다.
 
 ## Work gate
 
-- Title: `Qello 프로젝트 전환 및 GitHub 기반 개발 워크플로 구성`
-- GitHub Issue: `#6`
-- Branch: `chore/gh-6-qello-project-migration`
+- Title: `Spring Boot Package-by-Feature 및 3계층 기반 구성`
+- GitHub Issue: `#30`
+- Branch: `build/gh-30-package-foundation`
 
 ## Objective
 
-- 기존 프로젝트명과 Jira 기반 저장소를 Qello/GitHub Issues·Projects 기반으로
-  전환한다.
-- 첨부 제품 기능과 콘텐츠 안전 기능을 5~8주차 백엔드·인프라 실행 계획으로
-  구성한다.
+- Qello 백엔드의 기본 Java 패키지를 제품명 기준으로 정리한다.
+- 하나의 Spring Boot 애플리케이션에서 Package-by-Feature와 기능 내부
+  Controller → Service → Repository 3계층 규칙을 확정한다.
+- 후속 기능과 로컬 DB 작업이 같은 구조에서 시작할 수 있는 최소 기반을 만든다.
 
 ## Scope
 
-- 애플리케이션, 빌드, 로컬 도구의 기존 프로젝트명을 Qello로 교체
-- Jira workflow, 필드, 검증, 템플릿 제거
-- GitHub Issue 기반 branch/commit/PR 규칙과 Husky·CI 동기화
-- README 및 하네스 문서 갱신
-- canonical label policy 검증
-- 기능 F01~F09와 텍스트·이미지 안전 필터를 반영한 로드맵 작성
-- GitHub Project에 5~8주차 스프린트와 draft item 백로그 설정
+- `com.dnd.backend`를 `com.dnd.qello`로 이동
+- `account`, `question`, `direction`, `feed`, `safety`, `notification` 기능 패키지
+  책임 정의
+- 기능 내부 Controller, Service, Repository와 보조 `domain`·DTO 책임 정의
+- 기능 간 Controller, Repository, Entity 직접 참조 금지 규칙 정의
+- `common` 패키지의 최소 허용 범위 정의
+- `local`, `test` profile 골격과 context-load 회귀 테스트
+- 로컬 작업 계획과 실행 결과 동기화
 
 ## Explicit exclusions
 
-- 제품 API 및 DB 스키마 구현
-- AWS 리소스 생성·변경, Terraform apply, 배포, 프로덕션 변경
-- GitHub Ruleset 또는 보호 Environment가 자동 활성화되었다는 주장
-- Secret, 계정 식별자, 토큰, `.env` 값 기록
+- Spring Modulith 또는 Gradle 멀티모듈 도입
+- 제품 Controller, Service, Repository, Entity 구현
+- 데이터베이스 의존성, DDL, Flyway 마이그레이션, Docker Compose
+- 인증, 위치 계산, 알림, 콘텐츠 안전 외부 연동 구현
+- AWS 리소스와 `infra/**` 변경
+- 인프라 apply, 배포, 프로덕션 변경은 별도 승인 없이는 실행하지 않는다.
+- Secret, 계정 식별자, 토큰, `.env` 값은 기록하지 않는다.
 
 ## Ownership
 
 | Area | Owner | Required review |
 | --- | --- | --- |
-| 저장소 규칙·문서·GitHub Project | 현재 작업 에이전트 | Backend owners |
-| 제품 백로그 | PM/reviewer | Backend owners |
-| 인프라 apply | Human operator only | `@Byuntil`, `@tkv00` |
+| Java 기본 패키지·기능 패키지 | 현재 작업 에이전트 | Backend owners |
+| Profile·통합 테스트 | 현재 작업 에이전트 | Backend owners |
+| PostgreSQL/PostGIS 로컬 환경 | Issue #31 | Backend owners |
 
 ## Existing user-owned changes
 
 - 작업 시작 시 worktree는 clean 상태였다.
+- `docs/reports/**/*.local.md` 계획 문서는 Git에서 제외된 사용자 작업 문서로
+  보존한다.
 
 ## Validation
 
@@ -57,9 +64,9 @@ git diff --check
 
 ## Completion criteria
 
-- [x] 기존 프로젝트명과 Jira 런타임 의존이 저장소에서 제거된다.
-- [x] 새 branch/commit/PR 규칙을 Husky와 CI가 검사한다.
-- [x] README에 팀 규칙이 명시된다.
-- [x] Qello 5~8주차 백엔드·인프라 draft item이 GitHub Project에 배치된다.
-- [x] 비속어·선정성·폭력성 필터 요구사항이 계획에 포함된다.
-- [x] 모든 기본 검증이 통과한다.
+- [x] 애플리케이션과 테스트의 기본 패키지가 `com.dnd.qello`다.
+- [x] Package-by-Feature와 기능 내부 3계층 책임이 코드에 기록된다.
+- [x] 기능 간 허용·금지 의존성이 명확하다.
+- [x] 빈 기능 구현이나 제품 API·DB 스키마가 추가되지 않는다.
+- [x] `local`, `test` profile에서 Spring Context가 로드된다.
+- [x] Java 21에서 전체 검증이 통과한다.

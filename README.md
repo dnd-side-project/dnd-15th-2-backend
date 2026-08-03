@@ -23,6 +23,21 @@ item입니다. 실제 구현을 시작할 항목만 repository Issue로 변환�
 - AWS 우선, Terraform 또는 AWS CDK
 - GitHub Actions와 Husky
 
+## Java 패키지 구조
+
+Qello 백엔드는 하나의 Spring Boot 애플리케이션 안에서 Package-by-Feature를
+사용합니다. 최상위 기능 패키지는 `account`, `question`, `direction`, `feed`,
+`safety`, `notification`이며, 각 기능은 구현이 필요할 때 `controller`,
+`service`, `repository` 3계층을 둡니다.
+
+의존 방향은 `controller → service → repository`입니다. 다른 기능과 협력할 때는
+상대 기능의 service 계약을 사용하며 다른 기능의 controller, repository, entity를
+직접 참조하지 않습니다. `common`에는 설정, 오류 표현, 공통 응답처럼 기능 정책이
+없는 코드만 둡니다.
+
+`local`과 `test` profile은 외부 인프라 없이 먼저 로드됩니다. PostgreSQL/PostGIS와
+테스트 DB 연결은 GitHub Issue #31에서 구성합니다.
+
 ## 시작하기
 
 ```bash
