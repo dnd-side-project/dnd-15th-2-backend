@@ -25,21 +25,34 @@ class FlywayMigrationContractTest {
 
 	private static final String ACCEPTED_DDL_SHA_256 =
 		"cc93ba87aa5999bdd48589b63fa4da4e383270626fb36ecb7adac482ed3d95a7";
+	private static final String ACCEPTED_V2_SHA_256 =
+		"2ab0e97acd9073d7295555da5be250a2d8d1c58c00f0ab4ec313f24ac4591380";
 
 	@Test
-	@DisplayName("V1 migration은 승인된 독립 DDL과 동일하며 폐기된 migration 계보를 포함하지 않는다")
-	void v1MatchesAcceptedDdlAndExcludesLegacyMigrations() throws Exception {
-		ClassPathResource migration = new ClassPathResource(
+	@DisplayName("V1은 승인된 독립 DDL과 동일하고 V2는 승인된 delta와 동일하다")
+	void migrationsMatchAcceptedContent() throws Exception {
+		ClassPathResource v1 = new ClassPathResource(
 			"db/migration/V1__create_direction_communication_schema.sql");
+		ClassPathResource v2 = new ClassPathResource(
+			"db/migration/V2__add_reactions_and_skip_pending.sql");
 		Properties scriptConfiguration = PropertiesLoaderUtils.loadProperties(
 			new ClassPathResource(
 				"db/migration/V1__create_direction_communication_schema.sql.conf"));
 
-		assertThat(sha256(migration)).isEqualTo(ACCEPTED_DDL_SHA_256);
+		assertThat(sha256(v1)).isEqualTo(ACCEPTED_DDL_SHA_256);
+		assertThat(sha256(v2)).isEqualTo(ACCEPTED_V2_SHA_256);
 		assertThat(scriptConfiguration)
 			.containsEntry("executeInTransaction", "false");
 		assertThat(sqlMigrationNames()).containsExactly(
-			"V1__create_direction_communication_schema.sql");
+			"V1__create_direction_communication_schema.sql",
+			"V2__add_reactions_and_skip_pending.sql");
+	}
+
+	@Test
+	@DisplayName("V2는 script configuration 없이 기본 transaction 안에서 실행된다")
+	void v2RunsInsideTheDefaultTransaction() throws IOException {
+		assertThat(scriptConfigurationNames()).containsExactly(
+			"V1__create_direction_communication_schema.sql.conf");
 	}
 
 	@Test
@@ -70,6 +83,17 @@ class FlywayMigrationContractTest {
 			return paths
 				.map(path -> path.getFileName().toString())
 				.filter(name -> name.endsWith(".sql"))
+				.sorted()
+				.toList();
+		}
+	}
+
+	private List<String> scriptConfigurationNames() throws IOException {
+		Path migrationDirectory = Path.of("src/main/resources/db/migration");
+		try (var paths = Files.list(migrationDirectory)) {
+			return paths
+				.map(path -> path.getFileName().toString())
+				.filter(name -> name.endsWith(".conf"))
 				.sorted()
 				.toList();
 		}
