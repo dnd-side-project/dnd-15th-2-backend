@@ -136,18 +136,24 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 	private JdbcTemplate jdbcTemplate;
 
 	@Test
-	@DisplayName("빈 PostGIS 데이터베이스의 startup에서 V1 migration 한 건을 적용한다")
+	@DisplayName("빈 PostGIS 데이터베이스의 startup에서 V1과 V2 migration을 적용한다")
 	void appliesV1OnApplicationStartup() {
 		Integer successfulV1 = jdbcTemplate.queryForObject("""
 			SELECT count(*)
 			FROM flyway_schema_history
 			WHERE version = '1' AND success
 			""", Integer.class);
+		Integer successfulV2 = jdbcTemplate.queryForObject("""
+			SELECT count(*)
+			FROM flyway_schema_history
+			WHERE version = '2' AND success
+			""", Integer.class);
 		String postgisVersion = jdbcTemplate.queryForObject(
 			"SELECT PostGIS_Version()", String.class);
 
 		assertThat(successfulV1).isEqualTo(1);
-		assertThat(flyway.info().applied()).hasSize(1);
+		assertThat(successfulV2).isEqualTo(1);
+		assertThat(flyway.info().applied()).hasSize(2);
 		assertThat(postgisVersion).isNotBlank();
 	}
 
@@ -203,7 +209,7 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 
 		assertThat(countConstraints(constraints, "f")).isEqualTo(45);
 		assertThat(countConstraints(constraints, "u")).isEqualTo(18);
-		assertThat(countConstraints(constraints, "c")).isEqualTo(95);
+		assertThat(countConstraints(constraints, "c")).isEqualTo(96);
 		assertThat(EXPECTED_INDEXES).hasSize(47);
 		assertThat(EXPECTED_FUNCTIONS).hasSize(10);
 		assertThat(EXPECTED_TRIGGERS).hasSize(9);

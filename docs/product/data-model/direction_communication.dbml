@@ -296,6 +296,7 @@ Table user_account [headercolor: #4E79A7] {
   locale varchar(35) [not null, note: '언어와 지역별 표시 형식을 결정하는 로케일']
   timezone varchar(64) [not null, note: '날짜 경계와 알림 계산에 사용하는 IANA 시간대']
   nickname varchar(50) [note: '다른 사용자에게 표시할 익명 닉네임']
+  password_hash varchar(255) [note: '관리자(OPERATOR) 계정의 검증된 비밀번호 해시. 평문은 저장하지 않으며 일반(USER) 계정은 항상 NULL이다. V2 migration에서 추가되었다.']
   created_at timestamptz [not null, default: `clock_timestamp()`, note: '행이 생성된 시각']
   updated_at timestamptz [not null, default: `clock_timestamp()`, note: '마지막으로 변경된 시각']
   deleted_at timestamptz [note: '삭제 처리된 시각']
@@ -307,6 +308,7 @@ Table user_account [headercolor: #4E79A7] {
   checks {
     `nickname IS NULL OR btrim(nickname) <> ''` [name: 'ck_user_account_nickname']
     `(status = 'DELETED' AND deleted_at IS NOT NULL) OR (status <> 'DELETED' AND deleted_at IS NULL)` [name: 'ck_user_account_deleted_at']
+    `(role = 'OPERATOR' AND password_hash IS NOT NULL) OR (role = 'USER' AND password_hash IS NULL)` [name: 'ck_user_account_password_hash']
   }
 
   Note: '테이블 설명: 사용자의 기본 식별자, 권한, 계정 상태, 기준 지역과 시간대를 관리하는 계정 테이블이다. 필요 이유: 사용자 식별자와 서비스 공통 권한·계정 상태를 한곳에서 관리해 모든 도메인이 동일한 계정 기준을 참조하게 한다.'
