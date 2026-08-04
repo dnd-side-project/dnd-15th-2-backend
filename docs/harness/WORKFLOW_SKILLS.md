@@ -120,6 +120,12 @@ PR:     feat: add direction post API              scope 없음
 본문은 `.github/PULL_REQUEST_TEMPLATE.md`를 채우고 `Closes #<N>`을 반드시 넣는다.
 `## 참고`에는 설계·테스트 계획, 실행 증거, 위험, 롤백·복구 절차를 연결한다.
 
+본문 문체는 `.claude/skills/harness-pr/references/writing-style.md`가 강제한다.
+서술은 합쇼체(`~합니다`)로 통일하고, 이모지·과장 형용사·인사말·번역투·측정 없는
+자기 평가를 쓰지 않는다. PR 템플릿 자체가 합쇼체이므로 채우는 글도 같은 말투를
+따른다. 저장소 규범 문서(`AGENTS.md`, `docs/`, 스킬 문서)는 평서체(`~한다`)가
+기준이며 이와 구분한다.
+
 체크박스는 실제로 한 것만 체크한다. 실행하지 못한 검증은 이유와 남은 위험을
 본문에 적고, 통과했다고 표현하지 않는다.
 
@@ -153,7 +159,8 @@ PR:     feat: add direction post API              scope 없음
 | `.github/label-catalog.json`, `LABELS.md` | 같은 파일 |
 | GitHub Project 필드·옵션 | `harness-issue/references/project-fields.md` |
 | `scripts/validate-conventions.py` | `harness-commit/SKILL.md`, `harness-pr/SKILL.md` |
-| `.github/PULL_REQUEST_TEMPLATE.md` | `harness-pr/SKILL.md` |
+| `.github/PULL_REQUEST_TEMPLATE.md` | `harness-pr/SKILL.md`, `harness-pr/references/writing-style.md` |
+| PR 본문 문체·금지 표현 | `harness-pr/references/writing-style.md` |
 
 변경 후 검증:
 
