@@ -87,7 +87,7 @@ class AccountPersistenceIntegrationTest extends PostgisContainerIntegrationTestS
 			""", Integer.class);
 
 		assertThat(successfulV1).isEqualTo(1);
-		assertThat(applicationTableCount).isEqualTo(26);
+		assertThat(applicationTableCount).isEqualTo(28);
 	}
 
 	@Test
