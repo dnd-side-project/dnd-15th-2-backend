@@ -8,6 +8,7 @@ import java.util.Objects;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.dnd.qello.direction.config.DirectionReceiveProperties;
 import com.dnd.qello.direction.domain.ActiveUserPresence;
 import com.dnd.qello.direction.domain.DirectionCandidate;
 import com.dnd.qello.direction.domain.DirectionPost;
@@ -36,11 +37,12 @@ public class DirectionPostService {
 	private final PostAudienceRepository audienceRepository;
 	private final PostRecipientRepository recipientRepository;
 	private final ApprovedQuestionRepository approvedQuestionRepository;
+	private final DirectionReceiveProperties receiveProperties;
 
 	public DirectionPostService(DirectionSchemeRepository schemeRepository, ActiveUserPresenceRepository presenceRepository,
 		RecipientReceiveStateRepository receiveStateRepository, DirectionPostRepository postRepository,
 		PostAudienceRepository audienceRepository, PostRecipientRepository recipientRepository,
-		ApprovedQuestionRepository approvedQuestionRepository) {
+		ApprovedQuestionRepository approvedQuestionRepository, DirectionReceiveProperties receiveProperties) {
 		this.schemeRepository = schemeRepository;
 		this.presenceRepository = presenceRepository;
 		this.receiveStateRepository = receiveStateRepository;
@@ -48,6 +50,7 @@ public class DirectionPostService {
 		this.audienceRepository = audienceRepository;
 		this.recipientRepository = recipientRepository;
 		this.approvedQuestionRepository = approvedQuestionRepository;
+		this.receiveProperties = receiveProperties;
 	}
 
 	@Transactional(readOnly = true)
@@ -115,7 +118,7 @@ public class DirectionPostService {
 		if (receiveStateRepository.findByUserId(userId).isEmpty()) {
 			receiveStateRepository.save(RecipientReceiveState.restore(userId, 0, 0, at, null, at));
 		}
-		return receiveStateRepository.reserve(userId, at);
+		return receiveStateRepository.reserve(userId, at, receiveProperties.receiveCapacity());
 	}
 
 	public record PreviewCommand(Long senderId, Long schemeId, String segmentKey, long minDistanceMeters,

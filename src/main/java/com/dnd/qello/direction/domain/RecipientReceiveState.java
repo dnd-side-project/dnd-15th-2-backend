@@ -5,7 +5,9 @@ import java.util.Objects;
 
 public final class RecipientReceiveState {
 
-	public static final int MAX_ACTIVE_UNHANDLED = 5;
+	// DB의 ck_recipient_receive_state_active_count와 같은 값. 운영 수신 상한이 아니라
+	// 어떤 설정에서도 넘을 수 없는 안전 상한이다. 실효 상한은 설정에서 읽어 호출자가 넘긴다.
+	public static final int SAFETY_CEILING = 50;
 	private final Long userId;
 	private final int activeUnhandledCount;
 	private final int recentReceivedCount;
@@ -16,7 +18,7 @@ public final class RecipientReceiveState {
 	private RecipientReceiveState(Long userId, int activeUnhandledCount, int recentReceivedCount,
 		Instant recentWindowStartedAt, Instant lastReceivedAt, Instant updatedAt) {
 		if (userId == null || userId <= 0) throw new IllegalArgumentException("userId는 양수여야 합니다");
-		if (activeUnhandledCount < 0 || activeUnhandledCount > MAX_ACTIVE_UNHANDLED) throw new IllegalArgumentException("activeUnhandledCount 범위가 유효하지 않습니다");
+		if (activeUnhandledCount < 0 || activeUnhandledCount > SAFETY_CEILING) throw new IllegalArgumentException("activeUnhandledCount 범위가 유효하지 않습니다");
 		if (recentReceivedCount < 0) throw new IllegalArgumentException("recentReceivedCount는 음수일 수 없습니다");
 		this.userId = userId;
 		this.activeUnhandledCount = activeUnhandledCount;
@@ -33,7 +35,10 @@ public final class RecipientReceiveState {
 			recentWindowStartedAt, lastReceivedAt, updatedAt);
 	}
 
-	public boolean canReserve() { return activeUnhandledCount < MAX_ACTIVE_UNHANDLED; }
+	public boolean canReserve(int limit) {
+		if (limit < 1 || limit > SAFETY_CEILING) throw new IllegalArgumentException("limit은 1과 " + SAFETY_CEILING + " 사이여야 합니다");
+		return activeUnhandledCount < limit;
+	}
 
 	public Long getUserId() { return userId; }
 	public int getActiveUnhandledCount() { return activeUnhandledCount; }

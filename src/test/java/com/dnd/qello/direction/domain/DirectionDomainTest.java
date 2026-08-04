@@ -126,11 +126,14 @@ class DirectionDomainTest {
 	}
 
 	@Test
-	@DisplayName("recipient receive state는 활성 미처리 5개 상한을 domain에서도 표현한다")
-	void exposesCapacityLimit() {
+	@DisplayName("수신 상한은 호출자가 넘기고 domain은 DB 안전 상한만 강제한다")
+	void separatesOperationalLimitFromSafetyCeiling() {
 		RecipientReceiveState state = RecipientReceiveState.restore(2L, 5, 7, LOCATION_AT, LOCATION_AT, LOCATION_AT);
-		assertThat(state.canReserve()).isFalse();
-		assertThatThrownBy(() -> RecipientReceiveState.restore(2L, 6, 7, LOCATION_AT, LOCATION_AT, LOCATION_AT))
+
+		assertThat(state.canReserve(5)).isFalse();
+		assertThat(state.canReserve(10)).isTrue();
+		assertThat(RecipientReceiveState.SAFETY_CEILING).isEqualTo(50);
+		assertThatThrownBy(() -> RecipientReceiveState.restore(2L, 51, 7, LOCATION_AT, LOCATION_AT, LOCATION_AT))
 			.isInstanceOf(IllegalArgumentException.class);
 	}
 
