@@ -8,6 +8,9 @@ import java.time.Instant;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import com.dnd.qello.question.error.QuestionErrorCode;
+import com.dnd.qello.question.error.QuestionException;
+
 /**
  * Created at: 2026-08-03T20:10:00+09:00
  * Source scenario: TEST-PLAN-GH-38-QUESTION-PERSISTENCE-UNIT-001, TEST-PLAN-GH-38-QUESTION-PERSISTENCE-UNIT-002, TEST-PLAN-GH-38-QUESTION-PERSISTENCE-UNIT-003
@@ -29,9 +32,11 @@ class QuestionDomainTest {
 		assertThat(underReview.getStatus()).isEqualTo(QuestionProposalStatus.UNDER_REVIEW);
 		assertThat(rejected.getStatus()).isEqualTo(QuestionProposalStatus.REJECTED);
 		assertThat(rejected.getSubmittedAt()).isEqualTo(SUBMITTED_AT);
-		assertThatThrownBy(() -> proposal.startReview()).isInstanceOf(IllegalStateException.class);
-		assertThatThrownBy(() -> rejected.submit(SUBMITTED_AT)).isInstanceOf(IllegalStateException.class);
-		assertThatThrownBy(() -> underReview.reject(" ")).isInstanceOf(IllegalArgumentException.class);
+		assertThatThrownBy(() -> proposal.startReview())
+			.isInstanceOf(QuestionException.class)
+			.hasFieldOrPropertyWithValue("errorCode", QuestionErrorCode.INVALID_PROPOSAL_STATUS);
+		assertThatThrownBy(() -> rejected.submit(SUBMITTED_AT)).isInstanceOf(QuestionException.class);
+		assertThatThrownBy(() -> underReview.reject(" ")).isInstanceOf(QuestionException.class);
 	}
 
 	@Test
@@ -47,7 +52,7 @@ class QuestionDomainTest {
 		assertThat(question.isAssignableAt(ACTIVE_FROM.minusNanos(1))).isFalse();
 		assertThatThrownBy(() -> ApprovedQuestion.activeUserProposal(
 			7L, "질문", AnswerFormat.TEXT, ACTIVE_UNTIL, ACTIVE_FROM, SUBMITTED_AT, 99L))
-			.isInstanceOf(IllegalArgumentException.class);
+			.isInstanceOf(QuestionException.class);
 	}
 
 	@Test
@@ -63,11 +68,11 @@ class QuestionDomainTest {
 		assertThat(assignment.getAssignedAt()).isEqualTo(assignedAt);
 		assertThatThrownBy(() -> QuestionAssignmentCycle.create(
 			3L, "cycle", "pool", ACTIVE_UNTIL, ACTIVE_FROM))
-			.isInstanceOf(IllegalArgumentException.class);
+			.isInstanceOf(QuestionException.class);
 		assertThatThrownBy(() -> QuestionAssignment.create(1L, 5L, 0, assignedAt))
-			.isInstanceOf(IllegalArgumentException.class);
+			.isInstanceOf(QuestionException.class);
 		assertThatThrownBy(() -> QuestionAssignment.restore(
 			1L, 1L, 5L, 1, assignedAt, assignedAt.minusNanos(1), null))
-			.isInstanceOf(IllegalArgumentException.class);
+			.isInstanceOf(QuestionException.class);
 	}
 }
