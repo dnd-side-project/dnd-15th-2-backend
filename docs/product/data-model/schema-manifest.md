@@ -1,10 +1,10 @@
 # Direction Communication Schema Manifest
 
-> GitHub Issue: #35
+> GitHub Issue: #53
 >
-> Snapshot date: 2026-08-03
+> Snapshot date: 2026-08-05
 >
-> Status: accepted — 2026-08-03 사용자 검토 완료
+> Status: proposed — 2026-08-04 스키마 개정 반영. V2 적용 검증은 Issue #54에서 한다.
 
 ## 1. 목적
 
@@ -25,14 +25,15 @@
 
 | Artifact | Repository path or source | SHA-256 | Role |
 | --- | --- | --- | --- |
-| DBML | `docs/product/data-model/direction_communication.dbml` | `75aa29875e094db8b72c1346eb30e3b88f93e5b4e5ec67b212b8ccffeec0823b` | logical schema source |
-| ERD | `docs/product/data-model/DIRECTION_COMMUNICATION_ERD.md` | `5f5f532ec6de361fb2060ca4365664877823aeff0b7c36bab98256f3cadbf447` | explanatory contract |
-| standalone DDL | source workspace `docs/sql/direction_communication_ddl.sql` | `cc93ba87aa5999bdd48589b63fa4da4e383270626fb36ecb7adac482ed3d95a7` | migration authoring reference only |
+| DBML | `docs/product/data-model/direction_communication.dbml` | `4637f956f9703a8bdc38590957c2e48d60633e6d633beb3f193151b5c4c928f5` | logical schema source |
+| ERD | `docs/product/data-model/DIRECTION_COMMUNICATION_ERD.md` | `181604080ecffd58752e2b40bc3008fbdcdfb7736caff00820535ed6ba128886` | explanatory contract |
+| target DDL (2026-08-04) | source workspace `docs/sql/direction_communication_ddl.sql` | `be8aaee3b4671aa218c78c15bf33d6ade3ad1cfce902dc10d2cbd45b9fe5805f` | V2 authoring reference only |
+| V1 원본 DDL (2026-08-03, 이력) | 위 파일의 2026-08-03 판 | `cc93ba87aa5999bdd48589b63fa4da4e383270626fb36ecb7adac482ed3d95a7` | `V1__…sql`이 파생된 원본 |
 
-원본 DBML과 ERD는 byte-for-byte로 복사되어 위 checksum과 일치한다. 독립 DDL은
-이 Issue에서 실행하거나 migration 경로에 복사하지 않는다. 원본 문서에는
-PostgreSQL 16.4 + PostGIS 3.4에서 실행 검증했다고 기록되어 있지만, 이는
-Issue #35의 실행 증거가 아니다. 빈 DB 재현은 Issue #36에서 다시 검증한다.
+원본 DBML과 ERD는 byte-for-byte로 복사되어 위 checksum과 일치한다. target DDL은
+전체 상태 스크립트이므로 migration 경로에 복사하지 않는다. `V2__…sql`은 V1과
+target DDL의 차이만 담은 delta로 손으로 작성한다. V1 원본 DDL 행은 이력 보존용이며,
+`FlywayMigrationContractTest`가 `V1__…sql`의 sha256을 이 값으로 잠근다.
 
 ## 4. 폐기된 계보
 
@@ -50,15 +51,15 @@ Issue #35의 실행 증거가 아니다. 빈 DB 재현은 Issue #36에서 다시
 | Object | Count | Notes |
 | --- | ---: | --- |
 | DBML enums | 28 | SQL에서는 `VARCHAR + CHECK`로 표현 |
-| Tables | 26 | 모든 테이블에 논리 PK 존재 |
-| Primary keys | 26 | 24개는 inline, 2개는 named composite PK |
-| Foreign keys | 45 | named `fk_*` constraints |
+| Tables | 28 | 모든 테이블에 논리 PK 존재 |
+| Primary keys | 28 | 25개는 inline, 3개는 named/composite PK |
+| Foreign keys | 48 | named `fk_*` constraints |
 | Unique constraints | 18 | named `uq_*` constraints |
-| Unique indexes | 7 | partial/conditional uniqueness 포함 |
-| Check constraints | 95 | named `ck_*` constraints |
-| Non-unique indexes | 40 | GiST, partial, sort-order index 포함 |
-| Functions | 10 | trigger support functions |
-| Triggers | 9 | 2 regular + 7 constraint triggers |
+| Unique indexes | 8 | partial/conditional uniqueness 포함 |
+| Check constraints | 97 | named `ck_*` constraints |
+| Non-unique indexes | 42 | GiST, partial, sort-order index 포함 |
+| Functions | 11 | trigger support functions |
+| Triggers | 10 | 2 regular + 8 constraint triggers |
 | Extensions | 1 | `postgis` |
 
 ## 6. Table inventory
@@ -80,6 +81,8 @@ Issue #35의 실행 증거가 아니다. 빈 DB 재현은 Issue #36에서 다시
 - `post_audience`
 - `post_recipient`
 - `answer`
+- `post_reaction`
+- `answer_reaction`
 - `media_attachment`
 - `user_block`
 - `report`
@@ -102,6 +105,7 @@ Issue #35의 실행 증거가 아니다. 빈 DB 재현은 Issue #36에서 다시
 - `enforce_answer_has_content`
 - `enforce_media_attachment_preserves_content`
 - `enforce_media_status_preserves_content`
+- `enforce_answer_reaction_reactor_is_sender`
 
 ## 8. Trigger inventory
 
@@ -114,6 +118,7 @@ Issue #35의 실행 증거가 아니다. 빈 DB 재현은 Issue #36에서 다시
 - `ct_answer_has_content`
 - `ct_media_attachment_preserves_content`
 - `ct_media_status_preserves_content`
+- `ct_answer_reaction_reactor_is_sender`
 
 ## 9. Index inventory
 
@@ -164,6 +169,9 @@ Issue #35의 실행 증거가 아니다. 빈 DB 재현은 Issue #36에서 다시
 - `outbox_event_dispatch_idx`
 - `notification_inbox_idx`
 - `notification_delivery_dispatch_idx`
+- `uq_answer_one_per_recipient`
+- `post_reaction_reactor_idx`
+- `answer_reaction_reactor_idx`
 
 ## 10. Foreign-key constraint inventory
 
