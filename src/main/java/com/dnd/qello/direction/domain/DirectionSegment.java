@@ -1,7 +1,9 @@
 package com.dnd.qello.direction.domain;
 
 import java.math.BigDecimal;
-import java.util.Objects;
+
+import com.dnd.qello.direction.error.DirectionErrorCode;
+import com.dnd.qello.direction.error.DirectionException;
 
 public final class DirectionSegment {
 
@@ -21,7 +23,10 @@ public final class DirectionSegment {
 		this.displayName = requireText(displayName, "displayName", 50);
 		this.centerBearingDegrees = requireRange(centerBearingDegrees, "centerBearingDegrees", false);
 		this.angularWidthDegrees = requireRange(angularWidthDegrees, "angularWidthDegrees", true);
-		if (sortOrder < 0) throw new IllegalArgumentException("sortOrder는 0 이상이어야 합니다");
+		if (sortOrder < 0) {
+			throw new DirectionException(
+				DirectionErrorCode.INVALID_VALUE_RANGE, "sortOrder", "sortOrder는 0 이상이어야 합니다");
+		}
 		this.sortOrder = sortOrder;
 	}
 
@@ -48,21 +53,35 @@ public final class DirectionSegment {
 	}
 
 	private static BigDecimal requireRange(BigDecimal value, String field, boolean positive) {
-		Objects.requireNonNull(value, field + "은 필수입니다");
+		requireValue(value, field);
 		if ((positive && value.signum() <= 0) || (!positive && (value.signum() < 0 || value.compareTo(BigDecimal.valueOf(360)) >= 0))) {
-			throw new IllegalArgumentException(field + " 범위가 유효하지 않습니다");
+			throw new DirectionException(DirectionErrorCode.INVALID_BEARING, field, field + " 범위가 유효하지 않습니다");
 		}
-		if (positive && value.compareTo(BigDecimal.valueOf(360)) > 0) throw new IllegalArgumentException(field + "은 360 이하이어야 합니다");
+		if (positive && value.compareTo(BigDecimal.valueOf(360)) > 0) {
+			throw new DirectionException(DirectionErrorCode.INVALID_BEARING, field, field + "은 360 이하이어야 합니다");
+		}
+		return value;
+	}
+
+	private static <T> T requireValue(T value, String field) {
+		if (value == null) {
+			throw new DirectionException(
+				DirectionErrorCode.REQUIRED_VALUE_MISSING, field, field + "은 필수입니다");
+		}
 		return value;
 	}
 
 	private static Long requireId(Long value, String field) {
-		if (value == null || value <= 0) throw new IllegalArgumentException(field + "는 양수여야 합니다");
+		if (value == null || value <= 0) {
+			throw new DirectionException(DirectionErrorCode.INVALID_ID, field, field + "는 양수여야 합니다");
+		}
 		return value;
 	}
 
 	private static String requireText(String value, String field, int max) {
-		if (value == null || value.isBlank() || value.length() > max) throw new IllegalArgumentException(field + "이 유효하지 않습니다");
+		if (value == null || value.isBlank() || value.length() > max) {
+			throw new DirectionException(DirectionErrorCode.INVALID_TEXT, field, field + "이 유효하지 않습니다");
+		}
 		return value;
 	}
 
