@@ -1,6 +1,7 @@
 package com.dnd.qello.account.repository.jpa;
 
 import java.time.Instant;
+import java.util.Objects;
 
 import com.dnd.qello.account.domain.AccountRole;
 import com.dnd.qello.account.domain.AccountStatus;
@@ -14,9 +15,14 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import lombok.AccessLevel;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
 
 @Entity
 @Table(name = "user_account")
+@Getter(AccessLevel.PACKAGE)
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class AccountJpaEntity extends JpaAuditableEntity {
 
 	@Id
@@ -40,68 +46,45 @@ public class AccountJpaEntity extends JpaAuditableEntity {
 	@Column(name = "timezone", nullable = false, length = 64)
 	private String timezone;
 
+	//TODO(#48): Nickname Null 허용 유무 논의
 	@Column(name = "nickname", length = 50)
 	private String nickname;
+
+	@Column(name = "password_hash", length = 255)
+	private String passwordHash;
 
 	@Column(name = "deleted_at")
 	private Instant deletedAt;
 
-	protected AccountJpaEntity() {
-	}
-
 	AccountJpaEntity(
-		Long id,
 		AccountRole role,
 		AccountStatus status,
 		String coarseRegionCode,
 		String locale,
 		String timezone,
 		String nickname,
-		Instant createdAt,
-		Instant updatedAt,
-		Instant deletedAt
+		String passwordHash
 	) {
-		super(createdAt, updatedAt);
-		this.id = id;
-		this.role = role;
-		this.status = status;
+		this.role = Objects.requireNonNull(role);
+		this.status = Objects.requireNonNull(status);
+		this.coarseRegionCode = Objects.requireNonNull(coarseRegionCode);
+		this.locale = Objects.requireNonNull(locale);
+		this.timezone = Objects.requireNonNull(timezone);
+		//TODO(#48): Nickname Null 허용 유무 논의
+		this.nickname = nickname;
+		this.passwordHash = passwordHash;
+	}
+
+	void updateProfile(String coarseRegionCode, String locale, String timezone, String nickname) {
 		this.coarseRegionCode = coarseRegionCode;
 		this.locale = locale;
 		this.timezone = timezone;
 		this.nickname = nickname;
+	}
+
+	void updateStatus(AccountStatus status, Instant deletedAt) {
+		this.status = status;
 		this.deletedAt = deletedAt;
-	}
-
-	Long getId() {
-		return id;
-	}
-
-	AccountRole getRole() {
-		return role;
-	}
-
-	AccountStatus getStatus() {
-		return status;
-	}
-
-	String getCoarseRegionCode() {
-		return coarseRegionCode;
-	}
-
-	String getLocale() {
-		return locale;
-	}
-
-	String getTimezone() {
-		return timezone;
-	}
-
-	String getNickname() {
-		return nickname;
-	}
-
-	Instant getDeletedAt() {
-		return deletedAt;
 	}
 
 }

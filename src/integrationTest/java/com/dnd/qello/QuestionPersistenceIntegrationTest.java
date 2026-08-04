@@ -30,7 +30,6 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 
 import com.dnd.qello.account.domain.Account;
-import com.dnd.qello.account.domain.AccountRole;
 import com.dnd.qello.account.repository.AccountRepository;
 import com.dnd.qello.question.domain.AnswerFormat;
 import com.dnd.qello.question.domain.ApprovedQuestion;
@@ -286,8 +285,8 @@ class QuestionPersistenceIntegrationTest extends PostgisContainerIntegrationTest
 	}
 
 	private Account createAccount(String nickname) {
-		return accountRepository.save(Account.create(
-			AccountRole.USER, REGION_CODE, "ko-KR", "Asia/Seoul", nickname));
+		return accountRepository.save(Account.createUser(
+			REGION_CODE, "ko-KR", "Asia/Seoul", nickname));
 	}
 
 	private QuestionProposal createProposal(Long proposerId, String text) {
