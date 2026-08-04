@@ -8,6 +8,8 @@ description: 로컬 검증을 실행하고 질문형으로 PR 옵션을 정한 �
 브랜치 작업을 검증 → 초안 → push → PR 생성 순으로 마무리한다.
 `AGENTS.md` 6절(커밋과 PR)과 9절(완료 전 검증)의 실행 절차다.
 
+참조: `references/writing-style.md` — PR 본문 문체 규칙과 금지 표현 목록
+
 ## 0. 컨텍스트 수집
 
 ```bash
@@ -79,6 +81,11 @@ terraform fmt -check && terraform validate && terraform plan
 - summary는 브랜치 전체 작업을 한 줄로 요약한다.
 
 **본문** — `.github/PULL_REQUEST_TEMPLATE.md` 구조를 그대로 채운다.
+
+본문을 쓰기 전에 `references/writing-style.md`를 읽고 그 규칙을 적용한다.
+서술은 합쇼체(`~합니다`, `~했습니다`, `~입니다`)로 통일하고, 같은 문서의 금지
+표현 표에 있는 이모지·과장 형용사·인사말·번역투·자기 평가를 쓰지 않는다.
+초안을 사용자에게 보여주기 전에 그 문서의 점검 목록을 통과시킨다.
 
 ```markdown
 ## 관련 이슈
@@ -160,6 +167,8 @@ PR URL, 제목, Draft 여부, 라벨, 리뷰어, 실행한 검증과 결과, CI 
 - 승인 없이 push하거나 PR을 생성하지 않는다.
 - 검증 실패를 숨기거나 실행하지 않은 테스트를 통과로 보고하지 않는다.
 - force push, `main` 직접 push, PR 자동 머지를 하지 않는다.
+- PR 본문에 반말·평서체(`~한다`)를 쓰지 않는다. 합쇼체로 통일한다.
+- `references/writing-style.md`의 금지 표현을 쓰지 않는다.
 - 인프라 PR에서 `terraform apply`·CDK deploy를 실행하지 않는다.
   적용은 `@Byuntil`과 `@tkv00`의 승인과 사람의 workflow dispatch가 모두 필요하다.
 - PR 본문에 `.env` 값, 토큰, URL, 계정·IAM 식별자를 쓰지 않는다.
