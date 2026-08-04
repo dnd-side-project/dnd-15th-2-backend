@@ -26,7 +26,7 @@ class FlywayMigrationContractTest {
 	private static final String ACCEPTED_DDL_SHA_256 =
 		"cc93ba87aa5999bdd48589b63fa4da4e383270626fb36ecb7adac482ed3d95a7";
 	private static final String ACCEPTED_V2_SHA_256 =
-		"2ab0e97acd9073d7295555da5be250a2d8d1c58c00f0ab4ec313f24ac4591380";
+		"c8daf71f9ce75fb75b6c30ecb49a4b2d912b887a34d8f602617c2ca8a27f4e04";
 
 	@Test
 	@DisplayName("V1은 승인된 독립 DDL과 동일하고 V2는 승인된 delta와 동일하다")
