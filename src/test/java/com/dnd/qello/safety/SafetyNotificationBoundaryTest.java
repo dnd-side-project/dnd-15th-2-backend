@@ -75,4 +75,18 @@ class SafetyNotificationBoundaryTest {
 		assertThatThrownBy(() -> new Notification(null, 2L, 3L, NotificationType.ANSWER_RECEIVED,
 			"bad", 1L, 7L, NotificationStatus.UNREAD, NOW, null)).isInstanceOf(IllegalArgumentException.class);
 	}
+
+	@Test
+	@DisplayName("알림·Outbox 종류는 2026-08-04 스키마의 값 집합과 일치한다")
+	void enumsMatchTheRevisedSchemaValueSets() {
+		assertThat(NotificationType.values()).extracting(Enum::name)
+			.containsExactlyInAnyOrder("ANSWER_RECEIVED", "ANSWER_REACTED",
+				"DIRECTION_POST_RECEIVED", "REPORT_RESOLVED",
+				"QUESTION_PROPOSAL_REVIEWED", "QUESTION_RECOMMENDED");
+		assertThat(OutboxEventType.values()).extracting(Enum::name)
+			.containsExactlyInAnyOrder("RECIPIENT_MATCH_REQUESTED", "RECIPIENTS_CONFIRMED",
+				"DIRECTION_POST_EXPIRED", "ANSWER_PUBLISHED", "ANSWER_REACTED",
+				"SKIP_CONFIRMATION_DUE", "QUESTION_RECOMMENDED",
+				"QUESTION_PROPOSAL_REVIEWED", "REPORT_RESOLVED");
+	}
 }
