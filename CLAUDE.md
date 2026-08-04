@@ -17,6 +17,14 @@ GitHub Issue 번호는 저장소 설정에 고정하지 않고 현재 branch에�
 
 프로젝트 스킬:
 
+워크플로 (Issue → 커밋 → PR, 질문형 진행. `docs/harness/WORKFLOW_SKILLS.md`)
+
+- `/harness-issue`: 이슈 생성, Project 필드 연결, 작업 브랜치 생성
+- `/harness-commit`: 검토 목적 단위 커밋 분할
+- `/harness-pr`: 로컬 검증 후 PR 생성
+
+역할
+
 - `/harness-test-plan`: 테스트 오케스트레이터
 - `/harness-test-run`: 테스트 실행 에이전트
 - `/harness-infra-design`: 인프라 오케스트레이터
