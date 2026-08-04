@@ -226,11 +226,23 @@ FOR EACH ROW EXECUTE FUNCTION enforce_answer_reaction_reactor_is_sender();
 -- DAILY_QUESTION_ASSIGNED -> QUESTION_RECOMMENDED. 배정이 아니라 추천이므로
 -- 사용자는 고르지 않아도 된다. ANSWER_REACTED와 SKIP_CONFIRMATION_DUE를 추가한다.
 --
--- 백필. 기존 행에 옛 값이 남아 있으면 새 CHECK가 거부한다. CHECK를 갈기 전에
+-- 백필. 기존 행에 옛 값이 남아 있으면 새 CHECK가 거부한다. 제약을 먼저 제거한 뒤에
 -- 값을 옮긴다. QUESTION_RECOMMENDED는 이번에 새로 생기는 값이라 기존 행과 겹칠 수
 -- 없고, notification_preference의 PK가 (notification_type, user_id)여도 충돌하지
 -- 않는다.
+-- PostgreSQL은 UPDATE 시점에 활성 제약으로 행을 검증하므로, 기존 CHECK가 없어야
+-- 새 값(QUESTION_RECOMMENDED)을 받는 행이 제약 위반이 되지 않는다.
+-- 순서: DROP (모든 테이블) → UPDATE (백필) → ADD (새 제약)
 -- -----------------------------------------------------------------------------
+
+ALTER TABLE notification_preference
+    DROP CONSTRAINT ck_notification_preference_type;
+
+ALTER TABLE outbox_event
+    DROP CONSTRAINT ck_outbox_event_event_type;
+
+ALTER TABLE notification
+    DROP CONSTRAINT ck_notification_type;
 
 UPDATE notification_preference
 SET notification_type = 'QUESTION_RECOMMENDED'
@@ -245,17 +257,11 @@ SET event_type = 'QUESTION_RECOMMENDED'
 WHERE event_type = 'DAILY_QUESTION_ASSIGNED';
 
 ALTER TABLE notification_preference
-    DROP CONSTRAINT ck_notification_preference_type;
-
-ALTER TABLE notification_preference
     ADD CONSTRAINT ck_notification_preference_type
     CHECK (notification_type IN (
         'ANSWER_RECEIVED', 'ANSWER_REACTED', 'DIRECTION_POST_RECEIVED',
         'REPORT_RESOLVED', 'QUESTION_PROPOSAL_REVIEWED', 'QUESTION_RECOMMENDED'
     ));
-
-ALTER TABLE outbox_event
-    DROP CONSTRAINT ck_outbox_event_event_type;
 
 ALTER TABLE outbox_event
     ADD CONSTRAINT ck_outbox_event_event_type
@@ -264,9 +270,6 @@ ALTER TABLE outbox_event
         'ANSWER_PUBLISHED', 'ANSWER_REACTED', 'SKIP_CONFIRMATION_DUE',
         'QUESTION_RECOMMENDED', 'QUESTION_PROPOSAL_REVIEWED', 'REPORT_RESOLVED'
     ));
-
-ALTER TABLE notification
-    DROP CONSTRAINT ck_notification_type;
 
 ALTER TABLE notification
     ADD CONSTRAINT ck_notification_type
