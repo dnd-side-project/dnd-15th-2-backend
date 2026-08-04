@@ -1,3 +1,9 @@
+/*
+ * Created at: 2026-08-04T00:00:00+09:00
+ * Source scenario: TEST-PLAN-GH-51-GLOBAL-EXCEPTION-UNIT-001 through UNIT-006
+ *
+ * import 수가 많아 클래스 선언 위에 두면 정책 검사 범위(첫 30줄)를 벗어나므로 여기에 배치.
+ */
 package com.dnd.qello.common.web;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -27,10 +33,6 @@ import com.dnd.qello.direction.error.DirectionException;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 
-/**
- * Created at: 2026-08-04T00:00:00+09:00
- * Source scenario: TEST-PLAN-GH-51-GLOBAL-EXCEPTION-UNIT-001 through UNIT-006
- */
 class GlobalExceptionHandlerTest {
 
 	private MockMvc mockMvc;
