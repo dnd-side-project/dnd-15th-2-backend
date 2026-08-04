@@ -71,7 +71,57 @@ class DirectionDomainTest {
 		PostRecipient available = PostRecipient.available(1L, 2L, "NEAR", BigDecimal.valueOf(10), "KR-SEOUL", LOCATION_AT);
 		assertThat(available.getStatus()).isEqualTo(PostRecipientStatus.AVAILABLE);
 		assertThatThrownBy(() -> PostRecipient.restore(1L, 1L, 2L, PostRecipientStatus.SKIPPED,
-			"NEAR", BigDecimal.TEN, "KR-SEOUL", LOCATION_AT, null, null, null, null, null, null))
+			"NEAR", BigDecimal.TEN, "KR-SEOUL", LOCATION_AT, null, null, null, null, null, null, null))
+			.isInstanceOf(IllegalArgumentException.class);
+	}
+
+	@Test
+	@DisplayName("넘김은 SKIP_PENDING을 거치며 유예 중에는 용량을 붙잡는다")
+	void holdsCapacityWhileSkipIsPending() {
+		PostRecipient available = PostRecipient.available(1L, 2L, "NEAR", BigDecimal.valueOf(10), "KR-SEOUL", LOCATION_AT);
+		PostRecipient pending = available.requestSkip(LOCATION_AT.plusSeconds(10));
+
+		assertThat(pending.getStatus()).isEqualTo(PostRecipientStatus.SKIP_PENDING);
+		assertThat(pending.getSkipRequestedAt()).isEqualTo(LOCATION_AT.plusSeconds(10));
+		assertThat(pending.getSkippedAt()).isNull();
+		assertThat(pending.getCapacityReleasedAt()).isNull();
+
+		PostRecipient confirmed = pending.confirmSkip(LOCATION_AT.plusSeconds(15));
+
+		assertThat(confirmed.getStatus()).isEqualTo(PostRecipientStatus.SKIPPED);
+		assertThat(confirmed.getSkippedAt()).isEqualTo(LOCATION_AT.plusSeconds(15));
+		assertThat(confirmed.getCapacityReleasedAt()).isEqualTo(LOCATION_AT.plusSeconds(15));
+	}
+
+	@Test
+	@DisplayName("되돌린 넘김은 timestamp 유무로 이전 상태를 도출한다")
+	void revertsSkipToTheDerivedPreviousStatus() {
+		PostRecipient available = PostRecipient.available(1L, 2L, "NEAR", BigDecimal.valueOf(10), "KR-SEOUL", LOCATION_AT);
+		assertThat(available.requestSkip(LOCATION_AT).revertSkip().getStatus())
+			.isEqualTo(PostRecipientStatus.AVAILABLE);
+
+		PostRecipient discovered = PostRecipient.restore(1L, 1L, 2L, PostRecipientStatus.DISCOVERED,
+			"NEAR", BigDecimal.TEN, "KR-SEOUL", LOCATION_AT, LOCATION_AT, null, null, null, null, null, null);
+		assertThat(discovered.requestSkip(LOCATION_AT).revertSkip().getStatus())
+			.isEqualTo(PostRecipientStatus.DISCOVERED);
+
+		PostRecipient opened = PostRecipient.restore(1L, 1L, 2L, PostRecipientStatus.OPENED,
+			"NEAR", BigDecimal.TEN, "KR-SEOUL", LOCATION_AT, LOCATION_AT, LOCATION_AT, null, null, null, null, null);
+		PostRecipient reverted = opened.requestSkip(LOCATION_AT).revertSkip();
+
+		assertThat(reverted.getStatus()).isEqualTo(PostRecipientStatus.OPENED);
+		assertThat(reverted.getSkipRequestedAt()).isNull();
+	}
+
+	@Test
+	@DisplayName("SKIP_PENDING은 넘김 요청만 있고 확정이 없는 상태와 동치다")
+	void skipPendingRequiresRequestWithoutConfirmation() {
+		assertThatThrownBy(() -> PostRecipient.restore(1L, 1L, 2L, PostRecipientStatus.SKIP_PENDING,
+			"NEAR", BigDecimal.TEN, "KR-SEOUL", LOCATION_AT, null, null, null, null, null, null, null))
+			.isInstanceOf(IllegalArgumentException.class);
+		assertThatThrownBy(() -> PostRecipient.restore(1L, 1L, 2L, PostRecipientStatus.SKIPPED,
+			"NEAR", BigDecimal.TEN, "KR-SEOUL", LOCATION_AT, null, null, null,
+			LOCATION_AT, LOCATION_AT, null, null))
 			.isInstanceOf(IllegalArgumentException.class);
 	}
 
