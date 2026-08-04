@@ -91,6 +91,7 @@ public final class PostRecipient {
 	private static String requireText(String value, String field, int max) { if (value == null || value.isBlank() || value.length() > max) throw new IllegalArgumentException(field + "이 유효하지 않습니다"); return value; }
 
 	public PostRecipient requestSkip(Instant at) {
+		Objects.requireNonNull(at, "at은 필수입니다");
 		if (status != PostRecipientStatus.AVAILABLE && status != PostRecipientStatus.DISCOVERED
 			&& status != PostRecipientStatus.OPENED) {
 			throw new IllegalStateException("넘김을 요청할 수 없는 상태입니다: " + status);
@@ -110,9 +111,12 @@ public final class PostRecipient {
 	}
 
 	public PostRecipient confirmSkip(Instant at) {
+		Objects.requireNonNull(at, "at은 필수입니다");
 		if (status != PostRecipientStatus.SKIP_PENDING) {
 			throw new IllegalStateException("확정할 수 있는 상태가 아닙니다: " + status);
 		}
+		// capacityReleasedAt은 이 객체 상태에만 반영된다. RecipientReceiveStateRepository의 실제 용량
+		// 카운터 해제는 후속 SKIP_CONFIRMATION_DUE 워커의 몫이며 이 메서드 범위 밖이다.
 		return new PostRecipient(id, postId, recipientId, PostRecipientStatus.SKIPPED, distanceBand,
 			matchedBearingDegrees, matchedRegionCode, matchedAt, discoveredAt, openedAt, skipRequestedAt, at,
 			at, null, null);
