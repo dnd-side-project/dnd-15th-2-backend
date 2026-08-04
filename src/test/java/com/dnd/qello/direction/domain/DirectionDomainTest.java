@@ -133,4 +133,18 @@ class DirectionDomainTest {
 		assertThatThrownBy(() -> RecipientReceiveState.restore(2L, 6, 7, LOCATION_AT, LOCATION_AT, LOCATION_AT))
 			.isInstanceOf(IllegalArgumentException.class);
 	}
+
+	@Test
+	@DisplayName("답변 읽음 기준선은 발송 시각보다 빠를 수 없다")
+	void rejectsAnswersReadBeforeSubmission() {
+		DirectionPost post = DirectionPost.restore(1L, 2L, 3L, DirectionPostStatus.ACTIVE, "key", "글",
+			"KR-SEOUL", DirectionPostModerationStatus.PASSED, LOCATION_AT, LOCATION_AT,
+			LOCATION_AT.plusSeconds(3600), LOCATION_AT.plusSeconds(60), null);
+
+		assertThat(post.getAnswersReadAt()).isEqualTo(LOCATION_AT.plusSeconds(60));
+		assertThatThrownBy(() -> DirectionPost.restore(1L, 2L, 3L, DirectionPostStatus.ACTIVE, "key", "글",
+			"KR-SEOUL", DirectionPostModerationStatus.PASSED, LOCATION_AT, LOCATION_AT,
+			LOCATION_AT.plusSeconds(3600), LOCATION_AT.minusSeconds(1), null))
+			.isInstanceOf(IllegalArgumentException.class);
+	}
 }
