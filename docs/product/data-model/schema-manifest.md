@@ -220,6 +220,9 @@ target DDL의 차이만 담은 delta로 손으로 작성한다. V1 원본 DDL �
 - `fk_notification_answer`
 - `fk_notification_delivery_notification`
 - `fk_notification_delivery_device`
+- `fk_post_reaction_recipient`
+- `fk_answer_reaction_answer`
+- `fk_answer_reaction_user`
 
 ## 11. Unique-constraint inventory
 
