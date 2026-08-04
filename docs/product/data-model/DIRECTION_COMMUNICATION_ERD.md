@@ -3,13 +3,17 @@
 ## 0. 문서 상태와 기준
 
 - 상태: 구현 전 논리·물리 데이터 모델 초안.
-- 작성일: 2026-08-02. 최종 갱신: 2026-08-03.
+- 작성일: 2026-08-02. 최종 갱신: **2026-08-04**.
 - DB 기준: PostgreSQL 16+ / PostGIS 3+.
 - 제품 정본: `.omx/plans/prd-direction-connected-communication.md`.
+- 기능 정본: **`docs/2. 기능-명세서.md` (2026-08-04 개정)**.
+- 용어 정본: **`CONTEXT.md`**.
 - 정책 정본: `.omx/plans/policy-decision-register-direction-connected-communication.md`.
 - 매칭 설계: `docs/설계/1. 방향-기반-수신자-매칭-백엔드-설계.md`.
-- 이 문서는 현재 MVP인 `질문 배정 → 방향 글 발송 → 수신자 확정 → 답변/만료 → 신고·차단·알림`을 모델링한다.
+- 이 문서는 현재 MVP인 `질문 추천 → 질문글 발송 → 수신자 확정 → 답변/공감/만료 → 신고·차단·알림`을 모델링한다.
 - 현재 저장소에는 실제 Spring/PostgreSQL 백엔드가 없다. 아래 내용은 구현 완료 상태가 아니라 구현 계약 제안이다.
+
+> **2026-08-04 개정의 핵심**: 답변은 **질문글 작성자 한 명에게만** 도달한다. 답변자는 같은 질문글의 다른 답변도, 답변 개수도 볼 수 없다. 근거는 `docs/adr/0001-답변은-질문자에게만-도달한다.md`다. 이 규칙은 DB 제약이 아니라 **조회 계층에서 강제**하므로, 스키마만 보고 "여러 수신자가 답변을 공유한다"고 해석하면 안 된다.
 
 ### 스키마 기준 파일
 
@@ -17,7 +21,7 @@
 
 | 파일 | 역할 | 상태 |
 |---|---|---|
-| `dbml/direction_communication.dbml` | 스키마 기준. 테이블 26개 | 기준 |
+| `dbml/direction_communication.dbml` | 스키마 기준. 테이블 **28개** | 기준 |
 | `sql/direction_communication_ddl.sql` | DBML에서 파생한 독립 실행형 기준 DDL | 기준과 동기화됨 |
 | `sql/001~004_*.sql` | 이전 증분 계보. 아래 "폐기된 계보" 참고 | **더 이상 기준이 아님** |
 
@@ -33,7 +37,7 @@
 | 지역 마스터 | 003에서 뒤늦게 추가 | `region_code`가 기준 DDL에 포함 |
 | 미디어 첨부 | `post_media` + `answer_media` | `media_attachment` 한 테이블 |
 | 푸시 상태 컬럼 | `push_device.status` | `push_device.device_status` |
-| 신고 대상 | 4종(`question_proposal` 포함) | 3종(사용자·방향 글·답변) |
+| 신고 대상 | 4종(`question_proposal` 포함) | 3종(사용자·질문글·답변) |
 | 주제 자동 생성 | 002에 12개 테이블 | 제외. §11·§13 참고 |
 
 ### 2026-08-03 스키마 변경
@@ -44,6 +48,28 @@
 2. FK 컬럼 인덱스 일괄 추가.
 3. `direction_scheme`에 `status = 'ACTIVE'` partial unique 추가.
 4. `post_recipient`에 상태–타임스탬프 CHECK와 용량 해제 constraint trigger 추가.
+
+### 2026-08-04 스키마 변경 (기능 명세서 개정 반영)
+
+기능 명세서가 전면 개정되면서 확정된 규칙 여섯 가지를 스키마에 반영했다. 전부 PostgreSQL 16 + PostGIS 3.4에서 실행·행동 검증했다. 상세는 §14.
+
+| # | 변경 | 왜 |
+|---|---|---|
+| 1 | **`post_reaction`, `answer_reaction` 신설** | 공감(화면 문구 `좋아요`)이 확정 MVP 기능이 됐다. §11이 `like`를 Non-goal로 제외했던 판단을 뒤집는다 |
+| 2 | **`post_recipient.status`에 `SKIP_PENDING` 추가, `skip_requested_at` 컬럼 추가** | 스와이프 넘김에 5초 되돌리기가 생겼다. 되돌릴 수 있는 동안 용량을 해제하면 안 된다 |
+| 3 | **`recipient_receive_state`의 상한 5 하드코딩 제거** | 수신 상한이 고정 상수가 아니라 운영 설정값이 됐다 |
+| 4 | **`direction_post.answers_read_at` 추가** | `내가 쓴 질문` 카드의 `새로운 답변 n개` 배지 기준선 |
+| 5 | **`answer`에 수신 권한당 1건 partial unique 추가** | "한 질문글에 답변은 1회"가 확정됐다. §4가 예고해둔 제약을 실제로 걸었다 |
+| 6 | **알림·Outbox 종류 갱신** | `DAILY_QUESTION_ASSIGNED` → `QUESTION_RECOMMENDED`, `ANSWER_REACTED`·`SKIP_CONFIRMATION_DUE` 추가 |
+
+**공감을 두 테이블로 나눈 이유**는 누를 수 있는 사람이 서로 다르고, 그 차이를 **키로 강제할 수 있기** 때문이다.
+
+- `post_reaction`은 `(post_id, reactor_id)`가 `post_recipient(post_id, recipient_id)`를 참조한다. "수신 자격이 있는 사용자만 공감할 수 있다"가 트리거 없이 성립하고, 질문글 작성자는 자기 글의 수신자가 될 수 없으므로(`ct_post_recipient_not_sender`) 자기 글 공감도 함께 막힌다.
+- `answer_reaction`은 `answer_id`가 PK다. 공감할 수 있는 사람이 질문자 한 명뿐이라 "답변당 공감 1건"이 키로 성립한다. 다만 `answer`가 `post_id`를 직접 갖지 않고 `post_recipient`를 거쳐 도달하므로, "누른 사람이 질문자인가"만 `ct_answer_reaction_reactor_is_sender` 트리거가 판정한다.
+
+**`SKIP_PENDING`이 용량 해제 트리거를 건드리지 않는 이유**: `ct_post_recipient_capacity_release`는 `ANSWERED`·`SKIPPED`·`EXPIRED`·`BLOCKED`만 해제 대상으로 본다. `SKIP_PENDING`은 그 목록에 없으므로 트리거를 고치지 않고도 되돌릴 수 있는 동안 용량을 자연히 붙잡는다.
+
+**댓글 테이블은 여전히 만들지 않는다.** 이전에는 Non-goal이라 제외했지만, 이제는 답변을 볼 수 있는 사람이 질문자 한 명뿐이라 **댓글이 놓일 자리 자체가 없다.**
 
 ### P06 위치 정책 (2026-08-03 확정: 1안)
 
@@ -63,15 +89,18 @@
 
 | 제품 용어 | 테이블 | 의미 |
 |---|---|---|
-| 승인 질문 | `approved_question` | 검토를 통과해 글 작성 주제로 쓸 수 있는 질문. 문구는 생성 후 수정하지 않음 |
-| 오늘의 질문 | `question_assignment` | 특정 사용자·배정 주기에 고정된 승인 질문 |
+| 승인 질문 | `approved_question` | 검토를 통과해 작성 주제로 쓸 수 있는 질문. 문구는 생성 후 수정하지 않음 |
+| 추천 질문 | `question_assignment` | 특정 사용자·추천 주기에 고정된 승인 질문. **배정이 아니라 추천이므로 사용자는 고르지 않아도 된다** |
 | 질문 제안 | `question_proposal` | 사용자가 검토를 요청한 질문 후보. 승인 전에는 발행되지 않음 |
-| 방향 글 | `direction_post` | 승인 질문에 사진·글을 붙여 한 방향으로 보낸 원문 |
+| **질문글** | `direction_post` | 승인 질문에 사진·글을 붙여 한 방향으로 보낸 것 |
 | 수신 자격 | `post_recipient` | 발송 시점 매칭 결과로 확정한 열람·답변 권한 |
-| 수신 용량 | `recipient_receive_state` | 활성 미처리 질문 최대 5개를 동시성 아래에서 지키는 사용자별 용량 투영값 |
-| 답변 | `answer` | 수신자가 방향 글에 남긴 사진 또는 짧은 글 |
+| 수신 용량 | `recipient_receive_state` | 활성 미처리 질문글이 설정된 수신 상한을 넘지 않도록 동시성 아래에서 지키는 사용자별 용량 투영값 |
+| 답변 | `answer` | 수신자가 **질문자에게만** 남기는 사진 또는 짧은 글 |
+| 공감 | `post_reaction`, `answer_reaction` | 질문글 또는 답변에 남기는 가벼운 반응. 화면 문구는 `좋아요` |
 
-`direction_post`를 단순히 `question`이라고 부르지 않는다. 그래야 질문 검토·배정과 콘텐츠 발송 상태가 섞이지 않는다.
+`direction_post`를 단순히 `question`이라고 부르지 않는다. 그래야 질문 검토·추천과 콘텐츠 발송 상태가 섞이지 않는다. 테이블명은 `direction_post`를 유지하되, **제품 문서와 화면에서는 `질문글` 하나로 부른다.** 보낸 것과 받은 것에 서로 다른 이름을 쓰지 않는다.
+
+**폐기된 제품 용어**: `방향 글`(→ `질문글`), `수신 질문`(→ `질문글`), `오늘의 질문`(→ `추천 질문`), `방향 피드`(공동 피드 개념 자체가 폐기), `댓글`(기능 없음).
 
 ### 질문 문구 불변 정책 (2026-08-03 확정)
 
@@ -102,9 +131,10 @@
 | 계정    | `user_account`                              | 닉네임, 계정 상태, 알림 설정, 푸시 기기, 수신 용량 투영값 | 다른 도메인은 `user_id`만 참조          |
 | 질문 제안 | `question_proposal`                         | 제안 문구, 현재 상태, 검토 이력        | 승인 시 별도 `approved_question` 생성 |
 | 질문 풀  | `approved_question`                         | 승인 질문 문구, 활성 기간            | 배정은 승인 질문 ID를 참조              |
-| 질문 배정 | `question_assignment_cycle`                 | 사용자·주기별 고정 질문 목록                    | 승인 질문을 읽어 배정 스냅샷 생성              |
-| 방향 글  | `direction_post`                            | 본문, 방향·거리 스냅샷, 만료 시각, 미디어           | 수신자 확정은 별도 트랜잭션                |
-| 수신·답변 | `post_recipient`                            | 수신 상태, 발견·열람 상태, 답변                 | 답변은 유효 수신자만 작성                 |
+| 질문 추천 | `question_assignment_cycle`                 | 사용자·주기별 고정 질문 목록                    | 승인 질문을 읽어 추천 스냅샷 생성              |
+| 질문글  | `direction_post`                            | 본문, 방향·거리 스냅샷, 만료 시각, 미디어, 답변 읽음 기준선           | 수신자 확정은 별도 트랜잭션                |
+| 수신·답변 | `post_recipient`                            | 수신 상태, 발견·열람·넘김 유예 상태, 답변                 | 답변은 유효 수신자만 작성. **답변 열람은 질문자 한정** |
+| 공감 | `post_reaction`, `answer_reaction` | 질문글 공감과 답변 공감 | 질문글 공감은 수신자만, 답변 공감은 질문자만 |
 | 안전    | `user_block`, `report`, `moderation_review` | 차단 관계, 신고 사건, 운영 판정                 | 조회·매칭·알림에서 현재 상태 재확인           |
 | 알림    | `notification`, `outbox_event`              | 앱 내 알림과 외부 전달 작업                    | 푸시는 접근 권한의 진실의 원천이 아님          |
 
@@ -138,8 +168,12 @@ erDiagram
 
     DIRECTION_POST ||--o{ POST_RECIPIENT : grants_access
     USER_ACCOUNT ||--o{ POST_RECIPIENT : receives
-    POST_RECIPIENT ||--o{ ANSWER : permits
+    POST_RECIPIENT ||--o| ANSWER : permits_one
     ANSWER ||--o{ MEDIA_ATTACHMENT : contains
+
+    POST_RECIPIENT ||--o| POST_REACTION : may_react
+    ANSWER ||--o| ANSWER_REACTION : may_be_praised
+    USER_ACCOUNT ||--o{ ANSWER_REACTION : praises
 
     USER_ACCOUNT ||--o{ USER_BLOCK : blocker
     USER_ACCOUNT ||--o{ USER_BLOCK : blocked
@@ -159,10 +193,12 @@ erDiagram
 - `region_code`는 `user_account`, `active_user_presence`, `direction_post`, `answer`, `post_recipient` 다섯 곳의 지역 컬럼이 참조한다.
 - `media_attachment`는 `post_id`와 `answer_id` 중 정확히 하나만 값을 갖는다. `media_id`가 PK이므로 한 미디어는 최대 한 콘텐츠에만 붙는다.
 - `media_attachment`는 소유권 검증을 위해 복합 FK 세 개를 갖는다. `(media_id, owner_id) → media_asset(id, owner_id)`, `(post_id, owner_id) → direction_post(id, sender_id)`, `(answer_id, owner_id) → answer(id, author_id)`.
-- `answer`는 `(post_recipient_id, author_id) → post_recipient(id, recipient_id)` 복합 FK로 "답변 작성자 = 수신자"를 강제한다.
+- `answer`는 `(post_recipient_id, author_id) → post_recipient(id, recipient_id)` 복합 FK로 "답변 작성자 = 수신자"를 강제한다. 한 수신 권한당 답변은 `uq_answer_one_per_recipient` partial unique로 1건이다.
+- `post_reaction`은 `(post_id, reactor_id) → post_recipient(post_id, recipient_id)` 복합 FK로 "질문글 공감은 수신자만"을 강제한다. 별도 트리거가 없다.
+- `answer_reaction`은 `answer_id`가 PK이자 FK다. "답변당 공감 1건"은 키가 보장하고, "누른 사람 = 질문글 작성자"는 `ct_answer_reaction_reactor_is_sender` 트리거가 판정한다. `answer`가 `post_id`를 직접 갖지 않아 복합 FK로 표현할 수 없기 때문이다.
 - `report`는 `direction_post`, `answer`, `user_account` 중 정확히 하나를 신고 대상으로 갖는다. 질문 제안은 현재 신고 대상이 아니다.
 - `moderation_review`는 신고 사건과 연결되며 조치 대상의 현재 상태를 갱신한다.
-- `notification`은 대상 종류에 따라 방향 글 또는 답변을 가리킬 수 있고, 둘 다 없을 수도 있다.
+- `notification`은 대상 종류에 따라 질문글 또는 답변을 가리킬 수 있고, 둘 다 없을 수도 있다.
 
 ## 3. 계정·질문 공급 ERD
 
@@ -427,7 +463,7 @@ erDiagram
     MEDIA_ASSET ||--o| MEDIA_ATTACHMENT : attached_once
 ```
 
-`media_attachment`는 방향 글과 답변의 첨부를 함께 담는다. `media_id`가 기본키이므로 "한 미디어는 한 콘텐츠에만 붙는다"는 불변식이 트리거 없이 성립하고, 동시에 서로 다른 콘텐츠에 붙이려는 두 트랜잭션 중 하나는 기본키 충돌로 실패한다. `answer`의 작성자는 `(post_recipient_id, author_id)` 복합 FK로 수신자와 같음이 강제되므로, 별도의 `user_account → answer` 선은 그리지 않는다.
+`media_attachment`는 질문글과 답변의 첨부를 함께 담는다. `media_id`가 기본키이므로 "한 미디어는 한 콘텐츠에만 붙는다"는 불변식이 트리거 없이 성립하고, 동시에 서로 다른 콘텐츠에 붙이려는 두 트랜잭션 중 하나는 기본키 충돌로 실패한다. `answer`의 작성자는 `(post_recipient_id, author_id)` 복합 FK로 수신자와 같음이 강제되므로, 별도의 `user_account → answer` 선은 그리지 않는다.
 
 ### 상태 전이
 
@@ -441,7 +477,9 @@ ACTIVE → HIDDEN | DELETED
 
 post_recipient
 AVAILABLE → DISCOVERED → OPENED
-AVAILABLE | DISCOVERED | OPENED → ANSWERED | SKIPPED | EXPIRED | BLOCKED
+AVAILABLE | DISCOVERED | OPENED → ANSWERED | EXPIRED | BLOCKED
+AVAILABLE | DISCOVERED | OPENED → SKIP_PENDING → SKIPPED
+SKIP_PENDING → AVAILABLE | DISCOVERED | OPENED     (되돌리기)
 
 answer
 SUBMITTED → SAFETY_CHECKING → PUBLISHED
@@ -450,13 +488,25 @@ SUBMITTED → SAFETY_CHECKING → PUBLISHED
 PUBLISHED → HIDDEN | DELETED
 ```
 
-`ANSWERED`, `SKIPPED`, `EXPIRED`, `BLOCKED` 네 개가 종결 상태이며, 이 네 상태와 `capacity_released_at`이 채워진 것은 서로 동치다. `OPENED`는 활성 미처리로 계속 세므로 슬롯을 해제하지 않는다(불변식 19). 이 동치는 `ct_post_recipient_capacity_release` 지연 제약 트리거가 커밋 시점에 강제한다.
+`ANSWERED`, `SKIPPED`, `EXPIRED`, `BLOCKED` 네 개가 종결 상태이며, 이 네 상태와 `capacity_released_at`이 채워진 것은 서로 동치다. 이 동치는 `ct_post_recipient_capacity_release` 지연 제약 트리거가 커밋 시점에 강제한다.
+
+슬롯을 해제하지 **않는** 것이 둘 있다.
+
+| 행동 | 상태 | 슬롯 | 왜 |
+|---|---|---|---|
+| 열람만 함 | `OPENED` | 유지 | 열어봤다고 처리한 것은 아니다 (불변식 19) |
+| **공감만 남김** | `OPENED` 유지 + `post_reaction` 행 생성 | **유지** | 어쨌든 답변을 한 것은 아니다 (불변식 19-1) |
+| **넘김 유예 중** | `SKIP_PENDING` | **유지** | 되돌릴 수 있는 동안 자리를 비우면 그 사이 새 질문글이 들어와 상한을 넘는다 |
+
+`SKIP_PENDING`이 종결 상태 목록에 없다는 사실 자체가 유예 중 용량 점유를 만든다. 트리거를 따로 고치지 않았다.
 
 상태별 타임스탬프 대응은 `ck_post_recipient_status_timestamps`가 즉시 검사한다.
 
 | 규칙 | 내용 |
 |---|---|
-| `SKIPPED` ⟺ `skipped_at` | 넘기기는 시각 기록과 동치 |
+| `SKIP_PENDING` ⟺ (`skip_requested_at` 있음 AND `skipped_at` 없음) | 넘김을 요청했지만 아직 확정되지 않은 상태. `ck_post_recipient_skip_pending`이 검사한다 |
+| `SKIPPED` ⟺ `skipped_at` | 넘김 확정은 시각 기록과 동치. 확정된 행은 두 시각을 모두 갖는다 |
+| `skipped_at` ≥ `skip_requested_at` | 확정은 요청보다 앞설 수 없다 |
 | `EXPIRED` ⟺ `expired_at` | 만료도 마찬가지 |
 | `BLOCKED` ⟺ `blocked_at` | 차단도 마찬가지 |
 | `DISCOVERED` → `discovered_at` 필수 | 이후 상태에서도 값은 남는다 |
@@ -465,7 +515,9 @@ PUBLISHED → HIDDEN | DELETED
 
 `ANSWERED`에는 `opened_at`을 요구하지 않는다. 알림에서 바로 답변으로 들어오는 경로가 있을 수 있기 때문이다.
 
-한 수신자당 답변 개수는 아직 결정되지 않았으므로 `answer.post_recipient_id`에 유일 제약을 걸지 않았다. 현재는 멱등 키만 중복 제출을 막는다. 정책이 답변 한 개로 확정되면 `UNIQUE(post_recipient_id) WHERE status NOT IN ('REJECTED','DELETED')`를 추가한다.
+**한 수신자당 답변 개수는 1개로 확정됐다(2026-08-04).** 이 문서가 예고해둔 `UNIQUE(post_recipient_id) WHERE status NOT IN ('REJECTED','DELETED')`를 `uq_answer_one_per_recipient`라는 이름으로 실제로 걸었다. 거절되거나 삭제된 답변은 자리를 비켜주므로 다시 쓸 수 있다.
+
+되돌리기 되돌림 경로에는 별도 컬럼을 두지 않는다. `SKIP_PENDING`에서 되돌릴 때의 복귀 상태는 `opened_at`이 있으면 `OPENED`, `discovered_at`만 있으면 `DISCOVERED`, 둘 다 없으면 `AVAILABLE`로 **유도**한다. 이전 상태를 저장하는 컬럼은 되돌리기 창이 5초뿐이라 값을 유지할 이유가 없다.
 
 ### 발송 시점 스냅샷
 
@@ -587,7 +639,22 @@ erDiagram
 
 - 차단은 삭제하지 않고 `released_at`으로 해제 이력을 남길 수 있다. 현재 차단 여부는 `released_at IS NULL`이다.
 - 신고 대상 FK인 `direction_post_id`, `answer_id`, `target_user_id` 중 정확히 하나만 값이 있어야 한다. 질문 제안은 현재 신고 대상이 아니다.
-- `notification`의 이동 대상은 `direction_post_id`와 `answer_id` 중 **최대** 하나다. `DAILY_QUESTION_ASSIGNED`처럼 이동 대상이 없는 종류가 있어 "정확히 하나"가 아니다.
+- `notification`의 이동 대상은 `direction_post_id`와 `answer_id` 중 **최대** 하나다. `QUESTION_RECOMMENDED`처럼 이동 대상이 없는 종류가 있어 "정확히 하나"가 아니다.
+
+알림 종류는 여섯이다(2026-08-04 기준).
+
+| `notification_type` | 받는 사람 | 이동 대상 |
+|---|---|---|
+| `QUESTION_RECOMMENDED` | 추천을 받은 사용자 | 없음 (추천 질문 시트) |
+| `DIRECTION_POST_RECEIVED` | 수신 자격이 생긴 사용자 | `direction_post_id` |
+| `ANSWER_RECEIVED` | **질문글 작성자만** | `direction_post_id` + `answer_id` |
+| `ANSWER_REACTED` | **답변 작성자** | `answer_id` |
+| `QUESTION_PROPOSAL_REVIEWED` | 제안자 | 없음 |
+| `REPORT_RESOLVED` | 신고자 | 없음 |
+
+`ANSWER_REACTED`는 답변자가 받는 **유일한 반응 신호**다. 이것이 없으면 답변자는 자기 답변이 읽혔는지조차 알 수 없다. 그리고 질문자가 만료 뒤에 처음 열어볼 수 있으므로 **답변한 지 하루가 지나 도착할 수 있다.** 이는 지연이 아니라 정상 동작이므로 "오래된 이벤트는 버린다" 같은 TTL을 이 종류에 적용하면 안 된다.
+
+`ANSWER_RECEIVED`의 수신자는 질문글 작성자 한 명뿐이다. 같은 질문글의 다른 수신자에게 "새 답변이 달렸어요"를 보내면 ADR 0001을 어긴다.
 - Outbox payload에는 정확 좌표, 푸시 토큰 원문, 신고 상세 같은 민감 정보를 넣지 않는다.
 - `notification`은 앱 내 알림의 진실의 원천이다. 푸시 실패가 수신 권한이나 알림 행을 지우지 않는다.
 - 푸시 토큰은 복호화 가능한 암호문으로 제한 저장하고, 중복 확인에는 비가역 fingerprint를 사용한다. 단순 해시만 저장하면 실제 푸시 발송에 사용할 수 없다.
@@ -626,7 +693,7 @@ ALTER TABLE question_assignment
 - 닉네임은 `user_account.nickname`에 직접 두고 유일 제약을 걸지 않는다. P09가 익명 닉네임으로 확정됐고 같은 닉네임이 겹쳐도 문제가 없기 때문이다. 정규화 규칙과 변경 주기는 §12의 미결 항목으로 남아 있다.
 - `approved_question.source_proposal_id`는 운영자 작성 질문이면 `NULL`일 수 있다. PostgreSQL의 일반 `UNIQUE`는 여러 `NULL`을 허용한다.
 - 승인 처리 시 `question_proposal.status = 'APPROVED'`와 해당 승인 질문 생성을 한 트랜잭션으로 묶는다.
-- `approved_question.status = 'ACTIVE'`인 질문만 새 방향 글의 주제로 쓸 수 있다. 다른 테이블을 읽어야 하므로 `CHECK`가 아니라 지연 제약 트리거(`ct_direction_post_question_active`)로 강제한다.
+- `approved_question.status = 'ACTIVE'`인 질문만 새 질문글의 주제로 쓸 수 있다. 다른 테이블을 읽어야 하므로 `CHECK`가 아니라 지연 제약 트리거(`ct_direction_post_question_active`)로 강제한다.
 
 ### 방향과 발송
 
@@ -718,6 +785,41 @@ ALTER TABLE answer
 - `ct_media_status_preserves_content`: 미디어 `status` 변경으로 붙어 있던 글·답변이 콘텐츠 없는 상태가 되는 것을 막는다.
 
 넷 다 `DEFERRABLE INITIALLY DEFERRED`라 트랜잭션 커밋 시점에 검사한다. 덕분에 "글 삽입 → 미디어 첨부"처럼 중간 상태를 거치는 순서도 한 트랜잭션 안에서 자유롭게 쓸 수 있다.
+
+### 공감 (2026-08-04 추가)
+
+```sql
+-- 질문글 공감: 수신 자격이 곧 공감 자격이다. 복합 FK 하나가 전부를 강제한다.
+ALTER TABLE post_reaction
+    ADD CONSTRAINT pk_post_reaction
+    PRIMARY KEY (post_id, reactor_id),
+    ADD CONSTRAINT fk_post_reaction_recipient
+    FOREIGN KEY (post_id, reactor_id)
+    REFERENCES post_recipient (post_id, recipient_id) ON DELETE CASCADE;
+
+-- 답변 공감: answer_id가 PK라 "답변당 1건"이 키로 성립한다.
+ALTER TABLE answer_reaction
+    ADD CONSTRAINT fk_answer_reaction_answer
+    FOREIGN KEY (answer_id) REFERENCES answer (id) ON DELETE CASCADE,
+    ADD CONSTRAINT fk_answer_reaction_user
+    FOREIGN KEY (reactor_id) REFERENCES user_account (id) ON DELETE CASCADE;
+```
+
+두 테이블이 강제하는 것과 강제하지 못하는 것을 구분해야 한다.
+
+| 규칙 | 무엇이 강제하나 |
+|---|---|
+| 질문글 공감은 수신자만 | `fk_post_reaction_recipient` 복합 FK |
+| 질문자는 자기 질문글에 공감 불가 | 위 FK + `ct_post_recipient_not_sender` (발신자는 수신자가 될 수 없으므로 참조할 행이 없다) |
+| 같은 사람이 같은 질문글에 두 번 공감 불가 | `pk_post_reaction` |
+| 답변당 공감 1건 | `answer_reaction_pkey` |
+| 답변 공감은 질문자만 | `ct_answer_reaction_reactor_is_sender` **트리거** |
+| **질문글 공감 수를 질문자에게만 노출** | **아무것도 강제하지 않는다. 조회 계층의 책임이다** |
+| **답변을 질문자와 답변자에게만 노출** | **아무것도 강제하지 않는다. 조회 계층의 책임이다** |
+
+마지막 두 줄이 중요하다. 이 제품에서 가장 중요한 규칙 두 개가 DB 제약으로 표현되지 않는다. 스키마만 보고 구현하면 어긴다.
+
+답변 공감만 트리거를 쓰는 이유는 `answer`가 `post_id`를 직접 갖지 않고 `post_recipient`를 거쳐 도달하기 때문이다. 복합 FK로 표현하려면 `answer`에 `post_id`를 비정규화해야 하는데, 그 대가가 트리거 하나보다 크다.
 
 ### 미디어 단일 첨부를 트리거가 아니라 키로 강제하는 이유
 
@@ -871,7 +973,10 @@ PostgreSQL은 FK에 인덱스를 자동 생성하지 않는다. 아래는 기존
 | `push_device` | `user_id` | 유니크 인덱스가 `token_fingerprint` 단독 |
 | `user_account`, `active_user_presence`, `post_recipient`, `answer` | 각 지역 코드 컬럼 | `region_code` 삭제 시 `RESTRICT` 검사용 |
 
-`media_attachment`의 `post_id`·`answer_id`는 `uq_media_attachment_post_order`와 `uq_media_attachment_answer_order`가 선두 컬럼으로 커버하므로 별도 인덱스를 만들지 않는다.
+| `post_reaction` | `reactor_id` | PK 선두가 `post_id`. 사용자 삭제 시 `CASCADE` 검사와 "내가 공감한 것" 조회에 필요 |
+| `answer_reaction` | `reactor_id` | PK가 `answer_id` 단독 |
+
+`media_attachment`의 `post_id`·`answer_id`는 `uq_media_attachment_post_order`와 `uq_media_attachment_answer_order`가 선두 컬럼으로 커버하므로 별도 인덱스를 만들지 않는다. `post_reaction.post_id`와 `answer_reaction.answer_id`도 각각 PK 선두라 별도 인덱스가 필요 없다 — 질문자가 공감 수를 세는 조회(`WHERE post_id = ?`)가 PK를 그대로 탄다.
 
 ### 만들지 않기로 한 인덱스
 
@@ -933,7 +1038,7 @@ question_assignment_cycle INSERT
 - 동시에 두 요청이 와도 한 cycle만 남고 패자는 기존 세트를 다시 조회한다.
 - 질문 풀 전체를 잠그지 않는다. 배정 당시 `pool_version`을 스냅샷으로 남긴다.
 
-### T4. 방향 글 제출
+### T4. 질문글 제출
 
 ```text
 approved_question.status = 'ACTIVE' 확인
@@ -990,20 +1095,66 @@ FOR UPDATE OF pr, p;
 - 한 수신자당 답변 개수가 확정되지 않았으므로 현재는 멱등 키만 중복 생성을 막는다.
 - **`status = 'ANSWERED'` 전이를 빠뜨리면 안 된다.** `ct_post_recipient_capacity_release`가 종결 상태와 `capacity_released_at`의 동치를 커밋 시점에 검사하므로, 해제만 하고 상태를 그대로 두면 트랜잭션이 커밋되지 않는다. 두 갱신을 서로 다른 문장으로 나누는 것은 괜찮다. 트리거는 지연 실행되고 최종 상태를 다시 읽어 판정한다.
 
-### T6A. `이번에는 넘기기`
+### T6A. 스와이프 넘김 (요청 → 유예 → 확정)
+
+넘김은 한 트랜잭션이 아니라 **세 단계**다. 5초 되돌리기가 생기면서 "넘김 요청"과 "넘김 확정"이 분리됐다.
+
+**T6A-1. 넘김 요청 (스와이프 직후)**
 
 ```text
 대상 post_recipient FOR UPDATE
 → 소유자·참여 가능 상태 확인
+→ status = SKIP_PENDING, skip_requested_at 기록
+→ capacity_released_at 은 건드리지 않는다        ← 핵심
+→ SKIP_CONFIRMATION_DUE outbox_event 예약
+→ COMMIT
+```
+
+**T6A-2. 되돌리기 (5초 안에 사용자가 취소)**
+
+```text
+대상 post_recipient FOR UPDATE
+→ status = SKIP_PENDING 인지 확인. 아니면 이미 확정된 것이므로 거부
+→ skip_requested_at = NULL
+→ status = opened_at 있으면 OPENED, discovered_at 있으면 DISCOVERED, 아니면 AVAILABLE
+→ 예약된 SKIP_CONFIRMATION_DUE 취소
+→ COMMIT
+```
+
+**T6A-3. 넘김 확정 (되돌리기 시간 경과 후 워커)**
+
+```text
+대상 post_recipient FOR UPDATE
+→ status = SKIP_PENDING 이고 skip_requested_at + 되돌리기 시간 <= now() 확인
 → status = SKIPPED, skipped_at 기록
 → capacity_released_at IS NULL일 때만 설정
 → recipient_receive_state.active_unhandled_count - 1
 → COMMIT
 ```
 
-- 열람만으로는 이 트랜잭션을 호출하지 않는다.
+- **유예 중에는 슬롯이 해제되지 않는다.** 해제하면 되돌리는 사이 새 질문글이 들어와 상한을 넘는다.
+- 열람만으로는, **공감만으로도** 이 트랜잭션을 호출하지 않는다.
 - 재시도해도 슬롯은 한 번만 해제한다.
-- 넘기기 이력은 발송 권한 제한이나 이후 매칭 우선순위 하락에 사용하지 않는다.
+- 넘김 이력은 발송 권한 제한이나 이후 매칭 우선순위 하락에 사용하지 않는다.
+- **질문자에게는 넘김이 전달되지 않는다.** 방치와 구별되지 않아야 거절당한 느낌을 주지 않는다.
+
+### T6C. 공감 남기기와 취소
+
+```text
+질문글 공감:  INSERT INTO post_reaction (post_id, reactor_id)
+              → FK가 수신 자격을 검사한다. 별도 조회 불필요
+              → 슬롯은 건드리지 않는다
+              → 취소는 DELETE
+
+답변 공감:    INSERT INTO answer_reaction (answer_id, reactor_id)
+              → PK가 "답변당 1건", 트리거가 "누른 사람 = 질문자"를 검사한다
+              → ANSWER_REACTED outbox_event
+              → 취소는 DELETE. 이때 예약된 알림도 함께 취소한다
+```
+
+- 만료된 질문글의 답변에도 공감할 수 있다. 만료는 새 답변만 차단한다.
+- 반복 탭은 같은 키에 대한 INSERT/DELETE이므로 결과가 누적되지 않는다.
+- 질문글 공감 수는 질문자에게만 집계해 내려보낸다. 수신자 응답에는 "내가 눌렀는지" 여부만 넣는다.
 
 ### T6B. 만료 슬롯 해제
 
@@ -1039,25 +1190,30 @@ user_block upsert
 
 ## 9. 핵심 불변식
 
-1. 승인 전 질문 제안은 질문 배정이나 방향 글 작성에 사용할 수 없다.
-2. 방향 글은 `ACTIVE` 상태의 승인 질문을 반드시 참조한다. `ct_direction_post_question_active` 트리거가 강제한다.
-3. 방향 글과 답변은 각각 텍스트와 공개 가능한 미디어 중 하나 이상을 가져야 한다.
-4. 한 방향 글의 방향·거리·만료 스냅샷은 발송 후 수정하지 않는다.
-5. 발신자는 자기 방향 글의 수신자가 될 수 없다.
-6. 한 방향 글과 한 사용자 사이에는 최대 하나의 수신자 행만 존재한다.
+1. 승인 전 질문 제안은 질문 추천이나 질문글 작성에 사용할 수 없다.
+2. 질문글은 `ACTIVE` 상태의 승인 질문을 반드시 참조한다. `ct_direction_post_question_active` 트리거가 강제한다.
+3. 질문글과 답변은 각각 텍스트와 공개 가능한 미디어 중 하나 이상을 가져야 한다.
+4. 한 질문글의 방향·거리·만료 스냅샷은 발송 후 수정하지 않는다. 만료 시각은 서버가 정하며 사용자가 고르지 않는다.
+5. 발신자는 자기 질문글의 수신자가 될 수 없다. 따라서 자기 질문글에 공감할 수도 없다.
+6. 한 질문글과 한 사용자 사이에는 최대 하나의 수신자 행만 존재한다.
 7. 수신자의 발송자 기준 방위는 `[시작각, 종료각)` 규칙으로 정확히 한 구간에만 포함된다. **현재 DB는 이를 강제하지 않는다.** `direction_segment`가 원을 빈틈·겹침 없이 덮는지, `segment_count`가 실제 행 수와 맞는지 검사하는 제약이 없다. §12의 미결 항목이다.
 8. 수신자가 적어도 인접 방향 구간을 자동 확장하지 않는다.
-9. 답변 작성자는 반드시 해당 `post_recipient.recipient_id`와 같아야 한다.
-10. 서버 시각의 `expires_at` 이후에는 새 답변을 만들 수 없다.
+9. 답변 작성자는 반드시 해당 `post_recipient.recipient_id`와 같아야 한다. 한 수신 권한당 답변은 1건이다(`uq_answer_one_per_recipient`).
+10. 서버 시각의 `expires_at` 이후에는 새 답변을 만들 수 없다. **공감은 만료 후에도 가능하다.**
+10-1. **답변을 조회할 수 있는 주체는 질문글 작성자와 답변 작성자 본인뿐이다.** 같은 질문글의 다른 수신자에게는 답변 내용도, 답변 개수도 노출하지 않는다. DB 제약이 아니라 조회 계층에서 강제한다(ADR 0001).
+10-2. **질문글 공감 수는 질문글 작성자에게만 노출한다.** 수신자 응답에는 총합 대신 "내가 눌렀는지" 여부만 담는다.
+10-3. **답변 공감을 남길 수 있는 사람은 그 답변이 달린 질문글의 작성자 한 명뿐이며, 답변당 최대 1건이다.**
 11. 차단 관계가 어느 방향으로든 활성 상태면 매칭·수신함·알림·재회에서 제외한다.
 12. 푸시 성공 여부는 수신 자격이나 앱 내 알림의 진실의 원천이 아니다.
 13. 정확 좌표는 API 응답, 로그, 분석 이벤트, Outbox payload에 포함하지 않는다.
 14. 질문·글·답변·알림 생성 재시도는 각각의 멱등 키로 결과가 증가하지 않는다.
-15. 방향 정책이 바뀌어도 이미 발송된 글의 의미와 수신자를 재해석하지 않는다. 질문 문구는 애초에 수정되지 않으므로(`question_text` 불변) 발송 글의 주제도 바뀌지 않는다.
-16. 미디어 소유자는 해당 방향 글 작성자 또는 답변 작성자와 같아야 하며, 한 미디어는 하나의 콘텐츠에만 연결한다. 소유권은 `media_attachment`의 복합 FK 세 개가, 단일 첨부는 `media_id` 기본키가 강제한다. §6의 "미디어 단일 첨부를 트리거가 아니라 키로 강제하는 이유" 참고.
-17. 사용자별 `active_unhandled_count`는 0 이상 5 이하이며 5인 사용자는 신규 수신자로 확정할 수 없다.
+15. 방향 정책이 바뀌어도 이미 발송된 질문글의 의미와 수신자를 재해석하지 않는다. 질문 문구는 애초에 수정되지 않으므로(`question_text` 불변) 발송 글의 주제도 바뀌지 않는다.
+16. 미디어 소유자는 해당 질문글 작성자 또는 답변 작성자와 같아야 하며, 한 미디어는 하나의 콘텐츠에만 연결한다. 소유권은 `media_attachment`의 복합 FK 세 개가, 단일 첨부는 `media_id` 기본키가 강제한다. §6의 "미디어 단일 첨부를 트리거가 아니라 키로 강제하는 이유" 참고.
+17. 사용자별 `active_unhandled_count`는 **설정된 수신 상한** 이하이며, 상한에 도달한 사용자는 신규 수신자로 확정할 수 없다. 상한은 고정 상수가 아니라 운영 설정값이며(초기값 5) DB CHECK는 안전 상한 50만 강제한다.
 18. 활성 사용자 계정은 정확히 하나의 `recipient_receive_state`를 가지며 상태 행 부재를 무제한 수신으로 해석하지 않는다.
 19. `OPENED`는 활성 미처리 슬롯을 해제하지 않는다.
+19-1. **공감만 남겨도 슬롯은 해제되지 않는다.** 답변을 한 것이 아니기 때문이다.
+19-2. **`SKIP_PENDING`은 슬롯을 해제하지 않는다.** 되돌릴 수 있는 동안 자리를 비우면 그 사이 새 질문글이 들어와 상한을 넘는다. `SKIP_PENDING`이 종결 상태 목록에 없다는 사실이 이 성질을 만든다.
 20. `ANSWERED`, `SKIPPED`, `EXPIRED`, `BLOCKED`는 `capacity_released_at`을 조건부 설정해 슬롯을 정확히 한 번 해제한다. 이 네 상태와 `capacity_released_at`이 채워진 것은 동치이며 `ct_post_recipient_capacity_release`가 강제한다. 따라서 `active_unhandled_count`는 언제든 `count(post_recipient WHERE capacity_released_at IS NULL)`로 재계산할 수 있다.
 21. 방향·거리 후보 전체를 `post_recipient`로 일괄 삽입하지 않고 최근 수신이 적은 사용자부터 제한된 인원을 선정한다.
 22. 푸시 전달·묶음·억제 결과는 `post_recipient` 수신 자격과 활성 슬롯 점유를 변경하지 않는다.
@@ -1068,12 +1224,12 @@ user_block upsert
 |---|---|---|---|
 | P02 거리 | 8×45° 및 인접 구간 미확장만 확정 | `min_distance_m`, `max_distance_m` 스냅샷 필드만 둠 | 기본값·확장 단계 설정 필요 |
 | P03 수신자 수 | 전체 후보 일괄 전달 금지·제한 선정 확정 | `post_recipient` 1:N과 공정 정렬 | 최초·최대 수신자 수·추가 선정 대기 시간 필요 |
-| P04 만료 | 만료 존재와 만료 후 새 답변 차단 확정 | `direction_post.expires_at` 필수 | 기간·임박 알림 값 필요 |
-| P05 수신 용량·알림 | 활성 미처리 최대 5개, 열람 유지, 답변·넘기기·만료 해제, 수신·푸시 분리 확정 | `recipient_receive_state`, `capacity_released_at`, `SKIPPED` | 즉시 푸시 상한·묶음 주기·조용한 시간대 필요 |
+| P04 만료 | 만료 존재, 만료 후 새 답변 차단, **만료 시각은 서버 지정**, **만료 후에도 공감 가능** 확정 | `direction_post.expires_at` 필수 | 기간·임박 알림 값 필요 |
+| P05 수신 용량·알림 | 상한은 **운영 설정값**(초기값 5), 열람·**공감** 유지, 답변·넘김 확정·만료 해제, 넘김에 **5초 되돌리기**, 수신·푸시 분리 확정 | `recipient_receive_state`(안전 상한 50), `capacity_released_at`, `SKIP_PENDING`/`SKIPPED` | 상한 초기값, 되돌리기 시간, 즉시 푸시 상한·묶음 주기·조용한 시간대 필요 |
 | ~~P06 위치~~ | **확정 (2026-08-03, 1안)** | `position`은 운영 컬럼. §0 참고 | 보존 기간은 P07에 위임 |
-| P07 보관 | 미정 | soft delete와 상태 필드는 준비 | 삭제·익명화·파티션 정리 작업 필요 |
+| P07 보관 | **현재 결정: 만료된 질문글과 답변은 질문자에게 영구 보관.** 단 바뀔 수 있는 정책이다 | soft delete와 상태 필드는 준비 | **보관 기간을 설정값으로 분리해 구현**할 것. 코드에 영구를 고정하지 않는다. 삭제·익명화·파티션 정리 작업 필요 |
 | P09 닉네임 | 익명 닉네임 사용 | `user_account.nickname`. 유일 제약 없음 | 만남 단위 가명 확정 시 `encounter_alias` 추가 |
-| P15 질문 배정 | 사용자별·동일 주기 안정성 확정 | cycle과 assignment 행으로 표현 | 주기·개수·반복 제외 규칙 설정 |
+| P15 질문 추천 | 사용자별·동일 주기 안정성 확정. **강제 배정이 아니라 추천이며 고르지 않아도 된다** | cycle과 assignment 행으로 표현 | 주기·개수·반복 제외 규칙 설정 |
 | P16 제안 검토 | 사람 검토·승인 전 비공개 확정 | 제안과 검토 이력 분리. 문구 수정 재제출 없음 | SLA·사유 공개 범위·승인 배정 범위 설정 |
 
 P06은 확정됐다. P07, P10, P11, P12가 승인되기 전에는 실제 사용자 사진·신고 운영 데이터를 수집하는 Stage 3 구현에 들어가면 안 된다. 위치는 저장 **방식**이 정해졌을 뿐이므로, 실제 좌표 수집 전에 데이터 흐름·접근 권한·로그 제외·암호화·삭제 작업에 대한 Security/Privacy 승인이 여전히 필요하다.
@@ -1082,7 +1238,9 @@ P06은 확정됐다. P07, P10, P11, P12가 승인되기 전에는 실제 사용�
 
 정본 PRD의 Non-goal과 충돌하므로 다음 테이블은 현재 ERD에 넣지 않는다.
 
-- `comment`, `like`, 공개 인기 점수: 별도 팀 기능 명세에는 제안되어 있으나 정본 PRD의 MVP에서는 공개 댓글·좋아요·인기 지표를 제외한다.
+- ~~`like`~~: **2026-08-04에 이 제외를 철회했다.** 공감은 확정 MVP 기능이며 `post_reaction`, `answer_reaction`으로 모델링했다. 다만 "공개 좋아요"는 아니다 — 질문글 공감 수는 질문자만 보고, 답변 공감은 질문자가 답변자 한 명에게 주는 것이다. 공개 인기 점수와 순위는 여전히 만들지 않는다.
+- `comment`: **만들지 않는다.** 이전에는 정본 PRD의 Non-goal이라 제외했지만, 이제는 답변을 볼 수 있는 사람이 질문자 한 명뿐이라 **댓글이 놓일 자리 자체가 없다**(ADR 0001). 질문자가 답변자에게 텍스트를 되보내는 통로는 자유 DM과 구별할 수 없어 열지 않는다.
+- 공개 인기 점수: 제외한다. 공감 수를 노출 순위나 사용자 등급에 사용하지 않는다.
 - `follow`, `direct_message`, `user_search_index`: 팔로우·DM·사용자 검색은 제품 Non-goal이다.
 - `public_profile_feed`: 공개 프로필 피드를 만들지 않는다.
 - 장기 `encounter_history`: 우연한 재회 표시는 필요하지만 P07 보관 정책과 “만남”의 집계 기준이 미정이다. MVP에서는 보관이 허용된 `direction_post → post_recipient → answer` 관계로 계산하고, 성능 증거가 생기면 비식별 pair read model을 추가한다.
@@ -1187,6 +1345,33 @@ PROMOTED → EXPIRED | ARCHIVED
 - 매칭·노출 로직에서 이 값을 사용할지는 별도 정책 결정 사항이다.
 
 ## 14. 검증 상태
+
+### 2026-08-04 변경분 (공감·넘김 유예·답변 1회)
+
+개정된 DDL 전체를 PostgreSQL 16 + PostGIS 3.4(Docker `postgis/postgis:16-3.4`) 빈 스키마에 다시 적용해 **오류 없이 실행되는 것**을 확인하고, 새 제약이 의도한 대로 막는지 행동 시나리오로 검증했다.
+
+| # | 시나리오 | 기대 | 결과 | 실제로 막은 것 |
+|---|---|---|---|---|
+| R1 | 수신자가 질문글에 공감 | 성공 | ✅ | — |
+| R2 | 수신자가 아닌 사람이 질문글에 공감 | 거부 | ✅ | `fk_post_reaction_recipient` |
+| R3 | 질문자 본인이 자기 질문글에 공감 | 거부 | ✅ | `fk_post_reaction_recipient` |
+| R4 | 같은 사람이 같은 질문글에 두 번 공감 | 거부 | ✅ | `pk_post_reaction` |
+| R5 | 질문자가 받은 답변에 공감 | 성공 | ✅ | — |
+| R6 | 다른 수신자가 남의 답변에 공감 | 거부 | ✅ | `ct_answer_reaction_reactor_is_sender` |
+| R7 | 답변자 본인이 자기 답변에 공감 | 거부 | ✅ | `ct_answer_reaction_reactor_is_sender` |
+| R8 | 한 답변에 공감 두 건 | 거부 | ✅ | `answer_reaction_pkey` |
+| R9 | 같은 수신 권한에 두 번째 답변 | 거부 | ✅ | `uq_answer_one_per_recipient` |
+| R10 | 첫 답변을 `DELETED`로 바꾼 뒤 재작성 | 성공 | ✅ | — |
+| R11 | `SKIP_PENDING`으로 전이(용량 해제 없음) | 성공 | ✅ | — |
+| R12 | `SKIP_PENDING`인데 용량을 해제 | 거부 | ✅ | `ct_post_recipient_capacity_release` |
+| R13 | `SKIP_PENDING` → `OPENED` 되돌리기 | 성공 | ✅ | — |
+| R14 | `SKIP_PENDING` → `SKIPPED` + 용량 해제 | 성공 | ✅ | — |
+| R15 | 용량 해제 없이 `SKIPPED`로만 전이 | 거부 | ✅ | `ct_post_recipient_capacity_release` |
+| R16 | `skip_requested_at` 없이 곧바로 `SKIPPED` | 거부 | ✅ | `ck_post_recipient_skip_pending` |
+
+R6과 R9는 1차 시도에서 각각 PK 중복과 identity 시퀀스 충돌에 **먼저** 걸려 검증이 성립하지 않았다. 상태를 정리하고 다시 돌려 의도한 제약이 막는 것을 확인한 결과다.
+
+**아직 검증하지 않은 것**: 되돌리기 시간 경과 후 `SKIP_CONFIRMATION_DUE` 워커가 실제로 `SKIPPED`로 확정하는 경로는 워커 구현이 없어 시뮬레이션하지 않았다. 유예 중 새 질문글이 들어오려 할 때 상한 계산이 `SKIP_PENDING`을 점유로 세는지도 애플리케이션 코드가 있어야 확인할 수 있다.
 
 ### 기준 DDL (2026-08-03)
 
