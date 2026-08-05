@@ -119,6 +119,24 @@ class GlobalExceptionHandlerTest {
 			.andExpect(jsonPath("$.errorDetail.code").value("CMN-DOM-003"));
 	}
 
+	@Test
+	@DisplayName("수신 자격 없는 질문글 공감의 외래키 위반은 403으로 응답한다")
+	void mapsPostReactionForeignKeyViolationToForbidden() throws Exception {
+		mockMvc.perform(get("/probe/constraint-post-reaction"))
+			.andExpect(status().isForbidden())
+			.andExpect(jsonPath("$.errorDetail.code").value("DIR-DOM-007"))
+			.andExpect(jsonPath("$.errorDetail.field").value("reactorId"));
+	}
+
+	@Test
+	@DisplayName("질문 작성자가 아닌 답변 공감의 트리거 위반은 403으로 응답한다")
+	void mapsAnswerReactionTriggerViolationToForbidden() throws Exception {
+		mockMvc.perform(get("/probe/constraint-answer-reaction"))
+			.andExpect(status().isForbidden())
+			.andExpect(jsonPath("$.errorDetail.code").value("ANS-DOM-004"))
+			.andExpect(jsonPath("$.errorDetail.field").value("reactorId"));
+	}
+
 	@RestController
 	static class ProbeController {
 
@@ -158,6 +176,18 @@ class GlobalExceptionHandlerTest {
 		void constraintUnknown() {
 			throw new DataIntegrityViolationException(
 				"ERROR: duplicate key value violates unique constraint \"uq_unmapped_something\"");
+		}
+
+		@org.springframework.web.bind.annotation.GetMapping("/probe/constraint-post-reaction")
+		void constraintPostReaction() {
+			throw new DataIntegrityViolationException(
+				"ERROR: insert or update on table \"post_reaction\" violates foreign key constraint \"fk_post_reaction_recipient\"");
+		}
+
+		@org.springframework.web.bind.annotation.GetMapping("/probe/constraint-answer-reaction")
+		void constraintAnswerReaction() {
+			throw new DataIntegrityViolationException(
+				"ERROR: insert or update on table \"answer_reaction\" violates trigger constraint \"ct_answer_reaction_reactor_is_sender\"");
 		}
 	}
 

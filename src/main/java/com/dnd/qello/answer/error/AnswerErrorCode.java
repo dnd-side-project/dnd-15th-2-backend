@@ -36,6 +36,9 @@ public enum AnswerErrorCode implements ErrorCode {
 	// 안전 검사 미통과 답변의 공개 시도
 	SAFETY_CHECK_NOT_PASSED(HttpStatus.CONFLICT, "ANS-DOM-003", ErrorCategory.DOM, "안전 검사를 통과한 답변만 공개할 수 있습니다."),
 
+	// 질문 작성자가 아닌 사용자의 답변 공감. answer_reaction의 지연 constraint trigger에서 커밋 시점에 감지. 재시도로 해결 불가
+	INELIGIBLE_REACTOR(HttpStatus.FORBIDDEN, "ANS-DOM-004", ErrorCategory.DOM, "답변에 공감할 수 있는 질문 작성자가 아닙니다."),
+
 	// 같은 멱등키로 이미 등록된 답변 존재. DB 유일성 제약에서 감지
 	DUPLICATED_ANSWER(HttpStatus.CONFLICT, "ANS-INFRA-001", ErrorCategory.INFRA, "이미 등록된 답변입니다.");
 
