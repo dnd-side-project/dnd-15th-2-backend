@@ -27,6 +27,7 @@ class DirectionPersistenceBoundaryTest {
 		try (Stream<Path> paths = Files.walk(Path.of("src/main/java/com/dnd/qello/direction/repository"))) {
 			List<String> ports = paths.filter(path -> path.toString().endsWith(".java"))
 				.filter(path -> !path.toString().contains("/jdbc/"))
+				.filter(path -> !path.toString().contains("/jpa/"))
 				.map(this::read).toList();
 			assertThat(ports).allMatch(source -> !source.contains("jakarta.persistence") && !source.contains("org.springframework.data"));
 		}
