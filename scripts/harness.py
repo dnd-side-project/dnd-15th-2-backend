@@ -77,9 +77,28 @@ def is_rebase_in_progress() -> bool:
     return (git_dir / "rebase-merge").exists() or (git_dir / "rebase-apply").exists()
 
 
+def refresh_local_default_branch() -> None:
+    base = default_branch()
+    if current_branch() == base:
+        run(["git", "fetch", "origin", base])
+        merge = run(["git", "merge", "--ff-only", f"origin/{base}"], check=False)
+        if merge.returncode != 0:
+            print(
+                f"harness: could not fast-forward local {base} (diverged?); left as-is",
+                file=sys.stderr,
+            )
+    else:
+        fetch = run(["git", "fetch", "origin", f"{base}:{base}"], check=False)
+        if fetch.returncode != 0:
+            print(
+                f"harness: could not fast-forward local {base} (diverged?); left as-is",
+                file=sys.stderr,
+            )
+
+
 def ensure_synced_with_default_branch() -> None:
     base = default_branch()
-    run(["git", "fetch", "origin", base])
+    refresh_local_default_branch()
     ancestor = run(
         ["git", "merge-base", "--is-ancestor", f"origin/{base}", "HEAD"],
         check=False,
@@ -188,7 +207,7 @@ def command_start(args: argparse.Namespace) -> None:
     if issue_data.get("state") != "OPEN":
         raise HarnessError("GitHub issue must be open before starting work")
     base = default_branch()
-    run(["git", "fetch", "origin", base])
+    refresh_local_default_branch()
     branch = f"{args.type}/gh-{args.issue}-{slug}"
     switch = run(["git", "switch", "-c", branch, f"origin/{base}"], check=False)
     if switch.returncode != 0:
@@ -208,7 +227,7 @@ def command_sync(_: argparse.Namespace) -> None:
             "a rebase is already in progress; finish it with `git rebase --continue` "
             "or abort it with `git rebase --abort` before running sync"
         )
-    run(["git", "fetch", "origin", base])
+    refresh_local_default_branch()
     rebase = run(["git", "rebase", f"origin/{base}"], check=False)
     if rebase.returncode != 0:
         status = run(["git", "status", "--porcelain=v1"], capture=True, check=False)
