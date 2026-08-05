@@ -1,7 +1,9 @@
 package com.dnd.qello.direction.domain;
 
 import java.time.Instant;
-import java.util.Objects;
+
+import com.dnd.qello.direction.error.DirectionErrorCode;
+import com.dnd.qello.direction.error.DirectionException;
 
 /**
  * 질문글에 남긴 공감. 답변은 부담스럽지만 반응은 하고 싶은 수신자의 저비용 표현 수단이다.
@@ -15,11 +17,18 @@ public final class PostReaction {
 	private final Instant createdAt;
 
 	private PostReaction(long postId, long reactorId, Instant createdAt) {
-		if (postId <= 0) throw new IllegalArgumentException("postId는 양수여야 합니다");
-		if (reactorId <= 0) throw new IllegalArgumentException("reactorId는 양수여야 합니다");
+		if (postId <= 0) {
+			throw new DirectionException(DirectionErrorCode.INVALID_ID, "postId", "postId는 양수여야 합니다");
+		}
+		if (reactorId <= 0) {
+			throw new DirectionException(DirectionErrorCode.INVALID_ID, "reactorId", "reactorId는 양수여야 합니다");
+		}
 		this.postId = postId;
 		this.reactorId = reactorId;
-		this.createdAt = Objects.requireNonNull(createdAt, "createdAt은 필수입니다");
+		if (createdAt == null) {
+			throw new DirectionException(DirectionErrorCode.REQUIRED_VALUE_MISSING, "createdAt", "createdAt은 필수입니다");
+		}
+		this.createdAt = createdAt;
 	}
 
 	public static PostReaction create(long postId, long reactorId, Instant createdAt) {

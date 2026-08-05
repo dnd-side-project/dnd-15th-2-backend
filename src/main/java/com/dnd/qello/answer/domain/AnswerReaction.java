@@ -1,7 +1,9 @@
 package com.dnd.qello.answer.domain;
 
 import java.time.Instant;
-import java.util.Objects;
+
+import com.dnd.qello.answer.error.AnswerErrorCode;
+import com.dnd.qello.answer.error.AnswerException;
 
 /**
  * 질문자가 받은 답변에 남긴 공감. 답변자가 받는 유일한 반응 신호다.
@@ -16,11 +18,18 @@ public final class AnswerReaction {
 	private final Instant createdAt;
 
 	private AnswerReaction(long answerId, long reactorId, Instant createdAt) {
-		if (answerId <= 0) throw new IllegalArgumentException("answerId는 양수여야 합니다");
-		if (reactorId <= 0) throw new IllegalArgumentException("reactorId는 양수여야 합니다");
+		if (answerId <= 0) {
+			throw new AnswerException(AnswerErrorCode.INVALID_ID, "answerId", "answerId는 양수여야 합니다");
+		}
+		if (reactorId <= 0) {
+			throw new AnswerException(AnswerErrorCode.INVALID_ID, "reactorId", "reactorId는 양수여야 합니다");
+		}
 		this.answerId = answerId;
 		this.reactorId = reactorId;
-		this.createdAt = Objects.requireNonNull(createdAt, "createdAt은 필수입니다");
+		if (createdAt == null) {
+			throw new AnswerException(AnswerErrorCode.REQUIRED_VALUE_MISSING, "createdAt", "createdAt은 필수입니다");
+		}
+		this.createdAt = createdAt;
 	}
 
 	public static AnswerReaction create(long answerId, long reactorId, Instant createdAt) {
