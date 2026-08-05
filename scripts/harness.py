@@ -283,6 +283,7 @@ def command_task_init(args: argparse.Namespace) -> None:
                 "<GITHUB-ISSUE>": str(issue),
                 "<TASK-TITLE>": args.title,
                 "<BRANCH>": current_branch(),
+                "<BASE-BRANCH>": resolve_base_branch(),
                 "<CREATED-AT>": created_at,
             },
         ),
