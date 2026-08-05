@@ -40,7 +40,7 @@ class FlywayMigrationContractTest {
 			.containsEntry("executeInTransaction", "false");
 		assertThat(sqlMigrationNames()).containsExactly(
 			"V1__create_direction_communication_schema.sql",
-			"V2__add_user_account_password_hash.sql");
+			"V3__add_user_account_password_hash.sql");
 	}
 
 	@Test

@@ -32,7 +32,8 @@
 ### password_hash
 
 - `user_account.password_hash` 컬럼을 기존 V1 migration을 수정하지 않고
-  `V2__add_user_account_password_hash.sql`로 신규 추가한다.
+  `V3__add_user_account_password_hash.sql`로 신규 추가한다. (main에 #54로
+  `V2__add_reactions_and_skip_pending.sql`이 먼저 병합되어 버전 3을 사용한다.)
 - `role = 'OPERATOR'`는 password_hash 필수, `role = 'USER'`는 항상 NULL인
   것을 DB check constraint(`ck_user_account_password_hash`)로 강제한다.
 - 해시 알고리즘은 Spring Security `BCryptPasswordEncoder`(bcrypt)로 확정했다.
