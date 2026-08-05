@@ -50,10 +50,50 @@ resource "aws_s3_bucket_lifecycle_configuration" "terraform_state" {
     id     = "expire-noncurrent-state-versions"
     status = "Enabled"
 
+    # S3 API는 lifecycle rule마다 Filter 또는 Prefix를 요구한다. 버킷 전체를
+    # 대상으로 하려면 빈 filter를 명시해야 apply 시 MalformedXML을 피한다.
+    filter {}
+
+    # 중단된 State 업로드 조각이 저장 비용으로 누적되지 않도록 정리한다.
+    abort_incomplete_multipart_upload {
+      days_after_initiation = 7
+    }
+
     noncurrent_version_expiration {
       noncurrent_days = 90
     }
   }
+}
+
+# AGENTS.md 4.6은 State Backend에 감사 가능한 접근 로그를 요구한다. State
+# 버킷 자신을 로그 대상으로 삼으면 로그가 State와 같은 삭제 권한 경계에
+# 놓이므로 전용 버킷으로 분리한다.
+module "state_access_log_bucket" {
+  source = "../modules/s3-private-bucket"
+
+  bucket_name = var.state_access_log_bucket_name
+
+  # AWS 제약: S3 서버 접근 로그 배달은 Customer-managed KMS Key로 암호화된
+  # 대상 버킷을 지원하지 않는다. 로그 대상 버킷은 SSE-S3를 사용한다.
+  sse_algorithm = "AES256"
+
+  versioning_enabled                 = true
+  lifecycle_expiration_days          = var.state_access_log_retention_days
+  noncurrent_version_expiration_days = var.state_access_log_retention_days
+  is_log_target                      = true
+  log_source_bucket_arns             = ["arn:aws:s3:::${var.state_bucket_name}"]
+  enforce_tls                        = true
+
+  tags = merge(var.tags, {
+    Purpose = "terraform-state-access-logs"
+  })
+}
+
+resource "aws_s3_bucket_logging" "terraform_state" {
+  bucket = aws_s3_bucket.terraform_state.id
+
+  target_bucket = module.state_access_log_bucket.bucket_id
+  target_prefix = "terraform-state/"
 }
 
 data "aws_iam_policy_document" "terraform_state_tls_only" {

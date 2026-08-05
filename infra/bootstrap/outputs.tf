@@ -3,6 +3,11 @@ output "state_bucket_name" {
   value       = aws_s3_bucket.terraform_state.id
 }
 
+output "state_access_log_bucket_name" {
+  description = "State 버킷의 S3 서버 접근 로그가 저장되는 버킷 이름."
+  value       = module.state_access_log_bucket.bucket_id
+}
+
 output "state_bucket_region" {
   description = "State 버킷이 위치한 Region."
   value       = var.aws_region

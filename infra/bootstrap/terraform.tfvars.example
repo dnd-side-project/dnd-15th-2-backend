@@ -2,7 +2,8 @@
 # 만들고(.gitignore에 의해 커밋되지 않는다), 실제 값은 로컬 또는 CI 변수로만
 # 채운다.
 
-state_bucket_name = "<globally-unique-state-bucket-name>"
+state_bucket_name            = "<globally-unique-state-bucket-name>"
+state_access_log_bucket_name = "<project_prefix>-tfstate-logs-<globally-unique-suffix>"
 # aws_region, project_prefix, github_repository, github_apply_environment는
 # 기본값을 그대로 사용해도 된다. 다른 값이 필요할 때만 아래처럼 지정한다.
 # aws_region = "ap-northeast-2"

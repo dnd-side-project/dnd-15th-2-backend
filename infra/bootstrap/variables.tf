@@ -14,6 +14,22 @@ variable "state_bucket_name" {
   }
 }
 
+variable "state_access_log_bucket_name" {
+  description = "State 버킷의 S3 서버 접근 로그를 저장할 버킷 이름(AGENTS.md 4.6). S3 버킷명은 전역적으로 고유해야 하므로 기본값을 두지 않는다."
+  type        = string
+
+  validation {
+    condition     = can(regex("^${var.project_prefix}-", var.state_access_log_bucket_name))
+    error_message = "state_access_log_bucket_name은 \"${var.project_prefix}-\"로 시작해야 infra-apply 역할의 IAM 권한 범위(접두사 기준)에 포함된다."
+  }
+}
+
+variable "state_access_log_retention_days" {
+  description = "State 접근 로그 보존 기간(일). 감사 목적이라 State 이전 버전 보존 기간보다 길게 유지한다."
+  type        = number
+  default     = 365
+}
+
 variable "project_prefix" {
   description = "이 프로젝트가 소유하는 AWS 리소스 이름/IAM 리소스 이름 접두사. infra-apply 역할의 IAM 권한 범위를 이 접두사로 한정한다."
   type        = string

@@ -1,9 +1,14 @@
 # Terraform Bootstrap
 
-이 스택은 저장소 최초의 AWS 인프라다. Terraform State S3 Backend와 GitHub
-Actions OIDC Provider, `infra-plan`/`infra-apply` 역할을 생성한다.
+이 스택은 저장소 최초의 AWS 인프라다. Terraform State S3 Backend와 그
+State 버킷의 접근 로그 버킷, GitHub Actions OIDC Provider,
+`infra-plan`/`infra-apply` 역할을 생성한다.
 Infrastructure Design Report `docs/reports/infrastructure/gh-63-D-1.md`
 (DESIGN-ID `D-1`, GitHub Issue #63)에서 사람이 승인한 설계를 구현한다.
+
+State 접근 로그 버킷은 설계 보고서 §9에 열거되어 있지 않지만 AGENTS.md 4.6이
+State Backend 조건으로 "감사 가능한 접근 로그"를 요구하므로 추가했다. 근거와
+검토 요청 사항은 `docs/reports/infrastructure/gh-63-D-1-build.md`에 있다.
 
 ## 왜 이 스택만 로컬 State로 시작하는가
 
@@ -60,5 +65,14 @@ rm backend_override.tf
 ## 변수
 
 실제 계정 ID, ARN, 버킷 이름은 이 저장소에 커밋하지 않는다.
-`state_bucket_name`은 기본값이 없으므로 `terraform.tfvars` 또는 CI 변수로
-전달한다(예시 파일에는 실제 값을 넣지 않는다).
+`state_bucket_name`과 `state_access_log_bucket_name`은 기본값이 없으므로
+`terraform.tfvars` 또는 CI 변수로 전달한다(예시 파일에는 실제 값을 넣지
+않는다). `state_access_log_bucket_name`은 `infra-apply` 역할의 권한 범위에
+들어오도록 `project_prefix` 접두사로 시작해야 한다.
+
+## 이 스택은 apply workflow로 적용하지 않는다
+
+`.github/workflows/infrastructure-apply.yml`은 원격 backend 블록이 커밋된
+스택만 적용한다. 이 스택의 backend는 최초 적용 이후 커밋되지 않는
+`backend_override.tf`로 설정되므로, 대상 경로 검사에서 차단된다. 이 스택의
+변경은 위 절차대로 사람이 직접 적용한다.
