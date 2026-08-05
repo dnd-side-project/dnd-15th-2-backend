@@ -39,7 +39,7 @@ class DirectionPersistenceBoundaryTest {
 		try (Stream<Path> paths = Files.walk(Path.of("src/main/java/com/dnd/qello"))) {
 			assertThat(paths.filter(path -> path.toString().endsWith(".java"))
 				.filter(path -> !path.toString().toString().contains("/direction/"))
-				.map(this::read).allMatch(source -> !source.contains("direction.repository.jdbc"))).isTrue();
+				.map(this::read).allMatch(source -> !source.contains("direction.repository.jdbc") && !source.contains("direction.repository.jpa"))).isTrue();
 		}
 	}
 

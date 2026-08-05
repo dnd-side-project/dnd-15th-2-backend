@@ -1,13 +1,12 @@
 /**
  * Created at: 2026-08-05T11:48:27+09:00
- * Source scenario: TEST-PLAN-GH-55-REACTION-PERSISTENCE-INT-001 through INT-003
+ * Source scenario: TEST-PLAN-GH-55-REACTION-PERSISTENCE-INT-001 through INT-006
  */
 package com.dnd.qello;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import java.math.BigDecimal;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -20,7 +19,10 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.transaction.support.TransactionTemplate;
 
+import com.dnd.qello.answer.domain.AnswerReaction;
+import com.dnd.qello.answer.repository.AnswerReactionRepository;
 import com.dnd.qello.direction.domain.PostReaction;
 import com.dnd.qello.direction.repository.PostReactionRepository;
 
@@ -36,9 +38,9 @@ class ReactionPersistenceIntegrationTest extends PostgisContainerIntegrationTest
 	@Autowired
 	private PostReactionRepository postReactionRepository;
 	@Autowired
-	private org.springframework.transaction.support.TransactionTemplate transactionTemplate;
+	private TransactionTemplate transactionTemplate;
 	@Autowired
-	private com.dnd.qello.answer.repository.AnswerReactionRepository answerReactionRepository;
+	private AnswerReactionRepository answerReactionRepository;
 
 	private long senderId;
 	private long recipientId;
@@ -122,17 +124,26 @@ class ReactionPersistenceIntegrationTest extends PostgisContainerIntegrationTest
 	void onlyTheQuestionAuthorCanReactToAnAnswer() {
 		long answerId = insertAnswer();
 
-		com.dnd.qello.answer.domain.AnswerReaction saved = transactionTemplate.execute(status ->
+		AnswerReaction saved = transactionTemplate.execute(status ->
 			answerReactionRepository.react(
-				com.dnd.qello.answer.domain.AnswerReaction.create(answerId, senderId, NOW.plusSeconds(60))));
+				AnswerReaction.create(answerId, senderId, NOW.plusSeconds(60))));
 
 		assertThat(saved.getAnswerId()).isEqualTo(answerId);
 		assertThat(answerReactionRepository.findByAnswerId(answerId)).isPresent();
 
 		assertThatThrownBy(() -> transactionTemplate.executeWithoutResult(status ->
 			answerReactionRepository.react(
-				com.dnd.qello.answer.domain.AnswerReaction.create(answerId, recipientId, NOW.plusSeconds(70)))))
+				AnswerReaction.create(answerId, recipientId, NOW.plusSeconds(70)))))
 			.isInstanceOf(DataIntegrityViolationException.class);
+
+		transactionTemplate.executeWithoutResult(status ->
+			answerReactionRepository.react(
+				AnswerReaction.create(answerId, senderId, NOW.plusSeconds(80))));
+
+		assertThat(answerReactionRepository.findByAnswerId(answerId)).isPresent();
+		Integer reactionCount = jdbc.queryForObject(
+			"SELECT count(*) FROM answer_reaction WHERE answer_id = ?", Integer.class, answerId);
+		assertThat(reactionCount).isEqualTo(1);
 	}
 
 	@Test
@@ -142,21 +153,27 @@ class ReactionPersistenceIntegrationTest extends PostgisContainerIntegrationTest
 
 		assertThatThrownBy(() -> transactionTemplate.executeWithoutResult(status ->
 			answerReactionRepository.react(
-				com.dnd.qello.answer.domain.AnswerReaction.create(answerId, recipientId, NOW.plusSeconds(60)))))
+				AnswerReaction.create(answerId, recipientId, NOW.plusSeconds(60)))))
 			.isInstanceOf(DataIntegrityViolationException.class);
 	}
 
 	@Test
-	@DisplayName("답변 공감 취소는 행 삭제다")
+	@DisplayName("답변 공감 취소는 행 삭제이며 다시 누르면 되살아난다")
 	void cancellingAnAnswerReactionDeletesTheRow() {
 		long answerId = insertAnswer();
 		transactionTemplate.executeWithoutResult(status ->
 			answerReactionRepository.react(
-				com.dnd.qello.answer.domain.AnswerReaction.create(answerId, senderId, NOW.plusSeconds(60))));
+				AnswerReaction.create(answerId, senderId, NOW.plusSeconds(60))));
 
 		answerReactionRepository.cancel(answerId);
 
 		assertThat(answerReactionRepository.findByAnswerId(answerId)).isEmpty();
+
+		transactionTemplate.executeWithoutResult(status ->
+			answerReactionRepository.react(
+				AnswerReaction.create(answerId, senderId, NOW.plusSeconds(90))));
+
+		assertThat(answerReactionRepository.findByAnswerId(answerId)).isPresent();
 	}
 
 	private long insertAnswer() {

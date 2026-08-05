@@ -8,10 +8,12 @@ import java.util.Objects;
  */
 public class PostReactionId implements Serializable {
 
+	private static final long serialVersionUID = 1L;
+
 	private Long postId;
 	private Long reactorId;
 
-	protected PostReactionId() { }
+	public PostReactionId() { }
 
 	PostReactionId(Long postId, Long reactorId) {
 		this.postId = postId;
@@ -27,4 +29,9 @@ public class PostReactionId implements Serializable {
 
 	@Override
 	public int hashCode() { return Objects.hash(postId, reactorId); }
+
+	@Override
+	public String toString() {
+		return "PostReactionId{postId=" + postId + ", reactorId=" + reactorId + "}";
+	}
 }

@@ -9,6 +9,7 @@ import com.dnd.qello.answer.domain.AnswerReaction;
 import com.dnd.qello.answer.repository.AnswerReactionRepository;
 
 @Repository
+@Transactional(readOnly = true)
 public class JpaAnswerReactionRepository implements AnswerReactionRepository {
 
 	private final SpringDataAnswerReactionRepository reactions;

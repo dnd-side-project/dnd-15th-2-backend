@@ -7,6 +7,7 @@ import com.dnd.qello.direction.domain.PostReaction;
 import com.dnd.qello.direction.repository.PostReactionRepository;
 
 @Repository
+@Transactional(readOnly = true)
 public class JpaPostReactionRepository implements PostReactionRepository {
 
 	private final SpringDataPostReactionRepository reactions;
