@@ -10,6 +10,7 @@
 - Title: `<TASK-TITLE>`
 - GitHub Issue: `#<GITHUB-ISSUE>`
 - Branch: `<BRANCH>`
+- Base branch: `<BASE-BRANCH>`
 
 ## Objective
 

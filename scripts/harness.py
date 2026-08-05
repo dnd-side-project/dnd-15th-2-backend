@@ -65,7 +65,53 @@ def branch_context() -> int:
 
 def ensure_clean_worktree() -> None:
     if git_text("status", "--porcelain"):
-        raise HarnessError("worktree must be clean before creating a branch")
+        raise HarnessError("worktree must be clean before running this command")
+
+
+def default_branch() -> str:
+    return CONFIG["default_branch"]
+
+
+def resolve_base_branch() -> str:
+    branch = current_branch()
+    configured = git_text("config", "--get", f"branch.{branch}.harness-base")
+    return configured or default_branch()
+
+
+def is_rebase_in_progress() -> bool:
+    git_dir = ROOT / ".git"
+    return (git_dir / "rebase-merge").exists() or (git_dir / "rebase-apply").exists()
+
+
+def refresh_local_branch(branch: str) -> None:
+    if current_branch() == branch:
+        run(["git", "fetch", "origin", branch])
+        merge = run(["git", "merge", "--ff-only", f"origin/{branch}"], check=False)
+        if merge.returncode != 0:
+            print(
+                f"harness: could not fast-forward local {branch} (diverged?); left as-is",
+                file=sys.stderr,
+            )
+    else:
+        fetch = run(["git", "fetch", "origin", f"{branch}:{branch}"], check=False)
+        if fetch.returncode != 0:
+            print(
+                f"harness: could not fast-forward local {branch} (diverged?); left as-is",
+                file=sys.stderr,
+            )
+
+
+def ensure_synced_with_base_branch() -> None:
+    base = resolve_base_branch()
+    refresh_local_branch(base)
+    ancestor = run(
+        ["git", "merge-base", "--is-ancestor", f"origin/{base}", "HEAD"],
+        check=False,
+    )
+    if ancestor.returncode != 0:
+        raise HarnessError(
+            f"branch is behind origin/{base}; run `./harness sync` first"
+        )
 
 
 def ensure_tool(name: str) -> None:
@@ -165,11 +211,54 @@ def command_start(args: argparse.Namespace) -> None:
     issue_data = json.loads(result.stdout)
     if issue_data.get("state") != "OPEN":
         raise HarnessError("GitHub issue must be open before starting work")
+    base = args.base or default_branch()
+    refresh_local_branch(base)
     branch = f"{args.type}/gh-{args.issue}-{slug}"
-    switch = run(["git", "switch", "-c", branch], check=False)
+    switch = run(["git", "switch", "-c", branch, f"origin/{base}"], check=False)
     if switch.returncode != 0:
         raise HarnessError(f"unable to create branch: {branch}")
+    run(["git", "config", f"branch.{branch}.harness-base", base])
     print(branch)
+
+
+def command_sync(_: argparse.Namespace) -> None:
+    ensure_tool("git")
+    branch = current_branch()
+    base = resolve_base_branch()
+    if branch == base:
+        raise HarnessError(f"cannot sync on {base}; switch to a feature branch first")
+    ensure_clean_worktree()
+    if is_rebase_in_progress():
+        raise HarnessError(
+            "a rebase is already in progress; finish it with `git rebase --continue` "
+            "or abort it with `git rebase --abort` before running sync"
+        )
+    refresh_local_branch(base)
+    rebase = run(["git", "rebase", f"origin/{base}"], check=False)
+    if rebase.returncode != 0:
+        status = run(["git", "status", "--porcelain=v1"], capture=True, check=False)
+        conflicted = sorted(
+            {
+                line[3:]
+                for line in status.stdout.splitlines()
+                if line[:2] in ("UU", "AA", "DU", "UD", "AU", "UA")
+            }
+        )
+        print("harness: rebase stopped with conflicts in:", file=sys.stderr)
+        for path in conflicted:
+            print(f"  - {path}", file=sys.stderr)
+        print(
+            "Resolve each file, then run:\n"
+            "  git add <file>\n"
+            "  git rebase --continue\n"
+            "Or discard the rebase with:\n"
+            "  git rebase --abort",
+            file=sys.stderr,
+        )
+        raise HarnessError(f"rebase onto origin/{base} has conflicts")
+    log = git_text("log", f"origin/{base}..HEAD", "--oneline")
+    print(f"branch is rebased onto origin/{base}.")
+    print(log if log else "(no commits ahead of the base branch)")
 
 
 def command_task_init(args: argparse.Namespace) -> None:
@@ -194,6 +283,7 @@ def command_task_init(args: argparse.Namespace) -> None:
                 "<GITHUB-ISSUE>": str(issue),
                 "<TASK-TITLE>": args.title,
                 "<BRANCH>": current_branch(),
+                "<BASE-BRANCH>": resolve_base_branch(),
                 "<CREATED-AT>": created_at,
             },
         ),
@@ -277,6 +367,7 @@ def command_check(_: argparse.Namespace) -> None:
 
 def command_pr_ready(args: argparse.Namespace) -> None:
     branch_context()
+    ensure_synced_with_base_branch()
     command_check(args)
     if args.project_tests:
         command = CONFIG["commands"]["full"]
@@ -291,6 +382,10 @@ def command_pr_ready(args: argparse.Namespace) -> None:
 
 def command_cheatsheet(_: argparse.Namespace) -> None:
     print((ROOT / "docs" / "harness" / "CHEATSHEET.md").read_text(encoding="utf-8"))
+
+
+def command_show_base(_: argparse.Namespace) -> None:
+    print(resolve_base_branch())
 
 
 def parser() -> argparse.ArgumentParser:
@@ -319,7 +414,15 @@ def parser() -> argparse.ArgumentParser:
         ),
     )
     start.add_argument("--slug", required=True)
+    start.add_argument(
+        "--base",
+        default=None,
+        help="branch to fork from and rebase onto instead of the configured default_branch",
+    )
     start.set_defaults(handler=command_start)
+
+    sub.add_parser("sync").set_defaults(handler=command_sync)
+    sub.add_parser("base").set_defaults(handler=command_show_base)
 
     task_init = sub.add_parser("task-init")
     task_init.add_argument("--title", required=True)

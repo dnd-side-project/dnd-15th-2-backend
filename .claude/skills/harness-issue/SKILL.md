@@ -163,6 +163,21 @@ ID는 `references/project-fields.md`에 캐시돼 있다. `item-edit`이 ID 오�
 ./harness task-init --title "<이슈 제목>" --replace
 ```
 
+`./harness start`는 실행 전에 `git fetch origin main`을 수행해 항상 최신
+`origin/main`에서 브랜치를 만들고, 가능하면(순수 fast-forward일 때만) 로컬
+`main`도 같이 갱신한다.
+
+이번 작업이 `main`이 아니라 다른 브랜치(예: 아직 머지되지 않은 누적 브랜치)
+위에 쌓는 stacked 작업이면 `--base <브랜치>`를 추가한다.
+
+```bash
+./harness start --issue <N> --type feat --slug <slug> --base chore/gh-36-flyway-baseline
+```
+
+이렇게 만든 브랜치는 이후 `./harness sync`·`./harness pr-ready`·`gh pr create
+--base`가 전부 그 브랜치를 기준으로 동작한다(`./harness base`로 확인 가능).
+생략하면 기존과 동일하게 `main`이 기준이다.
+
 `--replace`는 기존 `TASK.md`가 커밋된 상태에서만 통과한다. 실패하면 덮어쓰지 말고
 사용자에게 알린다.
 

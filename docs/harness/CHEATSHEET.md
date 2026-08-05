@@ -22,6 +22,9 @@ h task-init --title "방향 글 API" --replace
 <type>/gh-<issue>-<slug>
 ```
 
+stacked 작업(다른 브랜치 위에 쌓기)은 `--base <브랜치>`를 추가한다. 기준
+브랜치 확인은 `./harness base`.
+
 ## 산출물
 
 ```bash
@@ -52,6 +55,8 @@ PR body: Closes #42
 
 ```bash
 ./harness check
+./harness base
+./harness sync
 ./harness pr-ready --project-tests
 npm run hooks:validate
 git diff --check
