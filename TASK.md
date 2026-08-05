@@ -64,9 +64,9 @@ git diff --check
 
 ## Completion criteria
 
-- [ ] `./harness sync`가 정상/뒤처짐/충돌 3가지 시나리오에서 설계대로
-      동작한다(격리된 scratch 저장소로 검증).
-- [ ] `h start`가 최신 `origin/main`에서 분기한다.
-- [ ] `./harness pr-ready`(및 Husky `pre-push`)가 뒤처진 브랜치를 거부한다.
-- [ ] 관련 스킬·규약 문서가 새 절차를 반영한다.
-- [ ] `./harness check`, `npm run hooks:validate` 통과.
+- [x] `./harness sync`가 정상/뒤처짐/충돌 3가지 시나리오에서 설계대로
+      동작한다(격리된 scratch 저장소로 검증, `.harness-local/plans/2026-08-05-git-sync-routine-implementation.md` Task 6).
+- [x] `h start`가 최신 `origin/main`에서 분기한다(scratch 저장소 시나리오 A).
+- [x] `./harness pr-ready`(및 Husky `pre-push`)가 뒤처진 브랜치를 거부한다(scratch 시나리오 E + 실제 브랜치에서 `ensure_synced_with_default_branch` 통합 확인).
+- [x] 관련 스킬·규약 문서가 새 절차를 반영한다.
+- [x] `./harness check`, `npm run hooks:validate` 통과. `./harness pr-ready --project-tests`(전체 `./gradlew check` 포함)는 PR 생성 시 `/harness-pr`에서 실행 예정 — 이번 변경은 Java 코드를 건드리지 않는다.
