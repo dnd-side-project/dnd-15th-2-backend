@@ -31,7 +31,6 @@ jobs:
         run: python scripts/validate-workflows.py
 
   terraform:
-    if: ${{ hashFiles('infra/**/*.tf') != '' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -55,7 +54,6 @@ jobs:
             sort -u)
 
   lint:
-    if: ${{ hashFiles('infra/**/*.tf') != '' }}
     runs-on: ubuntu-latest
     env:
       # 서드파티 action 태그 대신 릴리스 바이너리를 고정해 검사 도구 버전이
@@ -87,7 +85,6 @@ jobs:
             sort -u)
 
   policy:
-    if: ${{ hashFiles('infra/**/*.tf') != '' }}
     runs-on: ubuntu-latest
     env:
       CHECKOV_VERSION: 3.3.9
