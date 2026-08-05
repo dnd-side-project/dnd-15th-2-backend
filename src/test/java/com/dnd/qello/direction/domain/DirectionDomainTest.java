@@ -10,6 +10,9 @@ import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import com.dnd.qello.direction.error.DirectionErrorCode;
+import com.dnd.qello.direction.error.DirectionException;
+
 /**
  * Created at: 2026-08-03T20:30:00+09:00
  * Source scenario: TEST-PLAN-GH-39-DIRECTION-POSTGIS-PERSISTENCE-UNIT-001 through UNIT-006
@@ -33,7 +36,7 @@ class DirectionDomainTest {
 		assertThat(segments.get(0).contains(22.5)).isTrue();
 		assertThat(segments.get(0).contains(67.5)).isFalse();
 		assertThatThrownBy(() -> DirectionScheme.createEqual("bad", 1, 8, BigDecimal.valueOf(360)))
-			.isInstanceOf(IllegalArgumentException.class);
+			.isInstanceOf(DirectionException.class);
 	}
 
 	@Test
@@ -50,7 +53,9 @@ class DirectionDomainTest {
 			DirectionSegment.create(1L, "S6", "six", BigDecimal.valueOf(292.5), BigDecimal.valueOf(45), 6),
 			DirectionSegment.create(1L, "S7", "seven", BigDecimal.valueOf(337.5), BigDecimal.valueOf(44), 7));
 
-		assertThatThrownBy(() -> scheme.validateCoverage(invalid)).isInstanceOf(IllegalArgumentException.class);
+		assertThatThrownBy(() -> scheme.validateCoverage(invalid))
+			.isInstanceOf(DirectionException.class)
+			.hasFieldOrPropertyWithValue("errorCode", DirectionErrorCode.INVALID_SCHEME_CONFIGURATION);
 	}
 
 	@Test
@@ -62,7 +67,7 @@ class DirectionDomainTest {
 		assertThat(presence.isCurrentAt(LOCATION_AT)).isTrue();
 		assertThat(presence.isCurrentAt(LOCATION_AT.plusSeconds(3600))).isFalse();
 		assertThatThrownBy(() -> ActiveUserPresence.create(1L, BigDecimal.valueOf(37.5), BigDecimal.valueOf(127.0),
-			null, "KR-SEOUL", null, true, LOCATION_AT, LOCATION_AT)).isInstanceOf(IllegalArgumentException.class);
+			null, "KR-SEOUL", null, true, LOCATION_AT, LOCATION_AT)).isInstanceOf(DirectionException.class);
 	}
 
 	@Test
@@ -72,7 +77,7 @@ class DirectionDomainTest {
 		assertThat(available.getStatus()).isEqualTo(PostRecipientStatus.AVAILABLE);
 		assertThatThrownBy(() -> PostRecipient.restore(1L, 1L, 2L, PostRecipientStatus.SKIPPED,
 			"NEAR", BigDecimal.TEN, "KR-SEOUL", LOCATION_AT, null, null, null, null, null, null, null))
-			.isInstanceOf(IllegalArgumentException.class);
+			.isInstanceOf(DirectionException.class);
 	}
 
 	@Test
@@ -118,11 +123,11 @@ class DirectionDomainTest {
 	void skipPendingRequiresRequestWithoutConfirmation() {
 		assertThatThrownBy(() -> PostRecipient.restore(1L, 1L, 2L, PostRecipientStatus.SKIP_PENDING,
 			"NEAR", BigDecimal.TEN, "KR-SEOUL", LOCATION_AT, null, null, null, null, null, null, null))
-			.isInstanceOf(IllegalArgumentException.class);
+			.isInstanceOf(DirectionException.class);
 		assertThatThrownBy(() -> PostRecipient.restore(1L, 1L, 2L, PostRecipientStatus.SKIPPED,
 			"NEAR", BigDecimal.TEN, "KR-SEOUL", LOCATION_AT, null, null, null,
 			LOCATION_AT, LOCATION_AT, null, null))
-			.isInstanceOf(IllegalArgumentException.class);
+			.isInstanceOf(DirectionException.class);
 	}
 
 	@Test
@@ -134,7 +139,9 @@ class DirectionDomainTest {
 		assertThat(state.canReserve(10)).isTrue();
 		assertThat(RecipientReceiveState.SAFETY_CEILING).isEqualTo(50);
 		assertThatThrownBy(() -> RecipientReceiveState.restore(2L, 51, 7, LOCATION_AT, LOCATION_AT, LOCATION_AT))
-			.isInstanceOf(IllegalArgumentException.class);
+			.isInstanceOf(DirectionException.class)
+			.hasFieldOrPropertyWithValue("errorCode", DirectionErrorCode.INVALID_VALUE_RANGE)
+			.hasFieldOrPropertyWithValue("field", "activeUnhandledCount");
 	}
 
 	@Test
@@ -148,6 +155,8 @@ class DirectionDomainTest {
 		assertThatThrownBy(() -> DirectionPost.restore(1L, 2L, 3L, DirectionPostStatus.ACTIVE, "key", "글",
 			"KR-SEOUL", DirectionPostModerationStatus.PASSED, LOCATION_AT, LOCATION_AT,
 			LOCATION_AT.plusSeconds(3600), LOCATION_AT.minusSeconds(1), null))
-			.isInstanceOf(IllegalArgumentException.class);
+			.isInstanceOf(DirectionException.class)
+			.hasFieldOrPropertyWithValue("errorCode", DirectionErrorCode.INVALID_TIME_ORDER)
+			.hasFieldOrPropertyWithValue("field", "answersReadAt");
 	}
 }

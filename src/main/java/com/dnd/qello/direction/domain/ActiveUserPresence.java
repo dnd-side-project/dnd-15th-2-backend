@@ -2,7 +2,9 @@ package com.dnd.qello.direction.domain;
 
 import java.math.BigDecimal;
 import java.time.Instant;
-import java.util.Objects;
+
+import com.dnd.qello.direction.error.DirectionErrorCode;
+import com.dnd.qello.direction.error.DirectionException;
 
 public final class ActiveUserPresence {
 
@@ -19,28 +21,42 @@ public final class ActiveUserPresence {
 	private ActiveUserPresence(Long userId, BigDecimal latitude, BigDecimal longitude, String coarseCellId,
 		String coarseRegionCode, BigDecimal accuracyMeters, boolean receiveAllowed,
 		Instant locationAt, Instant expiresAt) {
-		if (userId == null || userId <= 0) throw new IllegalArgumentException("userId는 양수여야 합니다");
+		if (userId == null || userId <= 0) {
+			throw new DirectionException(DirectionErrorCode.INVALID_ID, "userId", "userId는 양수여야 합니다");
+		}
 		this.userId = userId;
-		if ((latitude == null) != (longitude == null)) throw new IllegalArgumentException("위도와 경도는 함께 지정해야 합니다");
+		if ((latitude == null) != (longitude == null)) {
+			throw new DirectionException(
+				DirectionErrorCode.INVALID_COORDINATE, "latitude", "위도와 경도는 함께 지정해야 합니다");
+		}
 		if (latitude != null && (latitude.compareTo(BigDecimal.valueOf(-90)) < 0 || latitude.compareTo(BigDecimal.valueOf(90)) > 0)) {
-			throw new IllegalArgumentException("latitude 범위가 유효하지 않습니다");
+			throw new DirectionException(
+				DirectionErrorCode.INVALID_COORDINATE, "latitude", "latitude 범위가 유효하지 않습니다");
 		}
 		if (longitude != null && (longitude.compareTo(BigDecimal.valueOf(-180)) < 0 || longitude.compareTo(BigDecimal.valueOf(180)) > 0)) {
-			throw new IllegalArgumentException("longitude 범위가 유효하지 않습니다");
+			throw new DirectionException(
+				DirectionErrorCode.INVALID_COORDINATE, "longitude", "longitude 범위가 유효하지 않습니다");
 		}
 		if (latitude == null && (coarseCellId == null || coarseCellId.isBlank())) {
-			throw new IllegalArgumentException("position 또는 coarseCellId가 필요합니다");
+			throw new DirectionException(
+				DirectionErrorCode.LOCATION_REQUIRED, "coarseCellId", "position 또는 coarseCellId가 필요합니다");
 		}
 		this.latitude = latitude;
 		this.longitude = longitude;
 		this.coarseCellId = coarseCellId;
 		this.coarseRegionCode = requireText(coarseRegionCode, "coarseRegionCode", 100);
-		if (accuracyMeters != null && accuracyMeters.signum() < 0) throw new IllegalArgumentException("accuracyMeters는 음수일 수 없습니다");
+		if (accuracyMeters != null && accuracyMeters.signum() < 0) {
+			throw new DirectionException(
+				DirectionErrorCode.INVALID_VALUE_RANGE, "accuracyMeters", "accuracyMeters는 음수일 수 없습니다");
+		}
 		this.accuracyMeters = accuracyMeters;
 		this.receiveAllowed = receiveAllowed;
-		this.locationAt = Objects.requireNonNull(locationAt, "locationAt은 필수입니다");
-		this.expiresAt = Objects.requireNonNull(expiresAt, "expiresAt은 필수입니다");
-		if (!expiresAt.isAfter(locationAt)) throw new IllegalArgumentException("expiresAt은 locationAt보다 늦어야 합니다");
+		this.locationAt = requireValue(locationAt, "locationAt");
+		this.expiresAt = requireValue(expiresAt, "expiresAt");
+		if (!expiresAt.isAfter(locationAt)) {
+			throw new DirectionException(
+				DirectionErrorCode.INVALID_TIME_ORDER, "expiresAt", "expiresAt은 locationAt보다 늦어야 합니다");
+		}
 	}
 
 	public static ActiveUserPresence create(Long userId, BigDecimal latitude, BigDecimal longitude,
@@ -51,12 +67,22 @@ public final class ActiveUserPresence {
 	}
 
 	public boolean isCurrentAt(Instant at) {
-		Objects.requireNonNull(at, "at은 필수입니다");
+		requireValue(at, "at");
 		return receiveAllowed && !at.isBefore(locationAt) && at.isBefore(expiresAt);
 	}
 
+	private static <T> T requireValue(T value, String field) {
+		if (value == null) {
+			throw new DirectionException(
+				DirectionErrorCode.REQUIRED_VALUE_MISSING, field, field + "은 필수입니다");
+		}
+		return value;
+	}
+
 	private static String requireText(String value, String field, int max) {
-		if (value == null || value.isBlank() || value.length() > max) throw new IllegalArgumentException(field + "이 유효하지 않습니다");
+		if (value == null || value.isBlank() || value.length() > max) {
+			throw new DirectionException(DirectionErrorCode.INVALID_TEXT, field, field + "이 유효하지 않습니다");
+		}
 		return value;
 	}
 

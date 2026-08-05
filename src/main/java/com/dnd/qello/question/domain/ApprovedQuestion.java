@@ -1,7 +1,9 @@
 package com.dnd.qello.question.domain;
 
 import java.time.Instant;
-import java.util.Objects;
+
+import com.dnd.qello.question.error.QuestionErrorCode;
+import com.dnd.qello.question.error.QuestionException;
 
 public final class ApprovedQuestion {
 
@@ -27,10 +29,10 @@ public final class ApprovedQuestion {
 	) {
 		this.id = validateId(id, "id");
 		this.sourceProposalId = validateId(sourceProposalId, "sourceProposalId");
-		this.sourceType = Objects.requireNonNull(sourceType, "sourceType는 필수입니다");
-		this.status = Objects.requireNonNull(status, "status는 필수입니다");
+		this.sourceType = requireValue(sourceType, "sourceType");
+		this.status = requireValue(status, "status");
 		this.questionText = requireText(questionText, "questionText");
-		this.answerFormat = Objects.requireNonNull(answerFormat, "answerFormat은 필수입니다");
+		this.answerFormat = requireValue(answerFormat, "answerFormat");
 		this.activeFrom = activeFrom;
 		this.activeUntil = activeUntil;
 		this.approvedAt = approvedAt;
@@ -40,7 +42,8 @@ public final class ApprovedQuestion {
 		validateRange();
 		if (status == ApprovedQuestionStatus.ACTIVE
 			&& (approvedAt == null || approvedBy == null || activeFrom == null)) {
-			throw new IllegalArgumentException("ACTIVE 질문에는 승인 정보와 activeFrom이 필요합니다");
+			throw new QuestionException(
+				QuestionErrorCode.INVALID_QUESTION_STATE, "status", "ACTIVE 질문에는 승인 정보와 activeFrom이 필요합니다");
 		}
 	}
 
@@ -81,7 +84,7 @@ public final class ApprovedQuestion {
 	}
 
 	public boolean isAssignableAt(Instant at) {
-		Objects.requireNonNull(at, "at은 필수입니다");
+		requireValue(at, "at");
 		return status == ApprovedQuestionStatus.ACTIVE
 			&& activeFrom != null && !at.isBefore(activeFrom)
 			&& (activeUntil == null || at.isBefore(activeUntil));
@@ -90,24 +93,44 @@ public final class ApprovedQuestion {
 	private void validateSource() {
 		boolean userProposal = sourceType == ApprovedQuestionSourceType.USER_PROPOSAL;
 		if (userProposal != (sourceProposalId != null)) {
-			throw new IllegalArgumentException("USER_PROPOSAL만 sourceProposalId를 가질 수 있습니다");
+			throw new QuestionException(
+				QuestionErrorCode.INVALID_QUESTION_STATE,
+				"sourceProposalId",
+				"USER_PROPOSAL만 sourceProposalId를 가질 수 있습니다"
+			);
 		}
 	}
 
 	private void validateRange() {
 		if (activeUntil != null && activeFrom != null && !activeUntil.isAfter(activeFrom)) {
-			throw new IllegalArgumentException("activeUntil은 activeFrom보다 늦어야 합니다");
+			throw new QuestionException(
+				QuestionErrorCode.INVALID_TIME_ORDER, "activeUntil", "activeUntil은 activeFrom보다 늦어야 합니다");
 		}
 	}
 
+	private static <T> T requireValue(T value, String field) {
+		if (value == null) {
+			throw new QuestionException(QuestionErrorCode.REQUIRED_VALUE_MISSING, field, field + "은 필수입니다");
+		}
+		return value;
+	}
+
 	private static Long validateId(Long value, String field) {
-		if (value != null && value <= 0) throw new IllegalArgumentException(field + "는 양수여야 합니다");
+		if (value != null && value <= 0) {
+			throw new QuestionException(QuestionErrorCode.INVALID_ID, field, field + "는 양수여야 합니다");
+		}
 		return value;
 	}
 
 	private static String requireText(String value, String field) {
-		if (value == null || value.isBlank()) throw new IllegalArgumentException(field + "은 비어 있을 수 없습니다");
-		if (value.length() > TEXT_MAX_LENGTH) throw new IllegalArgumentException(field + "이 너무 깁니다");
+		if (value == null || value.isBlank()) {
+			throw new QuestionException(
+				QuestionErrorCode.REQUIRED_VALUE_MISSING, field, field + "은 비어 있을 수 없습니다");
+		}
+		if (value.length() > TEXT_MAX_LENGTH) {
+			throw new QuestionException(
+				QuestionErrorCode.TEXT_TOO_LONG, field, field + "은 " + TEXT_MAX_LENGTH + "자를 초과할 수 없습니다");
+		}
 		return value;
 	}
 

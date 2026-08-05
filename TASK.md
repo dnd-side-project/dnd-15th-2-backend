@@ -48,6 +48,9 @@
 
 - 브랜치 생성 시점(2026-08-05)에 `git status --short`가 비어 있었다(`TASK.md` 자체
   갱신만 존재). 정리한 타인의 변경은 없다.
+- `main`에 PR #57(전역 예외 처리, #51)이 먼저 병합돼 `PostRecipient`·`DirectionPost`·
+  `RecipientReceiveState`·`DirectionPostService`·`DirectionDomainTest`가 겹쳐서
+  `git merge main`으로 충돌을 해소했다. 병합 커밋에 상세 내역을 남긴다.
 
 ## Validation
 

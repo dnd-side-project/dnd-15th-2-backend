@@ -1,27 +1,39 @@
 package com.dnd.qello.safety.domain;
 
 import java.time.Instant;
-import java.util.Objects;
+
+import com.dnd.qello.safety.error.SafetyErrorCode;
+import com.dnd.qello.safety.error.SafetyException;
 
 public record Report(Long id, long reporterId, Long targetUserId, Long directionPostId, Long answerId,
 	String reasonCode, String detail, ReportStatus status, Instant createdAt, Instant resolvedAt) {
 
+	private static final int REASON_CODE_MAX_LENGTH = 50;
+
 	public Report {
-		if (id != null && id <= 0) throw new IllegalArgumentException("id는 양수여야 합니다");
+		if (id != null && id <= 0) {
+			throw new SafetyException(SafetyErrorCode.INVALID_ID, "id", "id는 양수여야 합니다");
+		}
 		requirePositive(reporterId, "reporterId");
 		if ((targetUserId == null ? 0 : 1) + (directionPostId == null ? 0 : 1)
 			+ (answerId == null ? 0 : 1) != 1) {
-			throw new IllegalArgumentException("신고 대상은 정확히 하나여야 합니다");
+			throw new SafetyException(
+				SafetyErrorCode.INVALID_REPORT_TARGET, null, "신고 대상은 정확히 하나여야 합니다");
 		}
 		requirePositiveOrNull(targetUserId, "targetUserId");
 		requirePositiveOrNull(directionPostId, "directionPostId");
 		requirePositiveOrNull(answerId, "answerId");
-		if (reasonCode == null || reasonCode.isBlank() || reasonCode.length() > 50) {
-			throw new IllegalArgumentException("reasonCode가 유효하지 않습니다");
+		if (reasonCode == null || reasonCode.isBlank() || reasonCode.length() > REASON_CODE_MAX_LENGTH) {
+			throw new SafetyException(
+				SafetyErrorCode.INVALID_REASON_CODE, "reasonCode", "reasonCode가 유효하지 않습니다");
 		}
-		if (status == null || createdAt == null) throw new IllegalArgumentException("신고 상태와 생성 시각은 필수입니다");
+		if (status == null || createdAt == null) {
+			throw new SafetyException(
+				SafetyErrorCode.REQUIRED_VALUE_MISSING, null, "신고 상태와 생성 시각은 필수입니다");
+		}
 		if (resolvedAt != null && resolvedAt.isBefore(createdAt)) {
-			throw new IllegalArgumentException("resolvedAt은 createdAt보다 빠를 수 없습니다");
+			throw new SafetyException(
+				SafetyErrorCode.INVALID_TIME_ORDER, "resolvedAt", "resolvedAt은 createdAt보다 빠를 수 없습니다");
 		}
 	}
 
@@ -45,9 +57,9 @@ public record Report(Long id, long reporterId, Long targetUserId, Long direction
 	public Report resolve(ReportStatus nextStatus, Instant at) {
 		if (nextStatus != ReportStatus.ACTIONED && nextStatus != ReportStatus.NO_VIOLATION
 			&& nextStatus != ReportStatus.MORE_INFO_REQUIRED) {
-			throw new IllegalArgumentException("종결 상태가 아닙니다");
+			throw new SafetyException(SafetyErrorCode.INVALID_REPORT_STATUS, "status", "종결 상태가 아닙니다");
 		}
-		return transition(nextStatus, Objects.requireNonNull(at, "resolvedAt은 필수입니다"));
+		return transition(nextStatus, requireValue(at, "resolvedAt"));
 	}
 
 	private Report transition(ReportStatus nextStatus, Instant nextResolvedAt) {
@@ -55,10 +67,22 @@ public record Report(Long id, long reporterId, Long targetUserId, Long direction
 			detail, nextStatus, createdAt, nextResolvedAt);
 	}
 
-	private static void requirePositive(long value, String field) {
-		if (value <= 0) throw new IllegalArgumentException(field + "는 양수여야 합니다");
+	private static <T> T requireValue(T value, String field) {
+		if (value == null) {
+			throw new SafetyException(SafetyErrorCode.REQUIRED_VALUE_MISSING, field, field + "은 필수입니다");
+		}
+		return value;
 	}
+
+	private static void requirePositive(long value, String field) {
+		if (value <= 0) {
+			throw new SafetyException(SafetyErrorCode.INVALID_ID, field, field + "는 양수여야 합니다");
+		}
+	}
+
 	private static void requirePositiveOrNull(Long value, String field) {
-		if (value != null && value <= 0) throw new IllegalArgumentException(field + "는 양수여야 합니다");
+		if (value != null && value <= 0) {
+			throw new SafetyException(SafetyErrorCode.INVALID_ID, field, field + "는 양수여야 합니다");
+		}
 	}
 }

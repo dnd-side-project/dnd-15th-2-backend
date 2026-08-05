@@ -155,7 +155,9 @@ class AnswerSafetyNotificationPersistenceIntegrationTest extends PostgisContaine
 		assertThatThrownBy(() -> safetyRepository.saveReport(Report.forUser(recipientId, authorId, "ABUSE", "again", NOW)))
 			.isInstanceOf(DataIntegrityViolationException.class);
 		assertThatThrownBy(() -> safetyRepository.block(com.dnd.qello.safety.domain.UserBlock.create(authorId, authorId, NOW)))
-			.isInstanceOf(IllegalArgumentException.class);
+			.isInstanceOf(com.dnd.qello.safety.error.SafetyException.class)
+			.hasFieldOrPropertyWithValue(
+				"errorCode", com.dnd.qello.safety.error.SafetyErrorCode.SELF_BLOCK_NOT_ALLOWED);
 	}
 
 	@Test

@@ -1,9 +1,7 @@
 package com.dnd.qello.direction.service;
 
-import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
-import java.util.Objects;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -18,6 +16,8 @@ import com.dnd.qello.direction.domain.DirectionSegment;
 import com.dnd.qello.direction.domain.PostAudience;
 import com.dnd.qello.direction.domain.PostRecipient;
 import com.dnd.qello.direction.domain.RecipientReceiveState;
+import com.dnd.qello.direction.error.DirectionErrorCode;
+import com.dnd.qello.direction.error.DirectionException;
 import com.dnd.qello.direction.repository.ActiveUserPresenceRepository;
 import com.dnd.qello.direction.repository.DirectionPostRepository;
 import com.dnd.qello.direction.repository.DirectionSchemeRepository;
@@ -55,7 +55,7 @@ public class DirectionPostService {
 
 	@Transactional(readOnly = true)
 	public List<DirectionCandidate> preview(PreviewCommand command) {
-		Objects.requireNonNull(command, "command는 필수입니다");
+		requireValue(command, "command");
 		ActiveUserPresence sender = activeSender(command.senderId(), command.at());
 		DirectionSegment segment = segment(command.schemeId(), command.segmentKey());
 		return candidates(command, sender, segment);
@@ -63,13 +63,14 @@ public class DirectionPostService {
 
 	@Transactional
 	public SendResult send(SendCommand command) {
-		Objects.requireNonNull(command, "command는 필수입니다");
+		requireValue(command, "command");
 		var existing = postRepository.findBySenderAndIdempotencyKey(command.senderId(), command.idempotencyKey());
 		if (existing.isPresent()) return new SendResult(existing.get(), audienceRepository.findByPostId(existing.get().getId()).orElse(null), recipientRepository.findAllByPostId(existing.get().getId()));
 
 		if (approvedQuestionRepository.findAssignableAt(command.submittedAt()).stream()
 			.noneMatch(question -> question.getId().equals(command.approvedQuestionId()))) {
-			throw new IllegalStateException("전송 시각에 활성인 질문이 아닙니다: " + command.approvedQuestionId());
+			throw new DirectionException(
+				DirectionErrorCode.QUESTION_NOT_ACTIVE, "approvedQuestionId", "전송 시각에 활성인 질문이 아닙니다");
 		}
 		ActiveUserPresence sender = activeSender(command.senderId(), command.submittedAt());
 		DirectionSegment segment = segment(command.schemeId(), command.segmentKey());
@@ -94,24 +95,45 @@ public class DirectionPostService {
 		double half = segment.getAngularWidthDegrees().doubleValue() / 2.0;
 		double start = DirectionScheme.normalize(center - half);
 		double end = DirectionScheme.normalize(center + half);
-		if (sender.getLatitude() == null || sender.getLongitude() == null) throw new IllegalStateException("정확 위치가 없는 presence는 후보를 계산할 수 없습니다");
+		if (sender.getLatitude() == null || sender.getLongitude() == null) {
+			throw new DirectionException(
+				DirectionErrorCode.PRESENCE_LOCATION_MISSING,
+				"senderId",
+				"정확 위치가 없는 presence는 후보를 계산할 수 없습니다"
+			);
+		}
 		return presenceRepository.findCandidates(command.senderId(), sender.getLatitude().doubleValue(), sender.getLongitude().doubleValue(),
 			command.minDistanceMeters(), command.maxDistanceMeters(), start, end, command.at(), command.coarseRegionCode());
 	}
 
 	private DirectionSegment segment(long schemeId, String segmentKey) {
-		DirectionScheme scheme = schemeRepository.findById(schemeId).orElseThrow(() -> new IllegalArgumentException("direction scheme을 찾을 수 없습니다: " + schemeId));
+		DirectionScheme scheme = schemeRepository.findById(schemeId)
+			.orElseThrow(() -> new DirectionException(
+				DirectionErrorCode.SCHEME_NOT_FOUND, "schemeId", "direction scheme을 찾을 수 없습니다"));
 		List<DirectionSegment> segments = schemeRepository.findSegments(schemeId);
 		scheme.validateCoverage(segments);
 		return segments.stream().filter(candidate -> candidate.getSegmentKey().equals(segmentKey)).findFirst()
-			.orElseThrow(() -> new IllegalArgumentException("direction segment을 찾을 수 없습니다: " + segmentKey));
+			.orElseThrow(() -> new DirectionException(
+				DirectionErrorCode.SEGMENT_NOT_FOUND, "segmentKey", "direction segment을 찾을 수 없습니다"));
 	}
 
 	private ActiveUserPresence activeSender(long senderId, Instant at) {
 		ActiveUserPresence sender = presenceRepository.findByUserId(senderId)
-			.orElseThrow(() -> new IllegalStateException("sender presence를 찾을 수 없습니다: " + senderId));
-		if (!sender.isCurrentAt(at)) throw new IllegalStateException("sender presence가 만료되었거나 수신 허용이 아닙니다");
+			.orElseThrow(() -> new DirectionException(
+				DirectionErrorCode.PRESENCE_NOT_FOUND, "senderId", "sender presence를 찾을 수 없습니다"));
+		if (!sender.isCurrentAt(at)) {
+			throw new DirectionException(
+				DirectionErrorCode.PRESENCE_NOT_CURRENT, "senderId", "sender presence가 만료되었거나 수신 허용이 아닙니다");
+		}
 		return sender;
+	}
+
+	private static <T> T requireValue(T value, String field) {
+		if (value == null) {
+			throw new DirectionException(
+				DirectionErrorCode.REQUIRED_VALUE_MISSING, field, field + "는 필수입니다");
+		}
+		return value;
 	}
 
 	private boolean reserve(long userId, Instant at) {
@@ -124,10 +146,15 @@ public class DirectionPostService {
 	public record PreviewCommand(Long senderId, Long schemeId, String segmentKey, long minDistanceMeters,
 		long maxDistanceMeters, String coarseRegionCode, Instant at) {
 		public PreviewCommand {
-			if (senderId == null || senderId <= 0 || schemeId == null || schemeId <= 0) throw new IllegalArgumentException("ID가 유효하지 않습니다");
-			if (minDistanceMeters < 0 || maxDistanceMeters <= minDistanceMeters) throw new IllegalArgumentException("거리 범위가 유효하지 않습니다");
-			Objects.requireNonNull(segmentKey, "segmentKey는 필수입니다");
-			Objects.requireNonNull(at, "at은 필수입니다");
+			if (senderId == null || senderId <= 0 || schemeId == null || schemeId <= 0) {
+				throw new DirectionException(DirectionErrorCode.INVALID_ID, null, "ID가 유효하지 않습니다");
+			}
+			if (minDistanceMeters < 0 || maxDistanceMeters <= minDistanceMeters) {
+				throw new DirectionException(
+					DirectionErrorCode.INVALID_DISTANCE_RANGE, "maxDistanceMeters", "거리 범위가 유효하지 않습니다");
+			}
+			requireValue(segmentKey, "segmentKey");
+			requireValue(at, "at");
 		}
 	}
 
@@ -135,12 +162,23 @@ public class DirectionPostService {
 		long minDistanceMeters, long maxDistanceMeters, String coarseRegionCode, String idempotencyKey,
 		String bodyText, String distanceBand, Instant submittedAt, Instant expiresAt) {
 		public SendCommand {
-			if (senderId == null || senderId <= 0 || approvedQuestionId == null || approvedQuestionId <= 0 || schemeId == null || schemeId <= 0) throw new IllegalArgumentException("ID가 유효하지 않습니다");
-			if (minDistanceMeters < 0 || maxDistanceMeters <= minDistanceMeters) throw new IllegalArgumentException("거리 범위가 유효하지 않습니다");
-			if (segmentKey == null || segmentKey.isBlank() || coarseRegionCode == null || coarseRegionCode.isBlank() || idempotencyKey == null || idempotencyKey.isBlank() || distanceBand == null || distanceBand.isBlank()) throw new IllegalArgumentException("필수 command 값이 없습니다");
-			Objects.requireNonNull(submittedAt, "submittedAt은 필수입니다");
-			Objects.requireNonNull(expiresAt, "expiresAt은 필수입니다");
-			if (!expiresAt.isAfter(submittedAt)) throw new IllegalArgumentException("expiresAt은 submittedAt보다 늦어야 합니다");
+			if (senderId == null || senderId <= 0 || approvedQuestionId == null || approvedQuestionId <= 0 || schemeId == null || schemeId <= 0) {
+				throw new DirectionException(DirectionErrorCode.INVALID_ID, null, "ID가 유효하지 않습니다");
+			}
+			if (minDistanceMeters < 0 || maxDistanceMeters <= minDistanceMeters) {
+				throw new DirectionException(
+					DirectionErrorCode.INVALID_DISTANCE_RANGE, "maxDistanceMeters", "거리 범위가 유효하지 않습니다");
+			}
+			if (segmentKey == null || segmentKey.isBlank() || coarseRegionCode == null || coarseRegionCode.isBlank() || idempotencyKey == null || idempotencyKey.isBlank() || distanceBand == null || distanceBand.isBlank()) {
+				throw new DirectionException(
+					DirectionErrorCode.REQUIRED_VALUE_MISSING, null, "필수 command 값이 없습니다");
+			}
+			requireValue(submittedAt, "submittedAt");
+			requireValue(expiresAt, "expiresAt");
+			if (!expiresAt.isAfter(submittedAt)) {
+				throw new DirectionException(
+					DirectionErrorCode.INVALID_TIME_ORDER, "expiresAt", "expiresAt은 submittedAt보다 늦어야 합니다");
+			}
 		}
 	}
 
