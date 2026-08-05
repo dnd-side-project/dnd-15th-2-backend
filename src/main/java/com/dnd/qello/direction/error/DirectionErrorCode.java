@@ -54,6 +54,9 @@ public enum DirectionErrorCode implements ErrorCode {
 	// 요청한 방향 구획 체계 부재
 	SCHEME_NOT_FOUND(HttpStatus.NOT_FOUND, "DIR-DOM-006", ErrorCategory.DOM, "방향 구획 체계를 찾을 수 없습니다."),
 
+	// 수신 자격 없는 사용자의 질문글 공감. post_reaction의 복합 FK에서 감지. 재시도로 해결 불가
+	INELIGIBLE_REACTOR(HttpStatus.FORBIDDEN, "DIR-DOM-007", ErrorCategory.DOM, "질문글에 공감할 수 있는 수신자가 아닙니다."),
+
 	// 전송 시각에 활성 상태가 아닌 질문. 질문 풀 변경 시 해소
 	QUESTION_NOT_ACTIVE(HttpStatus.CONFLICT, "DIR-APP-001", ErrorCategory.APP, "전송 시각에 활성인 질문이 아닙니다."),
 
