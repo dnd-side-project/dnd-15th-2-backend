@@ -49,3 +49,21 @@ out/
 agents/model-profiles.local.yml
 .harness-local/
 docs/reports/**/*.local.md
+
+### Terraform ###
+# State와 plan은 민감정보로 취급한다(AGENTS.md 4.6, 4.7). .terraform.lock.hcl은
+# 예외로 커밋한다.
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+tfplan
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+*.tfvars
+*.tfvars.json
+!*.tfvars.example

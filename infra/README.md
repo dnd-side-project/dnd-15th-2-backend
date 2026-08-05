@@ -11,18 +11,27 @@ AWS CDK만 기본 IaC로 사용하며 AWS SDK 호출을 대체 수단으로 사�
 - `@Byuntil`, `@tkv00` 두 명 승인 필요
 - GitHub `infrastructure-apply` Environment의 수동 승인 필요
 
-## Suggested layout
+## Layout
 
 ```text
 infra/
+├── bootstrap/                       Terraform State Backend + GitHub OIDC
+│                                    (최초 1회 로컬 State 예외, README.md 참고)
 ├── modules/
+│   └── s3-private-bucket/           재사용 가능한 private S3 버킷 모듈
 └── environments/
-    ├── dev/
-    └── production/
+    └── dev/
+        └── storage/                 게시물 이미지 테스트 S3 버킷(GitHub Issue #63)
 ```
 
-환경별 실제 값은 GitHub Environment, OIDC, 안전한 변수 저장소에서 주입한다.
-샘플 파일에는 실제 식별자를 넣지 않는다.
+환경별 실제 값(버킷 이름, State Backend 버킷 등)은 GitHub Environment, OIDC,
+안전한 변수 저장소 또는 각 디렉터리의 `terraform.tfvars`(커밋되지 않음)에서
+주입한다. `terraform.tfvars.example` 샘플 파일에는 실제 식별자를 넣지 않는다.
+
+각 디렉터리는 해당 설계를 승인한 Infrastructure Design Report를 갖는다.
+`infra/bootstrap`과 `infra/environments/dev/storage`는
+`docs/reports/infrastructure/gh-63-D-1.md`(DESIGN-ID `D-1`, GitHub Issue #63,
+상태 `APPROVED_FOR_BUILD`)를 따른다.
 
 상세 설정은 `docs/harness/GITHUB_ENFORCEMENT.md`와
 `templates/infrastructure-design-report.md`를 따른다.
