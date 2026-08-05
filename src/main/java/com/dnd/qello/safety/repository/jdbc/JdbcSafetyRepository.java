@@ -15,6 +15,8 @@ import com.dnd.qello.safety.domain.ModerationReview;
 import com.dnd.qello.safety.domain.Report;
 import com.dnd.qello.safety.domain.ReportStatus;
 import com.dnd.qello.safety.domain.UserBlock;
+import com.dnd.qello.safety.error.SafetyErrorCode;
+import com.dnd.qello.safety.error.SafetyException;
 import com.dnd.qello.safety.repository.SafetyRepository;
 
 @Repository
@@ -50,7 +52,10 @@ public class JdbcSafetyRepository implements SafetyRepository {
 			WHERE blocker_id = :blockerId AND blocked_id = :blockedId AND released_at IS NULL
 			""", new MapSqlParameterSource().addValue("blockerId", blockerId)
 			.addValue("blockedId", blockedId).addValue("releasedAt", timestamp(releasedAt)));
-		if (updated != 1) throw new IllegalStateException("활성 차단을 찾을 수 없습니다");
+		if (updated != 1) {
+			throw new SafetyException(
+				SafetyErrorCode.ACTIVE_BLOCK_NOT_FOUND, null, "활성 차단을 찾을 수 없습니다");
+		}
 		return findBlock(blockerId, blockedId).orElseThrow();
 	}
 
@@ -90,7 +95,9 @@ public class JdbcSafetyRepository implements SafetyRepository {
 
 	@Override
 	public Report updateReport(Report report) {
-		if (report.id() == null) throw new IllegalArgumentException("수정에는 report id가 필요합니다");
+		if (report.id() == null) {
+			throw new SafetyException(SafetyErrorCode.REQUIRED_VALUE_MISSING, "id", "수정에는 report id가 필요합니다");
+		}
 		jdbc.update("""
 			UPDATE report SET status = :status, resolved_at = :resolvedAt WHERE id = :id
 			""", new MapSqlParameterSource().addValue("id", report.id())

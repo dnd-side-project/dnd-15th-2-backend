@@ -35,6 +35,13 @@
 target DDL의 차이만 담은 delta로 손으로 작성한다. V1 원본 DDL 행은 이력 보존용이며,
 `FlywayMigrationContractTest`가 `V1__…sql`의 sha256을 이 값으로 잠근다.
 
+vault DBML과 target DDL 사이에는 알려진 불일치가 하나 있다. vault의 DBML은
+`ck_direction_post_answers_read_at`을 선언하지 않지만, 같은 vault의 target DDL
+(따라서 이를 손으로 옮긴 `V2__…sql`)은 이 제약을 선언한다. 이는 vault 원본 자체의
+내부 일관성 결함이며 V2나 이 저장소가 보관한 DBML 사본의 오류가 아니다 — 이
+저장소의 DBML은 불완전한 원본을 byte-for-byte로 정확히 복사한 것이다. 대조적으로
+`ck_post_recipient_skip_pending`은 vault DBML에도 선언되어 있어 이런 불일치가 없다.
+
 ## 4. 폐기된 계보
 
 다음 파일은 중간 설계 이력이며 새 Flyway migration의 입력이 아니다.
@@ -300,6 +307,7 @@ partial unique object는 위 Index inventory에 포함된다.
 - `ck_direction_post_expiry`
 - `ck_direction_post_published_at`
 - `ck_direction_post_deleted_at`
+- `ck_direction_post_answers_read_at`
 - `ck_post_audience_center`
 - `ck_post_audience_width`
 - `ck_post_audience_distance`
@@ -309,6 +317,7 @@ partial unique object는 위 Index inventory에 포함된다.
 - `ck_post_recipient_distance_band`
 - `ck_post_recipient_timestamps`
 - `ck_post_recipient_status_timestamps`
+- `ck_post_recipient_skip_pending`
 - `ck_answer_status`
 - `ck_answer_moderation`
 - `ck_answer_body`

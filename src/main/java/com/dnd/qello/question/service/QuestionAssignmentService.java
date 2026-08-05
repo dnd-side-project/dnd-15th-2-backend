@@ -2,7 +2,6 @@ package com.dnd.qello.question.service;
 
 import java.time.Instant;
 import java.util.List;
-import java.util.Objects;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -10,6 +9,8 @@ import org.springframework.transaction.annotation.Transactional;
 import com.dnd.qello.question.domain.ApprovedQuestion;
 import com.dnd.qello.question.domain.QuestionAssignment;
 import com.dnd.qello.question.domain.QuestionAssignmentCycle;
+import com.dnd.qello.question.error.QuestionErrorCode;
+import com.dnd.qello.question.error.QuestionException;
 import com.dnd.qello.question.repository.ApprovedQuestionRepository;
 import com.dnd.qello.question.repository.QuestionAssignmentCycleRepository;
 import com.dnd.qello.question.repository.QuestionAssignmentRepository;
@@ -36,12 +37,13 @@ public class QuestionAssignmentService {
 
 	@Transactional
 	public AssignmentBatch assign(CycleCommand command) {
-		Objects.requireNonNull(command, "command는 필수입니다");
+		requireValue(command, "command");
 		QuestionAssignmentCycle savedCycle = cycleRepository.save(QuestionAssignmentCycle.create(
 			command.userId(), command.cycleKey(), command.poolVersion(),
 			command.startsAt(), command.endsAt()));
 		if (savedCycle.getId() == null) {
-			throw new IllegalStateException("저장된 cycle에 ID가 없습니다");
+			throw new QuestionException(
+				QuestionErrorCode.ASSIGNMENT_CYCLE_NOT_PERSISTED, null, "저장된 cycle에 ID가 없습니다");
 		}
 
 		List<QuestionAssignment> assignments = command.assignments().stream()
@@ -57,10 +59,20 @@ public class QuestionAssignmentService {
 		ApprovedQuestion question = approvedQuestionRepository.findAssignableAt(command.assignedAt()).stream()
 			.filter(candidate -> candidate.getId().equals(command.approvedQuestionId()))
 			.findFirst()
-			.orElseThrow(() -> new IllegalStateException(
-				"배정 시각에 활성인 질문이 아닙니다: " + command.approvedQuestionId()));
+			.orElseThrow(() -> new QuestionException(
+				QuestionErrorCode.QUESTION_NOT_ASSIGNABLE,
+				"approvedQuestionId",
+				"배정 시각에 활성인 질문이 아닙니다"
+			));
 		return QuestionAssignment.create(cycle.getId(), question.getId(),
 			command.displayOrder(), command.assignedAt());
+	}
+
+	private static <T> T requireValue(T value, String field) {
+		if (value == null) {
+			throw new QuestionException(QuestionErrorCode.REQUIRED_VALUE_MISSING, field, field + "는 필수입니다");
+		}
+		return value;
 	}
 
 	public record CycleCommand(
@@ -72,7 +84,7 @@ public class QuestionAssignmentService {
 		List<AssignmentCommand> assignments
 	) {
 		public CycleCommand {
-			assignments = List.copyOf(Objects.requireNonNull(assignments, "assignments는 필수입니다"));
+			assignments = List.copyOf(requireValue(assignments, "assignments"));
 		}
 	}
 

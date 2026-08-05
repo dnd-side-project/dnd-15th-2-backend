@@ -1,5 +1,5 @@
 ---
-id: ADR-0003
+id: ADR-0004
 title: AWS 인프라 관리 도구로 Terraform을 단독 채택한다
 status: proposed
 category: INFRASTRUCTURE
@@ -8,7 +8,7 @@ tags: [terraform, aws-cdk, iac, infrastructure]
 related: ["#58", "#9"]
 ---
 
-# ADR-0003. AWS 인프라 관리 도구로 Terraform을 단독 채택한다
+# ADR-0004. AWS 인프라 관리 도구로 Terraform을 단독 채택한다
 
 ## 배경
 

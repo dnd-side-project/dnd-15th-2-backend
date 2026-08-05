@@ -1,7 +1,9 @@
 package com.dnd.qello.question.domain;
 
 import java.time.Instant;
-import java.util.Objects;
+
+import com.dnd.qello.question.error.QuestionErrorCode;
+import com.dnd.qello.question.error.QuestionException;
 
 public final class QuestionProposalReview {
 
@@ -23,10 +25,10 @@ public final class QuestionProposalReview {
 		this.id = id;
 		this.proposalId = requirePositive(proposalId, "proposalId");
 		this.reviewerId = requirePositive(reviewerId, "reviewerId");
-		this.decision = Objects.requireNonNull(decision, "decision은 필수입니다");
+		this.decision = requireValue(decision, "decision");
 		this.reason = decision == QuestionProposalReviewDecision.REJECTED
 			? requireText(reason, "reason") : validateReason(reason);
-		this.reviewedAt = Objects.requireNonNull(reviewedAt, "reviewedAt은 필수입니다");
+		this.reviewedAt = requireValue(reviewedAt, "reviewedAt");
 	}
 
 	public static QuestionProposalReview approve(Long proposalId, Long reviewerId, String reason, Instant reviewedAt) {
@@ -46,8 +48,17 @@ public final class QuestionProposalReview {
 		return new QuestionProposalReview(id, proposalId, reviewerId, decision, reason, reviewedAt);
 	}
 
+	private static <T> T requireValue(T value, String field) {
+		if (value == null) {
+			throw new QuestionException(QuestionErrorCode.REQUIRED_VALUE_MISSING, field, field + "은 필수입니다");
+		}
+		return value;
+	}
+
 	private static long requirePositive(Long value, String field) {
-		if (value == null || value <= 0) throw new IllegalArgumentException(field + "는 양수여야 합니다");
+		if (value == null || value <= 0) {
+			throw new QuestionException(QuestionErrorCode.INVALID_ID, field, field + "는 양수여야 합니다");
+		}
 		return value;
 	}
 
@@ -56,7 +67,9 @@ public final class QuestionProposalReview {
 	}
 
 	private static String requireText(String value, String field) {
-		if (value == null || value.isBlank()) throw new IllegalArgumentException(field + "은 필수입니다");
+		if (value == null || value.isBlank()) {
+			throw new QuestionException(QuestionErrorCode.REQUIRED_VALUE_MISSING, field, field + "은 필수입니다");
+		}
 		return value;
 	}
 

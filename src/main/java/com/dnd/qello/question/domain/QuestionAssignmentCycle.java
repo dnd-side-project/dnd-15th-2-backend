@@ -1,9 +1,13 @@
 package com.dnd.qello.question.domain;
 
 import java.time.Instant;
-import java.util.Objects;
+
+import com.dnd.qello.question.error.QuestionErrorCode;
+import com.dnd.qello.question.error.QuestionException;
 
 public final class QuestionAssignmentCycle {
+
+	private static final int TEXT_MAX_LENGTH = 100;
 
 	private final Long id;
 	private final Long userId;
@@ -23,11 +27,14 @@ public final class QuestionAssignmentCycle {
 		this.userId = requireId(userId, "userId");
 		this.cycleKey = requireText(cycleKey, "cycleKey");
 		this.poolVersion = requireText(poolVersion, "poolVersion");
-		this.status = Objects.requireNonNull(status, "status는 필수입니다");
-		this.startsAt = Objects.requireNonNull(startsAt, "startsAt은 필수입니다");
-		this.endsAt = Objects.requireNonNull(endsAt, "endsAt은 필수입니다");
+		this.status = requireValue(status, "status");
+		this.startsAt = requireValue(startsAt, "startsAt");
+		this.endsAt = requireValue(endsAt, "endsAt");
 		this.createdAt = createdAt;
-		if (!endsAt.isAfter(startsAt)) throw new IllegalArgumentException("endsAt은 startsAt보다 늦어야 합니다");
+		if (!endsAt.isAfter(startsAt)) {
+			throw new QuestionException(
+				QuestionErrorCode.INVALID_TIME_ORDER, "endsAt", "endsAt은 startsAt보다 늦어야 합니다");
+		}
 	}
 
 	public static QuestionAssignmentCycle create(
@@ -46,19 +53,36 @@ public final class QuestionAssignmentCycle {
 			startsAt, endsAt, createdAt);
 	}
 
+	private static <T> T requireValue(T value, String field) {
+		if (value == null) {
+			throw new QuestionException(QuestionErrorCode.REQUIRED_VALUE_MISSING, field, field + "은 필수입니다");
+		}
+		return value;
+	}
+
 	private static Long validateId(Long value, String field) {
-		if (value != null && value <= 0) throw new IllegalArgumentException(field + "는 양수여야 합니다");
+		if (value != null && value <= 0) {
+			throw new QuestionException(QuestionErrorCode.INVALID_ID, field, field + "는 양수여야 합니다");
+		}
 		return value;
 	}
 
 	private static long requireId(Long value, String field) {
-		if (value == null || value <= 0) throw new IllegalArgumentException(field + "는 양수여야 합니다");
+		if (value == null || value <= 0) {
+			throw new QuestionException(QuestionErrorCode.INVALID_ID, field, field + "는 양수여야 합니다");
+		}
 		return value;
 	}
 
 	private static String requireText(String value, String field) {
-		if (value == null || value.isBlank()) throw new IllegalArgumentException(field + "은 비어 있을 수 없습니다");
-		if (value.length() > 100) throw new IllegalArgumentException(field + "이 너무 깁니다");
+		if (value == null || value.isBlank()) {
+			throw new QuestionException(
+				QuestionErrorCode.REQUIRED_VALUE_MISSING, field, field + "은 비어 있을 수 없습니다");
+		}
+		if (value.length() > TEXT_MAX_LENGTH) {
+			throw new QuestionException(
+				QuestionErrorCode.TEXT_TOO_LONG, field, field + "은 " + TEXT_MAX_LENGTH + "자를 초과할 수 없습니다");
+		}
 		return value;
 	}
 

@@ -26,23 +26,25 @@ public class JdbcDirectionPostRepository implements DirectionPostRepository {
 		String sql = post.getId() == null ? """
 			INSERT INTO direction_post
 				(sender_id, approved_question_id, status, idempotency_key, body_text, coarse_region_code,
-				 moderation_status, submitted_at, published_at, expires_at, deleted_at)
+				 moderation_status, submitted_at, published_at, expires_at, answers_read_at, deleted_at)
 			VALUES (:senderId, :questionId, :status, :idempotencyKey, :bodyText, :regionCode,
-				:moderationStatus, :submittedAt, :publishedAt, :expiresAt, :deletedAt)
+				:moderationStatus, :submittedAt, :publishedAt, :expiresAt, :answersReadAt, :deletedAt)
 			RETURNING id
 			""" : """
 			UPDATE direction_post
 			SET sender_id = :senderId, approved_question_id = :questionId, status = :status,
 			    idempotency_key = :idempotencyKey, body_text = :bodyText, coarse_region_code = :regionCode,
 			    moderation_status = :moderationStatus, submitted_at = :submittedAt,
-			    published_at = :publishedAt, expires_at = :expiresAt, deleted_at = :deletedAt
+			    published_at = :publishedAt, expires_at = :expiresAt, answers_read_at = :answersReadAt,
+			    deleted_at = :deletedAt
 			WHERE id = :id
 			RETURNING id
 			""";
 		Long id = jdbc.queryForObject(sql, params(post), Long.class);
 		return DirectionPost.restore(id, post.getSenderId(), post.getApprovedQuestionId(), post.getStatus(),
 			post.getIdempotencyKey(), post.getBodyText(), post.getCoarseRegionCode(), post.getModerationStatus(),
-			post.getSubmittedAt(), post.getPublishedAt(), post.getExpiresAt(), post.getDeletedAt());
+			post.getSubmittedAt(), post.getPublishedAt(), post.getExpiresAt(), post.getAnswersReadAt(),
+			post.getDeletedAt());
 	}
 
 	@Override
@@ -64,7 +66,9 @@ public class JdbcDirectionPostRepository implements DirectionPostRepository {
 			.addValue("idempotencyKey", p.getIdempotencyKey()).addValue("bodyText", p.getBodyText())
 			.addValue("regionCode", p.getCoarseRegionCode()).addValue("moderationStatus", p.getModerationStatus().name())
 			.addValue("submittedAt", timestamp(p.getSubmittedAt())).addValue("publishedAt", timestamp(p.getPublishedAt()))
-			.addValue("expiresAt", timestamp(p.getExpiresAt())).addValue("deletedAt", timestamp(p.getDeletedAt()));
+			.addValue("expiresAt", timestamp(p.getExpiresAt()))
+			.addValue("answersReadAt", timestamp(p.getAnswersReadAt()))
+			.addValue("deletedAt", timestamp(p.getDeletedAt()));
 	}
 
 	private static Timestamp timestamp(java.time.Instant value) { return value == null ? null : Timestamp.from(value); }
@@ -74,6 +78,8 @@ public class JdbcDirectionPostRepository implements DirectionPostRepository {
 			DirectionPostStatus.valueOf(rs.getString("status")), rs.getString("idempotency_key"), rs.getString("body_text"),
 			rs.getString("coarse_region_code"), DirectionPostModerationStatus.valueOf(rs.getString("moderation_status")),
 			rs.getTimestamp("submitted_at").toInstant(), rs.getTimestamp("published_at") == null ? null : rs.getTimestamp("published_at").toInstant(),
-			rs.getTimestamp("expires_at").toInstant(), rs.getTimestamp("deleted_at") == null ? null : rs.getTimestamp("deleted_at").toInstant());
+			rs.getTimestamp("expires_at").toInstant(),
+			rs.getTimestamp("answers_read_at") == null ? null : rs.getTimestamp("answers_read_at").toInstant(),
+			rs.getTimestamp("deleted_at") == null ? null : rs.getTimestamp("deleted_at").toInstant());
 	}
 }

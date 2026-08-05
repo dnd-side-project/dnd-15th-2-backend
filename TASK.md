@@ -34,6 +34,12 @@
 ## Existing user-owned changes
 
 - 작업 시작 시 `git status --short` 결과를 확인하고 여기에 기록한다.
+- `main`이 8개 커밋 앞서 있어(`origin/main`) `git merge origin/main`으로 갱신했다.
+  `TASK.md`와 `docs/adr/README.md`에서 충돌이 발생했다. `TASK.md`는 브랜치별
+  계약이므로 이 브랜치(#58)의 내용을 유지했다. `docs/adr/README.md`는 두
+  브랜치가 각각 `ADR-0003`을 사용해 번호가 충돌해, main의 `ADR-0003`(전역
+  예외 처리)을 유지하고 이 브랜치의 Terraform ADR을 `ADR-0004`
+  (`0004-adopt-terraform-for-aws-iac.md`)로 재번호했다.
 
 ## Validation
 

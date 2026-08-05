@@ -142,7 +142,9 @@ class QuestionPersistenceIntegrationTest extends PostgisContainerIntegrationTest
 
 		assertThatThrownBy(() -> reviewService.reject(
 			underReview.getId(), reviewerId, " ", ACTIVE_FROM))
-			.isInstanceOf(IllegalArgumentException.class);
+			.isInstanceOf(com.dnd.qello.question.error.QuestionException.class)
+			.hasFieldOrPropertyWithValue(
+				"errorCode", com.dnd.qello.question.error.QuestionErrorCode.REQUIRED_VALUE_MISSING);
 		assertThat(reviewRepository.findAllByProposalId(underReview.getId())).isEmpty();
 
 		reviewService.reject(underReview.getId(), reviewerId, "정책에 맞지 않습니다", ACTIVE_FROM);
@@ -264,7 +266,9 @@ class QuestionPersistenceIntegrationTest extends PostgisContainerIntegrationTest
 		assertThatThrownBy(() -> assignmentService.assign(new QuestionAssignmentService.CycleCommand(
 			userId, "expired-cycle", "pool-v1", ACTIVE_FROM, ACTIVE_UNTIL,
 			List.of(new QuestionAssignmentService.AssignmentCommand(question.getId(), 1, afterExpiry)))))
-			.isInstanceOf(IllegalStateException.class);
+			.isInstanceOf(com.dnd.qello.question.error.QuestionException.class)
+			.hasFieldOrPropertyWithValue(
+				"errorCode", com.dnd.qello.question.error.QuestionErrorCode.QUESTION_NOT_ASSIGNABLE);
 
 		QuestionAssignmentService.AssignmentBatch batch = assignmentService.assign(
 			new QuestionAssignmentService.CycleCommand(

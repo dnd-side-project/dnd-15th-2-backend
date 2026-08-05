@@ -43,6 +43,8 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 		"post_audience",
 		"post_recipient",
 		"answer",
+		"post_reaction",
+		"answer_reaction",
 		"media_attachment",
 		"user_block",
 		"report",
@@ -101,7 +103,10 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 		"uq_active_push_token",
 		"outbox_event_dispatch_idx",
 		"notification_inbox_idx",
-		"notification_delivery_dispatch_idx"
+		"notification_delivery_dispatch_idx",
+		"uq_answer_one_per_recipient",
+		"post_reaction_reactor_idx",
+		"answer_reaction_reactor_idx"
 	);
 
 	private static final Set<String> EXPECTED_FUNCTIONS = Set.of(
@@ -114,7 +119,8 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 		"enforce_post_has_content",
 		"enforce_answer_has_content",
 		"enforce_media_attachment_preserves_content",
-		"enforce_media_status_preserves_content"
+		"enforce_media_status_preserves_content",
+		"enforce_answer_reaction_reactor_is_sender"
 	);
 
 	private static final Set<String> EXPECTED_TRIGGERS = Set.of(
@@ -126,7 +132,8 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 		"ct_direction_post_has_content",
 		"ct_answer_has_content",
 		"ct_media_attachment_preserves_content",
-		"ct_media_status_preserves_content"
+		"ct_media_status_preserves_content",
+		"ct_answer_reaction_reactor_is_sender"
 	);
 
 	@Autowired
@@ -136,8 +143,8 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 	private JdbcTemplate jdbcTemplate;
 
 	@Test
-	@DisplayName("빈 PostGIS 데이터베이스의 startup에서 V1 migration 한 건을 적용한다")
-	void appliesV1OnApplicationStartup() {
+	@DisplayName("빈 PostGIS 데이터베이스의 startup에서 V1과 V2 migration을 적용한다")
+	void appliesAllMigrationsOnApplicationStartup() {
 		Integer successfulV1 = jdbcTemplate.queryForObject("""
 			SELECT count(*)
 			FROM flyway_schema_history
@@ -147,7 +154,7 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 			"SELECT PostGIS_Version()", String.class);
 
 		assertThat(successfulV1).isEqualTo(1);
-		assertThat(flyway.info().applied()).hasSize(1);
+		assertThat(flyway.info().applied()).hasSize(2);
 		assertThat(postgisVersion).isNotBlank();
 	}
 
@@ -201,12 +208,12 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 			""", (resultSet, rowNumber) -> new ConstraintDescriptor(
 			resultSet.getString(1), resultSet.getString(2)));
 
-		assertThat(countConstraints(constraints, "f")).isEqualTo(45);
+		assertThat(countConstraints(constraints, "f")).isEqualTo(48);
 		assertThat(countConstraints(constraints, "u")).isEqualTo(18);
-		assertThat(countConstraints(constraints, "c")).isEqualTo(95);
-		assertThat(EXPECTED_INDEXES).hasSize(47);
-		assertThat(EXPECTED_FUNCTIONS).hasSize(10);
-		assertThat(EXPECTED_TRIGGERS).hasSize(9);
+		assertThat(countConstraints(constraints, "c")).isEqualTo(97);
+		assertThat(EXPECTED_INDEXES).hasSize(50);
+		assertThat(EXPECTED_FUNCTIONS).hasSize(11);
+		assertThat(EXPECTED_TRIGGERS).hasSize(10);
 
 		Integer activeScheme = jdbcTemplate.queryForObject("""
 			SELECT count(*)

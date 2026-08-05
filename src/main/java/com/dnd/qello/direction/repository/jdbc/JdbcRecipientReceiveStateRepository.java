@@ -46,15 +46,16 @@ public class JdbcRecipientReceiveStateRepository implements RecipientReceiveStat
 	}
 
 	@Override
-	public boolean reserve(long userId, Instant receivedAt) {
+	public boolean reserve(long userId, Instant receivedAt, int activeLimit) {
 		int updated = jdbc.update("""
 			UPDATE recipient_receive_state
 			SET active_unhandled_count = active_unhandled_count + 1,
 			    recent_received_count = recent_received_count + 1,
 			    last_received_at = :receivedAt,
 			    updated_at = clock_timestamp()
-			WHERE user_id = :userId AND active_unhandled_count < 5
-			""", new MapSqlParameterSource().addValue("userId", userId).addValue("receivedAt", timestamp(receivedAt)));
+			WHERE user_id = :userId AND active_unhandled_count < :activeLimit
+			""", new MapSqlParameterSource().addValue("userId", userId)
+			.addValue("receivedAt", timestamp(receivedAt)).addValue("activeLimit", activeLimit));
 		return updated == 1;
 	}
 

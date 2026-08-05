@@ -1,7 +1,9 @@
 package com.dnd.qello.question.domain;
 
 import java.time.Instant;
-import java.util.Objects;
+
+import com.dnd.qello.question.error.QuestionErrorCode;
+import com.dnd.qello.question.error.QuestionException;
 
 public final class QuestionProposal {
 
@@ -28,7 +30,7 @@ public final class QuestionProposal {
 	) {
 		this.id = validateId(id, "id");
 		this.proposerId = requirePositive(proposerId, "proposerId");
-		this.status = Objects.requireNonNull(status, "status는 필수입니다");
+		this.status = requireValue(status, "status");
 		this.proposedText = requireText(proposedText, "proposedText");
 		this.decisionReason = validateReason(decisionReason);
 		this.submittedAt = submittedAt;
@@ -60,7 +62,8 @@ public final class QuestionProposal {
 
 	public QuestionProposal reviseDraft(String text) {
 		if (status != QuestionProposalStatus.DRAFT) {
-			throw new IllegalStateException("DRAFT 제안만 수정할 수 있습니다");
+			throw new QuestionException(
+				QuestionErrorCode.INVALID_PROPOSAL_STATUS, "status", "DRAFT 제안만 수정할 수 있습니다");
 		}
 		return copy(status, text, decisionReason, submittedAt);
 	}
@@ -98,20 +101,26 @@ public final class QuestionProposal {
 
 	private void requireStatus(QuestionProposalStatus expected, String action) {
 		if (status != expected) {
-			throw new IllegalStateException(
-				status + " 상태에서는 " + action + "할 수 없습니다");
+			throw new QuestionException(
+				QuestionErrorCode.INVALID_PROPOSAL_STATUS,
+				"status",
+				status + " 상태에서는 " + action + "할 수 없습니다"
+			);
 		}
 	}
 
 	private void validateState() {
 		if (status != QuestionProposalStatus.DRAFT && submittedAt == null) {
-			throw new IllegalArgumentException("제출 이후 상태에는 submittedAt이 필요합니다");
+			throw new QuestionException(
+				QuestionErrorCode.INVALID_PROPOSAL_STATE, "submittedAt", "제출 이후 상태에는 submittedAt이 필요합니다");
 		}
 		if (status == QuestionProposalStatus.DRAFT && decisionReason != null) {
-			throw new IllegalArgumentException("DRAFT에는 decisionReason을 저장할 수 없습니다");
+			throw new QuestionException(
+				QuestionErrorCode.INVALID_PROPOSAL_STATE, "decisionReason", "DRAFT에는 decisionReason을 저장할 수 없습니다");
 		}
 		if (createdAt != null && updatedAt != null && updatedAt.isBefore(createdAt)) {
-			throw new IllegalArgumentException("updatedAt은 createdAt보다 빠를 수 없습니다");
+			throw new QuestionException(
+				QuestionErrorCode.INVALID_AUDIT_TIMESTAMPS, "updatedAt", "updatedAt은 createdAt보다 빠를 수 없습니다");
 		}
 	}
 
@@ -119,19 +128,30 @@ public final class QuestionProposal {
 		return value == null ? null : requirePositive(value, field);
 	}
 
+	private static <T> T requireValue(T value, String field) {
+		if (value == null) {
+			throw new QuestionException(
+				QuestionErrorCode.REQUIRED_VALUE_MISSING, field, field + "은 필수입니다");
+		}
+		return value;
+	}
+
 	private static long requirePositive(Long value, String field) {
 		if (value == null || value <= 0) {
-			throw new IllegalArgumentException(field + "는 양수여야 합니다");
+			throw new QuestionException(
+				QuestionErrorCode.INVALID_ID, field, field + "는 양수여야 합니다");
 		}
 		return value;
 	}
 
 	private static String requireText(String value, String field) {
 		if (value == null || value.isBlank()) {
-			throw new IllegalArgumentException(field + "은 비어 있을 수 없습니다");
+			throw new QuestionException(
+				QuestionErrorCode.REQUIRED_VALUE_MISSING, field, field + "은 비어 있을 수 없습니다");
 		}
 		if (value.length() > TEXT_MAX_LENGTH) {
-			throw new IllegalArgumentException(field + "이 너무 깁니다");
+			throw new QuestionException(
+				QuestionErrorCode.TEXT_TOO_LONG, field, field + "은 " + TEXT_MAX_LENGTH + "자를 초과할 수 없습니다");
 		}
 		return value;
 	}
@@ -145,7 +165,7 @@ public final class QuestionProposal {
 	}
 
 	private static Instant requireTime(Instant value, String field) {
-		return Objects.requireNonNull(value, field + "은 필수입니다");
+		return requireValue(value, field);
 	}
 
 	public Long getId() { return id; }
