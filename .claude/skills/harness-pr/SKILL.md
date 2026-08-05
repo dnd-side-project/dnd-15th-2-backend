@@ -33,6 +33,21 @@ gh pr status
 gh issue view <ISSUE> --json title,body,labels,url
 ```
 
+## 0.5 최신화
+
+PR을 올리기 전에 `origin/main`을 rebase로 반영한다.
+
+```bash
+./harness sync
+```
+
+- 충돌이 없으면 다음 단계로 진행한다.
+- 충돌이 나면 **여기서 멈춘다.** 출력된 충돌 파일 목록을 그대로 사용자에게
+  보고하고 직접 해결해 달라고 요청한다. 사용자 지시 없이 임의로 충돌을
+  해결하거나 `git rebase --continue`를 대신 실행하지 않는다.
+- 사용자가 충돌을 해결하고 `git rebase --continue`까지 마쳤다고 확인해주면
+  이 단계를 다시 확인한 뒤 진행한다.
+
 ## 1. 로컬 검증
 
 PR 생성 전에 반드시 실행한다.
@@ -127,7 +142,16 @@ Closes #39
 git push -u origin <브랜치>
 ```
 
-force push는 쓰지 않는다. 거부되면 원인을 확인하고 사용자에게 보고한다.
+일반 force push는 쓰지 않는다. 단, 0.5 단계의 `./harness sync`로 이미
+push된 브랜치를 rebase한 직후라면 origin이 non-fast-forward로 거부하는
+것이 정상이다. 이 경우에 한해 다음을 사용한다.
+
+```bash
+git push --force-with-lease -u origin <브랜치>
+```
+
+`main`이나 다른 사람과 공유하는 브랜치에는 이 명령을 쓰지 않는다. 위 두
+경우가 아닌데 push가 거부되면 원인을 확인하고 사용자에게 보고한다.
 
 ```bash
 gh pr create --base main --title "<제목>" --body-file <초안파일> \
@@ -166,7 +190,9 @@ PR URL, 제목, Draft 여부, 라벨, 리뷰어, 실행한 검증과 결과, CI 
 
 - 승인 없이 push하거나 PR을 생성하지 않는다.
 - 검증 실패를 숨기거나 실행하지 않은 테스트를 통과로 보고하지 않는다.
-- force push, `main` 직접 push, PR 자동 머지를 하지 않는다.
+- 일반 force push, `main` 직접 push, PR 자동 머지를 하지 않는다.
+  `./harness sync`로 rebase한 직후 본인 feature 브랜치에 한해
+  `--force-with-lease`만 예외로 허용한다.
 - PR 본문에 반말·평서체(`~한다`)를 쓰지 않는다. 합쇼체로 통일한다.
 - `references/writing-style.md`의 금지 표현을 쓰지 않는다.
 - 인프라 PR에서 `terraform apply`·CDK deploy를 실행하지 않는다.

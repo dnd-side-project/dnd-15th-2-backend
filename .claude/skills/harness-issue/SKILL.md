@@ -163,6 +163,9 @@ ID는 `references/project-fields.md`에 캐시돼 있다. `item-edit`이 ID 오�
 ./harness task-init --title "<이슈 제목>" --replace
 ```
 
+`./harness start`는 실행 전에 `git fetch origin main`을 수행해 항상 최신
+`origin/main`에서 브랜치를 만든다.
+
 `--replace`는 기존 `TASK.md`가 커밋된 상태에서만 통과한다. 실패하면 덮어쓰지 말고
 사용자에게 알린다.
 
