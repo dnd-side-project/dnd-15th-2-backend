@@ -18,6 +18,10 @@
    (`./harness start`가 자동으로 `git fetch origin main`을 수행한다).
    가능하면 로컬 `main`도 같은 시점에 fast-forward로 함께 갱신한다
    (충돌 위험 없는 순수 fast-forward일 때만; 아니면 손대지 않는다).
+   아직 머지되지 않은 다른 브랜치 위에 쌓는 stacked 작업은
+   `./harness start --base <브랜치>`로 그 브랜치를 기준으로 분기하며,
+   이후 `./harness sync`·`pr-ready`·PR 생성도 전부 그 기준을 따른다
+   (`./harness base`로 확인).
 7. 현재 브랜치, Issue와 `TASK.md`의 작업 식별자가 일치하는지 확인한다.
 8. 작업에 필요한 역할 문서와 Skill을 확인한다.
 

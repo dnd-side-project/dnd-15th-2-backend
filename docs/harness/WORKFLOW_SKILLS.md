@@ -76,6 +76,8 @@ Issue 생성 → Project item 추가 → 필드 설정 → 브랜치 생성 → 
 - 브랜치 생성은 worktree가 깨끗해야 한다. 더러우면 이슈까지만 만들고 멈춘다.
 - `gh project` 명령에는 `project` 스코프가 필요하다. 없으면
   `gh auth refresh -s project`를 사용자가 직접 실행해야 한다.
+- stacked 작업(아직 머지되지 않은 다른 브랜치 위에 쌓기)은
+  `./harness start --base <브랜치>`를 쓴다. 생략하면 `main` 기준이다.
 
 Project ID와 필드/옵션 ID는
 `.claude/skills/harness-issue/references/project-fields.md`에 캐시돼 있다.
@@ -109,8 +111,9 @@ Sprint iteration은 주기적으로 새로 생기므로, 캐시가 오래됐으�
 
 ## `/harness-pr`
 
-검증 전에 `./harness sync`로 `origin/main`을 rebase한다(0.5 단계). 충돌이
-나면 멈추고 사용자에게 보고한다 — 자동으로 해결하지 않는다.
+검증 전에 `./harness sync`로 base 브랜치(`./harness base`, 보통 `main`)를
+rebase한다(0.5 단계). 충돌이 나면 멈추고 사용자에게 보고한다 — 자동으로
+해결하지 않는다.
 
 먼저 `./harness pr-ready --project-tests`(규약·훅·라벨·워크플로 검사 +
 `./gradlew check` + `git diff --check`)를 돌린다. 실패하면 PR을 만들지 않는다.
@@ -145,8 +148,8 @@ PR:     feat: add direction post API              scope 없음
 | 증상 | 원인 | 대응 |
 | --- | --- | --- |
 | `worktree must be clean` | 미커밋 변경 | 커밋하거나 이슈만 생성 |
-| `branch is behind origin/main` | `./harness sync` 미실행 | `./harness sync` 실행 후 재시도 |
-| rebase 충돌 | origin/main과 로컬 변경 충돌 | 충돌 파일 해결 → `git add` → `git rebase --continue`(또는 `--abort`) |
+| `branch is behind origin/<base>` | `./harness sync` 미실행 | `./harness sync` 실행 후 재시도 |
+| rebase 충돌 | base 브랜치와 로컬 변경 충돌 | 충돌 파일 해결 → `git add` → `git rebase --continue`(또는 `--abort`) |
 | `GitHub issue must be open` | 이슈가 닫힘 | 이슈 상태 확인 |
 | `commit type does not match branch` | 브랜치와 커밋 type 불일치 | 커밋 type을 브랜치에 맞추거나 별도 브랜치 |
 | `TASK.md already exists` | 이전 작업 계약 미커밋 | 커밋 후 `--replace` |

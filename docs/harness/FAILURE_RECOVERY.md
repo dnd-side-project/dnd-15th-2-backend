@@ -87,8 +87,9 @@ workflow는 plan/apply 원문을 로그에 출력하지 않는다. 상세 진단
 4. 판단이 서지 않으면 `git rebase --abort`로 되돌리고 사람에게 묻는다.
 
 Claude는 사용자 승인 없이 충돌을 자동으로 해결하거나 `--continue`를 대신
-실행하지 않는다. `./harness pr-ready`가 "behind origin/main" 오류를 내면
-먼저 `./harness sync`부터 실행한다.
+실행하지 않는다. `./harness pr-ready`가 "behind origin/\<base\>" 오류를 내면
+먼저 `./harness sync`부터 실행한다. base가 무엇인지 헷갈리면 `./harness base`로
+확인한다.
 
 ## Git 작업 중단
 

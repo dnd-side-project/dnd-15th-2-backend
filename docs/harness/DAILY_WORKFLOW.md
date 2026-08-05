@@ -19,7 +19,8 @@ h task-init --title "방향 글 API" --replace
 기록한다.
 
 `h start`는 최신 `origin/main`에서 분기하고, 가능하면(순수 fast-forward일 때만)
-로컬 `main`도 같이 갱신한다.
+로컬 `main`도 같이 갱신한다. 다른 브랜치 위에 쌓는 stacked 작업이면
+`--base <브랜치>`를 추가한다(`./harness base`로 현재 기준 확인).
 
 ## 3. 역할 선택
 
