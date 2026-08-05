@@ -35,6 +35,10 @@ class ReactionPersistenceIntegrationTest extends PostgisContainerIntegrationTest
 	private JdbcTemplate jdbc;
 	@Autowired
 	private PostReactionRepository postReactionRepository;
+	@Autowired
+	private org.springframework.transaction.support.TransactionTemplate transactionTemplate;
+	@Autowired
+	private com.dnd.qello.answer.repository.AnswerReactionRepository answerReactionRepository;
 
 	private long senderId;
 	private long recipientId;
@@ -111,6 +115,62 @@ class ReactionPersistenceIntegrationTest extends PostgisContainerIntegrationTest
 		postReactionRepository.react(PostReaction.create(postId, recipientId, NOW.plusSeconds(30)));
 
 		assertThat(postReactionRepository.countByPostId(postId)).isEqualTo(1);
+	}
+
+	@Test
+	@DisplayName("질문자만 답변에 공감할 수 있고 답변당 한 건이다")
+	void onlyTheQuestionAuthorCanReactToAnAnswer() {
+		long answerId = insertAnswer();
+
+		com.dnd.qello.answer.domain.AnswerReaction saved = transactionTemplate.execute(status ->
+			answerReactionRepository.react(
+				com.dnd.qello.answer.domain.AnswerReaction.create(answerId, senderId, NOW.plusSeconds(60))));
+
+		assertThat(saved.getAnswerId()).isEqualTo(answerId);
+		assertThat(answerReactionRepository.findByAnswerId(answerId)).isPresent();
+
+		assertThatThrownBy(() -> transactionTemplate.executeWithoutResult(status ->
+			answerReactionRepository.react(
+				com.dnd.qello.answer.domain.AnswerReaction.create(answerId, recipientId, NOW.plusSeconds(70)))))
+			.isInstanceOf(DataIntegrityViolationException.class);
+	}
+
+	@Test
+	@DisplayName("답변자 본인은 자기 답변에 공감할 수 없다")
+	void theAnswerAuthorCannotReactToTheirOwnAnswer() {
+		long answerId = insertAnswer();
+
+		assertThatThrownBy(() -> transactionTemplate.executeWithoutResult(status ->
+			answerReactionRepository.react(
+				com.dnd.qello.answer.domain.AnswerReaction.create(answerId, recipientId, NOW.plusSeconds(60)))))
+			.isInstanceOf(DataIntegrityViolationException.class);
+	}
+
+	@Test
+	@DisplayName("답변 공감 취소는 행 삭제다")
+	void cancellingAnAnswerReactionDeletesTheRow() {
+		long answerId = insertAnswer();
+		transactionTemplate.executeWithoutResult(status ->
+			answerReactionRepository.react(
+				com.dnd.qello.answer.domain.AnswerReaction.create(answerId, senderId, NOW.plusSeconds(60))));
+
+		answerReactionRepository.cancel(answerId);
+
+		assertThat(answerReactionRepository.findByAnswerId(answerId)).isEmpty();
+	}
+
+	private long insertAnswer() {
+		Long postRecipientId = jdbc.queryForObject(
+			"SELECT id FROM post_recipient WHERE post_id = ? AND recipient_id = ?",
+			Long.class, postId, recipientId);
+		return jdbc.queryForObject("""
+			INSERT INTO answer
+				(post_recipient_id, author_id, status, idempotency_key, body_text, coarse_region_code,
+				 bearing_from_sender_deg, distance_band, moderation_status, submitted_at, published_at)
+			VALUES (?, ?, 'PUBLISHED', 'react-answer', '답변', ?, 90, 'NEAR', 'PASSED', ?, ?)
+			RETURNING id
+			""", Long.class, postRecipientId, recipientId, REGION,
+			Timestamp.from(NOW), Timestamp.from(NOW));
 	}
 
 	private long account(String nickname) {
