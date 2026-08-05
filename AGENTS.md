@@ -16,6 +16,8 @@
 5. 작업 시작 시 `git status --short`를 확인하고 기존 변경을 보존한다.
 6. 브랜치는 로컬 `main`이 아니라 항상 최신 `origin/main`에서 분기한다
    (`./harness start`가 자동으로 `git fetch origin main`을 수행한다).
+   가능하면 로컬 `main`도 같은 시점에 fast-forward로 함께 갱신한다
+   (충돌 위험 없는 순수 fast-forward일 때만; 아니면 손대지 않는다).
 7. 현재 브랜치, Issue와 `TASK.md`의 작업 식별자가 일치하는지 확인한다.
 8. 작업에 필요한 역할 문서와 Skill을 확인한다.
 
