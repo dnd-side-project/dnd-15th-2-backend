@@ -32,6 +32,7 @@ ADR은 **Architecture Decision Record**의 약자입니다.
 |---|---|---|
 | [ADR-0001](0001-database-schema-ownership.md) | Flyway가 실행 데이터베이스 스키마 변경을 소유한다 | accepted |
 | [ADR-0002](0002-jpa-jdbc-boundary.md) | Aggregate CRUD는 JPA, 데이터베이스 특화 연산은 JDBC를 사용한다 | accepted |
+| [ADR-0003](0003-adopt-terraform-for-aws-iac.md) | AWS 인프라 관리 도구로 Terraform을 단독 채택한다 | proposed |
 
 역할은 다음과 같이 구분합니다.
 
