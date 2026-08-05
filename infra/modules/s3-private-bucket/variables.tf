@@ -48,6 +48,12 @@ variable "noncurrent_version_expiration_days" {
   default     = null
 }
 
+variable "abort_incomplete_multipart_upload_days" {
+  description = "중단된 멀티파트 업로드 조각을 정리할 기간(일). 조각은 객체 목록에 보이지 않지만 저장 비용이 발생한다."
+  type        = number
+  default     = 7
+}
+
 variable "logging_target_bucket" {
   description = "S3 서버 접근 로그를 전달할 대상 버킷 이름. null이면 접근 로그를 비활성화한다."
   type        = string

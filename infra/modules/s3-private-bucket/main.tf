@@ -40,12 +40,21 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "this" {
 }
 
 resource "aws_s3_bucket_lifecycle_configuration" "this" {
-  count  = var.lifecycle_expiration_days != null || var.noncurrent_version_expiration_days != null ? 1 : 0
   bucket = aws_s3_bucket.this.id
 
   rule {
     id     = "expiration"
     status = "Enabled"
+
+    # S3 API는 lifecycle rule마다 Filter 또는 Prefix를 요구한다. 버킷 전체를
+    # 대상으로 하려면 빈 filter를 명시해야 apply 시 MalformedXML을 피한다.
+    filter {}
+
+    # 중단된 멀티파트 업로드 조각은 객체 목록에 나타나지 않지만 저장 비용은
+    # 계속 발생한다. 만료 규칙과 무관하게 항상 정리한다.
+    abort_incomplete_multipart_upload {
+      days_after_initiation = var.abort_incomplete_multipart_upload_days
+    }
 
     dynamic "expiration" {
       for_each = var.lifecycle_expiration_days != null ? [var.lifecycle_expiration_days] : []
