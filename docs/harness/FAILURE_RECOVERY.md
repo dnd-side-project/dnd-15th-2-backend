@@ -77,6 +77,19 @@ workflow는 plan/apply 원문을 로그에 출력하지 않는다. 상세 진단
 확인한다. 사용자 소유 변경은 되돌리지 않는다. 승인되지 않은 새 파일은 별도
 목록으로 검토한 뒤 사람에게 처리 방향을 묻는다.
 
+## Rebase 충돌 (`./harness sync`)
+
+`./harness sync`가 충돌로 멈추면 출력된 파일 목록을 그대로 확인한다.
+
+1. 충돌 파일을 열어 `<<<<<<<`/`=======`/`>>>>>>>` 마커를 직접 해결한다.
+2. `git add <file>`로 해결한 파일만 스테이징한다.
+3. 전부 해결했으면 `git rebase --continue`.
+4. 판단이 서지 않으면 `git rebase --abort`로 되돌리고 사람에게 묻는다.
+
+Claude는 사용자 승인 없이 충돌을 자동으로 해결하거나 `--continue`를 대신
+실행하지 않는다. `./harness pr-ready`가 "behind origin/main" 오류를 내면
+먼저 `./harness sync`부터 실행한다.
+
 ## Git 작업 중단
 
 커밋이나 push가 실패해도 파일 구현 결과와 Git 이력을 혼동하지 않는다. 현재

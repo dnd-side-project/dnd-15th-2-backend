@@ -18,6 +18,8 @@ h task-init --title "방향 글 API" --replace
 `TASK.md`에는 목표, 포함·제외 범위, 소유 파일, 기존 변경, 검증 명령, 완료 조건을
 기록한다.
 
+`h start`는 최신 `origin/main`에서 분기한다.
+
 ## 3. 역할 선택
 
 | 작업 | 먼저 실행 | 승인 후 실행 |
@@ -37,6 +39,7 @@ npm run hooks:validate
 PR 전:
 
 ```bash
+./harness sync
 ./harness pr-ready --project-tests
 git diff --check
 git status --short

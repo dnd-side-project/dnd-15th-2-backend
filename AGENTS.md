@@ -14,8 +14,10 @@
 3. Issue에서 범위와 완료 조건을 확인하고 `TASK.md`에 계약을 기록한다.
 4. GitHub Issue 번호가 포함된 브랜치에서 작업한다.
 5. 작업 시작 시 `git status --short`를 확인하고 기존 변경을 보존한다.
-6. 현재 브랜치, Issue와 `TASK.md`의 작업 식별자가 일치하는지 확인한다.
-7. 작업에 필요한 역할 문서와 Skill을 확인한다.
+6. 브랜치는 로컬 `main`이 아니라 항상 최신 `origin/main`에서 분기한다
+   (`./harness start`가 자동으로 `git fetch origin main`을 수행한다).
+7. 현재 브랜치, Issue와 `TASK.md`의 작업 식별자가 일치하는지 확인한다.
+8. 작업에 필요한 역할 문서와 Skill을 확인한다.
 
 브랜치 형식:
 
@@ -652,6 +654,11 @@ PR에는 다음을 연결하거나 기록한다.
 * 사람의 결정이 필요한 항목
 
 하나의 커밋에는 하나의 검토 목적만 담는다.
+
+PR을 올리기 전에는 `./harness sync`로 `origin/main`을 rebase해 반영한다.
+충돌은 로컬에서 해결하며 자동으로 정리하지 않는다. 이미 push된 브랜치를
+rebase한 직후 재push할 때는 `git push --force-with-lease`만 예외로
+허용한다. `main`이나 공유 브랜치에는 force push를 쓰지 않는다.
 
 새 작업은 다음처럼 시작한다.
 

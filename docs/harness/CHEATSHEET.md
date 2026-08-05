@@ -52,6 +52,7 @@ PR body: Closes #42
 
 ```bash
 ./harness check
+./harness sync
 ./harness pr-ready --project-tests
 npm run hooks:validate
 git diff --check
