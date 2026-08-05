@@ -132,6 +132,12 @@ module "post_image_bucket" {
   logging_target_prefix              = "post-images/"
   enforce_tls                        = true
   tags                               = var.tags
+
+  # 이 모듈은 로그 대상 버킷의 이름만 참조하므로, 대상 버킷의 정책까지
+  # 기다리는 의존성이 그래프에 생기지 않는다. S3는 PutBucketLogging 시점에
+  # 대상 버킷의 쓰기 권한을 검증하므로 정책보다 먼저 실행되면
+  # InvalidTargetBucketForLogging으로 실패한다.
+  depends_on = [module.access_log_bucket]
 }
 
 # --- IAM: 팀원 수동 테스트용 Role(dev-s3-tester) ---------------------------

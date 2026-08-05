@@ -94,6 +94,12 @@ resource "aws_s3_bucket_logging" "terraform_state" {
 
   target_bucket = module.state_access_log_bucket.bucket_id
   target_prefix = "terraform-state/"
+
+  # 대상 버킷의 이름만 참조하면 정책 생성까지 기다리는 의존성이 그래프에
+  # 생기지 않는다. S3는 PutBucketLogging 시점에 대상 버킷의 쓰기 권한을
+  # 검증하므로 정책보다 먼저 실행되면 InvalidTargetBucketForLogging으로
+  # 실패한다.
+  depends_on = [module.state_access_log_bucket]
 }
 
 data "aws_iam_policy_document" "terraform_state_tls_only" {
