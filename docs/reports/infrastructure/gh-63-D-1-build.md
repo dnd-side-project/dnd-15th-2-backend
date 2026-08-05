@@ -66,6 +66,7 @@ provider_lock_sha256:
 | Checkov | `CKV_AWS_300` (3건) | 모든 lifecycle rule에 `abort_incomplete_multipart_upload` 추가 — 조회되지 않는 멀티파트 조각의 저장 비용 누적 방지 |
 | Checkov | `CKV_AWS_18` (1건) | bootstrap State 버킷에 서버 접근 로그 추가 (§5 참고) |
 | 코드 리뷰 | — | lifecycle rule에 `filter {}` 추가. S3 API는 rule마다 Filter 또는 Prefix를 요구하므로 없으면 apply 시 `MalformedXML`로 실패한다. 정적 검사로는 드러나지 않는 apply 시점 결함이었다 |
+| 범위 대조 | — | 접근 로그 대상 버킷에 `depends_on` 추가. 로그를 보내는 버킷이 대상 버킷의 이름만 참조해 대상 버킷 정책까지 기다리는 의존성이 없었다. S3는 `PutBucketLogging` 시점에 쓰기 권한을 검증하므로 `InvalidTargetBucketForLogging`으로 실패할 수 있었다 |
 
 ## 5. 설계 보고서에 열거되지 않은 추가 리소스 (리뷰어 확인 필요)
 
