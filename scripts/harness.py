@@ -65,7 +65,29 @@ def branch_context() -> int:
 
 def ensure_clean_worktree() -> None:
     if git_text("status", "--porcelain"):
-        raise HarnessError("worktree must be clean before creating a branch")
+        raise HarnessError("worktree must be clean before running this command")
+
+
+def default_branch() -> str:
+    return CONFIG["default_branch"]
+
+
+def is_rebase_in_progress() -> bool:
+    git_dir = ROOT / ".git"
+    return (git_dir / "rebase-merge").exists() or (git_dir / "rebase-apply").exists()
+
+
+def ensure_synced_with_default_branch() -> None:
+    base = default_branch()
+    run(["git", "fetch", "origin", base])
+    ancestor = run(
+        ["git", "merge-base", "--is-ancestor", f"origin/{base}", "HEAD"],
+        check=False,
+    )
+    if ancestor.returncode != 0:
+        raise HarnessError(
+            f"branch is behind origin/{base}; run `./harness sync` first"
+        )
 
 
 def ensure_tool(name: str) -> None:
@@ -170,6 +192,46 @@ def command_start(args: argparse.Namespace) -> None:
     if switch.returncode != 0:
         raise HarnessError(f"unable to create branch: {branch}")
     print(branch)
+
+
+def command_sync(_: argparse.Namespace) -> None:
+    ensure_tool("git")
+    base = default_branch()
+    branch = current_branch()
+    if branch == base:
+        raise HarnessError(f"cannot sync on {base}; switch to a feature branch first")
+    ensure_clean_worktree()
+    if is_rebase_in_progress():
+        raise HarnessError(
+            "a rebase is already in progress; finish it with `git rebase --continue` "
+            "or abort it with `git rebase --abort` before running sync"
+        )
+    run(["git", "fetch", "origin", base])
+    rebase = run(["git", "rebase", f"origin/{base}"], check=False)
+    if rebase.returncode != 0:
+        status = run(["git", "status", "--porcelain=v1"], capture=True, check=False)
+        conflicted = sorted(
+            {
+                line[3:]
+                for line in status.stdout.splitlines()
+                if line[:2] in ("UU", "AA", "DU", "UD", "AU", "UA")
+            }
+        )
+        print("harness: rebase stopped with conflicts in:", file=sys.stderr)
+        for path in conflicted:
+            print(f"  - {path}", file=sys.stderr)
+        print(
+            "Resolve each file, then run:\n"
+            "  git add <file>\n"
+            "  git rebase --continue\n"
+            "Or discard the rebase with:\n"
+            "  git rebase --abort",
+            file=sys.stderr,
+        )
+        raise HarnessError(f"rebase onto origin/{base} has conflicts")
+    log = git_text("log", f"origin/{base}..HEAD", "--oneline")
+    print(f"branch is rebased onto origin/{base}.")
+    print(log if log else "(no commits ahead of the base branch)")
 
 
 def command_task_init(args: argparse.Namespace) -> None:
@@ -320,6 +382,8 @@ def parser() -> argparse.ArgumentParser:
     )
     start.add_argument("--slug", required=True)
     start.set_defaults(handler=command_start)
+
+    sub.add_parser("sync").set_defaults(handler=command_sync)
 
     task_init = sub.add_parser("task-init")
     task_init.add_argument("--title", required=True)
