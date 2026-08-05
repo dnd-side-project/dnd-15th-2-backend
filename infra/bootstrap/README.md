@@ -38,6 +38,24 @@ terraform plan -out=tfplan
 terraform apply tfplan
 ```
 
+## 적용 직후: 계정 root 사용 중단
+
+이 스택은 사람이 수동 인프라 작업에 사용할
+`${project_prefix}-infra-deployer` Role을 만든다. 최초 적용이 끝나면 계정
+root 자격 증명 사용을 멈추고 이후 작업은 이 Role로 한다.
+
+```bash
+aws sts assume-role \
+  --role-arn "<infra_deployer_role_arn output 값>" \
+  --role-session-name infra-manual \
+  --serial-number "<본인 MFA 디바이스 ARN>" \
+  --token-code "<MFA 코드>"
+```
+
+이 Role은 `AdministratorAccess`가 아니라 이 저장소가 만드는 리소스 종류
+(S3·KMS·IAM·OIDC, `${project_prefix}-*` 범위)로만 권한이 한정되어 있다.
+장기 Access Key 생성은 정책에서 명시적으로 거부된다.
+
 ## 적용 직후: 원격 State로 이전
 
 ```bash

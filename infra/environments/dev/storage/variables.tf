@@ -30,6 +30,17 @@ variable "access_log_bucket_name" {
   }
 }
 
+variable "s3_tester_user_name" {
+  description = "팀원이 콘솔 로그인에 사용할 IAM User 이름. 이 User에는 Access Key를 발급하지 않으며 작업 권한은 assume한 Role에서만 나온다."
+  type        = string
+  default     = "qello-dev-s3-tester"
+
+  validation {
+    condition     = can(regex("^${var.project_prefix}-", var.s3_tester_user_name))
+    error_message = "s3_tester_user_name은 \"${var.project_prefix}-\"로 시작해야 배포 역할의 IAM 권한 범위에 포함된다."
+  }
+}
+
 variable "post_image_lifecycle_days" {
   description = "post_image_bucket 객체 자동 만료 기간(일). Infrastructure Design Report D-1에서 6개월(약 180일)로 확정되었다."
   type        = number

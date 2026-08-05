@@ -22,3 +22,8 @@ output "dev_s3_tester_role_arn" {
   description = "팀원이 로컬에서 이 버킷을 테스트할 때 assume하는 IAM Role ARN(MFA 필수, 고정 Access Key 없음)."
   value       = aws_iam_role.dev_s3_tester.arn
 }
+
+output "s3_tester_user_name" {
+  description = "팀원 콘솔 로그인용 IAM User 이름. 비밀번호와 MFA는 콘솔에서 사람이 설정한다."
+  value       = aws_iam_user.s3_tester.name
+}

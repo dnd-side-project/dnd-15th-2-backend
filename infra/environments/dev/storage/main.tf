@@ -177,14 +177,44 @@ data "aws_iam_policy_document" "dev_s3_tester_permissions" {
     effect = "Allow"
     actions = [
       "s3:GetObject",
+      "s3:GetObjectVersion",
       "s3:PutObject",
       "s3:DeleteObject",
+      "s3:DeleteObjectVersion",
       "s3:ListBucket",
+      "s3:ListBucketVersions",
+      "s3:AbortMultipartUpload",
+      "s3:ListMultipartUploadParts",
     ]
     resources = [
       module.post_image_bucket.bucket_arn,
       "${module.post_image_bucket.bucket_arn}/*",
     ]
+  }
+
+  # 버킷 "관리"에 해당하는 부분은 설정 조회까지만 허용한다. 암호화, Public
+  # Access Block, 수명주기 같은 보안 설정을 사람이 콘솔에서 바꾸면 Terraform
+  # 상태와 어긋나므로 변경 권한은 주지 않는다.
+  statement {
+    sid    = "PostImageBucketReadConfiguration"
+    effect = "Allow"
+    actions = [
+      "s3:GetBucketLocation",
+      "s3:GetBucketVersioning",
+      "s3:GetBucketPublicAccessBlock",
+      "s3:GetEncryptionConfiguration",
+      "s3:GetLifecycleConfiguration",
+    ]
+    resources = [module.post_image_bucket.bucket_arn]
+  }
+
+  # 콘솔에서 S3 화면을 열면 계정의 버킷 목록을 먼저 조회한다. 목록 조회는
+  # 리소스를 좁힐 수 없는 계정 단위 action이며 버킷 내용은 노출하지 않는다.
+  statement {
+    sid       = "ListAccountBuckets"
+    effect    = "Allow"
+    actions   = ["s3:ListAllMyBuckets"]
+    resources = ["*"]
   }
 
   statement {

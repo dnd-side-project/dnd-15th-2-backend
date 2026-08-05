@@ -23,6 +23,11 @@ output "infra_apply_role_arn" {
   value       = aws_iam_role.infra_apply.arn
 }
 
+output "infra_deployer_role_arn" {
+  description = "사람이 수동 인프라 작업을 할 때 MFA와 함께 assume하는 역할의 ARN."
+  value       = aws_iam_role.infra_deployer.arn
+}
+
 output "github_oidc_provider_arn" {
   description = "GitHub Actions OIDC Provider ARN."
   value       = aws_iam_openid_connect_provider.github.arn

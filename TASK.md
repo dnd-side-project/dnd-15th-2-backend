@@ -39,6 +39,10 @@
 - **`dev-s3-tester` IAM Role**: 팀원(ksj)이 이 버킷·KMS Key만 단기
   자격증명(MFA 필수, 고정 Access Key 없음)으로 테스트할 수 있도록 설계
   (사람 결정, 2026-08-05).
+- **사용자 IAM 2종** (사람 결정, 2026-08-05, 설계 D-1 §16):
+  `infra-deployer` Role(사람이 MFA로 assume하는 최소 권한 인프라 배포
+  역할)과 팀원 콘솔 로그인용 IAM User·Group. 둘 다 Access Key를 발급하지
+  않는다.
 - Infrastructure Design Report 작성 및 검토 요청 (`/harness-infra-design`,
   `docs/reports/infrastructure/gh-63-D-1.md`)
 
@@ -48,8 +52,12 @@
 - 운영(production) 환경 S3 버킷 구축
 - CDN/CloudFront 연동
 - 계정 전체 권한(Administrator급) IAM 생성 — 최소 권한 원칙과 충돌해 이
-  이슈에서 제외, 필요 시 별도 이슈·ADR로 분리(사람 결정, 2026-08-05)
-- 고정 Access Key를 발급하는 IAM User 생성 — AGENTS.md 4.9·12절이 금지
+  이슈에서 제외, 필요 시 별도 이슈·ADR로 분리(사람 결정, 2026-08-05).
+  **2026-08-05 갱신**: 사용자 IAM 2종을 범위에 추가했으나(아래 Scope 참고)
+  Administrator급 권한은 여전히 채택하지 않는다.
+- 고정 Access Key를 발급하는 IAM User 생성 — AGENTS.md 4.9·12절이 금지.
+  이 제외는 유지된다. 추가된 IAM User에는 Access Key를 발급하지 않고
+  정책에서 `iam:CreateAccessKey`를 명시적으로 거부한다.
 - 인프라 apply, 배포, 프로덕션 변경은 별도 승인 없이는 실행하지 않는다.
 - Secret, 계정 식별자, 토큰, `.env` 값은 기록하지 않는다.
 

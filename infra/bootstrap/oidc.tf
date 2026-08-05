@@ -93,6 +93,13 @@ data "aws_iam_policy_document" "infra_plan_permissions" {
       "iam:GetRolePolicy",
       "iam:ListRolePolicies",
       "iam:ListAttachedRolePolicies",
+      "iam:GetUser",
+      "iam:GetUserPolicy",
+      "iam:ListUserPolicies",
+      "iam:GetGroup",
+      "iam:GetGroupPolicy",
+      "iam:ListGroupPolicies",
+      "iam:ListGroupsForUser",
     ]
     # plan은 아직 존재하지 않는 리소스(예: 이 스택이 처음 계획하는 dev
     # storage 버킷)도 읽어야 하므로 이름 접두사로만 범위를 좁힌다.
@@ -236,7 +243,7 @@ data "aws_iam_policy_document" "infra_apply_permissions" {
   }
 
   statement {
-    sid    = "ManageProjectIamRole"
+    sid    = "ManageProjectIamIdentities"
     effect = "Allow"
     actions = [
       "iam:CreateRole",
@@ -248,10 +255,45 @@ data "aws_iam_policy_document" "infra_apply_permissions" {
       "iam:GetRolePolicy",
       "iam:ListRolePolicies",
       "iam:UpdateAssumeRolePolicy",
+      "iam:CreateUser",
+      "iam:DeleteUser",
+      "iam:GetUser",
+      "iam:TagUser",
+      "iam:PutUserPolicy",
+      "iam:DeleteUserPolicy",
+      "iam:GetUserPolicy",
+      "iam:ListUserPolicies",
+      "iam:ListGroupsForUser",
+      "iam:CreateGroup",
+      "iam:DeleteGroup",
+      "iam:GetGroup",
+      "iam:PutGroupPolicy",
+      "iam:DeleteGroupPolicy",
+      "iam:GetGroupPolicy",
+      "iam:ListGroupPolicies",
+      "iam:AddUserToGroup",
+      "iam:RemoveUserFromGroup",
     ]
     resources = [
       "arn:aws:iam::*:role/${var.project_prefix}-*",
+      "arn:aws:iam::*:user/${var.project_prefix}-*",
+      "arn:aws:iam::*:group/${var.project_prefix}-*",
     ]
+  }
+
+  # CI가 장기 자격 증명을 만들 수 있으면 OIDC 단기 세션 전제가 무너진다
+  # (AGENTS.md 4.9). 허용 목록에 없더라도 이후 정책 변경으로 새어 나가지
+  # 않도록 명시적으로 거부한다.
+  statement {
+    sid    = "DenyLongLivedCredentials"
+    effect = "Deny"
+    actions = [
+      "iam:CreateAccessKey",
+      "iam:UpdateAccessKey",
+      "iam:CreateLoginProfile",
+      "iam:UpdateLoginProfile",
+    ]
+    resources = ["*"]
   }
 }
 
