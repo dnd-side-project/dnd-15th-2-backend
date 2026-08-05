@@ -341,6 +341,7 @@ def command_check(_: argparse.Namespace) -> None:
 
 def command_pr_ready(args: argparse.Namespace) -> None:
     branch_context()
+    ensure_synced_with_default_branch()
     command_check(args)
     if args.project_tests:
         command = CONFIG["commands"]["full"]
