@@ -18,12 +18,13 @@ public final class DirectionPost {
 	private final Instant submittedAt;
 	private final Instant publishedAt;
 	private final Instant expiresAt;
+	private final Instant answersReadAt;
 	private final Instant deletedAt;
 
 	private DirectionPost(Long id, Long senderId, Long approvedQuestionId, DirectionPostStatus status,
 		String idempotencyKey, String bodyText, String coarseRegionCode,
 		DirectionPostModerationStatus moderationStatus, Instant submittedAt, Instant publishedAt,
-		Instant expiresAt, Instant deletedAt) {
+		Instant expiresAt, Instant answersReadAt, Instant deletedAt) {
 		this.id = validateId(id, "id");
 		this.senderId = requireId(senderId, "senderId");
 		this.approvedQuestionId = requireId(approvedQuestionId, "approvedQuestionId");
@@ -42,6 +43,11 @@ public final class DirectionPost {
 			throw new DirectionException(
 				DirectionErrorCode.INVALID_TIME_ORDER, "expiresAt", "expiresAt은 submittedAt보다 늦어야 합니다");
 		}
+		if (answersReadAt != null && answersReadAt.isBefore(submittedAt)) {
+			throw new DirectionException(
+				DirectionErrorCode.INVALID_TIME_ORDER, "answersReadAt", "answersReadAt은 submittedAt보다 빠를 수 없습니다");
+		}
+		this.answersReadAt = answersReadAt;
 		this.deletedAt = deletedAt;
 		if (status == DirectionPostStatus.ACTIVE && publishedAt == null) {
 			throw new DirectionException(
@@ -57,15 +63,15 @@ public final class DirectionPost {
 		String bodyText, String coarseRegionCode, Instant submittedAt, Instant expiresAt) {
 		return new DirectionPost(null, senderId, approvedQuestionId, DirectionPostStatus.MATCHING,
 			idempotencyKey, bodyText, coarseRegionCode, DirectionPostModerationStatus.PENDING,
-			submittedAt, null, expiresAt, null);
+			submittedAt, null, expiresAt, null, null);
 	}
 
 	public static DirectionPost restore(Long id, Long senderId, Long approvedQuestionId,
 		DirectionPostStatus status, String idempotencyKey, String bodyText, String coarseRegionCode,
 		DirectionPostModerationStatus moderationStatus, Instant submittedAt, Instant publishedAt,
-		Instant expiresAt, Instant deletedAt) {
+		Instant expiresAt, Instant answersReadAt, Instant deletedAt) {
 		return new DirectionPost(id, senderId, approvedQuestionId, status, idempotencyKey, bodyText,
-			coarseRegionCode, moderationStatus, submittedAt, publishedAt, expiresAt, deletedAt);
+			coarseRegionCode, moderationStatus, submittedAt, publishedAt, expiresAt, answersReadAt, deletedAt);
 	}
 
 	private static <T> T requireValue(T value, String field) {
@@ -105,5 +111,6 @@ public final class DirectionPost {
 	public Instant getSubmittedAt() { return submittedAt; }
 	public Instant getPublishedAt() { return publishedAt; }
 	public Instant getExpiresAt() { return expiresAt; }
+	public Instant getAnswersReadAt() { return answersReadAt; }
 	public Instant getDeletedAt() { return deletedAt; }
 }

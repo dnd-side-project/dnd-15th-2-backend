@@ -76,18 +76,87 @@ class DirectionDomainTest {
 		PostRecipient available = PostRecipient.available(1L, 2L, "NEAR", BigDecimal.valueOf(10), "KR-SEOUL", LOCATION_AT);
 		assertThat(available.getStatus()).isEqualTo(PostRecipientStatus.AVAILABLE);
 		assertThatThrownBy(() -> PostRecipient.restore(1L, 1L, 2L, PostRecipientStatus.SKIPPED,
-			"NEAR", BigDecimal.TEN, "KR-SEOUL", LOCATION_AT, null, null, null, null, null, null))
+			"NEAR", BigDecimal.TEN, "KR-SEOUL", LOCATION_AT, null, null, null, null, null, null, null))
 			.isInstanceOf(DirectionException.class);
 	}
 
 	@Test
-	@DisplayName("recipient receive state는 활성 미처리 5개 상한을 domain에서도 표현한다")
-	void exposesCapacityLimit() {
+	@DisplayName("넘김은 SKIP_PENDING을 거치며 유예 중에는 용량을 붙잡는다")
+	void holdsCapacityWhileSkipIsPending() {
+		PostRecipient available = PostRecipient.available(1L, 2L, "NEAR", BigDecimal.valueOf(10), "KR-SEOUL", LOCATION_AT);
+		PostRecipient pending = available.requestSkip(LOCATION_AT.plusSeconds(10));
+
+		assertThat(pending.getStatus()).isEqualTo(PostRecipientStatus.SKIP_PENDING);
+		assertThat(pending.getSkipRequestedAt()).isEqualTo(LOCATION_AT.plusSeconds(10));
+		assertThat(pending.getSkippedAt()).isNull();
+		assertThat(pending.getCapacityReleasedAt()).isNull();
+
+		PostRecipient confirmed = pending.confirmSkip(LOCATION_AT.plusSeconds(15));
+
+		assertThat(confirmed.getStatus()).isEqualTo(PostRecipientStatus.SKIPPED);
+		assertThat(confirmed.getSkippedAt()).isEqualTo(LOCATION_AT.plusSeconds(15));
+		assertThat(confirmed.getCapacityReleasedAt()).isEqualTo(LOCATION_AT.plusSeconds(15));
+	}
+
+	@Test
+	@DisplayName("되돌린 넘김은 timestamp 유무로 이전 상태를 도출한다")
+	void revertsSkipToTheDerivedPreviousStatus() {
+		PostRecipient available = PostRecipient.available(1L, 2L, "NEAR", BigDecimal.valueOf(10), "KR-SEOUL", LOCATION_AT);
+		assertThat(available.requestSkip(LOCATION_AT).revertSkip().getStatus())
+			.isEqualTo(PostRecipientStatus.AVAILABLE);
+
+		PostRecipient discovered = PostRecipient.restore(1L, 1L, 2L, PostRecipientStatus.DISCOVERED,
+			"NEAR", BigDecimal.TEN, "KR-SEOUL", LOCATION_AT, LOCATION_AT, null, null, null, null, null, null);
+		assertThat(discovered.requestSkip(LOCATION_AT).revertSkip().getStatus())
+			.isEqualTo(PostRecipientStatus.DISCOVERED);
+
+		PostRecipient opened = PostRecipient.restore(1L, 1L, 2L, PostRecipientStatus.OPENED,
+			"NEAR", BigDecimal.TEN, "KR-SEOUL", LOCATION_AT, LOCATION_AT, LOCATION_AT, null, null, null, null, null);
+		PostRecipient reverted = opened.requestSkip(LOCATION_AT).revertSkip();
+
+		assertThat(reverted.getStatus()).isEqualTo(PostRecipientStatus.OPENED);
+		assertThat(reverted.getSkipRequestedAt()).isNull();
+	}
+
+	@Test
+	@DisplayName("SKIP_PENDING은 넘김 요청만 있고 확정이 없는 상태와 동치다")
+	void skipPendingRequiresRequestWithoutConfirmation() {
+		assertThatThrownBy(() -> PostRecipient.restore(1L, 1L, 2L, PostRecipientStatus.SKIP_PENDING,
+			"NEAR", BigDecimal.TEN, "KR-SEOUL", LOCATION_AT, null, null, null, null, null, null, null))
+			.isInstanceOf(DirectionException.class);
+		assertThatThrownBy(() -> PostRecipient.restore(1L, 1L, 2L, PostRecipientStatus.SKIPPED,
+			"NEAR", BigDecimal.TEN, "KR-SEOUL", LOCATION_AT, null, null, null,
+			LOCATION_AT, LOCATION_AT, null, null))
+			.isInstanceOf(DirectionException.class);
+	}
+
+	@Test
+	@DisplayName("수신 상한은 호출자가 넘기고 domain은 DB 안전 상한만 강제한다")
+	void separatesOperationalLimitFromSafetyCeiling() {
 		RecipientReceiveState state = RecipientReceiveState.restore(2L, 5, 7, LOCATION_AT, LOCATION_AT, LOCATION_AT);
-		assertThat(state.canReserve()).isFalse();
-		assertThatThrownBy(() -> RecipientReceiveState.restore(2L, 6, 7, LOCATION_AT, LOCATION_AT, LOCATION_AT))
+
+		assertThat(state.canReserve(5)).isFalse();
+		assertThat(state.canReserve(10)).isTrue();
+		assertThat(RecipientReceiveState.SAFETY_CEILING).isEqualTo(50);
+		assertThatThrownBy(() -> RecipientReceiveState.restore(2L, 51, 7, LOCATION_AT, LOCATION_AT, LOCATION_AT))
 			.isInstanceOf(DirectionException.class)
 			.hasFieldOrPropertyWithValue("errorCode", DirectionErrorCode.INVALID_VALUE_RANGE)
 			.hasFieldOrPropertyWithValue("field", "activeUnhandledCount");
+	}
+
+	@Test
+	@DisplayName("답변 읽음 기준선은 발송 시각보다 빠를 수 없다")
+	void rejectsAnswersReadBeforeSubmission() {
+		DirectionPost post = DirectionPost.restore(1L, 2L, 3L, DirectionPostStatus.ACTIVE, "key", "글",
+			"KR-SEOUL", DirectionPostModerationStatus.PASSED, LOCATION_AT, LOCATION_AT,
+			LOCATION_AT.plusSeconds(3600), LOCATION_AT.plusSeconds(60), null);
+
+		assertThat(post.getAnswersReadAt()).isEqualTo(LOCATION_AT.plusSeconds(60));
+		assertThatThrownBy(() -> DirectionPost.restore(1L, 2L, 3L, DirectionPostStatus.ACTIVE, "key", "글",
+			"KR-SEOUL", DirectionPostModerationStatus.PASSED, LOCATION_AT, LOCATION_AT,
+			LOCATION_AT.plusSeconds(3600), LOCATION_AT.minusSeconds(1), null))
+			.isInstanceOf(DirectionException.class)
+			.hasFieldOrPropertyWithValue("errorCode", DirectionErrorCode.INVALID_TIME_ORDER)
+			.hasFieldOrPropertyWithValue("field", "answersReadAt");
 	}
 }

@@ -222,6 +222,24 @@ class AnswerSafetyNotificationPersistenceIntegrationTest extends PostgisContaine
 			.isInstanceOf(DataIntegrityViolationException.class);
 	}
 
+	@Test
+	@DisplayName("한 질문글에 답변은 1회이며 거절된 답변은 자리를 비켜 준다")
+	void allowsOneLiveAnswerPerRecipient() {
+		Answer first = answerRepository.save(answer("one-per-recipient-1", authorId));
+
+		assertThatThrownBy(() -> answerRepository.save(answer("one-per-recipient-2", authorId)))
+			.isInstanceOf(DataIntegrityViolationException.class);
+
+		jdbc.update("UPDATE answer SET status = 'REJECTED' WHERE id = ?", first.getId());
+
+		Answer rewritten = answerRepository.save(answer("one-per-recipient-3", authorId));
+
+		assertThat(rewritten.getId()).isNotEqualTo(first.getId());
+		assertThat(jdbc.queryForObject(
+			"SELECT count(*) FROM answer WHERE post_recipient_id = ? AND status NOT IN ('REJECTED', 'DELETED')",
+			Integer.class, postRecipientId)).isEqualTo(1);
+	}
+
 	private boolean claimInTransaction(long eventId, CountDownLatch ready, CountDownLatch start) throws Exception {
 		ready.countDown();
 		start.await(5, TimeUnit.SECONDS);

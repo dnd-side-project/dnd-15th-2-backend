@@ -8,6 +8,6 @@ import com.dnd.qello.direction.domain.RecipientReceiveState;
 public interface RecipientReceiveStateRepository {
 	RecipientReceiveState save(RecipientReceiveState state);
 	Optional<RecipientReceiveState> findByUserId(long userId);
-	boolean reserve(long userId, Instant receivedAt);
+	boolean reserve(long userId, Instant receivedAt, int activeLimit);
 	boolean release(long userId, Instant releasedAt);
 }
