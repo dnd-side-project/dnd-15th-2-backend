@@ -55,13 +55,16 @@ public final class PostRecipient {
 		validateTimestamp(expiredAt, "expiredAt");
 		validateTimestamp(blockedAt, "blockedAt");
 		if ((status == PostRecipientStatus.SKIP_PENDING) != (skipRequestedAt != null && skippedAt == null)) {
-			throw new IllegalArgumentException("SKIP_PENDING은 넘김 요청만 있고 확정이 없는 상태여야 합니다");
+			throw new DirectionException(
+				DirectionErrorCode.INVALID_RECIPIENT_STATE, "status", "SKIP_PENDING은 넘김 요청만 있고 확정이 없는 상태여야 합니다");
 		}
 		if (skipRequestedAt == null && skippedAt != null) {
-			throw new IllegalArgumentException("확정된 넘김에는 skipRequestedAt이 필요합니다");
+			throw new DirectionException(
+				DirectionErrorCode.INVALID_RECIPIENT_STATE, "skipRequestedAt", "확정된 넘김에는 skipRequestedAt이 필요합니다");
 		}
 		if (skippedAt != null && skippedAt.isBefore(skipRequestedAt)) {
-			throw new IllegalArgumentException("skippedAt은 skipRequestedAt보다 빠를 수 없습니다");
+			throw new DirectionException(
+				DirectionErrorCode.INVALID_TIME_ORDER, "skippedAt", "skippedAt은 skipRequestedAt보다 빠를 수 없습니다");
 		}
 		if ((status == PostRecipientStatus.SKIPPED) != (skippedAt != null)
 			|| (status == PostRecipientStatus.EXPIRED) != (expiredAt != null)
@@ -132,10 +135,11 @@ public final class PostRecipient {
 	}
 
 	public PostRecipient requestSkip(Instant at) {
-		Objects.requireNonNull(at, "at은 필수입니다");
+		requireValue(at, "at");
 		if (status != PostRecipientStatus.AVAILABLE && status != PostRecipientStatus.DISCOVERED
 			&& status != PostRecipientStatus.OPENED) {
-			throw new IllegalStateException("넘김을 요청할 수 없는 상태입니다: " + status);
+			throw new DirectionException(
+				DirectionErrorCode.INVALID_RECIPIENT_STATE, "status", "넘김을 요청할 수 없는 상태입니다");
 		}
 		return new PostRecipient(id, postId, recipientId, PostRecipientStatus.SKIP_PENDING, distanceBand,
 			matchedBearingDegrees, matchedRegionCode, matchedAt, discoveredAt, openedAt, at, null,
@@ -144,7 +148,8 @@ public final class PostRecipient {
 
 	public PostRecipient revertSkip() {
 		if (status != PostRecipientStatus.SKIP_PENDING) {
-			throw new IllegalStateException("되돌릴 수 있는 상태가 아닙니다: " + status);
+			throw new DirectionException(
+				DirectionErrorCode.INVALID_RECIPIENT_STATE, "status", "되돌릴 수 있는 상태가 아닙니다");
 		}
 		return new PostRecipient(id, postId, recipientId, previousStatus(), distanceBand,
 			matchedBearingDegrees, matchedRegionCode, matchedAt, discoveredAt, openedAt, null, null,
@@ -152,9 +157,10 @@ public final class PostRecipient {
 	}
 
 	public PostRecipient confirmSkip(Instant at) {
-		Objects.requireNonNull(at, "at은 필수입니다");
+		requireValue(at, "at");
 		if (status != PostRecipientStatus.SKIP_PENDING) {
-			throw new IllegalStateException("확정할 수 있는 상태가 아닙니다: " + status);
+			throw new DirectionException(
+				DirectionErrorCode.INVALID_RECIPIENT_STATE, "status", "확정할 수 있는 상태가 아닙니다");
 		}
 		// capacityReleasedAt은 이 객체 상태에만 반영된다. RecipientReceiveStateRepository의 실제 용량
 		// 카운터 해제는 후속 SKIP_CONFIRMATION_DUE 워커의 몫이며 이 메서드 범위 밖이다.
