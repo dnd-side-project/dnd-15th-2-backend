@@ -15,13 +15,17 @@ description: 로컬 검증을 실행하고 질문형으로 PR 옵션을 정한 �
 ```bash
 git branch --show-current
 git status --short
-git log origin/main..HEAD --oneline
-git diff origin/main...HEAD --stat
+./harness base
+git log "origin/$(./harness base)..HEAD" --oneline
+git diff "origin/$(./harness base)...HEAD" --stat
 gh pr status
 ```
 
 - 브랜치가 `<type>/gh-<ISSUE>-<slug>`가 아니면 중단한다.
 - `main`에서는 PR을 만들지 않는다.
+- `./harness base`는 보통 `main`이지만, `./harness start --base <브랜치>`로 만든
+  stacked 브랜치라면 그 부모 브랜치를 가리킨다(예: PR #46처럼 누적 브랜치 위에
+  쌓는 경우). 이후 단계의 `origin/main`은 전부 이 값으로 바꿔서 읽는다.
 - 이미 열린 PR이 있으면 새로 만들지 말고 "push만 하고 기존 PR 갱신"을 제안한다.
 - 미커밋 변경이 있으면 알리고 `/harness-commit`으로 먼저 커밋할지 묻는다.
   임의로 커밋하지 않는다.
@@ -35,7 +39,7 @@ gh issue view <ISSUE> --json title,body,labels,url
 
 ## 0.5 최신화
 
-PR을 올리기 전에 `origin/main`을 rebase로 반영한다.
+PR을 올리기 전에 base 브랜치(`./harness base`, 보통 `main`)를 rebase로 반영한다.
 
 ```bash
 ./harness sync
@@ -154,10 +158,14 @@ git push --force-with-lease -u origin <브랜치>
 경우가 아닌데 push가 거부되면 원인을 확인하고 사용자에게 보고한다.
 
 ```bash
-gh pr create --base main --title "<제목>" --body-file <초안파일> \
+gh pr create --base "$(./harness base)" --title "<제목>" --body-file <초안파일> \
   --reviewer Byuntil --reviewer tkv00
 # Draft이면 --draft 추가
 ```
+
+대부분 `./harness base`는 `main`이다. stacked 브랜치의 PR은 부모 브랜치를
+가리키므로, 부모 브랜치의 PR이 먼저 머지된 뒤에야 `main`으로 다시 PR을
+연다(PR #46 → #47 순서).
 
 초안 파일은 scratchpad에 쓰고 저장소에는 남기지 않는다.
 
