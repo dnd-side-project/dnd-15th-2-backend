@@ -31,11 +31,21 @@
 - `AGENTS.md`, `docs/harness/WORKFLOW_SKILLS.md`,
   `docs/harness/DAILY_WORKFLOW.md`, `docs/harness/CHEATSHEET.md`,
   `docs/harness/FAILURE_RECOVERY.md` 갱신
+- **범위 확장(PR #65 리뷰 요청 이후 추가, 같은 브랜치에서 진행하기로 사용자
+  확인):** `main` 외 다른 base 브랜치 지원. 애초 "제외"로 뺐으나 이 저장소에
+  실제 stacked PR 선례(#46 → #47)가 있어 확장했다.
+  - `./harness start --base <브랜치>`로 다른 브랜치에서 분기하고
+    `git config branch.<name>.harness-base`에 기록
+  - `resolve_base_branch()`가 그 값을 읽어 `sync`/`pr-ready`/`TASK.md`가
+    전부 기록된 base를 기준으로 동작
+  - 신규 `./harness base` — 현재 기준 브랜치 출력
+  - `TASK.md` Work gate에 `Base branch` 기록
+  - `/harness-pr`의 `origin/main` 하드코딩(컨텍스트 수집, `gh pr create
+    --base`)을 `./harness base`로 대체
 
 ## Explicit exclusions
 
 - rebase 충돌 자동 해결 — 항상 사람에게 위임한다.
-- `main` 외 다른 base 브랜치 지원.
 - `scripts/harness.py`에 대한 신규 pytest 스위트.
 - 인프라 apply, 배포, 프로덕션 변경은 별도 승인 없이는 실행하지 않는다.
 - Secret, 계정 식별자, 토큰, `.env` 값은 기록하지 않는다.
@@ -69,4 +79,8 @@ git diff --check
 - [x] `h start`가 최신 `origin/main`에서 분기한다(scratch 저장소 시나리오 A).
 - [x] `./harness pr-ready`(및 Husky `pre-push`)가 뒤처진 브랜치를 거부한다(scratch 시나리오 E + 실제 브랜치에서 `ensure_synced_with_default_branch` 통합 확인).
 - [x] 관련 스킬·규약 문서가 새 절차를 반영한다.
-- [x] `./harness check`, `npm run hooks:validate` 통과. `./harness pr-ready --project-tests`(전체 `./gradlew check` 포함)는 PR 생성 시 `/harness-pr`에서 실행 예정 — 이번 변경은 Java 코드를 건드리지 않는다.
+- [x] `./harness check`, `npm run hooks:validate` 통과. `./harness pr-ready --project-tests`(전체 `./gradlew check` 포함)는 PR #65 push 시 Husky `pre-push`로 이미 통과 확인.
+- [x] `main` 외 base 브랜치 지원: scratch 저장소에서 stacked 시나리오(부모
+      브랜치 위에서 `--base`로 분기 → `./harness base` 확인 → 부모 브랜치가
+      진행돼도 `sync`/뒤처짐 감지가 main이 아닌 그 부모를 기준으로 동작,
+      main만 앞서가는 경우는 무시)를 검증.
