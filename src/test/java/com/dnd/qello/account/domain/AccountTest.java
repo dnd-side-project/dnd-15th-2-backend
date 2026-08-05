@@ -8,6 +8,9 @@ import java.time.Instant;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import com.dnd.qello.account.error.AccountErrorCode;
+import com.dnd.qello.account.error.AccountException;
+
 /**
  * Created at: 2026-08-03T18:13:05+09:00
  * Source scenario: TEST-PLAN-GH-37-ACCOUNT-PERSISTENCE-UNIT-001
@@ -38,22 +41,24 @@ class AccountTest {
 	void rejectsInvalidProfileValues() {
 		assertThatThrownBy(() -> Account.create(
 			AccountRole.USER, " ", "ko-KR", "Asia/Seoul", null))
-			.isInstanceOf(IllegalArgumentException.class);
+			.isInstanceOf(AccountException.class);
 		assertThatThrownBy(() -> Account.create(
 			AccountRole.USER, "KR-TEST", " ", "Asia/Seoul", null))
-			.isInstanceOf(IllegalArgumentException.class);
+			.isInstanceOf(AccountException.class);
 		assertThatThrownBy(() -> Account.create(
 			AccountRole.USER, "KR-TEST", "ko-KR", "invalid/timezone", null))
-			.isInstanceOf(IllegalArgumentException.class);
+			.isInstanceOf(AccountException.class)
+			.hasFieldOrPropertyWithValue("errorCode", AccountErrorCode.INVALID_TIMEZONE)
+			.hasFieldOrPropertyWithValue("field", "timezone");
 		assertThatThrownBy(() -> Account.create(
 			AccountRole.USER, "KR-TEST", "ko-KR", "Asia/Seoul", "   "))
-			.isInstanceOf(IllegalArgumentException.class);
+			.isInstanceOf(AccountException.class);
 		assertThatThrownBy(() -> Account.create(
 			AccountRole.USER, "R".repeat(101), "ko-KR", "Asia/Seoul", null))
-			.isInstanceOf(IllegalArgumentException.class);
+			.isInstanceOf(AccountException.class);
 		assertThatThrownBy(() -> Account.create(
 			AccountRole.USER, "KR-TEST", "ko-KR", "Asia/Seoul", "N".repeat(51)))
-			.isInstanceOf(IllegalArgumentException.class);
+			.isInstanceOf(AccountException.class);
 	}
 
 	@Test
@@ -72,7 +77,7 @@ class AccountTest {
 			createdAt,
 			createdAt,
 			null
-		)).isInstanceOf(IllegalArgumentException.class);
+		)).isInstanceOf(AccountException.class);
 		assertThatThrownBy(() -> Account.restore(
 			1L,
 			AccountRole.USER,
@@ -84,7 +89,7 @@ class AccountTest {
 			createdAt,
 			createdAt,
 			createdAt
-		)).isInstanceOf(IllegalArgumentException.class);
+		)).isInstanceOf(AccountException.class);
 	}
 
 	@Test

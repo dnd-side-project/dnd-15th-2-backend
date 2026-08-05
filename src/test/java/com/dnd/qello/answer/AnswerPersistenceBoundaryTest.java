@@ -12,6 +12,8 @@ import org.junit.jupiter.api.Test;
 import com.dnd.qello.answer.domain.Answer;
 import com.dnd.qello.answer.domain.AnswerModerationStatus;
 import com.dnd.qello.answer.domain.AnswerStatus;
+import com.dnd.qello.answer.error.AnswerErrorCode;
+import com.dnd.qello.answer.error.AnswerException;
 
 /**
  * Created at: 2026-08-03T21:10:00+09:00
@@ -31,7 +33,8 @@ class AnswerPersistenceBoundaryTest {
 		assertThat(answer.getAuthorId()).isEqualTo(20L);
 		assertThat(answer.getStatus()).isEqualTo(AnswerStatus.SUBMITTED);
 		assertThatThrownBy(() -> Answer.submit(10L, 20L, "key", "답변", "TEST", BigDecimal.valueOf(360), "NEAR", SUBMITTED))
-			.isInstanceOf(IllegalArgumentException.class);
+			.isInstanceOf(AnswerException.class)
+			.hasFieldOrPropertyWithValue("errorCode", AnswerErrorCode.INVALID_BEARING);
 	}
 
 	@Test
@@ -41,7 +44,8 @@ class AnswerPersistenceBoundaryTest {
 			.startSafetyCheck();
 
 		assertThatThrownBy(() -> answer.publish(SUBMITTED.plusSeconds(1)))
-			.isInstanceOf(IllegalStateException.class);
+			.isInstanceOf(AnswerException.class)
+			.hasFieldOrPropertyWithValue("errorCode", AnswerErrorCode.SAFETY_CHECK_NOT_PASSED);
 
 		Answer published = answer.markSafetyPassed().publish(SUBMITTED.plusSeconds(1));
 		assertThat(published.getStatus()).isEqualTo(AnswerStatus.PUBLISHED);
@@ -56,7 +60,7 @@ class AnswerPersistenceBoundaryTest {
 			.startSafetyCheck();
 		Answer rejected = held.rejectSafety();
 
-		assertThatThrownBy(rejected::markSafetyPassed).isInstanceOf(IllegalStateException.class);
+		assertThatThrownBy(rejected::markSafetyPassed).isInstanceOf(AnswerException.class);
 	}
 
 	@Test
@@ -65,7 +69,7 @@ class AnswerPersistenceBoundaryTest {
 		Answer answer = Answer.submit(10L, 20L, "answer-key", "답변", "TEST", BigDecimal.ZERO, "NEAR", SUBMITTED);
 
 		assertThatThrownBy(() -> answer.publish(SUBMITTED.plusSeconds(1)))
-			.isInstanceOf(IllegalStateException.class);
+			.isInstanceOf(AnswerException.class);
 		Answer deleted = answer.delete(SUBMITTED.plusSeconds(2));
 		assertThat(deleted.getStatus()).isEqualTo(AnswerStatus.DELETED);
 		assertThat(deleted.getDeletedAt()).isEqualTo(SUBMITTED.plusSeconds(2));

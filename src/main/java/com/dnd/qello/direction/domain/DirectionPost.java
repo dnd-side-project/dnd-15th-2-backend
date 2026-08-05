@@ -1,7 +1,9 @@
 package com.dnd.qello.direction.domain;
 
 import java.time.Instant;
-import java.util.Objects;
+
+import com.dnd.qello.direction.error.DirectionErrorCode;
+import com.dnd.qello.direction.error.DirectionException;
 
 public final class DirectionPost {
 
@@ -25,19 +27,30 @@ public final class DirectionPost {
 		this.id = validateId(id, "id");
 		this.senderId = requireId(senderId, "senderId");
 		this.approvedQuestionId = requireId(approvedQuestionId, "approvedQuestionId");
-		this.status = Objects.requireNonNull(status, "status는 필수입니다");
+		this.status = requireValue(status, "status");
 		this.idempotencyKey = requireText(idempotencyKey, "idempotencyKey", 200);
-		if (bodyText != null && bodyText.isBlank()) throw new IllegalArgumentException("bodyText는 공백일 수 없습니다");
+		if (bodyText != null && bodyText.isBlank()) {
+			throw new DirectionException(DirectionErrorCode.INVALID_TEXT, "bodyText", "bodyText는 공백일 수 없습니다");
+		}
 		this.bodyText = bodyText;
 		this.coarseRegionCode = requireText(coarseRegionCode, "coarseRegionCode", 100);
-		this.moderationStatus = Objects.requireNonNull(moderationStatus, "moderationStatus는 필수입니다");
-		this.submittedAt = Objects.requireNonNull(submittedAt, "submittedAt은 필수입니다");
+		this.moderationStatus = requireValue(moderationStatus, "moderationStatus");
+		this.submittedAt = requireValue(submittedAt, "submittedAt");
 		this.publishedAt = publishedAt;
-		this.expiresAt = Objects.requireNonNull(expiresAt, "expiresAt은 필수입니다");
-		if (!expiresAt.isAfter(submittedAt)) throw new IllegalArgumentException("expiresAt은 submittedAt보다 늦어야 합니다");
+		this.expiresAt = requireValue(expiresAt, "expiresAt");
+		if (!expiresAt.isAfter(submittedAt)) {
+			throw new DirectionException(
+				DirectionErrorCode.INVALID_TIME_ORDER, "expiresAt", "expiresAt은 submittedAt보다 늦어야 합니다");
+		}
 		this.deletedAt = deletedAt;
-		if (status == DirectionPostStatus.ACTIVE && publishedAt == null) throw new IllegalArgumentException("ACTIVE post에는 publishedAt이 필요합니다");
-		if ((status == DirectionPostStatus.DELETED) != (deletedAt != null)) throw new IllegalArgumentException("DELETED 상태와 deletedAt이 일치해야 합니다");
+		if (status == DirectionPostStatus.ACTIVE && publishedAt == null) {
+			throw new DirectionException(
+				DirectionErrorCode.INVALID_POST_STATE, "publishedAt", "ACTIVE post에는 publishedAt이 필요합니다");
+		}
+		if ((status == DirectionPostStatus.DELETED) != (deletedAt != null)) {
+			throw new DirectionException(
+				DirectionErrorCode.INVALID_POST_STATE, "deletedAt", "DELETED 상태와 deletedAt이 일치해야 합니다");
+		}
 	}
 
 	public static DirectionPost submit(Long senderId, Long approvedQuestionId, String idempotencyKey,
@@ -55,16 +68,29 @@ public final class DirectionPost {
 			coarseRegionCode, moderationStatus, submittedAt, publishedAt, expiresAt, deletedAt);
 	}
 
+	private static <T> T requireValue(T value, String field) {
+		if (value == null) {
+			throw new DirectionException(
+				DirectionErrorCode.REQUIRED_VALUE_MISSING, field, field + "은 필수입니다");
+		}
+		return value;
+	}
 	private static Long validateId(Long value, String field) {
-		if (value != null && value <= 0) throw new IllegalArgumentException(field + "는 양수여야 합니다");
+		if (value != null && value <= 0) {
+			throw new DirectionException(DirectionErrorCode.INVALID_ID, field, field + "는 양수여야 합니다");
+		}
 		return value;
 	}
 	private static long requireId(Long value, String field) {
-		if (value == null || value <= 0) throw new IllegalArgumentException(field + "는 양수여야 합니다");
+		if (value == null || value <= 0) {
+			throw new DirectionException(DirectionErrorCode.INVALID_ID, field, field + "는 양수여야 합니다");
+		}
 		return value;
 	}
 	private static String requireText(String value, String field, int max) {
-		if (value == null || value.isBlank() || value.length() > max) throw new IllegalArgumentException(field + "이 유효하지 않습니다");
+		if (value == null || value.isBlank() || value.length() > max) {
+			throw new DirectionException(DirectionErrorCode.INVALID_TEXT, field, field + "이 유효하지 않습니다");
+		}
 		return value;
 	}
 

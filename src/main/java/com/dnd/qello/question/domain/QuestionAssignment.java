@@ -2,6 +2,9 @@ package com.dnd.qello.question.domain;
 
 import java.time.Instant;
 
+import com.dnd.qello.question.error.QuestionErrorCode;
+import com.dnd.qello.question.error.QuestionException;
+
 public final class QuestionAssignment {
 
 	private final Long id;
@@ -19,9 +22,12 @@ public final class QuestionAssignment {
 		this.id = validateId(id, "id");
 		this.cycleId = requireId(cycleId, "cycleId");
 		this.approvedQuestionId = requireId(approvedQuestionId, "approvedQuestionId");
-		if (displayOrder <= 0) throw new IllegalArgumentException("displayOrder는 양수여야 합니다");
+		if (displayOrder <= 0) {
+			throw new QuestionException(
+				QuestionErrorCode.INVALID_VALUE_RANGE, "displayOrder", "displayOrder는 양수여야 합니다");
+		}
 		this.displayOrder = displayOrder;
-		this.assignedAt = java.util.Objects.requireNonNull(assignedAt, "assignedAt은 필수입니다");
+		this.assignedAt = requireValue(assignedAt, "assignedAt");
 		this.firstViewedAt = firstViewedAt;
 		this.usedAt = usedAt;
 		validateTimestamp(firstViewedAt, "firstViewedAt");
@@ -42,17 +48,29 @@ public final class QuestionAssignment {
 
 	private void validateTimestamp(Instant value, String field) {
 		if (value != null && value.isBefore(assignedAt)) {
-			throw new IllegalArgumentException(field + "은 assignedAt보다 빠를 수 없습니다");
+			throw new QuestionException(
+				QuestionErrorCode.INVALID_TIME_ORDER, field, field + "은 assignedAt보다 빠를 수 없습니다");
 		}
 	}
 
+	private static <T> T requireValue(T value, String field) {
+		if (value == null) {
+			throw new QuestionException(QuestionErrorCode.REQUIRED_VALUE_MISSING, field, field + "은 필수입니다");
+		}
+		return value;
+	}
+
 	private static Long validateId(Long value, String field) {
-		if (value != null && value <= 0) throw new IllegalArgumentException(field + "는 양수여야 합니다");
+		if (value != null && value <= 0) {
+			throw new QuestionException(QuestionErrorCode.INVALID_ID, field, field + "는 양수여야 합니다");
+		}
 		return value;
 	}
 
 	private static long requireId(Long value, String field) {
-		if (value == null || value <= 0) throw new IllegalArgumentException(field + "는 양수여야 합니다");
+		if (value == null || value <= 0) {
+			throw new QuestionException(QuestionErrorCode.INVALID_ID, field, field + "는 양수여야 합니다");
+		}
 		return value;
 	}
 

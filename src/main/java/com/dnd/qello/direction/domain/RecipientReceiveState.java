@@ -1,7 +1,9 @@
 package com.dnd.qello.direction.domain;
 
 import java.time.Instant;
-import java.util.Objects;
+
+import com.dnd.qello.direction.error.DirectionErrorCode;
+import com.dnd.qello.direction.error.DirectionException;
 
 public final class RecipientReceiveState {
 
@@ -15,14 +17,29 @@ public final class RecipientReceiveState {
 
 	private RecipientReceiveState(Long userId, int activeUnhandledCount, int recentReceivedCount,
 		Instant recentWindowStartedAt, Instant lastReceivedAt, Instant updatedAt) {
-		if (userId == null || userId <= 0) throw new IllegalArgumentException("userId는 양수여야 합니다");
-		if (activeUnhandledCount < 0 || activeUnhandledCount > MAX_ACTIVE_UNHANDLED) throw new IllegalArgumentException("activeUnhandledCount 범위가 유효하지 않습니다");
-		if (recentReceivedCount < 0) throw new IllegalArgumentException("recentReceivedCount는 음수일 수 없습니다");
+		if (userId == null || userId <= 0) {
+			throw new DirectionException(DirectionErrorCode.INVALID_ID, "userId", "userId는 양수여야 합니다");
+		}
+		if (activeUnhandledCount < 0 || activeUnhandledCount > MAX_ACTIVE_UNHANDLED) {
+			throw new DirectionException(
+				DirectionErrorCode.INVALID_VALUE_RANGE, "activeUnhandledCount", "activeUnhandledCount 범위가 유효하지 않습니다");
+		}
+		if (recentReceivedCount < 0) {
+			throw new DirectionException(
+				DirectionErrorCode.INVALID_VALUE_RANGE, "recentReceivedCount", "recentReceivedCount는 음수일 수 없습니다");
+		}
 		this.userId = userId;
 		this.activeUnhandledCount = activeUnhandledCount;
 		this.recentReceivedCount = recentReceivedCount;
-		this.recentWindowStartedAt = Objects.requireNonNull(recentWindowStartedAt, "recentWindowStartedAt은 필수입니다");
-		if (lastReceivedAt != null && lastReceivedAt.isBefore(recentWindowStartedAt)) throw new IllegalArgumentException("lastReceivedAt이 window보다 빠릅니다");
+		if (recentWindowStartedAt == null) {
+			throw new DirectionException(
+				DirectionErrorCode.REQUIRED_VALUE_MISSING, "recentWindowStartedAt", "recentWindowStartedAt은 필수입니다");
+		}
+		this.recentWindowStartedAt = recentWindowStartedAt;
+		if (lastReceivedAt != null && lastReceivedAt.isBefore(recentWindowStartedAt)) {
+			throw new DirectionException(
+				DirectionErrorCode.INVALID_TIME_ORDER, "lastReceivedAt", "lastReceivedAt이 window보다 빠릅니다");
+		}
 		this.lastReceivedAt = lastReceivedAt;
 		this.updatedAt = updatedAt;
 	}
