@@ -187,8 +187,10 @@ def command_start(args: argparse.Namespace) -> None:
     issue_data = json.loads(result.stdout)
     if issue_data.get("state") != "OPEN":
         raise HarnessError("GitHub issue must be open before starting work")
+    base = default_branch()
+    run(["git", "fetch", "origin", base])
     branch = f"{args.type}/gh-{args.issue}-{slug}"
-    switch = run(["git", "switch", "-c", branch], check=False)
+    switch = run(["git", "switch", "-c", branch, f"origin/{base}"], check=False)
     if switch.returncode != 0:
         raise HarnessError(f"unable to create branch: {branch}")
     print(branch)
