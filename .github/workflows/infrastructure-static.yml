@@ -53,3 +53,74 @@ jobs:
           done < <(find infra -name '*.tf' -print0 |
             xargs -0 -n1 dirname |
             sort -u)
+
+  lint:
+    if: ${{ hashFiles('infra/**/*.tf') != '' }}
+    runs-on: ubuntu-latest
+    env:
+      # 서드파티 action 태그 대신 릴리스 바이너리를 고정해 검사 도구 버전이
+      # 조용히 바뀌지 않게 한다(AGENTS.md 4.1: 버전 명시).
+      TFLINT_VERSION: v0.64.0
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install TFLint
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.local/bin"
+          curl -fsSL -o /tmp/tflint.zip \
+            "https://github.com/terraform-linters/tflint/releases/download/${TFLINT_VERSION}/tflint_linux_amd64.zip"
+          unzip -o -q /tmp/tflint.zip -d "$HOME/.local/bin"
+          rm /tmp/tflint.zip
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Lint each root module
+        shell: bash
+        run: |
+          set -euo pipefail
+          while IFS= read -r directory; do
+            tflint --chdir="$directory"
+          done < <(find infra -name '*.tf' -print0 |
+            xargs -0 -n1 dirname |
+            sort -u)
+
+  policy:
+    if: ${{ hashFiles('infra/**/*.tf') != '' }}
+    runs-on: ubuntu-latest
+    env:
+      CHECKOV_VERSION: 3.3.9
+      # 제외 사유는 Infrastructure Design Report D-1과 빌드 검증 보고서
+      # docs/reports/infrastructure/gh-63-D-1-build.md에 기록한다.
+      #
+      # CKV_AWS_144(교차 리전 복제): dev/test 데이터는 재생성 가능하고 복제
+      #   비용이 월 예산 대비 실익이 없어 설계 §2에서 제외를 승인했다.
+      # CKV2_AWS_62(이벤트 알림): 알림을 소비할 컴퓨팅이 아직 없다. 업로드
+      #   API 이슈에서 소비자가 생기면 이 제외를 재검토한다.
+      # CKV_AWS_145(KMS 기본 암호화): 로그 대상 버킷은 Customer-managed Key를
+      #   지원하지 않는 AWS 제약이 있고, State 버킷은 AGENTS.md 4.6이 요구하는
+      #   서버 측 암호화를 SSE-S3로 충족한다.
+      #
+      # 특정 리소스에만 해당하는 예외는 이 목록이 아니라 해당 블록의
+      # `checkov:skip` 주석으로 좁혀 둔다.
+      CHECKOV_SKIP_CHECKS: CKV_AWS_144,CKV2_AWS_62,CKV_AWS_145
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Install Checkov
+        run: pip install "checkov==${CHECKOV_VERSION}"
+
+      - name: Scan Terraform policy compliance
+        run: >-
+          checkov --directory infra
+          --framework terraform
+          --skip-check "${CHECKOV_SKIP_CHECKS}"
+          --compact
+          --quiet

@@ -11,6 +11,15 @@ locals {
 # SSE-KMS를 사용해 감사 가능한 Key 사용 이력을 남긴다.
 
 data "aws_iam_policy_document" "post_image_kms_key" {
+  # 이 문서는 IAM identity 정책이 아니라 KMS Key 정책이다. Key 정책의
+  # Resource는 정책이 부착된 Key 자신만을 가리키므로 "*" 외의 값을 쓸 수
+  # 없다(AWS KMS 제약). 따라서 identity 정책을 전제로 Resource 범위를 검사하는
+  # 아래 세 규칙은 이 문서에 적용할 수 없다. Principal은 계정 root, infra-apply,
+  # dev-s3-tester로만 한정되어 실제 사용 범위가 좁혀져 있다.
+  # checkov:skip=CKV_AWS_109:KMS Key 정책의 Resource는 Key 자신으로 고정되어 범위 축소가 불가능하다.
+  # checkov:skip=CKV_AWS_111:동일 사유. 쓰기 권한은 Principal로 제한한다.
+  # checkov:skip=CKV_AWS_356:동일 사유. Key 정책에서 "*"는 해당 Key만을 의미한다.
+
   # AWS 권장 사항: 계정 root에 전체 권한을 남겨 두지 않으면 IAM 정책 오류로
   # Key 관리가 영구히 불가능해질 수 있다(AWS KMS Key 정책 모범 사례).
   statement {
