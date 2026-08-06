@@ -178,6 +178,7 @@ class InboxQueryIntegrationTest extends PostgisContainerIntegrationTestSupport {
 		recipient(post, "AVAILABLE", NOW);
 
 		assertThat(inboxQueryService.list(recipientId, NOW.plusSeconds(31))).isEmpty();
+		assertThat(inboxQueryService.list(recipientId, NOW.plusSeconds(30))).isEmpty();
 		assertThat(inboxQueryService.list(recipientId, NOW.plusSeconds(29))).hasSize(1);
 	}
 

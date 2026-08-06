@@ -9,6 +9,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.List;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -128,20 +129,24 @@ class SentPostQueryIntegrationTest extends PostgisContainerIntegrationTestSuppor
 	@Test
 	@DisplayName("커서 페이징은 중복이나 누락 없이 이어진다")
 	void paginatesWithoutGaps() {
+		List<Long> postIds = new ArrayList<>();
 		for (int index = 0; index < 5; index++) {
-			post("p-" + index, NOW.plusSeconds(index), NOW.plus(2, ChronoUnit.HOURS));
+			postIds.add(post("p-" + index, NOW.plusSeconds(index), NOW.plus(2, ChronoUnit.HOURS)));
 		}
 		Instant at = NOW.plus(1, ChronoUnit.HOURS);
 
-		List<SentPostCard> first = sentPostQueryService.list(senderId, SentPostFilter.ALL, null, 2, at);
-		SentPostCard last = first.getLast();
-		List<SentPostCard> second = sentPostQueryService.list(senderId, SentPostFilter.ALL,
-			new SentPostQueryRepository.SentPostCursor(last.submittedAt(), last.postId()), 2, at);
+		List<Long> collected = new ArrayList<>();
+		SentPostQueryRepository.SentPostCursor cursor = null;
+		List<SentPostCard> page;
+		do {
+			page = sentPostQueryService.list(senderId, SentPostFilter.ALL, cursor, 2, at);
+			page.forEach(card -> collected.add(card.postId()));
+			if (page.isEmpty()) break;
+			SentPostCard last = page.getLast();
+			cursor = new SentPostQueryRepository.SentPostCursor(last.submittedAt(), last.postId());
+		} while (page.size() == 2);
 
-		assertThat(first).hasSize(2);
-		assertThat(second).hasSize(2);
-		assertThat(second).extracting(SentPostCard::postId).doesNotContainAnyElementsOf(
-			first.stream().map(SentPostCard::postId).toList());
+		assertThat(collected).containsExactlyInAnyOrderElementsOf(postIds);
 	}
 
 	@Test
