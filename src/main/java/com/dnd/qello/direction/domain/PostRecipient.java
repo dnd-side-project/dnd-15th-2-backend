@@ -202,6 +202,10 @@ public final class PostRecipient {
 			throw new DirectionException(
 				DirectionErrorCode.INVALID_RECIPIENT_STATE, "status", "열람 처리를 할 수 없는 상태입니다");
 		}
+		if (discoveredAt != null && at.isBefore(discoveredAt)) {
+			throw new DirectionException(
+				DirectionErrorCode.INVALID_TIME_ORDER, "at", "at은 discoveredAt보다 빠를 수 없습니다");
+		}
 		return new PostRecipient(id, postId, recipientId, PostRecipientStatus.OPENED, distanceBand,
 			matchedBearingDegrees, matchedRegionCode, matchedAt, discoveredAt == null ? at : discoveredAt, at,
 			null, null, null, null, null);
@@ -219,6 +223,14 @@ public final class PostRecipient {
 			&& status != PostRecipientStatus.OPENED) {
 			throw new DirectionException(
 				DirectionErrorCode.INVALID_RECIPIENT_STATE, "status", "답변 처리를 할 수 없는 상태입니다");
+		}
+		if (discoveredAt != null && at.isBefore(discoveredAt)) {
+			throw new DirectionException(
+				DirectionErrorCode.INVALID_TIME_ORDER, "at", "at은 discoveredAt보다 빠를 수 없습니다");
+		}
+		if (openedAt != null && at.isBefore(openedAt)) {
+			throw new DirectionException(
+				DirectionErrorCode.INVALID_TIME_ORDER, "at", "at은 openedAt보다 빠를 수 없습니다");
 		}
 		return new PostRecipient(id, postId, recipientId, PostRecipientStatus.ANSWERED, distanceBand,
 			matchedBearingDegrees, matchedRegionCode, matchedAt, discoveredAt == null ? at : discoveredAt,

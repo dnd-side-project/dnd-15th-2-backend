@@ -187,6 +187,16 @@ class DirectionDomainTest {
 	}
 
 	@Test
+	@DisplayName("open은 discoveredAt보다 이른 시각을 거부한다")
+	void openRejectsTimeBeforeDiscovered() {
+		PostRecipient discovered = availableRecipient().discover(MATCHED.plusSeconds(10));
+
+		assertThatThrownBy(() -> discovered.open(MATCHED.plusSeconds(9)))
+			.isInstanceOf(DirectionException.class)
+			.hasFieldOrPropertyWithValue("errorCode", DirectionErrorCode.INVALID_TIME_ORDER);
+	}
+
+	@Test
 	@DisplayName("discover는 AVAILABLE만 DISCOVERED로 바꾸고 이후 상태는 그대로 둔다")
 	void discoverOnlyAdvancesFromAvailable() {
 		PostRecipient discovered = availableRecipient().discover(MATCHED.plusSeconds(5));
@@ -206,6 +216,16 @@ class DirectionDomainTest {
 
 		assertThat(answered.getStatus()).isEqualTo(PostRecipientStatus.ANSWERED);
 		assertThat(answered.getCapacityReleasedAt()).isEqualTo(MATCHED.plusSeconds(20));
+	}
+
+	@Test
+	@DisplayName("answered는 openedAt보다 이른 시각을 거부한다")
+	void answeredRejectsTimeBeforeOpened() {
+		PostRecipient opened = availableRecipient().open(MATCHED.plusSeconds(10));
+
+		assertThatThrownBy(() -> opened.answered(MATCHED.plusSeconds(9)))
+			.isInstanceOf(DirectionException.class)
+			.hasFieldOrPropertyWithValue("errorCode", DirectionErrorCode.INVALID_TIME_ORDER);
 	}
 
 	@Test
