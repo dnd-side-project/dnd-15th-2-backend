@@ -70,3 +70,6 @@ override.tf.json
 
 ### Subagent-driven-development scratch workspace ###
 .superpowers/
+
+### macOS ###
+.DS_Store
