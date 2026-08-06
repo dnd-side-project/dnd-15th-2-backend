@@ -62,6 +62,10 @@ public class AnswerNotificationService {
 	 * 답변한 질문글은 수신함에서 사라지고 슬롯 1개가 회수된다.
 	 * post_recipient 전이와 카운터 감소가 갈라지면 ct_post_recipient_capacity_release가
 	 * commit 시점에 거부하므로 같은 transaction 안에서 함께 수행한다.
+	 *
+	 * transitionToAnswered는 status가 여전히 recipient.getStatus()일 때만 성공하는
+	 * 조건부 UPDATE다 — 같은 답변에 대해 publish()가 동시에 재시도되어도, 먼저 전이에
+	 * 성공한 트랜잭션만 release()를 호출하도록 이 조건부 성공 여부로 게이트를 건다.
 	 */
 	private void releaseSlot(long postRecipientId, Instant at) {
 		PostRecipient recipient = recipientRepository.findById(postRecipientId)
@@ -70,7 +74,7 @@ public class AnswerNotificationService {
 		if (answered == recipient) {
 			return;
 		}
-		recipientRepository.save(answered);
-		receiveStateRepository.release(recipient.getRecipientId(), at);
+		recipientRepository.transitionToAnswered(answered, recipient.getStatus())
+			.ifPresent(saved -> receiveStateRepository.release(recipient.getRecipientId(), at));
 	}
 }

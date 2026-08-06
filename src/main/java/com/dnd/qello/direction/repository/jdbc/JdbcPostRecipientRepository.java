@@ -78,6 +78,23 @@ public class JdbcPostRecipientRepository implements PostRecipientRepository {
 			new MapSqlParameterSource().addValue("postId", postId).addValue("recipientId", recipientId));
 	}
 
+	@Override
+	public Optional<PostRecipient> transitionToAnswered(PostRecipient answered, PostRecipientStatus previousStatus) {
+		return jdbc.query("""
+			UPDATE post_recipient
+			SET status = :status, discovered_at = :discoveredAt, opened_at = :openedAt,
+			    capacity_released_at = :capacityReleasedAt
+			WHERE id = :id AND status = :previousStatus
+			RETURNING *
+			""", new MapSqlParameterSource().addValue("id", answered.getId())
+			.addValue("status", answered.getStatus().name())
+			.addValue("discoveredAt", timestamp(answered.getDiscoveredAt()))
+			.addValue("openedAt", timestamp(answered.getOpenedAt()))
+			.addValue("capacityReleasedAt", timestamp(answered.getCapacityReleasedAt()))
+			.addValue("previousStatus", previousStatus.name()),
+			rs -> rs.next() ? Optional.of(map(rs)) : Optional.empty());
+	}
+
 	private Optional<PostRecipient> one(String sql, MapSqlParameterSource params) {
 		return jdbc.query(sql, params, rs -> rs.next() ? Optional.of(map(rs)) : Optional.empty());
 	}

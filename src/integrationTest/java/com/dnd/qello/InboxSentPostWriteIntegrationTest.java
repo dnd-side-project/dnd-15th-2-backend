@@ -11,6 +11,12 @@ import java.math.BigDecimal;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -152,6 +158,19 @@ class InboxSentPostWriteIntegrationTest extends PostgisContainerIntegrationTestS
 	void findsRecipientOnlyForOwner() {
 		assertThat(postRecipientRepository.findByIdAndRecipientId(postRecipientId, recipientId)).isPresent();
 		assertThat(postRecipientRepository.findByIdAndRecipientId(postRecipientId, outsiderId)).isEmpty();
+	}
+
+	@Test
+	@DisplayName("transitionToAnswered는 예상 상태가 아니면 전이하지 않는다")
+	void transitionToAnsweredSkipsWhenStatusAlreadyChanged() {
+		PostRecipient opened = postRecipientService.open(recipientId, postRecipientId, NOW.plusSeconds(10));
+		PostRecipient answered = opened.answered(NOW.plusSeconds(20));
+
+		assertThat(postRecipientRepository.transitionToAnswered(answered, PostRecipientStatus.OPENED)).isPresent();
+		assertThat(postRecipientRepository.findById(postRecipientId).orElseThrow().getStatus())
+			.isEqualTo(PostRecipientStatus.ANSWERED);
+
+		assertThat(postRecipientRepository.transitionToAnswered(answered, PostRecipientStatus.OPENED)).isEmpty();
 	}
 
 	@Test
@@ -354,6 +373,38 @@ class InboxSentPostWriteIntegrationTest extends PostgisContainerIntegrationTestS
 
 		assertThat(receiveStateRepository.findByUserId(recipientId).orElseThrow().getActiveUnhandledCount())
 			.isEqualTo(1);
+	}
+
+	@Test
+	@DisplayName("같은 답변을 동시에 공개해도 슬롯은 한 번만 회수된다")
+	void publishingConcurrentlyReleasesSlotOnce() throws Exception {
+		receiveStateRepository.save(RecipientReceiveState.restore(recipientId, 5, 5, NOW, NOW, NOW));
+		postRecipientService.open(recipientId, postRecipientId, NOW.plusSeconds(10));
+		long answerId = submittedAnswer(postRecipientId, recipientId, "answer-concurrent");
+
+		ExecutorService executor = Executors.newFixedThreadPool(2);
+		CountDownLatch ready = new CountDownLatch(2);
+		CountDownLatch start = new CountDownLatch(1);
+		try {
+			List<Future<Answer>> results = List.of(
+				executor.submit(() -> publishAfterSignal(answerId, ready, start)),
+				executor.submit(() -> publishAfterSignal(answerId, ready, start)));
+			assertThat(ready.await(5, TimeUnit.SECONDS)).isTrue();
+			start.countDown();
+			results.get(0).get(10, TimeUnit.SECONDS);
+			results.get(1).get(10, TimeUnit.SECONDS);
+		} finally {
+			executor.shutdownNow();
+		}
+
+		assertThat(receiveStateRepository.findByUserId(recipientId).orElseThrow().getActiveUnhandledCount())
+			.isEqualTo(4);
+	}
+
+	private Answer publishAfterSignal(long answerId, CountDownLatch ready, CountDownLatch start) throws Exception {
+		ready.countDown();
+		start.await(5, TimeUnit.SECONDS);
+		return answerNotificationService.publish(answerId, NOW.plusSeconds(30));
 	}
 
 	@Test
