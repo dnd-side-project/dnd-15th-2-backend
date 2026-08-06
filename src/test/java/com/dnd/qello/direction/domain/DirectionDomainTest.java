@@ -222,4 +222,29 @@ class DirectionDomainTest {
 			.isInstanceOf(DirectionException.class)
 			.hasFieldOrPropertyWithValue("errorCode", DirectionErrorCode.INVALID_RECIPIENT_STATE);
 	}
+
+	@Test
+	@DisplayName("markAnswersRead는 답변 열람 시각을 기록한다")
+	void marksAnswersRead() {
+		Instant submitted = Instant.parse("2026-08-06T12:00:00Z");
+		DirectionPost post = DirectionPost.submit(1L, 2L, "key", "글", "TEST-REGION",
+			submitted, submitted.plusSeconds(3600));
+
+		DirectionPost read = post.markAnswersRead(submitted.plusSeconds(60));
+
+		assertThat(read.getAnswersReadAt()).isEqualTo(submitted.plusSeconds(60));
+		assertThat(read.getStatus()).isEqualTo(post.getStatus());
+	}
+
+	@Test
+	@DisplayName("markAnswersRead는 발송 시각보다 이른 시각을 거부한다")
+	void markAnswersReadRejectsBeforeSubmission() {
+		Instant submitted = Instant.parse("2026-08-06T12:00:00Z");
+		DirectionPost post = DirectionPost.submit(1L, 2L, "key", "글", "TEST-REGION",
+			submitted, submitted.plusSeconds(3600));
+
+		assertThatThrownBy(() -> post.markAnswersRead(submitted.minusSeconds(1)))
+			.isInstanceOf(DirectionException.class)
+			.hasFieldOrPropertyWithValue("errorCode", DirectionErrorCode.INVALID_TIME_ORDER);
+	}
 }

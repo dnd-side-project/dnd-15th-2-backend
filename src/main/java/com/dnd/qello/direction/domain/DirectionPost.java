@@ -74,6 +74,13 @@ public final class DirectionPost {
 			coarseRegionCode, moderationStatus, submittedAt, publishedAt, expiresAt, answersReadAt, deletedAt);
 	}
 
+	/** 질문자가 답변 목록을 읽은 시각을 기록한다. `새로운 답변 n개` 배지는 이 시각 이후 공개된 답변만 센다. */
+	public DirectionPost markAnswersRead(Instant at) {
+		requireValue(at, "answersReadAt");
+		return new DirectionPost(id, senderId, approvedQuestionId, status, idempotencyKey, bodyText,
+			coarseRegionCode, moderationStatus, submittedAt, publishedAt, expiresAt, at, deletedAt);
+	}
+
 	private static <T> T requireValue(T value, String field) {
 		if (value == null) {
 			throw new DirectionException(
