@@ -20,9 +20,12 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 
+import com.dnd.qello.answer.domain.Answer;
+import com.dnd.qello.answer.domain.AnswerStatus;
 import com.dnd.qello.answer.error.AnswerErrorCode;
 import com.dnd.qello.answer.error.AnswerException;
 import com.dnd.qello.answer.repository.AnswerReactionRepository;
+import com.dnd.qello.answer.service.AnswerNotificationService;
 import com.dnd.qello.answer.service.AnswerReactionService;
 import com.dnd.qello.direction.domain.DirectionPost;
 import com.dnd.qello.direction.domain.PostRecipient;
@@ -65,6 +68,8 @@ class InboxSentPostWriteIntegrationTest extends PostgisContainerIntegrationTestS
 	private PostReactionService postReactionService;
 	@Autowired
 	private AnswerReactionService answerReactionService;
+	@Autowired
+	private AnswerNotificationService answerNotificationService;
 
 	private long senderId;
 	private long recipientId;
@@ -294,5 +299,57 @@ class InboxSentPostWriteIntegrationTest extends PostgisContainerIntegrationTestS
 		assertThatThrownBy(() -> answerReactionService.toggle(answerId, recipientId, NOW.plusSeconds(40)))
 			.isInstanceOf(AnswerException.class)
 			.hasFieldOrPropertyWithValue("errorCode", AnswerErrorCode.INELIGIBLE_REACTOR);
+	}
+
+	private long submittedAnswer(long targetPostRecipientId, long authorId, String idempotencyKey) {
+		return jdbc.queryForObject("""
+			INSERT INTO answer
+				(post_recipient_id, author_id, status, idempotency_key, body_text, coarse_region_code,
+				 bearing_from_sender_deg, distance_band, moderation_status, submitted_at)
+			VALUES (?, ?, 'SUBMITTED', ?, '답변 본문', ?, 45, 'NEAR', 'PENDING', ?)
+			RETURNING id
+			""", Long.class, targetPostRecipientId, authorId, idempotencyKey, REGION, Timestamp.from(NOW));
+	}
+
+	@Test
+	@DisplayName("답변이 공개되면 수신 항목이 ANSWERED가 되고 슬롯 1개가 회수된다")
+	void publishingAnswerReleasesSlot() {
+		receiveStateRepository.save(RecipientReceiveState.restore(recipientId, 1, 1, NOW, NOW, NOW));
+		postRecipientService.open(recipientId, postRecipientId, NOW.plusSeconds(10));
+		long answerId = submittedAnswer(postRecipientId, recipientId, "answer-publish");
+
+		Answer published = answerNotificationService.publish(answerId, NOW.plusSeconds(30));
+
+		assertThat(published.getStatus()).isEqualTo(AnswerStatus.PUBLISHED);
+		PostRecipient recipient = postRecipientRepository.findById(postRecipientId).orElseThrow();
+		assertThat(recipient.getStatus()).isEqualTo(PostRecipientStatus.ANSWERED);
+		assertThat(recipient.getCapacityReleasedAt()).isEqualTo(NOW.plusSeconds(30));
+		assertThat(receiveStateRepository.findByUserId(recipientId).orElseThrow().getActiveUnhandledCount()).isZero();
+	}
+
+	@Test
+	@DisplayName("같은 답변을 두 번 공개해도 슬롯은 한 번만 회수된다")
+	void publishingTwiceReleasesSlotOnce() {
+		receiveStateRepository.save(RecipientReceiveState.restore(recipientId, 2, 2, NOW, NOW, NOW));
+		postRecipientService.open(recipientId, postRecipientId, NOW.plusSeconds(10));
+		long answerId = submittedAnswer(postRecipientId, recipientId, "answer-publish");
+
+		answerNotificationService.publish(answerId, NOW.plusSeconds(30));
+		answerNotificationService.publish(answerId, NOW.plusSeconds(40));
+
+		assertThat(receiveStateRepository.findByUserId(recipientId).orElseThrow().getActiveUnhandledCount())
+			.isEqualTo(1);
+	}
+
+	@Test
+	@DisplayName("수신 상한까지 찬 사용자가 답변하면 다시 받을 수 있게 된다")
+	void answeringFreesCapacityForNewPosts() {
+		receiveStateRepository.save(RecipientReceiveState.restore(recipientId, 1, 1, NOW, NOW, NOW));
+		postRecipientService.open(recipientId, postRecipientId, NOW.plusSeconds(10));
+		long answerId = submittedAnswer(postRecipientId, recipientId, "answer-publish");
+
+		assertThat(receiveStateRepository.reserve(recipientId, NOW.plusSeconds(20), 1)).isFalse();
+		answerNotificationService.publish(answerId, NOW.plusSeconds(30));
+		assertThat(receiveStateRepository.reserve(recipientId, NOW.plusSeconds(40), 1)).isTrue();
 	}
 }
