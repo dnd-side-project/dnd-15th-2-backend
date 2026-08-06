@@ -2,6 +2,8 @@ package com.dnd.qello.account.repository.jpa;
 
 import com.dnd.qello.account.domain.Account;
 import com.dnd.qello.account.domain.PasswordHash;
+import com.dnd.qello.account.error.AccountErrorCode;
+import com.dnd.qello.account.error.AccountException;
 
 final class AccountJpaMapper {
 
@@ -13,7 +15,8 @@ final class AccountJpaMapper {
 	 */
 	static AccountJpaEntity toNewEntity(Account account) {
 		if (account.getId() != null) {
-			throw new IllegalArgumentException("신규 계정에는 ID가 없어야 합니다.");
+			throw new AccountException(
+				AccountErrorCode.INVALID_ID, "id", "신규 계정에는 id가 없어야 합니다");
 		}
 
 		return new AccountJpaEntity(

@@ -1,7 +1,6 @@
 package com.dnd.qello.account.repository.jpa;
 
 import java.time.Instant;
-import java.util.Objects;
 
 import com.dnd.qello.account.domain.AccountRole;
 import com.dnd.qello.account.domain.AccountStatus;
@@ -65,11 +64,11 @@ public class AccountJpaEntity extends JpaAuditableEntity {
 		String nickname,
 		String passwordHash
 	) {
-		this.role = Objects.requireNonNull(role);
-		this.status = Objects.requireNonNull(status);
-		this.coarseRegionCode = Objects.requireNonNull(coarseRegionCode);
-		this.locale = Objects.requireNonNull(locale);
-		this.timezone = Objects.requireNonNull(timezone);
+		this.role = role;
+		this.status = status;
+		this.coarseRegionCode = coarseRegionCode;
+		this.locale = locale;
+		this.timezone = timezone;
 		//TODO(#48): Nickname Null 허용 유무 논의
 		this.nickname = nickname;
 		this.passwordHash = passwordHash;

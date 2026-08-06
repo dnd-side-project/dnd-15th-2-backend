@@ -12,6 +12,8 @@ import com.dnd.qello.account.domain.Account;
 import com.dnd.qello.account.domain.AccountRole;
 import com.dnd.qello.account.domain.AccountStatus;
 import com.dnd.qello.account.domain.PasswordHash;
+import com.dnd.qello.account.error.AccountErrorCode;
+import com.dnd.qello.account.error.AccountException;
 
 /**
  * Created at: 2026-08-04T12:00:00+09:00
@@ -27,7 +29,8 @@ class AccountJpaMapperTest {
 			null, null, null);
 
 		assertThatThrownBy(() -> AccountJpaMapper.toNewEntity(existing))
-			.isInstanceOf(IllegalArgumentException.class);
+			.isInstanceOf(AccountException.class)
+			.hasFieldOrPropertyWithValue("errorCode", AccountErrorCode.INVALID_ID);
 	}
 
 	@Test
