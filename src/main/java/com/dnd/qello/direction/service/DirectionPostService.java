@@ -26,7 +26,10 @@ import com.dnd.qello.direction.repository.PostRecipientRepository;
 import com.dnd.qello.direction.repository.RecipientReceiveStateRepository;
 import com.dnd.qello.question.repository.ApprovedQuestionRepository;
 
-/** 방향 preview를 참고값으로만 사용하고, send transaction에서 다시 계산한다. */
+/**
+ * 방향 글 발송과 질문자 측 읽음 표시를 소유한다.
+ * 방향 preview는 참고값으로만 사용하고 send transaction에서 다시 계산한다.
+ */
 @Service
 public class DirectionPostService {
 
@@ -88,6 +91,15 @@ public class DirectionPostService {
 				candidate.bearingDegrees(), candidate.matchedRegionCode(), command.submittedAt())))
 			.toList();
 		return new SendResult(post, audience, recipients);
+	}
+
+	/** 질문자가 답변 목록을 읽었음을 기록한다. `새로운 답변 n개` 배지가 이 값으로 계산된다. */
+	@Transactional
+	public DirectionPost markAnswersRead(long senderId, long postId, Instant at) {
+		DirectionPost post = postRepository.findByIdAndSenderId(postId, senderId)
+			.orElseThrow(() -> new DirectionException(
+				DirectionErrorCode.POST_NOT_FOUND, "postId", "질문글을 찾을 수 없습니다"));
+		return postRepository.save(post.markAnswersRead(at));
 	}
 
 	private List<DirectionCandidate> candidates(PreviewCommand command, ActiveUserPresence sender, DirectionSegment segment) {

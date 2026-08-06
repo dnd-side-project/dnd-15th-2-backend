@@ -20,6 +20,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 
+import com.dnd.qello.direction.domain.DirectionPost;
 import com.dnd.qello.direction.domain.PostRecipient;
 import com.dnd.qello.direction.domain.PostRecipientStatus;
 import com.dnd.qello.direction.domain.RecipientReceiveState;
@@ -28,6 +29,7 @@ import com.dnd.qello.direction.error.DirectionException;
 import com.dnd.qello.direction.repository.DirectionPostRepository;
 import com.dnd.qello.direction.repository.PostRecipientRepository;
 import com.dnd.qello.direction.repository.RecipientReceiveStateRepository;
+import com.dnd.qello.direction.service.DirectionPostService;
 import com.dnd.qello.direction.service.PostRecipientService;
 
 @SpringBootTest
@@ -47,6 +49,8 @@ class InboxSentPostWriteIntegrationTest extends PostgisContainerIntegrationTestS
 	private RecipientReceiveStateRepository receiveStateRepository;
 	@Autowired
 	private PostRecipientService postRecipientService;
+	@Autowired
+	private DirectionPostService directionPostService;
 
 	private long senderId;
 	private long recipientId;
@@ -195,5 +199,23 @@ class InboxSentPostWriteIntegrationTest extends PostgisContainerIntegrationTestS
 
 		assertThat(reverted.getStatus()).isEqualTo(PostRecipientStatus.OPENED);
 		assertThat(reverted.getSkipRequestedAt()).isNull();
+	}
+
+	@Test
+	@DisplayName("markAnswersRead는 질문자의 답변 열람 시각을 기록한다")
+	void marksAnswersReadForSender() {
+		DirectionPost read = directionPostService.markAnswersRead(senderId, postId, NOW.plusSeconds(120));
+
+		assertThat(read.getAnswersReadAt()).isEqualTo(NOW.plusSeconds(120));
+		assertThat(directionPostRepository.findById(postId).orElseThrow().getAnswersReadAt())
+			.isEqualTo(NOW.plusSeconds(120));
+	}
+
+	@Test
+	@DisplayName("질문자가 아니면 답변 열람 시각을 기록할 수 없다")
+	void nonSenderCannotMarkAnswersRead() {
+		assertThatThrownBy(() -> directionPostService.markAnswersRead(outsiderId, postId, NOW.plusSeconds(120)))
+			.isInstanceOf(DirectionException.class)
+			.hasFieldOrPropertyWithValue("errorCode", DirectionErrorCode.POST_NOT_FOUND);
 	}
 }
