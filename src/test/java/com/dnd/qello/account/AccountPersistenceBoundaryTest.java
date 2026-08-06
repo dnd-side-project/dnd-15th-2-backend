@@ -18,6 +18,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.core.io.support.PropertiesLoaderUtils;
 
+import com.dnd.qello.account.domain.Account;
 import com.dnd.qello.account.repository.jpa.AccountJpaEntity;
 
 /**
@@ -30,16 +31,17 @@ class AccountPersistenceBoundaryTest {
 		"ManyToOne",
 		"OneToMany",
 		"OneToOne",
-		"ManyToMany",
-		"Version"
+		"ManyToMany"
 	);
 
 	@Test
-	@DisplayName("Account domain과 repository port는 JPA 및 Spring Data에 의존하지 않는다")
+	@DisplayName("Account domain, repository port, 비밀번호 Port는 JPA 및 Spring Data에 의존하지 않는다")
 	void domainAndPortRemainPersistenceIndependent() throws IOException {
 		List<Path> contractSources = List.of(
 			Path.of("src/main/java/com/dnd/qello/account/domain"),
-			Path.of("src/main/java/com/dnd/qello/account/repository/AccountRepository.java")
+			Path.of("src/main/java/com/dnd/qello/account/repository/AccountRepository.java"),
+			Path.of("src/main/java/com/dnd/qello/account/security/PasswordHasher.java"),
+			Path.of("src/main/java/com/dnd/qello/account/security/RawPassword.java")
 		);
 
 		for (Path source : contractSources) {
@@ -50,15 +52,16 @@ class AccountPersistenceBoundaryTest {
 					String content = Files.readString(javaFile);
 					assertThat(content)
 						.doesNotContain("jakarta.persistence")
-						.doesNotContain("org.springframework.data");
+						.doesNotContain("org.springframework.data")
+						.doesNotContain("org.springframework.security");
 				}
 			}
 		}
 	}
 
 	@Test
-	@DisplayName("Account Entity는 region scalar만 매핑하고 관계 및 낙관적 잠금을 만들지 않는다")
-	void entityUsesScalarRegionWithoutRelationsOrVersion() throws Exception {
+	@DisplayName("Account Entity는 region scalar만 매핑하고 관계를 만들지 않는다")
+	void entityUsesScalarRegionWithoutRelations() throws Exception {
 		Field regionField = AccountJpaEntity.class.getDeclaredField("coarseRegionCode");
 		List<String> annotationNames = Arrays.stream(AccountJpaEntity.class.getDeclaredFields())
 			.flatMap(field -> Arrays.stream(field.getDeclaredAnnotations()))
@@ -68,6 +71,31 @@ class AccountPersistenceBoundaryTest {
 
 		assertThat(regionField.getType()).isEqualTo(String.class);
 		assertThat(annotationNames).doesNotContainAnyElementsOf(FORBIDDEN_ENTITY_ANNOTATIONS);
+	}
+
+	@Test
+	@DisplayName("Account Entity는 낙관적 잠금을 가지고 Domain은 version을 노출하지 않는다")
+	void entityOwnsOptimisticLockWithoutLeakingVersionToDomain() throws Exception {
+		Field versionField = AccountJpaEntity.class.getDeclaredField("version");
+		List<String> domainFieldNames = Arrays.stream(Account.class.getDeclaredFields())
+			.map(Field::getName)
+			.toList();
+
+		assertThat(versionField.getDeclaredAnnotations())
+			.extracting(annotation -> annotation.annotationType().getSimpleName())
+			.contains("Version");
+		assertThat(domainFieldNames).doesNotContain("version");
+	}
+
+	@Test
+	@DisplayName("Account Entity는 평문을 암시하는 password 필드 없이 password_hash만 저장한다")
+	void entityStoresPasswordAsHashOnly() {
+		List<String> fieldNames = Arrays.stream(AccountJpaEntity.class.getDeclaredFields())
+			.map(Field::getName)
+			.toList();
+
+		assertThat(fieldNames).contains("passwordHash");
+		assertThat(fieldNames).doesNotContain("password");
 	}
 
 	@Test

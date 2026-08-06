@@ -1,63 +1,53 @@
-# GitHub Issue #63 Task Contract
+# GitHub Issue #48 Task Contract
 
-> Generated at: `2026-08-05T16:30:32+09:00`
+> Generated at: `2026-08-04T17:51:32+09:00`
 >
 > 이 파일은 현재 작업 브랜치의 계약이다. 저장소 전역 정책은 `AGENTS.md`를
 > 따른다.
 
 ## Work gate
 
-- Title: `게시물 이미지 업로드용 테스트 S3 버킷 구축`
-- GitHub Issue: `#63`
-- Branch: `infra/gh-63-s3-image-upload-bucket`
-- DESIGN-ID: `D-1`
-- Design report: `docs/reports/infrastructure/gh-63-D-1.md`
-- Design status: `APPROVED_FOR_BUILD` — 사람 승인(tkv00, 2026-08-05).
-  확정된 결정: Region `ap-northeast-2`, 예산 상한 10 USD, `infra/bootstrap`
-  포함, Bootstrap 로컬 State 1회 예외 승인, SSE-KMS, S3 서버 접근 로그
-  이벤트만 수집, lifecycle 6개월, `dev-s3-tester` Role(고정 키 없음),
-  계정 전체 권한 IAM은 범위 제외. `/harness-infra-build` 진행 가능. PR
-  코드 승인(`@Byuntil`, `@tkv00`)과 `infrastructure-apply` Environment
-  승인은 별개로 필요.
+- Title: `JPA 엔티티에 Lombok 적용 및 user_account 비밀번호 컬럼 추가`
+- GitHub Issue: `#48`
+- Branch: `refactor/gh-48-migrate-lombok`
 
 ## Objective
 
-- 게시물 작성 시 이미지를 함께 업로드하는 기능을 지원하기 위해, 개발/테스트
-  환경에서 사용할 S3 버킷을 Terraform으로 구축한다.
+현재 JPA 엔티티의 반복적인 생성자·getter 코드를 Lombok으로 개선하고, 계정
+인증에 필요한 비밀번호 해시 저장 컬럼을 `user_account`에 추가한다.
 
 ## Scope
 
-- 개발/테스트(dev) 환경용 S3 버킷 Terraform 코드 작성
-- 버킷 정책: 기본 private, public access block 설정
-- 버전 관리(versioning), SSE-KMS 서버 측 암호화 설정(전용 Customer-managed Key)
-- S3 서버 접근 로그(전용 로그 버킷), 6개월 lifecycle 만료 규칙
-- 애플리케이션이 사용할 최소 권한 IAM 정책/역할 설계
-- **`infra/bootstrap`: Terraform State Backend(S3) + GitHub OIDC Provider +
-  `infra-plan`/`infra-apply` Role** — 설계 단계에서 사람이 이 이슈 범위에
-  포함하기로 확정(2026-08-05). 저장소 최초의 Terraform 리소스이므로
-  Bootstrap 자체는 최초 1회 로컬 State로 적용하는 예외가 승인되었다.
-- **`dev-s3-tester` IAM Role**: 팀원(ksj)이 이 버킷·KMS Key만 단기
-  자격증명(MFA 필수, 고정 Access Key 없음)으로 테스트할 수 있도록 설계
-  (사람 결정, 2026-08-05).
-- **사용자 IAM 2종** (사람 결정, 2026-08-05, 설계 D-1 §16):
-  `infra-deployer` Role(사람이 MFA로 assume하는 최소 권한 인프라 배포
-  역할)과 팀원 콘솔 로그인용 IAM User·Group. 둘 다 Access Key를 발급하지
-  않는다.
-- Infrastructure Design Report 작성 및 검토 요청 (`/harness-infra-design`,
-  `docs/reports/infrastructure/gh-63-D-1.md`)
+### Lombok
+
+- 적용 범위: `Account` 도메인과 관련 `AccountJpaEntity`,
+  `JpaAuditableEntity`(공통 상위 클래스)로 한정한다. Issue의 "Lombok 적용
+  대상 엔티티 범위" 블로커는 사용자 확인을 거쳐 Account만으로 확정했다.
+  `Answer`/`ApprovedQuestion`/`QuestionAssignment*`/`QuestionProposal*` 등
+  나머지 JPA 엔티티는 이번 이슈 범위 밖이며 별도 이슈로 남긴다.
+- `@Getter(AccessLevel.PACKAGE)` + `@NoArgsConstructor(AccessLevel.PROTECTED)`
+  패턴을 사용하고 `@Data` 등 무분별한 전체 생성 애노테이션은 사용하지 않는다.
+- Hibernate가 사용할 protected 기본 생성자는 유지한다.
+
+### password_hash
+
+- `user_account.password_hash` 컬럼을 기존 V1 migration을 수정하지 않고
+  `V3__add_user_account_password_hash.sql`로 신규 추가한다. (main에 #54로
+  `V2__add_reactions_and_skip_pending.sql`이 먼저 병합되어 버전 3을 사용한다.)
+- `role = 'OPERATOR'`는 password_hash 필수, `role = 'USER'`는 항상 NULL인
+  것을 DB check constraint(`ck_user_account_password_hash`)로 강제한다.
+- 해시 알고리즘은 Spring Security `BCryptPasswordEncoder`(bcrypt)로 확정했다.
+  `account.security` 패키지에 `PasswordHasher`/`RawPassword`/
+  `BCryptPasswordHasher`를 두고, 평문 `RawPassword`는 `toString()`을
+  `REDACTED`로 재정의해 로그 노출을 막는다.
+- Domain(`Account`, `PasswordHash`) ↔ JPA Entity ↔ Mapper 왕복 매핑과 기존
+  Account persistence 테스트를 회귀 검증한다.
 
 ## Explicit exclusions
 
-- 이미지 업로드 API 엔드포인트 구현 (애플리케이션 코드)
-- 운영(production) 환경 S3 버킷 구축
-- CDN/CloudFront 연동
-- 계정 전체 권한(Administrator급) IAM 생성 — 최소 권한 원칙과 충돌해 이
-  이슈에서 제외, 필요 시 별도 이슈·ADR로 분리(사람 결정, 2026-08-05).
-  **2026-08-05 갱신**: 사용자 IAM 2종을 범위에 추가했으나(아래 Scope 참고)
-  Administrator급 권한은 여전히 채택하지 않는다.
-- 고정 Access Key를 발급하는 IAM User 생성 — AGENTS.md 4.9·12절이 금지.
-  이 제외는 유지된다. 추가된 IAM User에는 Access Key를 발급하지 않고
-  정책에서 `iam:CreateAccessKey`를 명시적으로 거부한다.
+- Lombok을 Account 외 JPA 엔티티로 확장하는 작업(별도 이슈로 분리)
+- 인증 API, 로그인 흐름, 세션/토큰 발급 등 실제 인증 기능 구현
+- 기존 V1 Flyway migration 수정
 - 인프라 apply, 배포, 프로덕션 변경은 별도 승인 없이는 실행하지 않는다.
 - Secret, 계정 식별자, 토큰, `.env` 값은 기록하지 않는다.
 
@@ -65,26 +55,54 @@
 
 | Area | Owner | Required review |
 | --- | --- | --- |
-| infra/** (Terraform, S3) | 인프라 실행 에이전트 | `@Byuntil`, `@tkv00` |
+| Account 도메인/Lombok 적용 | Account executor | JPA 매핑·auditing 회귀 리뷰 |
+| password_hash migration/security 패키지 | Account executor | 평문 비노출·check constraint 리뷰 |
+| 단위/통합 테스트 | Test orchestrator | Account persistence 회귀 리뷰 |
 
 ## Existing user-owned changes
 
-- 작업 시작 시 `git status --short` 결과를 확인했다: `TASK.md`만 변경(이번
-  `task-init` 실행 결과)되어 있고 다른 미커밋 변경은 없었다.
+- 세션 시작 시 작업 트리에는 이전 세션에서 만든 Account/Lombok/password_hash
+  구현이 이미 존재했다(미커밋 상태). `git status --short`에는 계정 모듈 외
+  약 170개 파일이 수정된 것으로 표시되지만, 실제 원인은 이전 세션 중 발생한
+  전체 저장소 CRLF 개행 오염이었다. `git diff -w`/`--ignore-space-at-eol`로
+  확인해 개행만 다른 파일은 LF로 되돌렸다(`sed -i 's/\r$//'`, 내용 변경 없음,
+  바이트 단위로 HEAD와 동일함을 `md5sum`으로 검증).
+- WSL DrvFs(`/mnt/c`) 마운트 특성상 `git status`가 개행 정리 이후에도 해당
+  파일들을 계속 modified로 오탐지하는 stat-cache 이슈가 남아 있다. 실제
+  변경 여부는 `git status`가 아니라 `git diff`(내용 비교)로 판단한다.
+- 실제로 이번 작업으로 변경된 파일은 Account 도메인/보안 패키지, V2
+  migration, 관련 테스트, `build.gradle`, `docs/product/data-model/
+  direction_communication.dbml`(주석 변경) 정도로 한정된다.
 
 ## Validation
 
 ```bash
 ./harness check
 ./harness pr-ready --project-tests
+npm run hooks:validate
 git diff --check
 ```
 
+Testcontainers 기반 통합 테스트(`AccountPersistenceIntegrationTest`)는 이 실행
+환경에 Docker가 없어 로컬에서 실행하지 못했다. 단위 테스트(`./gradlew test
+--tests "com.dnd.qello.account.*"`)는 통과를 확인했으며, 통합 테스트는 Docker
+가용 환경에서 별도 검증이 필요하다.
+
 ## Completion criteria
 
-- Infrastructure Design Report가 `APPROVED_FOR_BUILD` 상태로 승인됨
-- `terraform fmt`, `terraform validate` 등 정적 검사 통과
-- `terraform plan` 증거 생성 (apply는 실행하지 않음)
-- least-privilege IAM 정책 적용
-- `@Byuntil`, `@tkv00` 리뷰 요청
-- apply는 기본 비활성 상태 유지, 보호된 GitHub Actions workflow에서만 실행
+- [x] Lombok 의존성 및 annotation processor 설정 (`build.gradle`)
+- [x] 대상(Account) JPA 엔티티에 Lombok 적용
+- [x] 기존 JPA 매핑 및 auditing 동작 유지 (단위 테스트로 회귀 확인)
+- [x] `user_account.password_hash` 신규 migration 추가 (V1 미수정)
+- [x] 비밀번호는 해시 값으로만 저장 (bcrypt, `RawPassword` 평문 미보관)
+- [x] Domain ↔ JPA Entity ↔ Mapper 왕복 매핑 테스트 추가
+- [x] 기존 Account persistence 테스트 회귀 검증(단위 테스트 통과)
+- [x] 기존 데이터 nullable/초기값 정책 반영 (USER=NULL, OPERATOR=필수, check
+      constraint)
+- [x] 비밀번호 원문이 로그·예외·테스트 출력에 노출되지 않음
+- [ ] Flyway 및 Gradle 테스트 전체 통과 — 단위 테스트는 통과, Testcontainers
+      통합 테스트는 Docker 미가용으로 미검증
+- [ ] `./harness check`
+- [ ] `./harness pr-ready --project-tests`
+- [ ] `npm run hooks:validate`
+- [ ] `git diff --check`
