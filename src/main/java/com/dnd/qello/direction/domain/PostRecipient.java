@@ -6,6 +6,9 @@ import java.time.Instant;
 import com.dnd.qello.direction.error.DirectionErrorCode;
 import com.dnd.qello.direction.error.DirectionException;
 
+import lombok.Getter;
+
+@Getter
 public final class PostRecipient {
 
 	private final Long id;
@@ -222,19 +225,4 @@ public final class PostRecipient {
 			openedAt == null ? at : openedAt, null, null, at, null, null);
 	}
 
-	public Long getId() { return id; }
-	public Long getPostId() { return postId; }
-	public Long getRecipientId() { return recipientId; }
-	public PostRecipientStatus getStatus() { return status; }
-	public String getDistanceBand() { return distanceBand; }
-	public BigDecimal getMatchedBearingDegrees() { return matchedBearingDegrees; }
-	public String getMatchedRegionCode() { return matchedRegionCode; }
-	public Instant getMatchedAt() { return matchedAt; }
-	public Instant getDiscoveredAt() { return discoveredAt; }
-	public Instant getOpenedAt() { return openedAt; }
-	public Instant getSkipRequestedAt() { return skipRequestedAt; }
-	public Instant getSkippedAt() { return skippedAt; }
-	public Instant getCapacityReleasedAt() { return capacityReleasedAt; }
-	public Instant getExpiredAt() { return expiredAt; }
-	public Instant getBlockedAt() { return blockedAt; }
 }

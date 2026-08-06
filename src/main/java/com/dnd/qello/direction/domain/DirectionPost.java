@@ -5,6 +5,9 @@ import java.time.Instant;
 import com.dnd.qello.direction.error.DirectionErrorCode;
 import com.dnd.qello.direction.error.DirectionException;
 
+import lombok.Getter;
+
+@Getter
 public final class DirectionPost {
 
 	private final Long id;
@@ -107,17 +110,4 @@ public final class DirectionPost {
 		return value;
 	}
 
-	public Long getId() { return id; }
-	public Long getSenderId() { return senderId; }
-	public Long getApprovedQuestionId() { return approvedQuestionId; }
-	public DirectionPostStatus getStatus() { return status; }
-	public String getIdempotencyKey() { return idempotencyKey; }
-	public String getBodyText() { return bodyText; }
-	public String getCoarseRegionCode() { return coarseRegionCode; }
-	public DirectionPostModerationStatus getModerationStatus() { return moderationStatus; }
-	public Instant getSubmittedAt() { return submittedAt; }
-	public Instant getPublishedAt() { return publishedAt; }
-	public Instant getExpiresAt() { return expiresAt; }
-	public Instant getAnswersReadAt() { return answersReadAt; }
-	public Instant getDeletedAt() { return deletedAt; }
 }
