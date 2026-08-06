@@ -25,8 +25,11 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Primary;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import com.dnd.qello.account.domain.Account;
@@ -62,6 +65,9 @@ class AccountPersistenceIntegrationTest extends PostgisContainerIntegrationTestS
 	private TransactionTemplate transactionTemplate;
 
 	@Autowired
+	private PlatformTransactionManager transactionManager;
+
+	@Autowired
 	private MutableClock clock;
 
 	@BeforeEach
@@ -76,12 +82,12 @@ class AccountPersistenceIntegrationTest extends PostgisContainerIntegrationTestS
 	}
 
 	@Test
-	@DisplayName("Flyway V1/V2/V3 적용 후 Hibernate validate가 schema를 변경하지 않고 시작된다")
+	@DisplayName("Flyway V1~V4 적용 후 Hibernate validate가 schema를 변경하지 않고 시작된다")
 	void startsWithFlywaySchemaValidationOnly() {
 		Integer successfulMigrations = jdbcTemplate.queryForObject("""
 			SELECT count(*)
 			FROM flyway_schema_history
-			WHERE version IN ('1', '2', '3') AND success
+			WHERE version IN ('1', '2', '3', '4') AND success
 			""", Integer.class);
 		Integer applicationTableCount = jdbcTemplate.queryForObject("""
 			SELECT count(*)
@@ -91,7 +97,7 @@ class AccountPersistenceIntegrationTest extends PostgisContainerIntegrationTestS
 			  AND table_name NOT IN ('flyway_schema_history', 'spatial_ref_sys')
 			""", Integer.class);
 
-		assertThat(successfulMigrations).isEqualTo(3);
+		assertThat(successfulMigrations).isEqualTo(4);
 		assertThat(applicationTableCount).isEqualTo(28);
 	}
 
@@ -173,6 +179,44 @@ class AccountPersistenceIntegrationTest extends PostgisContainerIntegrationTestS
 	}
 
 	@Test
+	@DisplayName("version은 저장 시 0에서 시작해 수정할 때마다 증가한다")
+	void versionStartsAtZeroAndAdvancesOnEachUpdate() {
+		Account saved = accountRepository.save(Account.createUser(
+			REGION_CODE, "ko-KR", "Asia/Seoul", "original"));
+
+		assertThat(rawLong(saved.getId(), "version")).isZero();
+
+		Account renamed = accountRepository.updateProfile(
+			saved.updateProfile(REGION_CODE, "ko-KR", "Asia/Seoul", "renamed"));
+
+		assertThat(rawLong(saved.getId(), "version")).isEqualTo(1L);
+
+		accountRepository.updateStatus(renamed.block());
+
+		assertThat(rawLong(saved.getId(), "version")).isEqualTo(2L);
+	}
+
+	@Test
+	@DisplayName("먼저 커밋한 수정이 있으면 오래된 요청은 낙관적 잠금 충돌로 거절된다")
+	void rejectsStaleUpdateWithOptimisticLockingFailure() {
+		Account saved = accountRepository.save(Account.createUser(
+			REGION_CODE, "ko-KR", "Asia/Seoul", "original"));
+
+		// 바깥 트랜잭션이 version 0을 읽어 둔 뒤, 다른 트랜잭션이 먼저 같은 행을 변경한다.
+		assertThatThrownBy(() -> transactionTemplate.execute(status -> {
+			Account loaded = accountRepository.findById(saved.getId()).orElseThrow();
+			commitInSeparateTransaction(() -> jdbcTemplate.update(
+				"UPDATE user_account SET nickname = ?, version = version + 1 WHERE id = ?",
+				"other-request", saved.getId()));
+
+			return accountRepository.updateProfile(
+				loaded.updateProfile(REGION_CODE, "ko-KR", "Asia/Seoul", "stale"));
+		})).isInstanceOf(OptimisticLockingFailureException.class);
+
+		assertThat(rawString(saved.getId(), "nickname")).isEqualTo("other-request");
+	}
+
+	@Test
 	@DisplayName("존재하지 않는 id를 수정하려 하면 404로 매핑되는 ACCOUNT_NOT_FOUND가 발생한다")
 	void updatingMissingAccountFails() {
 		Account saved = accountRepository.save(Account.createUser(
@@ -243,6 +287,17 @@ class AccountPersistenceIntegrationTest extends PostgisContainerIntegrationTestS
 			""", Integer.class);
 
 		assertThat(remaining).isZero();
+	}
+
+	private Long rawLong(long id, String column) {
+		return jdbcTemplate.queryForObject(
+			"SELECT " + column + " FROM user_account WHERE id = ?", Long.class, id);
+	}
+
+	private void commitInSeparateTransaction(Runnable work) {
+		TransactionTemplate separate = new TransactionTemplate(transactionManager);
+		separate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+		separate.executeWithoutResult(status -> work.run());
 	}
 
 	private String rawString(long accountId, String column) {

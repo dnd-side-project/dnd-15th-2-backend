@@ -94,6 +94,9 @@
 
 `CMN-VAL-003`과 `CMN-DOM-001`은 인증·인가 도입 전에 응답 형식을 고정해 두기 위해 정의했다.
 
+낙관적 잠금 충돌(`OptimisticLockingFailureException`)도 `CMN-DOM-003`으로 나간다. 같은 행을
+동시에 수정한 요청 중 뒤늦은 쪽이며, 기능과 무관하게 의미가 같아 공통 코드로 둔다.
+
 ## 6. account (ACC)
 
 | 코드 | 이름 | HTTP | 분류 | 메시지 |

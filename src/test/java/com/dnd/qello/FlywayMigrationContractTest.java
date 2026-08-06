@@ -46,11 +46,12 @@ class FlywayMigrationContractTest {
 		assertThat(sqlMigrationNames()).containsExactly(
 			"V1__create_direction_communication_schema.sql",
 			"V2__add_reactions_and_skip_pending.sql",
-			"V3__add_user_account_password_hash.sql");
+			"V3__add_user_account_password_hash.sql",
+			"V4__add_user_account_optimistic_lock.sql");
 	}
 
 	@Test
-	@DisplayName("V2와 V3는 script configuration 없이 기본 transaction 안에서 실행된다")
+	@DisplayName("V2 이후 delta는 script configuration 없이 기본 transaction 안에서 실행된다")
 	void deltaMigrationsRunInsideTheDefaultTransaction() throws IOException {
 		assertThat(scriptConfigurationNames()).containsExactly(
 			"V1__create_direction_communication_schema.sql.conf");

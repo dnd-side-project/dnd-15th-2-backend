@@ -4,6 +4,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
@@ -102,6 +103,13 @@ public class GlobalExceptionHandler {
 	public ResponseEntity<ApiErrorResponse> handleDataIntegrityViolation(DataIntegrityViolationException exception) {
 		ConstraintMapping mapping = constraintExceptionMapper.map(extractConstraintName(exception));
 		return respond(exception, mapping.errorCode(), mapping.field(), mapping.errorCode().message());
+	}
+
+	// 낙관적 잠금 충돌. 같은 행을 동시에 수정한 요청 중 뒤늦은 쪽이 여기로 온다.
+	// 어느 기능이든 같은 의미이므로 공통 코드로 변환한다.
+	@ExceptionHandler(OptimisticLockingFailureException.class)
+	public ResponseEntity<ApiErrorResponse> handleOptimisticLocking(OptimisticLockingFailureException exception) {
+		return respond(exception, CommonErrorCode.CONFLICT, null, "다른 요청이 먼저 같은 대상을 변경했습니다.");
 	}
 
 	@ExceptionHandler(ResponseStatusException.class)

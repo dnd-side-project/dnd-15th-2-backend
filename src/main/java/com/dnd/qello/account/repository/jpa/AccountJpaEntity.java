@@ -14,6 +14,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -54,6 +55,12 @@ public class AccountJpaEntity extends JpaAuditableEntity {
 
 	@Column(name = "deleted_at")
 	private Instant deletedAt;
+
+	// 같은 계정을 동시에 수정한 요청 중 뒤늦은 쪽을 거절한다. 값은 Hibernate가 관리하므로
+	// 도메인이나 Mapper가 읽거나 쓰지 않는다.
+	@Version
+	@Column(name = "version", nullable = false)
+	private Long version;
 
 	AccountJpaEntity(
 		AccountRole role,
