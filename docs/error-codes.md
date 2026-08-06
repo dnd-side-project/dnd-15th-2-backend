@@ -140,6 +140,9 @@
 | `DIR-DOM-004` | INVALID_RECIPIENT_STATE | 400 | DOM | 수신자 상태와 값이 맞지 않습니다. |
 | `DIR-DOM-005` | LOCATION_REQUIRED | 400 | DOM | 위치 정보가 필요합니다. |
 | `DIR-DOM-006` | SCHEME_NOT_FOUND | 404 | DOM | 방향 구획 체계를 찾을 수 없습니다. |
+| `DIR-DOM-007` | INELIGIBLE_REACTOR | 403 | DOM | 질문글에 공감할 수 있는 수신자가 아닙니다. |
+| `DIR-DOM-008` | RECIPIENT_NOT_FOUND | 404 | DOM | 수신 항목을 찾을 수 없습니다. |
+| `DIR-DOM-009` | POST_NOT_FOUND | 404 | DOM | 질문글을 찾을 수 없습니다. |
 | `DIR-APP-001` | QUESTION_NOT_ACTIVE | 409 | APP | 전송 시각에 활성인 질문이 아닙니다. |
 | `DIR-APP-002` | PRESENCE_LOCATION_MISSING | 409 | APP | 위치 정보가 없어 수신 후보를 계산할 수 없습니다. |
 | `DIR-APP-003` | PRESENCE_NOT_CURRENT | 409 | APP | 현재 위치 정보가 유효하지 않습니다. |

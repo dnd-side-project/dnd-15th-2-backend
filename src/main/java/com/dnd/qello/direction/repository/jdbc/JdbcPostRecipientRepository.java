@@ -4,6 +4,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.util.List;
+import java.util.Optional;
 
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
@@ -52,6 +53,32 @@ public class JdbcPostRecipientRepository implements PostRecipientRepository {
 	public List<PostRecipient> findAllByPostId(long postId) {
 		return jdbc.query("SELECT * FROM post_recipient WHERE post_id = :postId ORDER BY id",
 			new MapSqlParameterSource("postId", postId), (rs, rowNum) -> map(rs));
+	}
+
+	@Override
+	public Optional<PostRecipient> findById(long id) {
+		return one("SELECT * FROM post_recipient WHERE id = :id", new MapSqlParameterSource("id", id));
+	}
+
+	@Override
+	public Optional<PostRecipient> findByIdAndRecipientId(long id, long recipientId) {
+		return one("SELECT * FROM post_recipient WHERE id = :id AND recipient_id = :recipientId",
+			new MapSqlParameterSource().addValue("id", id).addValue("recipientId", recipientId));
+	}
+
+	/**
+	 * 질문글+수신자 조합으로 찾는다. postRecipientId를 모르는 호출자용이다 — 예를 들어
+	 * PostReactionService가 "이 사용자가 이 질문글의 수신 자격이 있는가"를 확인할 때
+	 * postId만 갖고 있으므로 이 finder를 쓴다.
+	 */
+	@Override
+	public Optional<PostRecipient> findByPostIdAndRecipientId(long postId, long recipientId) {
+		return one("SELECT * FROM post_recipient WHERE post_id = :postId AND recipient_id = :recipientId",
+			new MapSqlParameterSource().addValue("postId", postId).addValue("recipientId", recipientId));
+	}
+
+	private Optional<PostRecipient> one(String sql, MapSqlParameterSource params) {
+		return jdbc.query(sql, params, rs -> rs.next() ? Optional.of(map(rs)) : Optional.empty());
 	}
 
 	private static MapSqlParameterSource params(PostRecipient r) {
