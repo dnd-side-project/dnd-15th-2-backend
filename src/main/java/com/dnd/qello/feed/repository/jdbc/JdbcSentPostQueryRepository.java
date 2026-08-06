@@ -39,12 +39,20 @@ public class JdbcSentPostQueryRepository implements SentPostQueryRepository {
 		                 FROM media_attachment ma WHERE ma.post_id = dp.id), '{}'::bigint[]) AS media_ids,
 		       (SELECT count(*) FROM answer a
 		          JOIN post_recipient pra ON pra.id = a.post_recipient_id
-		         WHERE pra.post_id = dp.id AND a.status = 'PUBLISHED' AND a.deleted_at IS NULL) AS answer_count,
+		         WHERE pra.post_id = dp.id AND a.status = 'PUBLISHED' AND a.deleted_at IS NULL
+		           AND NOT EXISTS (SELECT 1 FROM user_block ub
+		                           WHERE ub.blocker_id = dp.sender_id
+		                             AND ub.blocked_id = a.author_id
+		                             AND ub.released_at IS NULL)) AS answer_count,
 		       (SELECT count(*) FROM post_reaction prx WHERE prx.post_id = dp.id) AS reaction_count,
 		       (SELECT count(*) FROM answer a
 		          JOIN post_recipient pru ON pru.id = a.post_recipient_id
 		         WHERE pru.post_id = dp.id AND a.status = 'PUBLISHED' AND a.deleted_at IS NULL
-		           AND a.published_at > COALESCE(dp.answers_read_at, '-infinity'::timestamptz)) AS unread_answer_count
+		           AND a.published_at > COALESCE(dp.answers_read_at, '-infinity'::timestamptz)
+		           AND NOT EXISTS (SELECT 1 FROM user_block ub
+		                           WHERE ub.blocker_id = dp.sender_id
+		                             AND ub.blocked_id = a.author_id
+		                             AND ub.released_at IS NULL)) AS unread_answer_count
 		FROM direction_post dp
 		JOIN approved_question aq ON aq.id = dp.approved_question_id
 		""";

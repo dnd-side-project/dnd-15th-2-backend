@@ -19,7 +19,7 @@ public interface SentPostQueryRepository {
 
 	/**
 	 * 질문자만 조회할 수 있다. senderId 검증을 쿼리 조건에 포함하며 조회 후 비교하지 않는다.
-	 * 근거: docs/adr/0001-답변은-질문자에게만-도달한다.md
+	 * 근거: 답변은 질문을 보낸 사람에게만 도달한다(제품 규칙). 전용 ADR 문서는 아직 없다.
 	 */
 	List<AnswerCard> findAnswers(long senderId, long postId, AnswerCursor cursor, int limit);
 

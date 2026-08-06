@@ -19,6 +19,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 
+import com.dnd.qello.direction.service.DirectionPostService;
 import com.dnd.qello.feed.repository.SentPostQueryRepository;
 import com.dnd.qello.feed.service.SentPostQueryService;
 import com.dnd.qello.feed.view.AnswerCard;
@@ -36,6 +37,8 @@ class SentPostQueryIntegrationTest extends PostgisContainerIntegrationTestSuppor
 	private JdbcTemplate jdbc;
 	@Autowired
 	private SentPostQueryService sentPostQueryService;
+	@Autowired
+	private DirectionPostService directionPostService;
 
 	private long senderId;
 	private long recipientId;
@@ -169,8 +172,7 @@ class SentPostQueryIntegrationTest extends PostgisContainerIntegrationTestSuppor
 		assertThat(sentPostQueryService.list(senderId, SentPostFilter.ALL, null, 10, at)
 			.getFirst().unreadAnswerCount()).isEqualTo(1L);
 
-		jdbc.update("UPDATE direction_post SET answers_read_at = ? WHERE id = ?",
-			Timestamp.from(NOW.plusSeconds(120)), postId);
+		directionPostService.markAnswersRead(senderId, postId, NOW.plusSeconds(120));
 
 		assertThat(sentPostQueryService.list(senderId, SentPostFilter.ALL, null, 10, at)
 			.getFirst().unreadAnswerCount()).isZero();
@@ -224,5 +226,8 @@ class SentPostQueryIntegrationTest extends PostgisContainerIntegrationTestSuppor
 		jdbc.update("INSERT INTO user_block (blocker_id, blocked_id) VALUES (?, ?)", senderId, recipientId);
 
 		assertThat(sentPostQueryService.answers(senderId, postId, null, 10)).isEmpty();
+		assertThat(sentPostQueryService
+			.list(senderId, SentPostFilter.ALL, null, 10, NOW.plus(1, ChronoUnit.HOURS)).getFirst()
+			.answerCount()).isZero();
 	}
 }
