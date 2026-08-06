@@ -3,6 +3,7 @@ package com.dnd.qello.direction.repository.jdbc;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.time.Instant;
 import java.util.Optional;
 
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
@@ -46,6 +47,17 @@ public class JdbcDirectionPostRepository implements DirectionPostRepository {
 			post.getIdempotencyKey(), post.getBodyText(), post.getCoarseRegionCode(), post.getModerationStatus(),
 			post.getSubmittedAt(), post.getPublishedAt(), post.getExpiresAt(), post.getAnswersReadAt(),
 			post.getDeletedAt());
+	}
+
+	@Override
+	public DirectionPost advanceAnswersReadAt(long id, Instant at) {
+		return jdbc.query("""
+			UPDATE direction_post
+			SET answers_read_at = GREATEST(answers_read_at, :at)
+			WHERE id = :id
+			RETURNING *
+			""", new MapSqlParameterSource().addValue("id", id).addValue("at", timestamp(at)),
+			rs -> { rs.next(); return map(rs); });
 	}
 
 	@Override

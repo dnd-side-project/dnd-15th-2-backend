@@ -253,6 +253,18 @@ class InboxSentPostWriteIntegrationTest extends PostgisContainerIntegrationTestS
 	}
 
 	@Test
+	@DisplayName("markAnswersRead는 이미 기록된 시각보다 이른 시각으로 되돌아가지 않는다")
+	void marksAnswersReadNeverRegresses() {
+		directionPostService.markAnswersRead(senderId, postId, NOW.plusSeconds(120));
+
+		DirectionPost result = directionPostService.markAnswersRead(senderId, postId, NOW.plusSeconds(60));
+
+		assertThat(result.getAnswersReadAt()).isEqualTo(NOW.plusSeconds(120));
+		assertThat(directionPostRepository.findById(postId).orElseThrow().getAnswersReadAt())
+			.isEqualTo(NOW.plusSeconds(120));
+	}
+
+	@Test
 	@DisplayName("수신 자격이 있는 사용자의 공감 토글은 남김과 취소를 오간다")
 	void togglesPostReaction() {
 		assertThat(postReactionService.toggle(postId, recipientId, NOW.plusSeconds(10))).isTrue();

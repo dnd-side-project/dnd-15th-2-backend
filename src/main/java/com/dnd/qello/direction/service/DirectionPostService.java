@@ -82,13 +82,19 @@ public class DirectionPostService {
 		return new SendResult(post, audience, recipients);
 	}
 
-	/** 질문자가 답변 목록을 읽었음을 기록한다. `새로운 답변 n개` 배지가 이 값으로 계산된다. */
+	/**
+	 * 질문자가 답변 목록을 읽었음을 기록한다. `새로운 답변 n개` 배지가 이 값으로 계산된다.
+	 * post.markAnswersRead(at)는 유효성만 검증하고 결과는 버린다 — 실제 반영은
+	 * advanceAnswersReadAt()의 DB 단일 UPDATE(max 비교)로 위임해, 순서가 뒤바뀌어
+	 * 도착한 요청이 이미 기록된 더 늦은 시각을 덮어쓰지 않게 한다.
+	 */
 	@Transactional
 	public DirectionPost markAnswersRead(long senderId, long postId, Instant at) {
 		DirectionPost post = postRepository.findByIdAndSenderId(postId, senderId)
 			.orElseThrow(() -> new DirectionException(
 				DirectionErrorCode.POST_NOT_FOUND, "postId", "질문글을 찾을 수 없습니다"));
-		return postRepository.save(post.markAnswersRead(at));
+		post.markAnswersRead(at);
+		return postRepository.advanceAnswersReadAt(postId, at);
 	}
 
 	private List<DirectionCandidate> candidates(PreviewCommand command, ActiveUserPresence sender, DirectionSegment segment) {
