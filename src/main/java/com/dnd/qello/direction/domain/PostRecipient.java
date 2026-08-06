@@ -181,8 +181,8 @@ public final class PostRecipient {
 	/** AVAILABLE만 DISCOVERED로 올린다. 이미 열람 이력이 있으면 그대로 둔다. */
 	public PostRecipient discover(Instant at) {
 		requireValue(at, "at");
+		if (status == PostRecipientStatus.DISCOVERED || status == PostRecipientStatus.OPENED) return this;
 		if (status != PostRecipientStatus.AVAILABLE) {
-			if (status == PostRecipientStatus.DISCOVERED || status == PostRecipientStatus.OPENED) return this;
 			throw new DirectionException(
 				DirectionErrorCode.INVALID_RECIPIENT_STATE, "status", "발견 처리를 할 수 없는 상태입니다");
 		}
