@@ -146,7 +146,7 @@ class SentPostQueryIntegrationTest extends PostgisContainerIntegrationTestSuppor
 			cursor = new SentPostQueryRepository.SentPostCursor(last.submittedAt(), last.postId());
 		} while (page.size() == 2);
 
-		assertThat(collected).containsExactlyInAnyOrderElementsOf(postIds);
+		assertThat(collected).containsExactlyElementsOf(postIds.reversed());
 	}
 
 	@Test
