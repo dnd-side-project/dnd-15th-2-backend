@@ -21,6 +21,7 @@ import org.springframework.test.context.ActiveProfiles;
 
 import com.dnd.qello.feed.repository.SentPostQueryRepository;
 import com.dnd.qello.feed.service.SentPostQueryService;
+import com.dnd.qello.feed.view.AnswerCard;
 import com.dnd.qello.feed.view.SentPostCard;
 import com.dnd.qello.feed.view.SentPostFilter;
 
@@ -182,5 +183,46 @@ class SentPostQueryIntegrationTest extends PostgisContainerIntegrationTestSuppor
 
 		assertThat(sentPostQueryService.detail(senderId, postId)).isPresent();
 		assertThat(sentPostQueryService.detail(outsiderId, postId)).isEmpty();
+	}
+
+	@Test
+	@DisplayName("질문자만 답변 목록을 볼 수 있다")
+	void onlySenderCanReadAnswers() {
+		long postId = post("p-answers", NOW, NOW.plus(2, ChronoUnit.HOURS));
+		long recipientRowId = recipient(postId, recipientId);
+		answer(recipientRowId, recipientId, "a-1", "PUBLISHED", NOW.plusSeconds(60));
+
+		assertThat(sentPostQueryService.answers(senderId, postId, null, 10)).hasSize(1);
+		assertThat(sentPostQueryService.answers(outsiderId, postId, null, 10)).isEmpty();
+		assertThat(sentPostQueryService.answers(recipientId, postId, null, 10)).isEmpty();
+	}
+
+	@Test
+	@DisplayName("답변 목록은 공개된 답변만 최신순으로 보여주고 공감 여부를 함께 준다")
+	void listsPublishedAnswersNewestFirst() {
+		long postId = post("p-answers", NOW, NOW.plus(2, ChronoUnit.HOURS));
+		long first = recipient(postId, recipientId);
+		long second = recipient(postId, outsiderId);
+		long oldAnswer = answer(first, recipientId, "a-old", "PUBLISHED", NOW.plusSeconds(60));
+		long newAnswer = answer(second, outsiderId, "a-new", "PUBLISHED", NOW.plusSeconds(120));
+		jdbc.update("INSERT INTO answer_reaction (answer_id, reactor_id) VALUES (?, ?)", newAnswer, senderId);
+
+		List<AnswerCard> answers = sentPostQueryService.answers(senderId, postId, null, 10);
+
+		assertThat(answers).extracting(AnswerCard::answerId).containsExactly(newAnswer, oldAnswer);
+		assertThat(answers.getFirst().reactedByMe()).isTrue();
+		assertThat(answers.getFirst().authorNickname()).isEqualTo("sq-outsider");
+		assertThat(answers.getLast().reactedByMe()).isFalse();
+	}
+
+	@Test
+	@DisplayName("차단한 답변 작성자의 답변은 목록에서 빠진다")
+	void hidesBlockedAuthorAnswers() {
+		long postId = post("p-answers", NOW, NOW.plus(2, ChronoUnit.HOURS));
+		long recipientRowId = recipient(postId, recipientId);
+		answer(recipientRowId, recipientId, "a-1", "PUBLISHED", NOW.plusSeconds(60));
+		jdbc.update("INSERT INTO user_block (blocker_id, blocked_id) VALUES (?, ?)", senderId, recipientId);
+
+		assertThat(sentPostQueryService.answers(senderId, postId, null, 10)).isEmpty();
 	}
 }

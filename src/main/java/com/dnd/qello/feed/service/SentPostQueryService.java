@@ -8,7 +8,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.dnd.qello.feed.repository.SentPostQueryRepository;
+import com.dnd.qello.feed.repository.SentPostQueryRepository.AnswerCursor;
 import com.dnd.qello.feed.repository.SentPostQueryRepository.SentPostCursor;
+import com.dnd.qello.feed.view.AnswerCard;
 import com.dnd.qello.feed.view.SentPostCard;
 import com.dnd.qello.feed.view.SentPostDetail;
 import com.dnd.qello.feed.view.SentPostFilter;
@@ -34,5 +36,11 @@ public class SentPostQueryService {
 	@Transactional(readOnly = true)
 	public Optional<SentPostDetail> detail(long senderId, long postId) {
 		return sentPostQueryRepository.findSentPostDetail(senderId, postId);
+	}
+
+	/** 질문자가 아니면 빈 목록을 받는다. 권한 예외를 던지지 않는 이유는 질문글 존재 여부를 흘리지 않기 위함이다. */
+	@Transactional(readOnly = true)
+	public List<AnswerCard> answers(long senderId, long postId, AnswerCursor cursor, int limit) {
+		return sentPostQueryRepository.findAnswers(senderId, postId, cursor, limit);
 	}
 }
