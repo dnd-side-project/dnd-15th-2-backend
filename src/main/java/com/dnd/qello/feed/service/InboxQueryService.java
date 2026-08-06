@@ -19,16 +19,15 @@ import lombok.RequiredArgsConstructor;
  */
 @Service
 @RequiredArgsConstructor
+@Transactional(readOnly = true)
 public class InboxQueryService {
 
 	private final InboxQueryRepository inboxQueryRepository;
 
-	@Transactional(readOnly = true)
 	public List<InboxCard> list(long recipientId, Instant at) {
 		return inboxQueryRepository.findInbox(recipientId, at);
 	}
 
-	@Transactional(readOnly = true)
 	public Optional<InboxDetail> detail(long recipientId, long postRecipientId) {
 		return inboxQueryRepository.findDetail(recipientId, postRecipientId);
 	}
