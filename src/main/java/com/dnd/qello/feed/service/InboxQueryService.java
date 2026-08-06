@@ -11,18 +11,17 @@ import com.dnd.qello.feed.repository.InboxQueryRepository;
 import com.dnd.qello.feed.view.InboxCard;
 import com.dnd.qello.feed.view.InboxDetail;
 
+import lombok.RequiredArgsConstructor;
+
 /**
  * `내게 온 질문` 조회 진입점.
  * 상태 전이는 direction.service.PostRecipientService가 소유한다 — 여기서는 읽기만 한다.
  */
 @Service
+@RequiredArgsConstructor
 public class InboxQueryService {
 
 	private final InboxQueryRepository inboxQueryRepository;
-
-	public InboxQueryService(InboxQueryRepository inboxQueryRepository) {
-		this.inboxQueryRepository = inboxQueryRepository;
-	}
 
 	@Transactional(readOnly = true)
 	public List<InboxCard> list(long recipientId, Instant at) {

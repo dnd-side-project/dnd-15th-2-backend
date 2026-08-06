@@ -14,12 +14,13 @@ import com.dnd.qello.direction.domain.DirectionPostModerationStatus;
 import com.dnd.qello.direction.domain.DirectionPostStatus;
 import com.dnd.qello.direction.repository.DirectionPostRepository;
 
+import lombok.RequiredArgsConstructor;
+
 @Repository
+@RequiredArgsConstructor
 public class JdbcDirectionPostRepository implements DirectionPostRepository {
 
 	private final NamedParameterJdbcTemplate jdbc;
-
-	public JdbcDirectionPostRepository(NamedParameterJdbcTemplate jdbc) { this.jdbc = jdbc; }
 
 	@Override
 	public DirectionPost save(DirectionPost post) {

@@ -26,11 +26,14 @@ import com.dnd.qello.direction.repository.PostRecipientRepository;
 import com.dnd.qello.direction.repository.RecipientReceiveStateRepository;
 import com.dnd.qello.question.repository.ApprovedQuestionRepository;
 
+import lombok.RequiredArgsConstructor;
+
 /**
  * 방향 글 발송과 질문자 측 읽음 표시를 소유한다.
  * 방향 preview는 참고값으로만 사용하고 send transaction에서 다시 계산한다.
  */
 @Service
+@RequiredArgsConstructor
 public class DirectionPostService {
 
 	private final DirectionSchemeRepository schemeRepository;
@@ -41,20 +44,6 @@ public class DirectionPostService {
 	private final PostRecipientRepository recipientRepository;
 	private final ApprovedQuestionRepository approvedQuestionRepository;
 	private final DirectionReceiveProperties receiveProperties;
-
-	public DirectionPostService(DirectionSchemeRepository schemeRepository, ActiveUserPresenceRepository presenceRepository,
-		RecipientReceiveStateRepository receiveStateRepository, DirectionPostRepository postRepository,
-		PostAudienceRepository audienceRepository, PostRecipientRepository recipientRepository,
-		ApprovedQuestionRepository approvedQuestionRepository, DirectionReceiveProperties receiveProperties) {
-		this.schemeRepository = schemeRepository;
-		this.presenceRepository = presenceRepository;
-		this.receiveStateRepository = receiveStateRepository;
-		this.postRepository = postRepository;
-		this.audienceRepository = audienceRepository;
-		this.recipientRepository = recipientRepository;
-		this.approvedQuestionRepository = approvedQuestionRepository;
-		this.receiveProperties = receiveProperties;
-	}
 
 	@Transactional(readOnly = true)
 	public List<DirectionCandidate> preview(PreviewCommand command) {

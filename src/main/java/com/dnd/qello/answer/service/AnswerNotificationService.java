@@ -17,22 +17,17 @@ import com.dnd.qello.notification.domain.OutboxEvent;
 import com.dnd.qello.notification.domain.OutboxEventType;
 import com.dnd.qello.notification.repository.OutboxEventRepository;
 
+import lombok.RequiredArgsConstructor;
+
 /** 답변 상태 변경, 수신 슬롯 회수와 outbox 기록을 한 transaction으로 묶는 persistence application service. */
 @Service
+@RequiredArgsConstructor
 public class AnswerNotificationService {
 
 	private final AnswerRepository answerRepository;
 	private final OutboxEventRepository outboxEventRepository;
 	private final PostRecipientRepository recipientRepository;
 	private final RecipientReceiveStateRepository receiveStateRepository;
-
-	public AnswerNotificationService(AnswerRepository answerRepository, OutboxEventRepository outboxEventRepository,
-		PostRecipientRepository recipientRepository, RecipientReceiveStateRepository receiveStateRepository) {
-		this.answerRepository = answerRepository;
-		this.outboxEventRepository = outboxEventRepository;
-		this.recipientRepository = recipientRepository;
-		this.receiveStateRepository = receiveStateRepository;
-	}
 
 	/** 같은 (authorId, idempotencyKey)로 재호출되면 새로 저장하지 않고 기존 답변을 그대로 반환한다. */
 	@Transactional

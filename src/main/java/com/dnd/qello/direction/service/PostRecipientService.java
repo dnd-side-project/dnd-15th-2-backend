@@ -10,18 +10,17 @@ import com.dnd.qello.direction.error.DirectionErrorCode;
 import com.dnd.qello.direction.error.DirectionException;
 import com.dnd.qello.direction.repository.PostRecipientRepository;
 
+import lombok.RequiredArgsConstructor;
+
 /**
  * 수신함 항목의 열람과 넘김 요청을 소유한다.
  * 넘김 확정(SKIPPED)과 만료(EXPIRED)는 후속 워커의 몫이며 이 service의 범위가 아니다.
  */
 @Service
+@RequiredArgsConstructor
 public class PostRecipientService {
 
 	private final PostRecipientRepository recipientRepository;
-
-	public PostRecipientService(PostRecipientRepository recipientRepository) {
-		this.recipientRepository = recipientRepository;
-	}
 
 	/**
 	 * 소유권을 검증한 뒤 도메인의 open()을 호출한다. 이미 OPENED라 도메인이 자기 자신을

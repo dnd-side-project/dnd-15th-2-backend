@@ -15,18 +15,17 @@ import com.dnd.qello.feed.view.SentPostCard;
 import com.dnd.qello.feed.view.SentPostDetail;
 import com.dnd.qello.feed.view.SentPostFilter;
 
+import lombok.RequiredArgsConstructor;
+
 /**
  * `내가 쓴 질문` 조회 진입점.
  * 답변 열람 시각 기록은 direction.service.DirectionPostService가 소유한다 — 여기서는 읽기만 한다.
  */
 @Service
+@RequiredArgsConstructor
 public class SentPostQueryService {
 
 	private final SentPostQueryRepository sentPostQueryRepository;
-
-	public SentPostQueryService(SentPostQueryRepository sentPostQueryRepository) {
-		this.sentPostQueryRepository = sentPostQueryRepository;
-	}
 
 	@Transactional(readOnly = true)
 	public List<SentPostCard> list(long senderId, SentPostFilter filter, SentPostCursor cursor, int limit, Instant at) {

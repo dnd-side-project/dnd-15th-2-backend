@@ -18,7 +18,10 @@ import com.dnd.qello.feed.repository.InboxQueryRepository;
 import com.dnd.qello.feed.view.InboxCard;
 import com.dnd.qello.feed.view.InboxDetail;
 
+import lombok.RequiredArgsConstructor;
+
 @Repository
+@RequiredArgsConstructor
 public class JdbcInboxQueryRepository implements InboxQueryRepository {
 
 	/** 답변·넘김 확정·만료·차단으로 종료되지 않은 상태. SKIP_PENDING은 되돌릴 수 있으므로 포함한다. */
@@ -45,8 +48,6 @@ public class JdbcInboxQueryRepository implements InboxQueryRepository {
 		""";
 
 	private final NamedParameterJdbcTemplate jdbc;
-
-	public JdbcInboxQueryRepository(NamedParameterJdbcTemplate jdbc) { this.jdbc = jdbc; }
 
 	@Override
 	public List<InboxCard> findInbox(long recipientId, Instant at) {

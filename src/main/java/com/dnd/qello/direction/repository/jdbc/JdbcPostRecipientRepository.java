@@ -14,12 +14,13 @@ import com.dnd.qello.direction.domain.PostRecipient;
 import com.dnd.qello.direction.domain.PostRecipientStatus;
 import com.dnd.qello.direction.repository.PostRecipientRepository;
 
+import lombok.RequiredArgsConstructor;
+
 @Repository
+@RequiredArgsConstructor
 public class JdbcPostRecipientRepository implements PostRecipientRepository {
 
 	private final NamedParameterJdbcTemplate jdbc;
-
-	public JdbcPostRecipientRepository(NamedParameterJdbcTemplate jdbc) { this.jdbc = jdbc; }
 
 	@Override
 	public PostRecipient save(PostRecipient recipient) {

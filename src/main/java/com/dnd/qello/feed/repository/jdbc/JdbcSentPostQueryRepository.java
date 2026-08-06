@@ -17,6 +17,8 @@ import com.dnd.qello.feed.view.SentPostCard;
 import com.dnd.qello.feed.view.SentPostDetail;
 import com.dnd.qello.feed.view.SentPostFilter;
 
+import lombok.RequiredArgsConstructor;
+
 /**
  * mediaIds/instant 변환은 JdbcInboxQueryRepository(같은 패키지)의 package-private static
  * 메서드를 그대로 재사용한다. static import 대신 클래스명으로 한정해 호출하는 이유는
@@ -25,6 +27,7 @@ import com.dnd.qello.feed.view.SentPostFilter;
  * 패키지 경로를 그대로 담아 이 검사에 걸린다.
  */
 @Repository
+@RequiredArgsConstructor
 public class JdbcSentPostQueryRepository implements SentPostQueryRepository {
 
 	private static final String SELECT_CARD = """
@@ -58,8 +61,6 @@ public class JdbcSentPostQueryRepository implements SentPostQueryRepository {
 		""";
 
 	private final NamedParameterJdbcTemplate jdbc;
-
-	public JdbcSentPostQueryRepository(NamedParameterJdbcTemplate jdbc) { this.jdbc = jdbc; }
 
 	@Override
 	public List<SentPostCard> findSentPosts(long senderId, SentPostFilter filter, SentPostCursor cursor,

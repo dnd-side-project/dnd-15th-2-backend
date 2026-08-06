@@ -13,12 +13,13 @@ import org.springframework.stereotype.Repository;
 import com.dnd.qello.direction.domain.RecipientReceiveState;
 import com.dnd.qello.direction.repository.RecipientReceiveStateRepository;
 
+import lombok.RequiredArgsConstructor;
+
 @Repository
+@RequiredArgsConstructor
 public class JdbcRecipientReceiveStateRepository implements RecipientReceiveStateRepository {
 
 	private final NamedParameterJdbcTemplate jdbc;
-
-	public JdbcRecipientReceiveStateRepository(NamedParameterJdbcTemplate jdbc) { this.jdbc = jdbc; }
 
 	@Override
 	public RecipientReceiveState save(RecipientReceiveState state) {

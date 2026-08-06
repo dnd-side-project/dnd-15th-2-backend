@@ -15,6 +15,8 @@ import com.dnd.qello.direction.domain.PostRecipient;
 import com.dnd.qello.direction.repository.DirectionPostRepository;
 import com.dnd.qello.direction.repository.PostRecipientRepository;
 
+import lombok.RequiredArgsConstructor;
+
 /**
  * 답변 공감의 토글을 소유한다.
  * 자격은 ct_answer_reaction_reactor_is_sender가 최종 강제하지만 이 trigger는
@@ -23,20 +25,13 @@ import com.dnd.qello.direction.repository.PostRecipientRepository;
  * 최종 방어선으로 남긴다.
  */
 @Service
+@RequiredArgsConstructor
 public class AnswerReactionService {
 
 	private final AnswerReactionRepository reactionRepository;
 	private final AnswerRepository answerRepository;
 	private final PostRecipientRepository recipientRepository;
 	private final DirectionPostRepository postRepository;
-
-	public AnswerReactionService(AnswerReactionRepository reactionRepository, AnswerRepository answerRepository,
-		PostRecipientRepository recipientRepository, DirectionPostRepository postRepository) {
-		this.reactionRepository = reactionRepository;
-		this.answerRepository = answerRepository;
-		this.recipientRepository = recipientRepository;
-		this.postRepository = postRepository;
-	}
 
 	/** @return true면 공감을 남긴 상태, false면 취소된 상태 */
 	@Transactional
