@@ -20,6 +20,10 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 
+import com.dnd.qello.answer.error.AnswerErrorCode;
+import com.dnd.qello.answer.error.AnswerException;
+import com.dnd.qello.answer.repository.AnswerReactionRepository;
+import com.dnd.qello.answer.service.AnswerReactionService;
 import com.dnd.qello.direction.domain.DirectionPost;
 import com.dnd.qello.direction.domain.PostRecipient;
 import com.dnd.qello.direction.domain.PostRecipientStatus;
@@ -52,11 +56,15 @@ class InboxSentPostWriteIntegrationTest extends PostgisContainerIntegrationTestS
 	@Autowired
 	private PostReactionRepository postReactionRepository;
 	@Autowired
+	private AnswerReactionRepository answerReactionRepository;
+	@Autowired
 	private PostRecipientService postRecipientService;
 	@Autowired
 	private DirectionPostService directionPostService;
 	@Autowired
 	private PostReactionService postReactionService;
+	@Autowired
+	private AnswerReactionService answerReactionService;
 
 	private long senderId;
 	private long recipientId;
@@ -118,6 +126,17 @@ class InboxSentPostWriteIntegrationTest extends PostgisContainerIntegrationTestS
 			VALUES (?, ?, ?, 'NEAR', 45, ?, ?)
 			RETURNING id
 			""", Long.class, targetPostId, targetRecipientId, status, REGION, Timestamp.from(NOW));
+	}
+
+	private long publishedAnswer(long targetPostRecipientId, long authorId, String idempotencyKey, Instant publishedAt) {
+		return jdbc.queryForObject("""
+			INSERT INTO answer
+				(post_recipient_id, author_id, status, idempotency_key, body_text, coarse_region_code,
+				 bearing_from_sender_deg, distance_band, moderation_status, submitted_at, published_at)
+			VALUES (?, ?, 'PUBLISHED', ?, '답변 본문', ?, 45, 'NEAR', 'PASSED', ?, ?)
+			RETURNING id
+			""", Long.class, targetPostRecipientId, authorId, idempotencyKey, REGION,
+			Timestamp.from(publishedAt), Timestamp.from(publishedAt));
 	}
 
 	@Test
@@ -242,5 +261,38 @@ class InboxSentPostWriteIntegrationTest extends PostgisContainerIntegrationTestS
 			.isInstanceOf(DirectionException.class)
 			.hasFieldOrPropertyWithValue("errorCode", DirectionErrorCode.INELIGIBLE_REACTOR);
 		assertThat(postReactionRepository.countByPostId(postId)).isZero();
+	}
+
+	@Test
+	@DisplayName("질문자의 답변 공감 토글은 남김과 취소를 오간다")
+	void togglesAnswerReaction() {
+		long answerId = publishedAnswer(postRecipientId, recipientId, "answer-1", NOW.plusSeconds(30));
+
+		assertThat(answerReactionService.toggle(answerId, senderId, NOW.plusSeconds(40))).isTrue();
+		assertThat(answerReactionRepository.findByAnswerId(answerId)).isPresent();
+
+		assertThat(answerReactionService.toggle(answerId, senderId, NOW.plusSeconds(50))).isFalse();
+		assertThat(answerReactionRepository.findByAnswerId(answerId)).isEmpty();
+	}
+
+	@Test
+	@DisplayName("질문자가 아니면 답변에 공감할 수 없고 commit 전에 차단된다")
+	void nonSenderCannotReactToAnswer() {
+		long answerId = publishedAnswer(postRecipientId, recipientId, "answer-1", NOW.plusSeconds(30));
+
+		assertThatThrownBy(() -> answerReactionService.toggle(answerId, outsiderId, NOW.plusSeconds(40)))
+			.isInstanceOf(AnswerException.class)
+			.hasFieldOrPropertyWithValue("errorCode", AnswerErrorCode.INELIGIBLE_REACTOR);
+		assertThat(answerReactionRepository.findByAnswerId(answerId)).isEmpty();
+	}
+
+	@Test
+	@DisplayName("답변 작성자 본인도 자기 답변에 공감할 수 없다")
+	void answerAuthorCannotReactToOwnAnswer() {
+		long answerId = publishedAnswer(postRecipientId, recipientId, "answer-1", NOW.plusSeconds(30));
+
+		assertThatThrownBy(() -> answerReactionService.toggle(answerId, recipientId, NOW.plusSeconds(40)))
+			.isInstanceOf(AnswerException.class)
+			.hasFieldOrPropertyWithValue("errorCode", AnswerErrorCode.INELIGIBLE_REACTOR);
 	}
 }
