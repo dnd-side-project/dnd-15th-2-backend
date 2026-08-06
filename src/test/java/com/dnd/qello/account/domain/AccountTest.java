@@ -8,6 +8,9 @@ import java.time.Instant;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import com.dnd.qello.account.error.AccountErrorCode;
+import com.dnd.qello.account.error.AccountException;
+
 /**
  * Created at: 2026-08-04T12:00:00+09:00
  * Source scenario: TEST-PLAN-GH-48-ACCOUNT-PASSWORD-UNIT-001
@@ -39,24 +42,29 @@ class AccountTest {
 
 		assertThatThrownBy(() -> Account.createOperator(
 			"KR-TEST", "ko-KR", "Asia/Seoul", "qello-admin", null))
-			.isInstanceOf(NullPointerException.class);
+			.isInstanceOf(AccountException.class)
+			.hasFieldOrPropertyWithValue("errorCode", AccountErrorCode.INVALID_PASSWORD_HASH_STATE);
 	}
 
 	@Test
 	@DisplayName("Account는 필수 문자열과 schema 길이 및 IANA timezone을 검증한다")
 	void rejectsInvalidProfileValues() {
 		assertThatThrownBy(() -> Account.createUser(" ", "ko-KR", "Asia/Seoul", null))
-			.isInstanceOf(IllegalArgumentException.class);
+			.isInstanceOf(AccountException.class);
 		assertThatThrownBy(() -> Account.createUser("KR-TEST", " ", "Asia/Seoul", null))
-			.isInstanceOf(IllegalArgumentException.class);
+			.isInstanceOf(AccountException.class);
 		assertThatThrownBy(() -> Account.createUser("KR-TEST", "ko-KR", "invalid/timezone", null))
-			.isInstanceOf(IllegalArgumentException.class);
+			.isInstanceOf(AccountException.class)
+			.hasFieldOrPropertyWithValue("errorCode", AccountErrorCode.INVALID_TIMEZONE)
+			.hasFieldOrPropertyWithValue("field", "timezone");
 		assertThatThrownBy(() -> Account.createUser("KR-TEST", "ko-KR", "Asia/Seoul", "   "))
-			.isInstanceOf(IllegalArgumentException.class);
+			.isInstanceOf(AccountException.class);
 		assertThatThrownBy(() -> Account.createUser("R".repeat(101), "ko-KR", "Asia/Seoul", null))
-			.isInstanceOf(IllegalArgumentException.class);
+			.isInstanceOf(AccountException.class)
+			.hasFieldOrPropertyWithValue("errorCode", AccountErrorCode.TEXT_TOO_LONG);
 		assertThatThrownBy(() -> Account.createUser("KR-TEST", "ko-KR", "Asia/Seoul", "N".repeat(51)))
-			.isInstanceOf(IllegalArgumentException.class);
+			.isInstanceOf(AccountException.class)
+			.hasFieldOrPropertyWithValue("errorCode", AccountErrorCode.TEXT_TOO_LONG);
 	}
 
 	@Test
@@ -65,11 +73,13 @@ class AccountTest {
 		assertThatThrownBy(() -> Account.restore(
 			1L, AccountRole.USER, AccountStatus.ACTIVE, "KR-TEST", "ko-KR", "Asia/Seoul",
 			null, OPERATOR_PASSWORD_HASH, null))
-			.isInstanceOf(IllegalArgumentException.class);
+			.isInstanceOf(AccountException.class)
+			.hasFieldOrPropertyWithValue("errorCode", AccountErrorCode.INVALID_PASSWORD_HASH_STATE);
 		assertThatThrownBy(() -> Account.restore(
 			1L, AccountRole.OPERATOR, AccountStatus.ACTIVE, "KR-TEST", "ko-KR", "Asia/Seoul",
 			null, null, null))
-			.isInstanceOf(IllegalArgumentException.class);
+			.isInstanceOf(AccountException.class)
+			.hasFieldOrPropertyWithValue("errorCode", AccountErrorCode.INVALID_PASSWORD_HASH_STATE);
 	}
 
 	@Test
@@ -78,11 +88,13 @@ class AccountTest {
 		assertThatThrownBy(() -> Account.restore(
 			null, AccountRole.USER, AccountStatus.ACTIVE, "KR-TEST", "ko-KR", "Asia/Seoul",
 			null, null, null))
-			.isInstanceOf(IllegalArgumentException.class);
+			.isInstanceOf(AccountException.class)
+			.hasFieldOrPropertyWithValue("errorCode", AccountErrorCode.INVALID_ID);
 		assertThatThrownBy(() -> Account.restore(
 			0L, AccountRole.USER, AccountStatus.ACTIVE, "KR-TEST", "ko-KR", "Asia/Seoul",
 			null, null, null))
-			.isInstanceOf(IllegalArgumentException.class);
+			.isInstanceOf(AccountException.class)
+			.hasFieldOrPropertyWithValue("errorCode", AccountErrorCode.INVALID_ID);
 	}
 
 	@Test
@@ -93,11 +105,13 @@ class AccountTest {
 		assertThatThrownBy(() -> Account.restore(
 			1L, AccountRole.USER, AccountStatus.DELETED, "KR-TEST", "ko-KR", "Asia/Seoul",
 			null, null, null))
-			.isInstanceOf(IllegalArgumentException.class);
+			.isInstanceOf(AccountException.class)
+			.hasFieldOrPropertyWithValue("errorCode", AccountErrorCode.INVALID_DELETION_STATE);
 		assertThatThrownBy(() -> Account.restore(
 			1L, AccountRole.USER, AccountStatus.ACTIVE, "KR-TEST", "ko-KR", "Asia/Seoul",
 			null, null, deletedAt))
-			.isInstanceOf(IllegalArgumentException.class);
+			.isInstanceOf(AccountException.class)
+			.hasFieldOrPropertyWithValue("errorCode", AccountErrorCode.INVALID_DELETION_STATE);
 	}
 
 	@Test
@@ -133,9 +147,15 @@ class AccountTest {
 		assertThat(deleted.getStatus()).isEqualTo(AccountStatus.DELETED);
 		assertThat(deleted.getDeletedAt()).isNotNull();
 
-		assertThatThrownBy(unblocked::unblock).isInstanceOf(IllegalStateException.class);
-		assertThatThrownBy(deleted::block).isInstanceOf(IllegalStateException.class);
-		assertThatThrownBy(() -> deleted.delete(Instant.now())).isInstanceOf(IllegalStateException.class);
+		assertThatThrownBy(unblocked::unblock)
+			.isInstanceOf(AccountException.class)
+			.hasFieldOrPropertyWithValue("errorCode", AccountErrorCode.INVALID_STATUS_TRANSITION);
+		assertThatThrownBy(deleted::block)
+			.isInstanceOf(AccountException.class)
+			.hasFieldOrPropertyWithValue("errorCode", AccountErrorCode.INVALID_STATUS_TRANSITION);
+		assertThatThrownBy(() -> deleted.delete(Instant.now()))
+			.isInstanceOf(AccountException.class)
+			.hasFieldOrPropertyWithValue("errorCode", AccountErrorCode.INVALID_STATUS_TRANSITION);
 	}
 
 }

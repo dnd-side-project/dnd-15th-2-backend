@@ -2,7 +2,9 @@ package com.dnd.qello.direction.domain;
 
 import java.math.BigDecimal;
 import java.time.Instant;
-import java.util.Objects;
+
+import com.dnd.qello.direction.error.DirectionErrorCode;
+import com.dnd.qello.direction.error.DirectionException;
 
 public final class PostAudience {
 
@@ -26,17 +28,29 @@ public final class PostAudience {
 		this.directionSchemeId = requireId(directionSchemeId, "directionSchemeId");
 		this.selectedSegmentKey = requireText(selectedSegmentKey, "selectedSegmentKey", 20);
 		this.centerBearingDegrees = requireBearing(centerBearingDegrees, "centerBearingDegrees");
-		this.angularWidthDegrees = Objects.requireNonNull(angularWidthDegrees, "angularWidthDegrees는 필수입니다");
-		if (angularWidthDegrees.signum() <= 0 || angularWidthDegrees.compareTo(BigDecimal.valueOf(360)) > 0) throw new IllegalArgumentException("angularWidthDegrees 범위가 유효하지 않습니다");
-		if (minDistanceMeters < 0 || maxDistanceMeters <= minDistanceMeters) throw new IllegalArgumentException("거리 범위가 유효하지 않습니다");
+		this.angularWidthDegrees = requireValue(angularWidthDegrees, "angularWidthDegrees");
+		if (angularWidthDegrees.signum() <= 0 || angularWidthDegrees.compareTo(BigDecimal.valueOf(360)) > 0) {
+			throw new DirectionException(
+				DirectionErrorCode.INVALID_BEARING, "angularWidthDegrees", "angularWidthDegrees 범위가 유효하지 않습니다");
+		}
+		if (minDistanceMeters < 0 || maxDistanceMeters <= minDistanceMeters) {
+			throw new DirectionException(
+				DirectionErrorCode.INVALID_DISTANCE_RANGE, "maxDistanceMeters", "거리 범위가 유효하지 않습니다");
+		}
 		this.minDistanceMeters = minDistanceMeters;
 		this.maxDistanceMeters = maxDistanceMeters;
-		if ((originLatitude == null) != (originLongitude == null)) throw new IllegalArgumentException("origin 위치는 위도와 경도를 함께 지정해야 합니다");
-		if (originLatitude == null && (originCellId == null || originCellId.isBlank())) throw new IllegalArgumentException("origin 위치 또는 cell이 필요합니다");
+		if ((originLatitude == null) != (originLongitude == null)) {
+			throw new DirectionException(
+				DirectionErrorCode.INVALID_COORDINATE, "originLatitude", "origin 위치는 위도와 경도를 함께 지정해야 합니다");
+		}
+		if (originLatitude == null && (originCellId == null || originCellId.isBlank())) {
+			throw new DirectionException(
+				DirectionErrorCode.LOCATION_REQUIRED, "originCellId", "origin 위치 또는 cell이 필요합니다");
+		}
 		this.originLatitude = originLatitude;
 		this.originLongitude = originLongitude;
 		this.originCellId = originCellId;
-		this.snapshottedAt = Objects.requireNonNull(snapshottedAt, "snapshottedAt은 필수입니다");
+		this.snapshottedAt = requireValue(snapshottedAt, "snapshottedAt");
 	}
 
 	public static PostAudience create(Long postId, Long directionSchemeId, String selectedSegmentKey,
@@ -48,17 +62,30 @@ public final class PostAudience {
 			originLongitude, originCellId, snapshottedAt);
 	}
 
+	private static <T> T requireValue(T value, String field) {
+		if (value == null) {
+			throw new DirectionException(
+				DirectionErrorCode.REQUIRED_VALUE_MISSING, field, field + "은 필수입니다");
+		}
+		return value;
+	}
 	private static Long requireId(Long value, String field) {
-		if (value == null || value <= 0) throw new IllegalArgumentException(field + "는 양수여야 합니다");
+		if (value == null || value <= 0) {
+			throw new DirectionException(DirectionErrorCode.INVALID_ID, field, field + "는 양수여야 합니다");
+		}
 		return value;
 	}
 	private static String requireText(String value, String field, int max) {
-		if (value == null || value.isBlank() || value.length() > max) throw new IllegalArgumentException(field + "이 유효하지 않습니다");
+		if (value == null || value.isBlank() || value.length() > max) {
+			throw new DirectionException(DirectionErrorCode.INVALID_TEXT, field, field + "이 유효하지 않습니다");
+		}
 		return value;
 	}
 	private static BigDecimal requireBearing(BigDecimal value, String field) {
-		Objects.requireNonNull(value, field + "은 필수입니다");
-		if (value.signum() < 0 || value.compareTo(BigDecimal.valueOf(360)) >= 0) throw new IllegalArgumentException(field + "는 [0, 360)이어야 합니다");
+		requireValue(value, field);
+		if (value.signum() < 0 || value.compareTo(BigDecimal.valueOf(360)) >= 0) {
+			throw new DirectionException(DirectionErrorCode.INVALID_BEARING, field, field + "는 [0, 360)이어야 합니다");
+		}
 		return value;
 	}
 

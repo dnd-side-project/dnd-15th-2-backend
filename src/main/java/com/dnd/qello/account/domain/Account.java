@@ -3,7 +3,9 @@ package com.dnd.qello.account.domain;
 import java.time.DateTimeException;
 import java.time.Instant;
 import java.time.ZoneId;
-import java.util.Objects;
+
+import com.dnd.qello.account.error.AccountErrorCode;
+import com.dnd.qello.account.error.AccountException;
 
 public final class Account {
 
@@ -33,10 +35,11 @@ public final class Account {
 		PasswordHash passwordHash,
 		Instant deletedAt
 	) {
-		this.id = id;
-		this.role = Objects.requireNonNull(role, "role은 필수입니다");
-		this.status = Objects.requireNonNull(status, "status는 필수입니다");
-		this.coarseRegionCode = requireText(coarseRegionCode, "coarseRegionCode", REGION_CODE_MAX_LENGTH);
+		this.id = validateId(id);
+		this.role = requireValue(role, "role");
+		this.status = requireValue(status, "status");
+		this.coarseRegionCode = requireText(
+			coarseRegionCode, "coarseRegionCode", REGION_CODE_MAX_LENGTH);
 		this.locale = requireText(locale, "locale", LOCALE_MAX_LENGTH);
 		this.timezone = requireTimezone(timezone);
 		this.nickname = validateNickname(nickname);
@@ -78,7 +81,6 @@ public final class Account {
 		String nickname,
 		PasswordHash passwordHash
 	) {
-		Objects.requireNonNull(passwordHash, "관리자 계정은 passwordHash가 필수입니다");
 		return new Account(
 			null,
 			AccountRole.OPERATOR,
@@ -106,8 +108,9 @@ public final class Account {
 		PasswordHash passwordHash,
 		Instant deletedAt
 	) {
-		if (id == null || id <= 0) {
-			throw new IllegalArgumentException("restore는 유효한 기존 id가 필요합니다");
+		if (id == null) {
+			throw new AccountException(
+				AccountErrorCode.INVALID_ID, "id", "restore는 유효한 기존 id가 필요합니다");
 		}
 		return new Account(
 			id,
@@ -143,7 +146,8 @@ public final class Account {
 
 	public Account block() {
 		if (status == AccountStatus.DELETED) {
-			throw new IllegalStateException("삭제된 계정은 차단할 수 없습니다");
+			throw new AccountException(
+				AccountErrorCode.INVALID_STATUS_TRANSITION, "status", "삭제된 계정은 차단할 수 없습니다");
 		}
 		return new Account(
 			id, role, AccountStatus.BLOCKED, coarseRegionCode, locale, timezone, nickname, passwordHash, deletedAt);
@@ -151,16 +155,18 @@ public final class Account {
 
 	public Account unblock() {
 		if (status != AccountStatus.BLOCKED) {
-			throw new IllegalStateException("차단 상태인 계정만 차단 해제할 수 있습니다");
+			throw new AccountException(
+				AccountErrorCode.INVALID_STATUS_TRANSITION, "status", "차단 상태인 계정만 차단 해제할 수 있습니다");
 		}
 		return new Account(
 			id, role, AccountStatus.ACTIVE, coarseRegionCode, locale, timezone, nickname, passwordHash, deletedAt);
 	}
 
 	public Account delete(Instant deletedAt) {
-		Objects.requireNonNull(deletedAt, "deletedAt은 필수입니다");
+		requireValue(deletedAt, "deletedAt");
 		if (status == AccountStatus.DELETED) {
-			throw new IllegalStateException("이미 삭제된 계정입니다");
+			throw new AccountException(
+				AccountErrorCode.INVALID_STATUS_TRANSITION, "status", "이미 삭제된 계정입니다");
 		}
 		return new Account(
 			id, role, AccountStatus.DELETED, coarseRegionCode, locale, timezone, nickname, passwordHash, deletedAt);
@@ -202,13 +208,29 @@ public final class Account {
 		return deletedAt;
 	}
 
+	private static Long validateId(Long id) {
+		if (id != null && id <= 0) {
+			throw new AccountException(AccountErrorCode.INVALID_ID, "id", "id는 양수여야 합니다");
+		}
+		return id;
+	}
+
+	private static <T> T requireValue(T value, String field) {
+		if (value == null) {
+			throw new AccountException(
+				AccountErrorCode.REQUIRED_VALUE_MISSING, field, field + "은 필수입니다");
+		}
+		return value;
+	}
+
 	private static String requireText(String value, String field, int maxLength) {
 		if (value == null || value.isBlank()) {
-			throw new IllegalArgumentException(field + "은 비어 있을 수 없습니다");
+			throw new AccountException(
+				AccountErrorCode.REQUIRED_VALUE_MISSING, field, field + "은 비어 있을 수 없습니다");
 		}
 		if (codePointLength(value) > maxLength) {
-			throw new IllegalArgumentException(
-				field + "은 " + maxLength + "자를 초과할 수 없습니다");
+			throw new AccountException(
+				AccountErrorCode.TEXT_TOO_LONG, field, field + "은 " + maxLength + "자를 초과할 수 없습니다");
 		}
 		return value;
 	}
@@ -218,7 +240,8 @@ public final class Account {
 		try {
 			ZoneId.of(validated);
 		} catch (DateTimeException exception) {
-			throw new IllegalArgumentException("timezone은 유효한 IANA ID여야 합니다", exception);
+			throw new AccountException(
+				AccountErrorCode.INVALID_TIMEZONE, "timezone", "timezone은 유효한 IANA ID여야 합니다", exception);
 		}
 		return validated;
 	}
@@ -228,21 +251,33 @@ public final class Account {
 			return null;
 		}
 		if (nickname.isBlank()) {
-			throw new IllegalArgumentException("nickname은 공백일 수 없습니다");
+			throw new AccountException(
+				AccountErrorCode.REQUIRED_VALUE_MISSING, "nickname", "nickname은 공백일 수 없습니다");
 		}
 		if (codePointLength(nickname) > NICKNAME_MAX_LENGTH) {
-			throw new IllegalArgumentException(
-				"nickname은 " + NICKNAME_MAX_LENGTH + "자를 초과할 수 없습니다");
+			throw new AccountException(
+				AccountErrorCode.TEXT_TOO_LONG,
+				"nickname",
+				"nickname은 " + NICKNAME_MAX_LENGTH + "자를 초과할 수 없습니다"
+			);
 		}
 		return nickname;
 	}
 
 	private static PasswordHash validatePasswordHash(AccountRole role, PasswordHash passwordHash) {
 		if (role == AccountRole.OPERATOR && passwordHash == null) {
-			throw new IllegalArgumentException("OPERATOR 계정은 passwordHash가 필수입니다");
+			throw new AccountException(
+				AccountErrorCode.INVALID_PASSWORD_HASH_STATE,
+				"passwordHash",
+				"OPERATOR 계정은 passwordHash가 필수입니다"
+			);
 		}
 		if (role == AccountRole.USER && passwordHash != null) {
-			throw new IllegalArgumentException("USER 계정은 passwordHash를 가질 수 없습니다");
+			throw new AccountException(
+				AccountErrorCode.INVALID_PASSWORD_HASH_STATE,
+				"passwordHash",
+				"USER 계정은 passwordHash를 가질 수 없습니다"
+			);
 		}
 		return passwordHash;
 	}
@@ -250,8 +285,8 @@ public final class Account {
 	private static void validateDeletionState(AccountStatus status, Instant deletedAt) {
 		boolean deleted = status == AccountStatus.DELETED;
 		if (deleted != (deletedAt != null)) {
-			throw new IllegalArgumentException(
-				"DELETED 상태와 deletedAt은 함께 설정되어야 합니다");
+			throw new AccountException(
+				AccountErrorCode.INVALID_DELETION_STATE, "deletedAt", "DELETED 상태와 deletedAt은 함께 설정되어야 합니다");
 		}
 	}
 

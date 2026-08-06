@@ -74,12 +74,12 @@ class AccountPersistenceIntegrationTest extends PostgisContainerIntegrationTestS
 	}
 
 	@Test
-	@DisplayName("Flyway V1/V3 적용 후 Hibernate validate가 schema를 변경하지 않고 시작된다")
+	@DisplayName("Flyway V1/V2/V3 적용 후 Hibernate validate가 schema를 변경하지 않고 시작된다")
 	void startsWithFlywaySchemaValidationOnly() {
 		Integer successfulMigrations = jdbcTemplate.queryForObject("""
 			SELECT count(*)
 			FROM flyway_schema_history
-			WHERE version IN ('1', '3') AND success
+			WHERE version IN ('1', '2', '3') AND success
 			""", Integer.class);
 		Integer applicationTableCount = jdbcTemplate.queryForObject("""
 			SELECT count(*)
@@ -89,8 +89,8 @@ class AccountPersistenceIntegrationTest extends PostgisContainerIntegrationTestS
 			  AND table_name NOT IN ('flyway_schema_history', 'spatial_ref_sys')
 			""", Integer.class);
 
-		assertThat(successfulMigrations).isEqualTo(2);
-		assertThat(applicationTableCount).isEqualTo(26);
+		assertThat(successfulMigrations).isEqualTo(3);
+		assertThat(applicationTableCount).isEqualTo(28);
 	}
 
 	@Test

@@ -1,0 +1,184 @@
+name: Infrastructure Apply
+
+# 실제 AWS 리소스를 변경하는 유일한 경로다(AGENTS.md 4.8). 사람이 직접
+# dispatch해야 하며, 자동 트리거를 추가하지 않는다. AI 에이전트와 로컬 세션은
+# 이 workflow를 실행하지 않는다.
+on:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: "승인된 인프라 PR 번호"
+        required: true
+        type: string
+      confirmation:
+        description: "확인 문구. 정확히 \"APPLY PR-<번호>\" 형식이어야 한다."
+        required: true
+        type: string
+      terraform_dir:
+        description: "적용할 Terraform root module 경로(infra/ 하위, backend 블록 필요)"
+        required: true
+        type: string
+      commit_sha:
+        description: "검토·승인된 commit SHA. PR head와 정확히 일치해야 한다."
+        required: true
+        type: string
+      plan_sha256:
+        description: "검토된 plan 파일의 SHA-256. 실행 중 생성한 plan과 다르면 중단한다."
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  # 게이트 검사는 기본 branch의 스크립트로 수행한다. 대상 commit을 checkout한
+  # 뒤 그 안의 가드 스크립트를 실행하면 검사 대상이 검사 도구를 바꿀 수 있다.
+  guard:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Checkout default branch
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Require the apply kill switch to be enabled
+        env:
+          INFRA_APPLY_ENABLED: ${{ vars.INFRA_APPLY_ENABLED }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${INFRA_APPLY_ENABLED:-false}" != "true" ]; then
+            echo "INFRA_APPLY_ENABLED repository variable is not set to true." >&2
+            exit 1
+          fi
+
+      - name: Validate confirmation phrase and Terraform path
+        run: >-
+          python scripts/confirm-infra-apply.py
+          --pr-number "${{ inputs.pr_number }}"
+          --confirmation "${{ inputs.confirmation }}"
+          --terraform-dir "${{ inputs.terraform_dir }}"
+
+      - name: Require exact-head approvals from both owners
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: >-
+          python scripts/verify-infra-approvals.py
+          --repository "${{ github.repository }}"
+          --pr-number "${{ inputs.pr_number }}"
+          --required-reviewers Byuntil tkv00
+
+      - name: Require the requested commit to match the approved PR head
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ inputs.pr_number }}
+          COMMIT_SHA: ${{ inputs.commit_sha }}
+          REPOSITORY: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          head_sha="$(gh api "repos/${REPOSITORY}/pulls/${PR_NUMBER}" --jq '.head.sha')"
+          if [ "${head_sha}" != "${COMMIT_SHA}" ]; then
+            echo "Requested commit does not match the approved PR head." >&2
+            exit 1
+          fi
+
+      # bootstrap처럼 backend 블록이 없는 스택을 이 workflow로 적용하면 원격
+      # State 대신 빈 로컬 State로 실행되어 기존 리소스를 다시 만들려 한다.
+      - name: Require a remote backend in the target stack
+        env:
+          TF_DIR: ${{ inputs.terraform_dir }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! grep -Rqs 'backend "s3"' "${TF_DIR}"; then
+            echo "Target stack has no S3 backend block." >&2
+            exit 1
+          fi
+
+  apply:
+    needs: guard
+    runs-on: ubuntu-latest
+    # 보호된 Environment의 수동 승인이 두 번째 게이트다. infra-apply 역할의
+    # OIDC 신뢰 정책도 이 Environment 이름을 sub claim 조건으로 요구한다.
+    environment: infrastructure-apply
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      TF_DIR: ${{ inputs.terraform_dir }}
+      TF_IN_AUTOMATION: "true"
+    steps:
+      - name: Checkout the approved commit
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.commit_sha }}
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Configure short-lived AWS credentials
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: ${{ secrets.AWS_INFRA_APPLY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+          mask-aws-account-id: true
+
+      - name: Initialize with the remote backend
+        run: >-
+          terraform -chdir="${TF_DIR}" init -input=false
+          -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}"
+          -backend-config="region=${{ vars.AWS_REGION }}"
+
+      # plan 원문은 민감정보다(AGENTS.md 4.7). 로그에는 리소스 수만 남긴다.
+      - name: Create the plan
+        run: >-
+          terraform -chdir="${TF_DIR}" plan -input=false -lock-timeout=5m
+          -no-color -out=tfplan > /dev/null
+
+      - name: Require the plan to match the reviewed hash
+        env:
+          EXPECTED_PLAN_SHA256: ${{ inputs.plan_sha256 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual="$(sha256sum "${TF_DIR}/tfplan" | cut -d' ' -f1)"
+          if [ "${actual}" != "${EXPECTED_PLAN_SHA256}" ]; then
+            echo "Generated plan does not match the reviewed plan hash." >&2
+            exit 1
+          fi
+          echo "Plan hash matches the reviewed value."
+
+      - name: Summarize the plan without exposing values
+        shell: bash
+        run: |
+          set -euo pipefail
+          terraform -chdir="${TF_DIR}" show -json tfplan > /tmp/plan.json
+          for action in create update delete; do
+            count="$(jq "[.resource_changes[]?
+              | select(.change.actions | index(\"${action}\"))] | length" /tmp/plan.json)"
+            echo "${action}: ${count}"
+          done
+          rm -f /tmp/plan.json
+
+      - name: Apply the reviewed plan
+        run: terraform -chdir="${TF_DIR}" apply -input=false -no-color tfplan
+
+      # 적용 후 검증(AGENTS.md 4.8): 다시 계획했을 때 변경이 남아 있으면
+      # 적용이 의도대로 수렴하지 않은 것이므로 실패로 처리한다.
+      - name: Verify the stack converged
+        run: >-
+          terraform -chdir="${TF_DIR}" plan -input=false -lock-timeout=5m
+          -no-color -detailed-exitcode > /dev/null
+
+      - name: Remove the local plan artifact
+        if: always()
+        run: rm -f "${TF_DIR}/tfplan"

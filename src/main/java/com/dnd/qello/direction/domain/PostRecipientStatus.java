@@ -5,6 +5,7 @@ public enum PostRecipientStatus {
 	DISCOVERED,
 	OPENED,
 	ANSWERED,
+	SKIP_PENDING,
 	SKIPPED,
 	EXPIRED,
 	BLOCKED
