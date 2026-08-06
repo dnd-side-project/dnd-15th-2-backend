@@ -40,6 +40,7 @@ import com.dnd.qello.direction.repository.RecipientReceiveStateRepository;
 import com.dnd.qello.direction.service.DirectionPostService;
 import com.dnd.qello.direction.service.PostReactionService;
 import com.dnd.qello.direction.service.PostRecipientService;
+import com.dnd.qello.feed.service.InboxQueryService;
 
 @SpringBootTest
 @ActiveProfiles("test")
@@ -70,6 +71,8 @@ class InboxSentPostWriteIntegrationTest extends PostgisContainerIntegrationTestS
 	private AnswerReactionService answerReactionService;
 	@Autowired
 	private AnswerNotificationService answerNotificationService;
+	@Autowired
+	private InboxQueryService inboxQueryService;
 
 	private long senderId;
 	private long recipientId;
@@ -351,5 +354,26 @@ class InboxSentPostWriteIntegrationTest extends PostgisContainerIntegrationTestS
 		assertThat(receiveStateRepository.reserve(recipientId, NOW.plusSeconds(20), 1)).isFalse();
 		answerNotificationService.publish(answerId, NOW.plusSeconds(30));
 		assertThat(receiveStateRepository.reserve(recipientId, NOW.plusSeconds(40), 1)).isTrue();
+	}
+
+	@Test
+	@DisplayName("답변을 보내면 그 질문글이 수신함 목록에서 사라진다")
+	void answeredPostDisappearsFromInbox() {
+		receiveStateRepository.save(RecipientReceiveState.restore(recipientId, 1, 1, NOW, NOW, NOW));
+		postRecipientService.open(recipientId, postRecipientId, NOW.plusSeconds(10));
+		assertThat(inboxQueryService.list(recipientId, NOW.plusSeconds(15))).hasSize(1);
+
+		long answerId = submittedAnswer(postRecipientId, recipientId, "answer-vanish");
+		answerNotificationService.publish(answerId, NOW.plusSeconds(30));
+
+		assertThat(inboxQueryService.list(recipientId, NOW.plusSeconds(35))).isEmpty();
+	}
+
+	@Test
+	@DisplayName("넘김을 요청해도 되돌릴 수 있는 동안에는 수신함에 남는다")
+	void skipPendingStaysVisibleUntilConfirmed() {
+		postRecipientService.requestSkip(recipientId, postRecipientId, NOW.plusSeconds(10));
+
+		assertThat(inboxQueryService.list(recipientId, NOW.plusSeconds(15))).hasSize(1);
 	}
 }
