@@ -9,7 +9,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.Arrays;
 import java.util.List;
+import java.util.stream.Collectors;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -83,12 +85,20 @@ class InboxQueryIntegrationTest extends PostgisContainerIntegrationTestSupport {
 	}
 
 	private long recipient(long targetPostId, String status, Instant matchedAt) {
-		String columns = switch (status) {
-			case "SKIP_PENDING" -> "skip_requested_at";
-			case "OPENED" -> "opened_at";
-			default -> null;
+		// V1 ck_post_recipient_status_timestamps와 V2 ck_post_recipient_skip_pending,
+		// ct_post_recipient_capacity_release(지연 트리거)가 상태별로 채워야 하는 타임스탬프를
+		// 강제한다. SKIPPED/EXPIRED/BLOCKED/ANSWERED는 자신의 종결 타임스탬프에 더해
+		// capacity_released_at도 채워야 하고, SKIPPED는 skip_requested_at도 함께 필요하다.
+		String[] columns = switch (status) {
+			case "SKIP_PENDING" -> new String[] {"discovered_at", "skip_requested_at"};
+			case "OPENED" -> new String[] {"discovered_at", "opened_at"};
+			case "ANSWERED" -> new String[] {"discovered_at", "opened_at", "capacity_released_at"};
+			case "SKIPPED" -> new String[] {"discovered_at", "skip_requested_at", "skipped_at", "capacity_released_at"};
+			case "EXPIRED" -> new String[] {"expired_at", "capacity_released_at"};
+			case "BLOCKED" -> new String[] {"blocked_at", "capacity_released_at"};
+			default -> new String[0];
 		};
-		if (columns == null) {
+		if (columns.length == 0) {
 			return jdbc.queryForObject("""
 				INSERT INTO post_recipient
 					(post_id, recipient_id, status, distance_band, matched_bearing_deg, matched_region_code, matched_at)
@@ -96,14 +106,22 @@ class InboxQueryIntegrationTest extends PostgisContainerIntegrationTestSupport {
 				RETURNING id
 				""", Long.class, targetPostId, recipientId, status, REGION, Timestamp.from(matchedAt));
 		}
+		String columnList = String.join(", ", columns);
+		String placeholderList = Arrays.stream(columns).map(column -> "?").collect(Collectors.joining(", "));
+		Object[] params = new Object[5 + columns.length];
+		params[0] = targetPostId;
+		params[1] = recipientId;
+		params[2] = status;
+		params[3] = REGION;
+		params[4] = Timestamp.from(matchedAt);
+		Arrays.fill(params, 5, params.length, Timestamp.from(matchedAt));
 		return jdbc.queryForObject("""
 			INSERT INTO post_recipient
 				(post_id, recipient_id, status, distance_band, matched_bearing_deg, matched_region_code,
-				 matched_at, discovered_at, %s)
-			VALUES (?, ?, ?, 'NEAR', 45, ?, ?, ?, ?)
+				 matched_at, %s)
+			VALUES (?, ?, ?, 'NEAR', 45, ?, ?, %s)
 			RETURNING id
-			""".formatted(columns), Long.class, targetPostId, recipientId, status, REGION,
-			Timestamp.from(matchedAt), Timestamp.from(matchedAt), Timestamp.from(matchedAt));
+			""".formatted(columnList, placeholderList), Long.class, params);
 	}
 
 	@Test
@@ -118,6 +136,30 @@ class InboxQueryIntegrationTest extends PostgisContainerIntegrationTestSupport {
 		assertThat(cards.getFirst().postId()).isEqualTo(active);
 		assertThat(cards.getFirst().questionText()).isEqualTo("오늘 뭐 하고 있나요?");
 		assertThat(cards.getFirst().mediaIds()).isEmpty();
+	}
+
+	@Test
+	@DisplayName("답변·넘김 확정·만료·차단으로 종료된 수신 항목은 수신함에서 빠진다")
+	void excludesTerminalRecipientStatuses() {
+		long open = post(senderId, "p-open", NOW.plus(1, ChronoUnit.HOURS), "ACTIVE");
+		recipient(open, "AVAILABLE", NOW);
+
+		long answered = post(senderId, "p-answered", NOW.plus(1, ChronoUnit.HOURS), "ACTIVE");
+		recipient(answered, "ANSWERED", NOW);
+
+		long skipped = post(senderId, "p-skipped", NOW.plus(1, ChronoUnit.HOURS), "ACTIVE");
+		recipient(skipped, "SKIPPED", NOW);
+
+		long expiredRecipient = post(senderId, "p-expired-recipient", NOW.plus(1, ChronoUnit.HOURS), "ACTIVE");
+		recipient(expiredRecipient, "EXPIRED", NOW);
+
+		long blocked = post(senderId, "p-blocked-recipient", NOW.plus(1, ChronoUnit.HOURS), "ACTIVE");
+		recipient(blocked, "BLOCKED", NOW);
+
+		List<InboxCard> cards = inboxQueryService.list(recipientId, NOW.plusSeconds(1));
+
+		assertThat(cards).hasSize(1);
+		assertThat(cards.getFirst().postId()).isEqualTo(open);
 	}
 
 	@Test
