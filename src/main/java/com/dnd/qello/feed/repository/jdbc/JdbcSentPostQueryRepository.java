@@ -19,13 +19,6 @@ import com.dnd.qello.feed.view.SentPostFilter;
 
 import lombok.RequiredArgsConstructor;
 
-/**
- * mediaIds/instant 변환은 JdbcInboxQueryRepository(같은 패키지)의 package-private static
- * 메서드를 그대로 재사용한다. static import 대신 클래스명으로 한정해 호출하는 이유는
- * FeedPersistenceBoundaryTest가 "다른 feature의 JDBC 구현 참조"를 소스 문자열에 특정
- * 패키지 경로 조각이 포함되는지로 판정하기 때문이다 — static import 구문은 그 전체
- * 패키지 경로를 그대로 담아 이 검사에 걸린다.
- */
 @Repository
 @RequiredArgsConstructor
 public class JdbcSentPostQueryRepository implements SentPostQueryRepository {
@@ -90,7 +83,7 @@ public class JdbcSentPostQueryRepository implements SentPostQueryRepository {
 			WHERE dp.id = :postId AND dp.sender_id = :senderId AND dp.deleted_at IS NULL
 			""", new MapSqlParameterSource().addValue("postId", postId).addValue("senderId", senderId),
 			rs -> rs.next()
-				? Optional.of(new SentPostDetail(card(rs), JdbcInboxQueryRepository.instant(rs, "answers_read_at")))
+				? Optional.of(new SentPostDetail(card(rs), FeedRowMappers.instant(rs, "answers_read_at")))
 				: Optional.empty());
 	}
 
@@ -99,7 +92,7 @@ public class JdbcSentPostQueryRepository implements SentPostQueryRepository {
 			rs.getLong("post_id"),
 			rs.getString("question_text"),
 			rs.getString("body_text"),
-			JdbcInboxQueryRepository.mediaIds(rs),
+			FeedRowMappers.mediaIds(rs),
 			rs.getString("coarse_region_code"),
 			rs.getTimestamp("submitted_at").toInstant(),
 			rs.getTimestamp("expires_at").toInstant(),
@@ -156,7 +149,7 @@ public class JdbcSentPostQueryRepository implements SentPostQueryRepository {
 			rs.getString("author_nickname"),
 			rs.getString("author_region_code"),
 			rs.getString("body_text"),
-			JdbcInboxQueryRepository.mediaIds(rs),
+			FeedRowMappers.mediaIds(rs),
 			rs.getBigDecimal("bearing_from_sender_deg"),
 			rs.getString("distance_band"),
 			rs.getTimestamp("published_at").toInstant(),
