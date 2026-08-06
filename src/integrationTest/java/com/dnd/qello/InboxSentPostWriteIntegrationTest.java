@@ -20,8 +20,10 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 
 import com.dnd.qello.direction.domain.PostRecipient;
+import com.dnd.qello.direction.domain.RecipientReceiveState;
 import com.dnd.qello.direction.repository.DirectionPostRepository;
 import com.dnd.qello.direction.repository.PostRecipientRepository;
+import com.dnd.qello.direction.repository.RecipientReceiveStateRepository;
 
 @SpringBootTest
 @ActiveProfiles("test")
@@ -36,6 +38,8 @@ class InboxSentPostWriteIntegrationTest extends PostgisContainerIntegrationTestS
 	private PostRecipientRepository postRecipientRepository;
 	@Autowired
 	private DirectionPostRepository directionPostRepository;
+	@Autowired
+	private RecipientReceiveStateRepository receiveStateRepository;
 
 	private long senderId;
 	private long recipientId;
@@ -121,5 +125,28 @@ class InboxSentPostWriteIntegrationTest extends PostgisContainerIntegrationTestS
 	void findsPostOnlyForSender() {
 		assertThat(directionPostRepository.findByIdAndSenderId(postId, senderId)).isPresent();
 		assertThat(directionPostRepository.findByIdAndSenderId(postId, outsiderId)).isEmpty();
+	}
+
+	@Test
+	@DisplayName("release는 호출자가 준 시각을 updated_at에 기록한다")
+	void releaseUsesInjectedTimestamp() {
+		receiveStateRepository.save(RecipientReceiveState.restore(recipientId, 1, 1, NOW, NOW, NOW));
+		Instant releasedAt = NOW.plus(30, ChronoUnit.MINUTES);
+
+		assertThat(receiveStateRepository.release(recipientId, releasedAt)).isTrue();
+
+		Timestamp updatedAt = jdbc.queryForObject(
+			"SELECT updated_at FROM recipient_receive_state WHERE user_id = ?", Timestamp.class, recipientId);
+		assertThat(updatedAt.toInstant()).isEqualTo(releasedAt);
+		assertThat(receiveStateRepository.findByUserId(recipientId).orElseThrow().getActiveUnhandledCount()).isZero();
+	}
+
+	@Test
+	@DisplayName("release는 이미 0인 카운터를 음수로 만들지 않는다")
+	void releaseDoesNotGoNegative() {
+		receiveStateRepository.save(RecipientReceiveState.restore(recipientId, 0, 0, NOW, null, NOW));
+
+		assertThat(receiveStateRepository.release(recipientId, NOW.plusSeconds(1))).isFalse();
+		assertThat(receiveStateRepository.findByUserId(recipientId).orElseThrow().getActiveUnhandledCount()).isZero();
 	}
 }
