@@ -5,6 +5,7 @@
 package com.dnd.qello;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.math.BigDecimal;
 import java.sql.Timestamp;
@@ -20,10 +21,14 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 
 import com.dnd.qello.direction.domain.PostRecipient;
+import com.dnd.qello.direction.domain.PostRecipientStatus;
 import com.dnd.qello.direction.domain.RecipientReceiveState;
+import com.dnd.qello.direction.error.DirectionErrorCode;
+import com.dnd.qello.direction.error.DirectionException;
 import com.dnd.qello.direction.repository.DirectionPostRepository;
 import com.dnd.qello.direction.repository.PostRecipientRepository;
 import com.dnd.qello.direction.repository.RecipientReceiveStateRepository;
+import com.dnd.qello.direction.service.PostRecipientService;
 
 @SpringBootTest
 @ActiveProfiles("test")
@@ -40,6 +45,8 @@ class InboxSentPostWriteIntegrationTest extends PostgisContainerIntegrationTestS
 	private DirectionPostRepository directionPostRepository;
 	@Autowired
 	private RecipientReceiveStateRepository receiveStateRepository;
+	@Autowired
+	private PostRecipientService postRecipientService;
 
 	private long senderId;
 	private long recipientId;
@@ -148,5 +155,45 @@ class InboxSentPostWriteIntegrationTest extends PostgisContainerIntegrationTestS
 
 		assertThat(receiveStateRepository.release(recipientId, NOW.plusSeconds(1))).isFalse();
 		assertThat(receiveStateRepository.findByUserId(recipientId).orElseThrow().getActiveUnhandledCount()).isZero();
+	}
+
+	@Test
+	@DisplayName("열람은 멱등이며 최초 열람 시각을 유지한다")
+	void openIsIdempotent() {
+		PostRecipient opened = postRecipientService.open(recipientId, postRecipientId, NOW.plusSeconds(10));
+		PostRecipient reopened = postRecipientService.open(recipientId, postRecipientId, NOW.plusSeconds(60));
+
+		assertThat(opened.getStatus()).isEqualTo(PostRecipientStatus.OPENED);
+		assertThat(reopened.getOpenedAt()).isEqualTo(NOW.plusSeconds(10));
+	}
+
+	@Test
+	@DisplayName("남의 수신 항목은 열람할 수 없다")
+	void cannotOpenOthersRecipient() {
+		assertThatThrownBy(() -> postRecipientService.open(outsiderId, postRecipientId, NOW.plusSeconds(10)))
+			.isInstanceOf(DirectionException.class)
+			.hasFieldOrPropertyWithValue("errorCode", DirectionErrorCode.RECIPIENT_NOT_FOUND);
+	}
+
+	@Test
+	@DisplayName("넘김 요청은 SKIP_PENDING으로 두고 슬롯을 해제하지 않는다")
+	void requestSkipKeepsCapacity() {
+		PostRecipient pending = postRecipientService.requestSkip(recipientId, postRecipientId, NOW.plusSeconds(10));
+
+		assertThat(pending.getStatus()).isEqualTo(PostRecipientStatus.SKIP_PENDING);
+		assertThat(pending.getSkipRequestedAt()).isEqualTo(NOW.plusSeconds(10));
+		assertThat(pending.getCapacityReleasedAt()).isNull();
+	}
+
+	@Test
+	@DisplayName("넘김을 되돌리면 열람 이력에 따라 이전 상태로 돌아간다")
+	void revertSkipRestoresPreviousStatus() {
+		postRecipientService.open(recipientId, postRecipientId, NOW.plusSeconds(10));
+		postRecipientService.requestSkip(recipientId, postRecipientId, NOW.plusSeconds(20));
+
+		PostRecipient reverted = postRecipientService.revertSkip(recipientId, postRecipientId);
+
+		assertThat(reverted.getStatus()).isEqualTo(PostRecipientStatus.OPENED);
+		assertThat(reverted.getSkipRequestedAt()).isNull();
 	}
 }
