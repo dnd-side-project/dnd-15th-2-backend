@@ -27,9 +27,11 @@ import com.dnd.qello.direction.domain.RecipientReceiveState;
 import com.dnd.qello.direction.error.DirectionErrorCode;
 import com.dnd.qello.direction.error.DirectionException;
 import com.dnd.qello.direction.repository.DirectionPostRepository;
+import com.dnd.qello.direction.repository.PostReactionRepository;
 import com.dnd.qello.direction.repository.PostRecipientRepository;
 import com.dnd.qello.direction.repository.RecipientReceiveStateRepository;
 import com.dnd.qello.direction.service.DirectionPostService;
+import com.dnd.qello.direction.service.PostReactionService;
 import com.dnd.qello.direction.service.PostRecipientService;
 
 @SpringBootTest
@@ -48,9 +50,13 @@ class InboxSentPostWriteIntegrationTest extends PostgisContainerIntegrationTestS
 	@Autowired
 	private RecipientReceiveStateRepository receiveStateRepository;
 	@Autowired
+	private PostReactionRepository postReactionRepository;
+	@Autowired
 	private PostRecipientService postRecipientService;
 	@Autowired
 	private DirectionPostService directionPostService;
+	@Autowired
+	private PostReactionService postReactionService;
 
 	private long senderId;
 	private long recipientId;
@@ -217,5 +223,24 @@ class InboxSentPostWriteIntegrationTest extends PostgisContainerIntegrationTestS
 		assertThatThrownBy(() -> directionPostService.markAnswersRead(outsiderId, postId, NOW.plusSeconds(120)))
 			.isInstanceOf(DirectionException.class)
 			.hasFieldOrPropertyWithValue("errorCode", DirectionErrorCode.POST_NOT_FOUND);
+	}
+
+	@Test
+	@DisplayName("수신 자격이 있는 사용자의 공감 토글은 남김과 취소를 오간다")
+	void togglesPostReaction() {
+		assertThat(postReactionService.toggle(postId, recipientId, NOW.plusSeconds(10))).isTrue();
+		assertThat(postReactionRepository.countByPostId(postId)).isEqualTo(1L);
+
+		assertThat(postReactionService.toggle(postId, recipientId, NOW.plusSeconds(20))).isFalse();
+		assertThat(postReactionRepository.countByPostId(postId)).isZero();
+	}
+
+	@Test
+	@DisplayName("수신 자격이 없는 사용자는 질문글에 공감할 수 없다")
+	void outsiderCannotReactToPost() {
+		assertThatThrownBy(() -> postReactionService.toggle(postId, outsiderId, NOW.plusSeconds(10)))
+			.isInstanceOf(DirectionException.class)
+			.hasFieldOrPropertyWithValue("errorCode", DirectionErrorCode.INELIGIBLE_REACTOR);
+		assertThat(postReactionRepository.countByPostId(postId)).isZero();
 	}
 }
