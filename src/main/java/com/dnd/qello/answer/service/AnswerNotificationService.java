@@ -9,7 +9,6 @@ import com.dnd.qello.answer.domain.Answer;
 import com.dnd.qello.answer.domain.AnswerStatus;
 import com.dnd.qello.answer.repository.AnswerRepository;
 import com.dnd.qello.direction.domain.PostRecipient;
-import com.dnd.qello.direction.domain.PostRecipientStatus;
 import com.dnd.qello.direction.repository.PostRecipientRepository;
 import com.dnd.qello.direction.repository.RecipientReceiveStateRepository;
 import com.dnd.qello.notification.domain.OutboxAggregateType;
@@ -67,10 +66,11 @@ public class AnswerNotificationService {
 	private void releaseSlot(long postRecipientId, Instant at) {
 		PostRecipient recipient = recipientRepository.findById(postRecipientId)
 			.orElseThrow(() -> new IllegalArgumentException("수신 항목을 찾을 수 없습니다: " + postRecipientId));
-		if (recipient.getStatus() == PostRecipientStatus.ANSWERED) {
+		PostRecipient answered = recipient.answered(at);
+		if (answered == recipient) {
 			return;
 		}
-		recipientRepository.save(recipient.answered(at));
+		recipientRepository.save(answered);
 		receiveStateRepository.release(recipient.getRecipientId(), at);
 	}
 }
