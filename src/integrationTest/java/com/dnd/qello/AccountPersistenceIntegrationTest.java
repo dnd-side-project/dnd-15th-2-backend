@@ -33,6 +33,8 @@ import com.dnd.qello.account.domain.Account;
 import com.dnd.qello.account.domain.AccountRole;
 import com.dnd.qello.account.domain.AccountStatus;
 import com.dnd.qello.account.domain.PasswordHash;
+import com.dnd.qello.account.error.AccountErrorCode;
+import com.dnd.qello.account.error.AccountException;
 import com.dnd.qello.account.repository.AccountRepository;
 
 /**
@@ -171,7 +173,7 @@ class AccountPersistenceIntegrationTest extends PostgisContainerIntegrationTestS
 	}
 
 	@Test
-	@DisplayName("존재하지 않는 id를 수정하려 하면 예외가 발생한다")
+	@DisplayName("존재하지 않는 id를 수정하려 하면 404로 매핑되는 ACCOUNT_NOT_FOUND가 발생한다")
 	void updatingMissingAccountFails() {
 		Account saved = accountRepository.save(Account.createUser(
 			REGION_CODE, "ko-KR", "Asia/Seoul", "temp"));
@@ -179,7 +181,12 @@ class AccountPersistenceIntegrationTest extends PostgisContainerIntegrationTestS
 
 		assertThatThrownBy(() -> accountRepository.updateProfile(
 			saved.updateProfile(REGION_CODE, "ko-KR", "Asia/Seoul", "renamed")))
-			.isInstanceOf(RuntimeException.class);
+			.isInstanceOf(AccountException.class)
+			.hasFieldOrPropertyWithValue("errorCode", AccountErrorCode.ACCOUNT_NOT_FOUND);
+		assertThatThrownBy(() -> accountRepository.updateStatus(saved.block()))
+			.isInstanceOf(AccountException.class)
+			.hasFieldOrPropertyWithValue("errorCode", AccountErrorCode.ACCOUNT_NOT_FOUND);
+		assertThat(AccountErrorCode.ACCOUNT_NOT_FOUND.httpStatus().value()).isEqualTo(404);
 	}
 
 	@Test

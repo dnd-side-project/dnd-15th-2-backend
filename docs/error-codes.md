@@ -106,6 +106,7 @@
 | `ACC-DOM-002` | INVALID_DELETION_STATE | 400 | DOM | 탈퇴 상태와 탈퇴 시각이 일치하지 않습니다. |
 | `ACC-DOM-003` | INVALID_PASSWORD_HASH_STATE | 400 | DOM | 계정 권한과 비밀번호 설정이 맞지 않습니다. |
 | `ACC-DOM-004` | INVALID_STATUS_TRANSITION | 409 | DOM | 현재 계정 상태로는 요청을 처리할 수 없습니다. |
+| `ACC-APP-001` | ACCOUNT_NOT_FOUND | 404 | APP | 계정을 찾을 수 없습니다. |
 
 `ACC-DOM-001`은 생성·수정 시각 관리가 저장 계층으로 옮겨가면서 사용을 중단했다.
 

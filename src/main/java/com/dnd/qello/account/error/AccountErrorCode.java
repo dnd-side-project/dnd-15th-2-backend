@@ -35,7 +35,10 @@ public enum AccountErrorCode implements ErrorCode {
 	INVALID_PASSWORD_HASH_STATE(HttpStatus.BAD_REQUEST, "ACC-DOM-003", ErrorCategory.DOM, "계정 권한과 비밀번호 설정이 맞지 않습니다."),
 
 	// 현재 상태에서 허용되지 않는 차단, 차단 해제 또는 탈퇴 요청
-	INVALID_STATUS_TRANSITION(HttpStatus.CONFLICT, "ACC-DOM-004", ErrorCategory.DOM, "현재 계정 상태로는 요청을 처리할 수 없습니다.");
+	INVALID_STATUS_TRANSITION(HttpStatus.CONFLICT, "ACC-DOM-004", ErrorCategory.DOM, "현재 계정 상태로는 요청을 처리할 수 없습니다."),
+
+	// 수정 대상 계정이 존재하지 않음
+	ACCOUNT_NOT_FOUND(HttpStatus.NOT_FOUND, "ACC-APP-001", ErrorCategory.APP, "계정을 찾을 수 없습니다.");
 
 	private final HttpStatus httpStatus;
 	private final String code;

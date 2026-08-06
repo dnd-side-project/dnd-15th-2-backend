@@ -6,9 +6,9 @@ import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.dnd.qello.account.domain.Account;
+import com.dnd.qello.account.error.AccountErrorCode;
+import com.dnd.qello.account.error.AccountException;
 import com.dnd.qello.account.repository.AccountRepository;
-
-import jakarta.persistence.EntityNotFoundException;
 
 @Repository
 @Transactional(readOnly = true)
@@ -55,7 +55,8 @@ public class JpaAccountRepository implements AccountRepository {
 	 */
 	private AccountJpaEntity findManaged(Long id) {
 		return repository.findById(id)
-			.orElseThrow(() -> new EntityNotFoundException("Account를 찾을 수 없습니다. id=" + id));
+			.orElseThrow(() -> new AccountException(
+				AccountErrorCode.ACCOUNT_NOT_FOUND, "id", "대상 계정이 존재하지 않습니다"));
 	}
 
 }
