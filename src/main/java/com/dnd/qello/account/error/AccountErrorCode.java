@@ -25,10 +25,20 @@ public enum AccountErrorCode implements ErrorCode {
 	INVALID_TIMEZONE(HttpStatus.BAD_REQUEST, "ACC-VAL-004", ErrorCategory.VAL, "timezone은 유효한 IANA 지역 ID여야 합니다."),
 
 	// createdAt과 updatedAt이 함께 존재하지 않거나 순서 역전
+	// auditing이 저장 계층으로 옮겨간 뒤로는 사용하지 않는다. 과거 로그와의 의미를 지키기 위해 남겨 둔다.
 	INVALID_AUDIT_TIMESTAMPS(HttpStatus.BAD_REQUEST, "ACC-DOM-001", ErrorCategory.DOM, "계정 생성·수정 시각이 올바르지 않습니다."),
 
 	// DELETED 상태와 deletedAt의 불일치
-	INVALID_DELETION_STATE(HttpStatus.BAD_REQUEST, "ACC-DOM-002", ErrorCategory.DOM, "탈퇴 상태와 탈퇴 시각이 일치하지 않습니다.");
+	INVALID_DELETION_STATE(HttpStatus.BAD_REQUEST, "ACC-DOM-002", ErrorCategory.DOM, "탈퇴 상태와 탈퇴 시각이 일치하지 않습니다."),
+
+	// role과 passwordHash 조합 위반. OPERATOR는 필수, USER는 보유 불가
+	INVALID_PASSWORD_HASH_STATE(HttpStatus.BAD_REQUEST, "ACC-DOM-003", ErrorCategory.DOM, "계정 권한과 비밀번호 설정이 맞지 않습니다."),
+
+	// 현재 상태에서 허용되지 않는 차단, 차단 해제 또는 탈퇴 요청
+	INVALID_STATUS_TRANSITION(HttpStatus.CONFLICT, "ACC-DOM-004", ErrorCategory.DOM, "현재 계정 상태로는 요청을 처리할 수 없습니다."),
+
+	// 수정 대상 계정이 존재하지 않음
+	ACCOUNT_NOT_FOUND(HttpStatus.NOT_FOUND, "ACC-APP-001", ErrorCategory.APP, "계정을 찾을 수 없습니다.");
 
 	private final HttpStatus httpStatus;
 	private final String code;
