@@ -162,14 +162,40 @@ springdoc은 반환 타입만 보고 성공 응답을 추론한다. 어느 엔�
 | 모든 operation에 `400`, `500`을 넣는다 | `GlobalExceptionHandler`가 어떤 요청에서든 낼 수 있다 |
 | `ApiErrorResponse` 스키마를 등록한다 | 어떤 컨트롤러도 반환 타입으로 쓰지 않아 springdoc이 찾지 못한다 |
 
-### 남는 보강
+### 엔드포인트별 보강
 
 엔드포인트마다 다른 정보는 커스터마이저가 추측하면 안 된다. 다음은 각 컨트롤러의
 애노테이션으로 적는다.
 
-- 엔드포인트별 오류 응답(로그인 `423`, 기기 등록 `409` 등)
-- operation `summary`와 `description`
-- 경로별 `security` 요구
+| 항목 | 애노테이션 | 근거를 찾을 곳 |
+| --- | --- | --- |
+| operation `summary`와 `description` | `@Operation` | 컨트롤러의 설계 의도 |
+| 엔드포인트별 오류 응답 | `@ApiResponse` | 해당 서비스가 던지는 `XxxErrorCode` |
+| 인증 요구 | `@SecurityRequirement` | `SecurityConfiguration`의 경로 규칙 |
+| 요청·응답 필드 설명 | `@Schema(description = ...)` | DTO |
+
+오류 응답을 추측해서 적지 않는다. 근거는 서비스가 실제로 던지는 `XxxException`과 그
+`XxxErrorCode`, 그리고 `docs/error-codes.md`의 코드·상태 표다. 필터 단계에서 끝나는
+`401`·`403`은 `AuthEntryPoints`가 같은 `ApiErrorResponse` 형식으로 만든다.
+
+`@Schema`에 `example`을 넣지 않는다. 스펙 산출물이 저장소에 커밋되므로 예시로 적은
+자격증명이 그대로 공개된다. 통합 테스트가 금지 문자열을 검사한다.
+
+**`@ApiResponse`를 하나라도 선언하면 springdoc이 반환 타입에서 만들던 `200`을 버린다.**
+오류 응답만 적으면 성공 응답이 통째로 사라진다. `200`을 `content` 없이 함께 선언하면
+springdoc이 반환 타입으로 채운다.
+
+```java
+@ApiResponses({
+	@io.swagger.v3.oas.annotations.responses.ApiResponse(
+		responseCode = "200", description = "..."),
+	@io.swagger.v3.oas.annotations.responses.ApiResponse(
+		responseCode = "423", description = "...", content = ...)
+})
+```
+
+swagger의 `@ApiResponse`는 이 저장소의 응답 래퍼와 이름이 겹친다. 래퍼가 반환 타입으로
+훨씬 자주 쓰이므로 그쪽을 import하고 애노테이션 쪽을 정규화한다.
 
 `/harness-api-docs` 스킬과 `agents/api-docs-executor.md`가 이 작업을 돕는다.
 
