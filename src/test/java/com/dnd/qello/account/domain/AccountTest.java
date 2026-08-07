@@ -17,8 +17,6 @@ import com.dnd.qello.account.error.AccountException;
  */
 class AccountTest {
 
-	private static final PasswordHash OPERATOR_PASSWORD_HASH = new PasswordHash("$2a$10$hashed-value");
-
 	@Test
 	@DisplayName("createUser는 항상 USER 역할과 ACTIVE 상태로 생성되며 비밀번호를 가지지 않는다")
 	void createsActiveUserAccountWithoutPassword() {
@@ -27,23 +25,17 @@ class AccountTest {
 		assertThat(account.getId()).isNull();
 		assertThat(account.getRole()).isEqualTo(AccountRole.USER);
 		assertThat(account.getStatus()).isEqualTo(AccountStatus.ACTIVE);
-		assertThat(account.getPasswordHash()).isNull();
 		assertThat(account.getDeletedAt()).isNull();
 	}
 
 	@Test
-	@DisplayName("createOperator는 항상 OPERATOR 역할로 생성되며 유효한 passwordHash를 요구한다")
-	void createsOperatorAccountWithPasswordHash() {
-		Account account = Account.createOperator(
-			"KR-TEST", "ko-KR", "Asia/Seoul", "qello-admin", OPERATOR_PASSWORD_HASH);
+	@DisplayName("createOperator는 항상 OPERATOR 역할로 생성되며 자격증명을 갖지 않는다")
+	void createsOperatorAccountWithoutCredential() {
+		Account account = Account.createOperator("KR-TEST", "ko-KR", "Asia/Seoul", "qello-admin");
 
+		assertThat(account.getId()).isNull();
 		assertThat(account.getRole()).isEqualTo(AccountRole.OPERATOR);
-		assertThat(account.getPasswordHash()).isEqualTo(OPERATOR_PASSWORD_HASH);
-
-		assertThatThrownBy(() -> Account.createOperator(
-			"KR-TEST", "ko-KR", "Asia/Seoul", "qello-admin", null))
-			.isInstanceOf(AccountException.class)
-			.hasFieldOrPropertyWithValue("errorCode", AccountErrorCode.INVALID_PASSWORD_HASH_STATE);
+		assertThat(account.getStatus()).isEqualTo(AccountStatus.ACTIVE);
 	}
 
 	@Test
@@ -68,18 +60,17 @@ class AccountTest {
 	}
 
 	@Test
-	@DisplayName("USER는 passwordHash를 가질 수 없고 OPERATOR는 passwordHash가 필수다")
-	void enforcesPasswordHashInvariantPerRole() {
-		assertThatThrownBy(() -> Account.restore(
-			1L, AccountRole.USER, AccountStatus.ACTIVE, "KR-TEST", "ko-KR", "Asia/Seoul",
-			null, OPERATOR_PASSWORD_HASH, null))
-			.isInstanceOf(AccountException.class)
-			.hasFieldOrPropertyWithValue("errorCode", AccountErrorCode.INVALID_PASSWORD_HASH_STATE);
-		assertThatThrownBy(() -> Account.restore(
-			1L, AccountRole.OPERATOR, AccountStatus.ACTIVE, "KR-TEST", "ko-KR", "Asia/Seoul",
-			null, null, null))
-			.isInstanceOf(AccountException.class)
-			.hasFieldOrPropertyWithValue("errorCode", AccountErrorCode.INVALID_PASSWORD_HASH_STATE);
+	@DisplayName("Account는 role과 자격증명의 조합을 검증하지 않는다")
+	void doesNotKnowAboutCredentials() {
+		// 자격증명은 operator_credential이 소유하고, role과의 조합은 (user_id, role)
+		// 복합 FK가 DB에서 거절한다(V5). 도메인이 같은 규칙을 중복 검사하지 않는다.
+		Account operator = Account.restore(
+			1L, AccountRole.OPERATOR, AccountStatus.ACTIVE, "KR-TEST", "ko-KR", "Asia/Seoul", null, null);
+		Account user = Account.restore(
+			2L, AccountRole.USER, AccountStatus.ACTIVE, "KR-TEST", "ko-KR", "Asia/Seoul", null, null);
+
+		assertThat(operator.getRole()).isEqualTo(AccountRole.OPERATOR);
+		assertThat(user.getRole()).isEqualTo(AccountRole.USER);
 	}
 
 	@Test
@@ -87,12 +78,12 @@ class AccountTest {
 	void restoreRequiresExistingId() {
 		assertThatThrownBy(() -> Account.restore(
 			null, AccountRole.USER, AccountStatus.ACTIVE, "KR-TEST", "ko-KR", "Asia/Seoul",
-			null, null, null))
+			null, null))
 			.isInstanceOf(AccountException.class)
 			.hasFieldOrPropertyWithValue("errorCode", AccountErrorCode.INVALID_ID);
 		assertThatThrownBy(() -> Account.restore(
 			0L, AccountRole.USER, AccountStatus.ACTIVE, "KR-TEST", "ko-KR", "Asia/Seoul",
-			null, null, null))
+			null, null))
 			.isInstanceOf(AccountException.class)
 			.hasFieldOrPropertyWithValue("errorCode", AccountErrorCode.INVALID_ID);
 	}
@@ -104,12 +95,12 @@ class AccountTest {
 
 		assertThatThrownBy(() -> Account.restore(
 			1L, AccountRole.USER, AccountStatus.DELETED, "KR-TEST", "ko-KR", "Asia/Seoul",
-			null, null, null))
+			null, null))
 			.isInstanceOf(AccountException.class)
 			.hasFieldOrPropertyWithValue("errorCode", AccountErrorCode.INVALID_DELETION_STATE);
 		assertThatThrownBy(() -> Account.restore(
 			1L, AccountRole.USER, AccountStatus.ACTIVE, "KR-TEST", "ko-KR", "Asia/Seoul",
-			null, null, deletedAt))
+			null, deletedAt))
 			.isInstanceOf(AccountException.class)
 			.hasFieldOrPropertyWithValue("errorCode", AccountErrorCode.INVALID_DELETION_STATE);
 	}
@@ -119,7 +110,7 @@ class AccountTest {
 	void updatesProfileAndStatusWithoutChangingIdentity() {
 		Account restored = Account.restore(
 			1L, AccountRole.OPERATOR, AccountStatus.ACTIVE, "KR-TEST", "ko-KR", "Asia/Seoul",
-			"before", OPERATOR_PASSWORD_HASH, null);
+			"before", null);
 
 		Account updated = restored
 			.updateProfile("KR-UPDATED", "en-US", "UTC", "after")

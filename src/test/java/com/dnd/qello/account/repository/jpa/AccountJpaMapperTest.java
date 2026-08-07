@@ -11,7 +11,6 @@ import org.junit.jupiter.api.Test;
 import com.dnd.qello.account.domain.Account;
 import com.dnd.qello.account.domain.AccountRole;
 import com.dnd.qello.account.domain.AccountStatus;
-import com.dnd.qello.account.domain.PasswordHash;
 import com.dnd.qello.account.error.AccountErrorCode;
 import com.dnd.qello.account.error.AccountException;
 
@@ -26,7 +25,7 @@ class AccountJpaMapperTest {
 	void toNewEntityRejectsAccountWithId() {
 		Account existing = Account.restore(
 			7L, AccountRole.USER, AccountStatus.ACTIVE, "KR-TEST", "ko-KR", "Asia/Seoul",
-			null, null, null);
+			null, null);
 
 		assertThatThrownBy(() -> AccountJpaMapper.toNewEntity(existing))
 			.isInstanceOf(AccountException.class)
@@ -34,16 +33,15 @@ class AccountJpaMapperTest {
 	}
 
 	@Test
-	@DisplayName("toNewEntity와 toDomain은 scalar 필드와 passwordHash를 보존하며 왕복한다")
+	@DisplayName("toNewEntity와 toDomain은 scalar 필드를 보존하며 왕복한다")
 	void mapsAccountRoundTripWithoutValueLoss() {
-		PasswordHash passwordHash = new PasswordHash("$2a$10$hashed-value");
-		Account source = Account.createOperator(
-			"KR-TEST", "ko-KR", "Asia/Seoul", "qello-admin", passwordHash);
+		Account source = Account.createOperator("KR-TEST", "ko-KR", "Asia/Seoul", "qello-admin");
 
 		AccountJpaEntity entity = AccountJpaMapper.toNewEntity(source);
 
+		assertThat(entity.getRole()).isEqualTo(AccountRole.OPERATOR);
 		assertThat(entity.getCoarseRegionCode()).isEqualTo("KR-TEST");
-		assertThat(entity.getPasswordHash()).isEqualTo(passwordHash.value());
+		assertThat(entity.getNickname()).isEqualTo("qello-admin");
 		assertThat(entity.getId()).isNull();
 	}
 
@@ -51,20 +49,20 @@ class AccountJpaMapperTest {
 	@DisplayName("toDomain은 기존 id를 가진 엔티티만 복원할 수 있다")
 	void toDomainRestoresExistingAccount() throws Exception {
 		AccountJpaEntity entity = newManagedEntity(
-			AccountRole.USER, AccountStatus.ACTIVE, "KR-TEST", "ko-KR", "Asia/Seoul", "nickname", null, null, 7L);
+			AccountRole.USER, AccountStatus.ACTIVE, "KR-TEST", "ko-KR", "Asia/Seoul", "nickname", null, 7L);
 
 		Account restored = AccountJpaMapper.toDomain(entity);
 
 		assertThat(restored.getId()).isEqualTo(7L);
 		assertThat(restored.getCoarseRegionCode()).isEqualTo("KR-TEST");
-		assertThat(restored.getPasswordHash()).isNull();
+		assertThat(restored.getNickname()).isEqualTo("nickname");
 	}
 
 	@Test
 	@DisplayName("updateProfile은 관리 상태 엔티티의 프로필 필드만 변경한다")
 	void updateProfileMutatesManagedEntityInPlace() throws Exception {
 		AccountJpaEntity entity = newManagedEntity(
-			AccountRole.USER, AccountStatus.ACTIVE, "KR-OLD", "ko-KR", "Asia/Seoul", "old", null, null, 7L);
+			AccountRole.USER, AccountStatus.ACTIVE, "KR-OLD", "ko-KR", "Asia/Seoul", "old", null, 7L);
 		Account account = AccountJpaMapper.toDomain(entity)
 			.updateProfile("KR-NEW", "en-US", "UTC", "new");
 
@@ -81,7 +79,7 @@ class AccountJpaMapperTest {
 	@DisplayName("updateStatus는 status와 deletedAt만 변경한다")
 	void updateStatusMutatesManagedEntityInPlace() throws Exception {
 		AccountJpaEntity entity = newManagedEntity(
-			AccountRole.USER, AccountStatus.ACTIVE, "KR-TEST", "ko-KR", "Asia/Seoul", "nickname", null, null, 7L);
+			AccountRole.USER, AccountStatus.ACTIVE, "KR-TEST", "ko-KR", "Asia/Seoul", "nickname", null, 7L);
 		Instant deletedAt = Instant.parse("2026-08-04T00:00:00Z");
 		Account account = AccountJpaMapper.toDomain(entity).delete(deletedAt);
 
@@ -99,16 +97,15 @@ class AccountJpaMapperTest {
 		String locale,
 		String timezone,
 		String nickname,
-		String passwordHash,
 		Instant deletedAt,
 		Long id
 	) throws Exception {
 		var constructor = AccountJpaEntity.class.getDeclaredConstructor(
 			AccountRole.class, AccountStatus.class, String.class, String.class, String.class,
-			String.class, String.class);
+			String.class);
 		constructor.setAccessible(true);
 		AccountJpaEntity entity = constructor.newInstance(
-			role, status, coarseRegionCode, locale, timezone, nickname, passwordHash);
+			role, status, coarseRegionCode, locale, timezone, nickname);
 
 		setField(entity, "id", id);
 		if (deletedAt != null) {

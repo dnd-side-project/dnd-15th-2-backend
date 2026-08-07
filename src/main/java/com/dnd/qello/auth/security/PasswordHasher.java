@@ -1,6 +1,5 @@
-package com.dnd.qello.account.security;
+package com.dnd.qello.auth.security;
 
-import com.dnd.qello.account.domain.PasswordHash;
 
 public interface PasswordHasher {
 

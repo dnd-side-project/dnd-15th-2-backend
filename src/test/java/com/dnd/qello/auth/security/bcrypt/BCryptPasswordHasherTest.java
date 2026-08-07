@@ -1,12 +1,12 @@
-package com.dnd.qello.account.security.bcrypt;
+package com.dnd.qello.auth.security.bcrypt;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-import com.dnd.qello.account.domain.PasswordHash;
-import com.dnd.qello.account.security.RawPassword;
+import com.dnd.qello.auth.security.PasswordHash;
+import com.dnd.qello.auth.security.RawPassword;
 
 /**
  * Created at: 2026-08-04T12:00:00+09:00

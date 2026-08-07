@@ -31,7 +31,9 @@ public enum AccountErrorCode implements ErrorCode {
 	// DELETED 상태와 deletedAt의 불일치
 	INVALID_DELETION_STATE(HttpStatus.BAD_REQUEST, "ACC-DOM-002", ErrorCategory.DOM, "탈퇴 상태와 탈퇴 시각이 일치하지 않습니다."),
 
-	// role과 passwordHash 조합 위반. OPERATOR는 필수, USER는 보유 불가
+	// 사용 중단(#72). 자격증명이 operator_credential로 분리되면서 Account는 비밀번호를
+	// 알지 못하게 됐고, role과 자격증명의 조합은 (user_id, role) 복합 FK가 DB에서 거절한다.
+	// 배포된 코드 값이므로 삭제하지 않는다(docs/error-codes.md 4절).
 	INVALID_PASSWORD_HASH_STATE(HttpStatus.BAD_REQUEST, "ACC-DOM-003", ErrorCategory.DOM, "계정 권한과 비밀번호 설정이 맞지 않습니다."),
 
 	// 현재 상태에서 허용되지 않는 차단, 차단 해제 또는 탈퇴 요청
