@@ -5,6 +5,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpMethod;
+import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
@@ -25,6 +26,8 @@ public class SecurityConfiguration {
 	public static final String LOGOUT_PATH = "/admin/logout";
 	public static final String CSRF_PATH = "/admin/csrf";
 	public static final String API_PATH = "/api/**";
+	public static final String DEVICE_REGISTRATION_PATH = "/api/v1/auth/devices";
+	public static final String DEVICE_TOKEN_PATH = "/api/v1/auth/token";
 
 	private final AuthEntryPoints authEntryPoints;
 
@@ -71,8 +74,13 @@ public class SecurityConfiguration {
 			// Bearer 토큰은 브라우저가 자동으로 실어 보내지 않으므로 CSRF 대상이 아니다.
 			.csrf(csrf -> csrf.disable())
 			.authorizeHttpRequests(requests -> requests
-				// 기기 등록과 토큰 재발급은 #73에서 추가한다. 그때까지 열린 경로가 없다.
+				// 등록과 재발급은 액세스 토큰을 아직 갖지 못한 상태에서 호출해야 하므로
+				// 인증 없이 연다. 나머지 /api/**는 유효한 액세스 토큰이 있어야 한다.
+				.requestMatchers(HttpMethod.POST, DEVICE_REGISTRATION_PATH, DEVICE_TOKEN_PATH).permitAll()
 				.anyRequest().authenticated())
+			// NimbusJwtDecoder(HS256)로 액세스 토큰을 검증한다. role 클레임 기반 인가는
+			// 다음 앱 API 이슈에서 다룬다.
+			.oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults()))
 			.exceptionHandling(handling -> handling
 				.authenticationEntryPoint(authEntryPoints.unauthorized())
 				.accessDeniedHandler(authEntryPoints.forbidden()))
