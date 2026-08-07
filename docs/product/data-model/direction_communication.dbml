@@ -210,6 +210,16 @@ Enum push_device_status {
   REVOKED [note: '로그아웃 또는 사용자 요청으로 토큰 사용을 철회한 기기']
 }
 
+Enum device_platform {
+  IOS [note: 'iOS 기기에서 등록한 자격증명']
+  ANDROID [note: 'Android 기기에서 등록한 자격증명']
+}
+
+Enum device_credential_status {
+  ACTIVE [note: '현재 인증에 사용할 수 있는 자격증명']
+  REVOKED [note: '해지되어 더 이상 인증에 사용할 수 없는 자격증명']
+}
+
 Enum notification_type {
   ANSWER_RECEIVED [note: '내 질문글에 새 답변이 도착했음을 알리는 종류. 수신 대상은 질문글 작성자뿐이다']
   ANSWER_REACTED [note: '내가 남긴 답변에 질문자가 공감했음을 알리는 종류. 답변자가 받는 유일한 반응 신호이며, 질문자가 만료 뒤에 열어볼 수 있어 늦게 도착할 수 있다']
@@ -333,6 +343,33 @@ Table operator_credential [headercolor: #4E79A7] {
   }
 
   Note: '테이블 설명: 백오피스 운영자의 로그인 자격증명과 잠금 상태를 관리하는 테이블이다. 필요 이유: 계정 생명주기와 자격증명 생명주기의 변경 주기가 다르고, 일반 사용자가 운영자 때문에 존재하는 NULL 컬럼을 들고 다니지 않게 한다. (user_id, role) 복합 외래키로 USER 계정에 자격증명이 붙는 것을 DB가 거절한다. V5 migration에서 추가되었다.'
+}
+
+Table device_credential [headercolor: #4E79A7] {
+  id bigint [pk, increment, not null, note: '행을 식별하는 기본키']
+  user_id bigint [not null, note: '대상 사용자 식별자']
+  installation_id varchar(64) [not null, note: '클라이언트가 만든 기기 식별자. 인증 수단이 아니라 조회·재등록 판단용 식별자일 뿐이다']
+  secret_hash char(64) [not null, note: '서버가 발급한 device_secret의 SHA-256 해시(hex). 평문은 저장하지 않는다']
+  platform device_platform [not null, note: '자격증명을 등록한 클라이언트 플랫폼']
+  credential_status device_credential_status [not null, default: 'ACTIVE', note: '현재 인증 가능 여부']
+  last_used_at timestamptz [not null, default: `clock_timestamp()`, note: '토큰 재발급이 성공할 때마다 갱신되는 마지막 사용 시각']
+  created_at timestamptz [not null, default: `clock_timestamp()`, note: '행이 생성된 시각']
+  revoked_at timestamptz [note: '자격증명을 해지한 시각']
+
+  indexes {
+    secret_hash [unique, name: 'uq_device_credential_secret', note: 'SHA-256에는 salt가 없어 값 자체가 유일해야 하며, 토큰 재발급의 조회 경로이기도 하다']
+    installation_id [name: 'uq_active_device_installation', note: '주의: 무조건 unique가 아니다. SQL DDL은 credential_status=ACTIVE인 행에만 적용되는 partial unique index이므로 REVOKED 자격증명은 같은 installation_id를 여러 행 가질 수 있다']
+    user_id [name: 'device_credential_user_idx', note: 'SQL DDL은 credential_status=ACTIVE인 partial index. 사용자별 활성 기기 조회와 user_account CASCADE 삭제용']
+  }
+
+  checks {
+    `platform IN ('IOS', 'ANDROID')` [name: 'ck_device_credential_platform']
+    `credential_status IN ('ACTIVE', 'REVOKED')` [name: 'ck_device_credential_status']
+    `(credential_status = 'REVOKED') = (revoked_at IS NOT NULL)` [name: 'ck_device_credential_revoked_at']
+    `btrim(installation_id) <> ''` [name: 'ck_device_credential_installation_id']
+  }
+
+  Note: '테이블 설명: 앱 사용자 기기별 인증 자격증명을 관리하는 테이블이다. 필요 이유: 클라이언트가 만든 installation_id를 인증 수단으로 쓰지 않고, 서버가 발급한 고엔트로피 device_secret의 해시로만 기기를 인증한다. push_device와 물리적으로 같은 기기를 가리키지만 발급·해지 주체가 우리이고 생명주기가 독립적이라 분리한다. V7 migration에서 추가되었다.'
 }
 
 Table user_private_attribute [headercolor: #4E79A7] {
@@ -970,6 +1007,7 @@ Ref fk_user_account_region: user_account.coarse_region_code > region_code.code [
 Ref fk_user_private_attribute_user: user_account.id - user_private_attribute.user_id [delete: cascade]
 // 실제 제약은 (user_id, role) 복합 외래키다. DBML이 복합 참조를 표현하지 못해 user_id만 적는다.
 Ref fk_operator_credential_user: user_account.id - operator_credential.user_id [delete: cascade]
+Ref fk_device_credential_user: device_credential.user_id > user_account.id [delete: cascade]
 Ref fk_active_user_presence_user: user_account.id - active_user_presence.user_id [delete: cascade]
 Ref fk_active_user_presence_region: active_user_presence.coarse_region_code > region_code.code [delete: restrict]
 Ref fk_recipient_receive_state_user: user_account.id - recipient_receive_state.user_id [delete: cascade]
