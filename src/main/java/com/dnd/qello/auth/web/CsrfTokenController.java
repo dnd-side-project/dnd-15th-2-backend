@@ -9,6 +9,8 @@ import org.springframework.web.bind.annotation.RestController;
 import com.dnd.qello.common.web.response.ApiResponse;
 import com.dnd.qello.common.web.response.ApiResponseFactory;
 
+import io.swagger.v3.oas.annotations.Parameter;
+
 // CSRF 토큰 발급.
 //
 // 로그인 POST에도 CSRF를 적용하기로 했으므로(login CSRF 방어) 클라이언트가 로그인 전에
@@ -27,8 +29,12 @@ public class CsrfTokenController {
 		this.responseFactory = responseFactory;
 	}
 
+	// csrfToken은 Spring Security가 주입한다. 요청 파라미터가 아니므로 문서에서 감춘다.
+	// 감추지 않으면 프레임워크 내부 타입이 스펙 스키마로 새어 나간다.
 	@GetMapping("/csrf")
-	public ResponseEntity<ApiResponse<CsrfTokenResponse>> issue(CsrfToken csrfToken) {
+	public ResponseEntity<ApiResponse<CsrfTokenResponse>> issue(
+		@Parameter(hidden = true) CsrfToken csrfToken
+	) {
 		return ResponseEntity.ok(responseFactory.success(
 			new CsrfTokenResponse(csrfToken.getHeaderName(), csrfToken.getToken())));
 	}
