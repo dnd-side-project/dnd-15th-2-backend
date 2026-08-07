@@ -145,24 +145,34 @@ git diff --check
       기본 `enabled=false`로 운영에는 라우트가 생기지 않는다. UI 번들은 제외했다.
 - [x] 산출물 경로와 갱신 절차가 `docs/api-response.md` 5절에 기록된다.
 - [x] `./gradlew test`와 `./gradlew integrationTest`가 통과한다.
-- [ ] `.claude/skills/harness-api-docs/SKILL.md` 호출로 스펙과 보강 문서가
-      갱신된다. 스킬은 작성했으나 실제 호출로 보강까지 수행하지는 않았다.
-      현재 컨트롤러 3개는 모두 `/admin` 백오피스 경로이고 앱 REST 컨트롤러가
-      아직 없어 보강 대상이 적다.
+- [x] `.claude/skills/harness-api-docs/SKILL.md` 호출로 스펙과 보강 문서가
+      갱신된다. 스킬을 실제로 호출해 `/admin` 3개 엔드포인트에 operation 설명,
+      엔드포인트별 오류 응답, `security`, 스키마 설명을 적용하고 스펙을
+      재생성했다.
 - [x] `./harness pr-ready --project-tests`가 통과한다.
 
 ## 알려진 보강 대상
 
 생성된 스펙에서 확인한 격차 중 이번 이슈에서 해소한 것과 남은 것이다.
 
-해소함(커스터마이저와 애노테이션):
+해소함(커스터마이저):
 
 - content type `*/*` → `application/json`
 - 모든 operation에 `400`, `500` 오류 응답
 - `CsrfToken` 누출 → `@Parameter(hidden = true)`
 
-남음(엔드포인트별 지식이 필요해 `/harness-api-docs`가 다룬다):
+해소함(`/harness-api-docs` 호출로 적용한 컨트롤러 애노테이션):
 
-- 엔드포인트별 오류 응답. 로그인의 `401`·`403`·`423`이 아직 없다.
-- operation `summary`와 `description`이 비어 있다.
-- 경로별 `security` 선언이 없다.
+- 엔드포인트별 오류 응답. 로그인 `401`(AUT-APP-001)·`403`(AUT-APP-003)·
+  `423`(AUT-APP-002), 로그아웃 `401`(CMN-VAL-003)·`403`(CMN-DOM-001).
+  `GET /admin/csrf`는 `permitAll`이고 GET이라 CSRF 대상이 아니므로 추가하지 않았다.
+- operation `summary`와 `description`, 그리고 `@Tag`.
+- 경로별 `security`. `POST /admin/logout`에만 `operatorSession`을 선언했다.
+  나머지 둘은 `permitAll`이라 선언하지 않는 쪽이 사실에 맞다. 전역 `security`도
+  두지 않았다. 지금 붙이면 열린 두 경로가 거짓으로 인증 필요가 된다.
+- 요청·응답 필드의 `@Schema(description = ...)`. `example`은 넣지 않았다.
+
+적용 중 확인한 함정: `@ApiResponse`를 하나라도 선언하면 springdoc이 반환 타입에서
+만들던 `200`이 사라진다. `200`을 `content` 없이 함께 선언해 복원했고, 재생성한 스펙에
+`ApiResponseOperatorSessionResponse`와 `ApiResponseVoid`가 다시 나오는 것을 확인했다.
+`docs/api-response.md` 5절에 기록했다.
