@@ -3,6 +3,7 @@ package com.dnd.qello.common.error;
 import org.springframework.stereotype.Component;
 
 import com.dnd.qello.answer.error.AnswerErrorCode;
+import com.dnd.qello.auth.error.AuthErrorCode;
 import com.dnd.qello.direction.error.DirectionErrorCode;
 import com.dnd.qello.notification.error.NotificationErrorCode;
 import com.dnd.qello.question.error.QuestionErrorCode;
@@ -37,6 +38,10 @@ public class ConstraintExceptionMapper {
 				new ConstraintMapping(QuestionErrorCode.DUPLICATED_ASSIGNMENT, "approvedQuestionId");
 			case "uq_open_report_user", "uq_open_report_post", "uq_open_report_answer" ->
 				new ConstraintMapping(SafetyErrorCode.DUPLICATED_OPEN_REPORT, null);
+			// 체크-후-삽입 사이의 경합 창에서만 도달한다. DeviceRegistrationService가
+			// 먼저 조회로 같은 상황을 막지만, 동시 요청 race는 이 매핑이 최종 방어선이다.
+			case "uq_active_device_installation" ->
+				new ConstraintMapping(AuthErrorCode.DEVICE_ALREADY_REGISTERED, "installationId");
 			default -> new ConstraintMapping(CommonErrorCode.CONFLICT, null);
 		};
 	}
@@ -55,7 +60,8 @@ public class ConstraintExceptionMapper {
 			"uq_question_assignment_cycle_order",
 			"uq_open_report_user",
 			"uq_open_report_post",
-			"uq_open_report_answer"
+			"uq_open_report_answer",
+			"uq_active_device_installation"
 		};
 	}
 }

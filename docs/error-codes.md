@@ -223,17 +223,28 @@
 | --- | --- | --- | --- | --- |
 | `AUT-VAL-001` | INVALID_LOGIN_ID | 400 | VAL | 로그인 식별자가 올바르지 않습니다. |
 | `AUT-VAL-002` | REQUIRED_VALUE_MISSING | 400 | VAL | 인증 필수 값이 없습니다. |
+| `AUT-VAL-003` | INVALID_INSTALLATION_ID | 400 | VAL | 기기 식별자가 올바르지 않습니다. |
 | `AUT-DOM-001` | INVALID_CREDENTIAL_STATE | 400 | DOM | 자격증명 상태가 올바르지 않습니다. |
 | `AUT-APP-001` | LOGIN_FAILED | 401 | APP | 로그인 정보가 올바르지 않습니다. |
 | `AUT-APP-002` | CREDENTIAL_LOCKED | 423 | APP | 잠긴 계정입니다. 잠시 후 다시 시도해 주세요. |
 | `AUT-APP-003` | ACCOUNT_NOT_ACTIVE | 403 | APP | 사용할 수 없는 계정입니다. |
 | `AUT-APP-004` | CREDENTIAL_NOT_FOUND | 404 | APP | 자격증명을 찾을 수 없습니다. |
+| `AUT-APP-005` | DEVICE_ALREADY_REGISTERED | 409 | APP | 이미 등록된 기기입니다. |
+| `AUT-APP-006` | DEVICE_CREDENTIAL_INVALID | 401 | APP | 기기 자격증명이 유효하지 않습니다. |
 
 `AUT-APP-001`은 존재하지 않는 `login_id`와 잘못된 비밀번호를 **구분하지 않는다**. 두 경우에
 다른 코드나 다른 `reason`을 주면 계정 열거에 쓰인다. 같은 이유로 자격증명이 없을 때도 더미
 해시로 비밀번호 검증을 한 번 수행해 응답 시간을 맞춘다.
 
 `AUT-APP-004`는 로그인 경로에서 쓰지 않는다. 관리 경로에서만 노출한다.
+
+`AUT-APP-005`는 `POST /api/v1/auth/devices`에서만 쓴다. `installation_id`로 ACTIVE
+자격증명이 이미 있으면 재등록이 아니라 `POST /api/v1/auth/token`을 호출해야 한다.
+
+`AUT-APP-006`은 `POST /api/v1/auth/token`에서 `device_secret` 불일치, `installationId`
+교차 검증 실패, `credential_status != ACTIVE`를 모두 같은 코드로 응답한다. `device_secret`은
+256bit 랜덤이라 무차별 대입이 불가능하므로 `AUT-APP-001`과 달리 원인별 응답 시간을
+맞출 필요는 없지만, 클라이언트가 재등록해야 하는 상태라는 신호는 통일한다.
 
 필터 단계에서 끝나는 인증·인가 실패는 controller에 닿지 않아 `GlobalExceptionHandler`를
 거치지 않는다. `AuthEntryPoints`가 같은 형식으로 `CMN-VAL-003`(401)과 `CMN-DOM-001`(403)을
@@ -257,5 +268,6 @@
 | `uq_open_report_user` | `SAF-INFRA-001` | — |
 | `uq_open_report_post` | `SAF-INFRA-001` | — |
 | `uq_open_report_answer` | `SAF-INFRA-001` | — |
+| `uq_active_device_installation` | `AUT-APP-005` | `installationId` |
 
 Flyway 마이그레이션에서 제약 이름을 바꾸면 이 매핑과 표를 함께 고친다.
