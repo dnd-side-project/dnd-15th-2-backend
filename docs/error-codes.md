@@ -46,6 +46,7 @@
 | --- | --- |
 | `CMN` | `common` (기능에 속하지 않는 공통 오류) |
 | `ACC` | `account` |
+| `AUT` | `auth` (인증·인가) |
 | `QUE` | `question` |
 | `DIR` | `direction` |
 | `ANS` | `answer` |
@@ -116,6 +117,10 @@
 | `ACC-APP-001` | ACCOUNT_NOT_FOUND | 404 | APP | 계정을 찾을 수 없습니다. |
 
 `ACC-DOM-001`은 생성·수정 시각 관리가 저장 계층으로 옮겨가면서 사용을 중단했다.
+
+`ACC-DOM-003`은 자격증명이 `operator_credential`로 분리되면서(#72) 사용을 중단했다.
+`Account`가 비밀번호를 알지 못하게 됐고, role과 자격증명의 조합은 `(user_id, role)`
+복합 FK가 DB에서 거절한다.
 
 ## 7. question (QUE)
 
@@ -212,7 +217,29 @@
 | `NOT-DOM-003` | INVALID_NOTIFICATION_STATUS | 409 | DOM | 현재 알림 상태로는 요청을 처리할 수 없습니다. |
 | `NOT-INFRA-001` | DUPLICATED_EVENT | 409 | INFRA | 이미 처리된 알림입니다. |
 
-## 12. DB 제약 매핑
+## 12. auth (AUT)
+
+| 코드 | 이름 | HTTP | 분류 | 메시지 |
+| --- | --- | --- | --- | --- |
+| `AUT-VAL-001` | INVALID_LOGIN_ID | 400 | VAL | 로그인 식별자가 올바르지 않습니다. |
+| `AUT-VAL-002` | REQUIRED_VALUE_MISSING | 400 | VAL | 인증 필수 값이 없습니다. |
+| `AUT-DOM-001` | INVALID_CREDENTIAL_STATE | 400 | DOM | 자격증명 상태가 올바르지 않습니다. |
+| `AUT-APP-001` | LOGIN_FAILED | 401 | APP | 로그인 정보가 올바르지 않습니다. |
+| `AUT-APP-002` | CREDENTIAL_LOCKED | 423 | APP | 잠긴 계정입니다. 잠시 후 다시 시도해 주세요. |
+| `AUT-APP-003` | ACCOUNT_NOT_ACTIVE | 403 | APP | 사용할 수 없는 계정입니다. |
+| `AUT-APP-004` | CREDENTIAL_NOT_FOUND | 404 | APP | 자격증명을 찾을 수 없습니다. |
+
+`AUT-APP-001`은 존재하지 않는 `login_id`와 잘못된 비밀번호를 **구분하지 않는다**. 두 경우에
+다른 코드나 다른 `reason`을 주면 계정 열거에 쓰인다. 같은 이유로 자격증명이 없을 때도 더미
+해시로 비밀번호 검증을 한 번 수행해 응답 시간을 맞춘다.
+
+`AUT-APP-004`는 로그인 경로에서 쓰지 않는다. 관리 경로에서만 노출한다.
+
+필터 단계에서 끝나는 인증·인가 실패는 controller에 닿지 않아 `GlobalExceptionHandler`를
+거치지 않는다. `AuthEntryPoints`가 같은 형식으로 `CMN-VAL-003`(401)과 `CMN-DOM-001`(403)을
+내보낸다.
+
+## 13. DB 제약 매핑
 
 `DataIntegrityViolationException`의 원인 메시지에서 제약 이름을 찾아 기능 오류 코드로 옮긴다.
 매핑은 `common/error/ConstraintExceptionMapper`에 있고, 목록에 없는 제약은

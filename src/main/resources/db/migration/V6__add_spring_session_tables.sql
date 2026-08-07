@@ -1,0 +1,36 @@
+-- Spring Session JDBC 세션 저장소.
+--
+-- 테이블·컬럼·인덱스 이름은 spring-session-jdbc가 질의문에 고정해 두고 있어 바꿀 수 없다.
+-- 아래 DDL은 라이브러리가 제공하는 org/springframework/session/jdbc/schema-postgresql.sql과
+-- 같은 내용이다. 라이브러리의 자동 초기화(spring.session.jdbc.initialize-schema) 대신
+-- Flyway로 관리하는 이유는 ADR-0001(Flyway가 스키마 변경을 소유한다)에 있다.
+-- spring-session-jdbc를 올릴 때 이 파일이 상류 스키마와 어긋나지 않는지 확인한다.
+
+CREATE TABLE SPRING_SESSION (
+    PRIMARY_ID            CHAR(36) NOT NULL,
+    SESSION_ID            CHAR(36) NOT NULL,
+    CREATION_TIME         BIGINT NOT NULL,
+    LAST_ACCESS_TIME      BIGINT NOT NULL,
+    MAX_INACTIVE_INTERVAL INT NOT NULL,
+    EXPIRY_TIME           BIGINT NOT NULL,
+    PRINCIPAL_NAME        VARCHAR(100),
+
+    CONSTRAINT SPRING_SESSION_PK PRIMARY KEY (PRIMARY_ID)
+);
+
+CREATE UNIQUE INDEX SPRING_SESSION_IX1 ON SPRING_SESSION (SESSION_ID);
+CREATE INDEX SPRING_SESSION_IX2 ON SPRING_SESSION (EXPIRY_TIME);
+CREATE INDEX SPRING_SESSION_IX3 ON SPRING_SESSION (PRINCIPAL_NAME);
+
+CREATE TABLE SPRING_SESSION_ATTRIBUTES (
+    SESSION_PRIMARY_ID CHAR(36) NOT NULL,
+    ATTRIBUTE_NAME     VARCHAR(200) NOT NULL,
+    ATTRIBUTE_BYTES    BYTEA NOT NULL,
+
+    CONSTRAINT SPRING_SESSION_ATTRIBUTES_PK PRIMARY KEY (SESSION_PRIMARY_ID, ATTRIBUTE_NAME),
+    CONSTRAINT SPRING_SESSION_ATTRIBUTES_FK FOREIGN KEY (SESSION_PRIMARY_ID)
+        REFERENCES SPRING_SESSION (PRIMARY_ID) ON DELETE CASCADE
+);
+
+COMMENT ON TABLE SPRING_SESSION IS
+    '백오피스 운영자 세션. 세션 행을 지우면 권한이 즉시 회수된다. 앱 API는 stateless라 이 테이블을 쓰지 않는다.';

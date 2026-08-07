@@ -296,7 +296,6 @@ Table user_account [headercolor: #4E79A7] {
   locale varchar(35) [not null, note: '언어와 지역별 표시 형식을 결정하는 로케일']
   timezone varchar(64) [not null, note: '날짜 경계와 알림 계산에 사용하는 IANA 시간대']
   nickname varchar(50) [note: '다른 사용자에게 표시할 익명 닉네임']
-  password_hash varchar(255) [note: '관리자(OPERATOR) 계정의 검증된 비밀번호 해시. 평문은 저장하지 않으며 일반(USER) 계정은 항상 NULL이다. V3 migration에서 추가되었다.']
   created_at timestamptz [not null, default: `clock_timestamp()`, note: '행이 생성된 시각']
   updated_at timestamptz [not null, default: `clock_timestamp()`, note: '마지막으로 변경된 시각']
   version bigint [not null, default: 0, note: 'JPA 낙관적 잠금용 행 버전. 수정마다 증가하며 동시 수정 중 뒤늦은 요청을 거절한다. V4 migration에서 추가되었다.']
@@ -309,10 +308,31 @@ Table user_account [headercolor: #4E79A7] {
   checks {
     `nickname IS NULL OR btrim(nickname) <> ''` [name: 'ck_user_account_nickname']
     `(status = 'DELETED' AND deleted_at IS NOT NULL) OR (status <> 'DELETED' AND deleted_at IS NULL)` [name: 'ck_user_account_deleted_at']
-    `(role = 'OPERATOR' AND password_hash IS NOT NULL) OR (role = 'USER' AND password_hash IS NULL)` [name: 'ck_user_account_password_hash']
   }
 
   Note: '테이블 설명: 사용자의 기본 식별자, 권한, 계정 상태, 기준 지역과 시간대를 관리하는 계정 테이블이다. 필요 이유: 사용자 식별자와 서비스 공통 권한·계정 상태를 한곳에서 관리해 모든 도메인이 동일한 계정 기준을 참조하게 한다.'
+}
+
+Table operator_credential [headercolor: #4E79A7] {
+  user_id bigint [pk, not null, note: 'user_account를 가리키는 기본키이자 외래키']
+  role user_role [not null, default: 'OPERATOR', note: 'user_account.role과 복합 외래키를 이루기 위한 사본. 항상 OPERATOR다.']
+  login_id varchar(50) [not null, note: '백오피스 로그인 식별자. 소문자만 허용한다.']
+  password_hash varchar(255) [not null, note: '검증된 비밀번호 해시. 평문은 저장하지 않는다.']
+  failed_attempt_count smallint [not null, default: 0, note: '연속 로그인 실패 횟수. 성공하면 0으로 되돌린다.']
+  locked_until timestamptz [note: '잠금이 풀리는 시각. 잠겨 있지 않으면 NULL이다.']
+  password_updated_at timestamptz [not null, default: `clock_timestamp()`, note: '비밀번호 마지막 변경 시각. 초기 비밀번호 강제 변경 판단에 쓴다.']
+  last_login_at timestamptz [note: '마지막 로그인 성공 시각']
+  created_at timestamptz [not null, default: `clock_timestamp()`, note: '행이 생성된 시각']
+  updated_at timestamptz [not null, default: `clock_timestamp()`, note: '마지막으로 변경된 시각']
+
+  checks {
+    `role = 'OPERATOR'` [name: 'ck_operator_credential_role']
+    `btrim(login_id) <> '' AND login_id = lower(login_id)` [name: 'ck_operator_credential_login_id']
+    `failed_attempt_count >= 0` [name: 'ck_operator_credential_failed_attempt']
+    `locked_until IS NULL OR locked_until > created_at` [name: 'ck_operator_credential_locked_until']
+  }
+
+  Note: '테이블 설명: 백오피스 운영자의 로그인 자격증명과 잠금 상태를 관리하는 테이블이다. 필요 이유: 계정 생명주기와 자격증명 생명주기의 변경 주기가 다르고, 일반 사용자가 운영자 때문에 존재하는 NULL 컬럼을 들고 다니지 않게 한다. (user_id, role) 복합 외래키로 USER 계정에 자격증명이 붙는 것을 DB가 거절한다. V5 migration에서 추가되었다.'
 }
 
 Table user_private_attribute [headercolor: #4E79A7] {
@@ -948,6 +968,8 @@ Ref fk_region_code_parent: region_code.parent_code > region_code.code [delete: r
 
 Ref fk_user_account_region: user_account.coarse_region_code > region_code.code [delete: restrict]
 Ref fk_user_private_attribute_user: user_account.id - user_private_attribute.user_id [delete: cascade]
+// 실제 제약은 (user_id, role) 복합 외래키다. DBML이 복합 참조를 표현하지 못해 user_id만 적는다.
+Ref fk_operator_credential_user: user_account.id - operator_credential.user_id [delete: cascade]
 Ref fk_active_user_presence_user: user_account.id - active_user_presence.user_id [delete: cascade]
 Ref fk_active_user_presence_region: active_user_presence.coarse_region_code > region_code.code [delete: restrict]
 Ref fk_recipient_receive_state_user: user_account.id - recipient_receive_state.user_id [delete: cascade]

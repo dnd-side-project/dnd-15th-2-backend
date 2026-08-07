@@ -50,9 +50,6 @@ public class AccountJpaEntity extends JpaAuditableEntity {
 	@Column(name = "nickname", length = 50)
 	private String nickname;
 
-	@Column(name = "password_hash", length = 255)
-	private String passwordHash;
-
 	@Column(name = "deleted_at")
 	private Instant deletedAt;
 
@@ -68,8 +65,7 @@ public class AccountJpaEntity extends JpaAuditableEntity {
 		String coarseRegionCode,
 		String locale,
 		String timezone,
-		String nickname,
-		String passwordHash
+		String nickname
 	) {
 		this.role = role;
 		this.status = status;
@@ -78,7 +74,6 @@ public class AccountJpaEntity extends JpaAuditableEntity {
 		this.timezone = timezone;
 		//TODO(#48): Nickname Null 허용 유무 논의
 		this.nickname = nickname;
-		this.passwordHash = passwordHash;
 	}
 
 	void updateProfile(String coarseRegionCode, String locale, String timezone, String nickname) {

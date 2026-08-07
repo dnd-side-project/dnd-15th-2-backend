@@ -35,7 +35,6 @@ import org.springframework.transaction.support.TransactionTemplate;
 import com.dnd.qello.account.domain.Account;
 import com.dnd.qello.account.domain.AccountRole;
 import com.dnd.qello.account.domain.AccountStatus;
-import com.dnd.qello.account.domain.PasswordHash;
 import com.dnd.qello.account.error.AccountErrorCode;
 import com.dnd.qello.account.error.AccountException;
 import com.dnd.qello.account.repository.AccountRepository;
@@ -52,8 +51,7 @@ class AccountPersistenceIntegrationTest extends PostgisContainerIntegrationTestS
 	private static final String REGION_CODE = "TEST-COUNTRY";
 	private static final Instant FIRST_AUDIT_TIME =
 		Instant.parse("2026-08-03T09:00:00Z");
-	private static final PasswordHash OPERATOR_PASSWORD_HASH =
-		new PasswordHash("$2a$10$fixed-test-hash-value");
+	private static final String OPERATOR_PASSWORD_HASH = "$2a$10$fixed-test-hash-value";
 
 	@Autowired
 	private AccountRepository accountRepository;
@@ -82,12 +80,12 @@ class AccountPersistenceIntegrationTest extends PostgisContainerIntegrationTestS
 	}
 
 	@Test
-	@DisplayName("Flyway V1~V4 적용 후 Hibernate validate가 schema를 변경하지 않고 시작된다")
+	@DisplayName("Flyway V1~V6 적용 후 Hibernate validate가 schema를 변경하지 않고 시작된다")
 	void startsWithFlywaySchemaValidationOnly() {
 		Integer successfulMigrations = jdbcTemplate.queryForObject("""
 			SELECT count(*)
 			FROM flyway_schema_history
-			WHERE version IN ('1', '2', '3', '4') AND success
+			WHERE version IN ('1', '2', '3', '4', '5', '6') AND success
 			""", Integer.class);
 		Integer applicationTableCount = jdbcTemplate.queryForObject("""
 			SELECT count(*)
@@ -97,8 +95,9 @@ class AccountPersistenceIntegrationTest extends PostgisContainerIntegrationTestS
 			  AND table_name NOT IN ('flyway_schema_history', 'spatial_ref_sys')
 			""", Integer.class);
 
-		assertThat(successfulMigrations).isEqualTo(4);
-		assertThat(applicationTableCount).isEqualTo(28);
+		assertThat(successfulMigrations).isEqualTo(6);
+		// V1~V4의 28개 + operator_credential + spring_session + spring_session_attributes
+		assertThat(applicationTableCount).isEqualTo(31);
 	}
 
 	@Test
@@ -110,31 +109,43 @@ class AccountPersistenceIntegrationTest extends PostgisContainerIntegrationTestS
 		Account found = accountRepository.findById(saved.getId()).orElseThrow();
 
 		assertThat(saved.getId()).isPositive();
-		assertThat(saved.getPasswordHash()).isNull();
 		assertThat(rawInstant(saved.getId(), "created_at")).isEqualTo(FIRST_AUDIT_TIME);
 		assertThat(rawInstant(saved.getId(), "updated_at")).isEqualTo(FIRST_AUDIT_TIME);
 		assertThat(found).usingRecursiveComparison().isEqualTo(saved);
 	}
 
 	@Test
-	@DisplayName("관리자 Account는 password_hash로만 저장되고 평문은 저장되지 않는다")
-	void savesOperatorAccountWithHashedPasswordOnly() {
+	@DisplayName("관리자 Account는 자격증명 없이 저장되고 자격증명은 operator_credential에만 존재한다")
+	void savesOperatorAccountWithoutCredentialColumn() {
 		Account saved = accountRepository.save(Account.createOperator(
-			REGION_CODE, "ko-KR", "Asia/Seoul", "qello-admin", OPERATOR_PASSWORD_HASH));
+			REGION_CODE, "ko-KR", "Asia/Seoul", "qello-admin"));
+
+		jdbcTemplate.update("""
+			INSERT INTO operator_credential (user_id, login_id, password_hash)
+			VALUES (?, 'qello-admin', ?)
+			""", saved.getId(), OPERATOR_PASSWORD_HASH);
 
 		String storedHash = jdbcTemplate.queryForObject(
-			"SELECT password_hash FROM user_account WHERE id = ?", String.class, saved.getId());
+			"SELECT password_hash FROM operator_credential WHERE user_id = ?",
+			String.class, saved.getId());
+		Integer passwordColumnsOnAccount = jdbcTemplate.queryForObject("""
+			SELECT count(*)
+			FROM information_schema.columns
+			WHERE table_schema = 'public'
+			  AND table_name = 'user_account'
+			  AND column_name = 'password_hash'
+			""", Integer.class);
 
-		assertThat(saved.getPasswordHash()).isEqualTo(OPERATOR_PASSWORD_HASH);
-		assertThat(storedHash).isEqualTo(OPERATOR_PASSWORD_HASH.value());
+		assertThat(storedHash).isEqualTo(OPERATOR_PASSWORD_HASH);
 		assertThat(storedHash).doesNotContain("qello-admin");
+		assertThat(passwordColumnsOnAccount).isZero();
 	}
 
 	@Test
 	@DisplayName("enum은 문자열로 저장되고 순차 갱신은 createdAt을 보존하며 updatedAt을 전진시킨다")
 	void mapsEnumsAndUpdatesAuditTimestamp() {
 		Account saved = accountRepository.save(Account.createOperator(
-			REGION_CODE, "ko-KR", "Asia/Seoul", "before", OPERATOR_PASSWORD_HASH));
+			REGION_CODE, "ko-KR", "Asia/Seoul", "before"));
 
 		assertThat(rawString(saved.getId(), "role")).isEqualTo("OPERATOR");
 		assertThat(rawString(saved.getId(), "status")).isEqualTo("ACTIVE");
@@ -150,7 +161,6 @@ class AccountPersistenceIntegrationTest extends PostgisContainerIntegrationTestS
 		assertThat(rawInstant(saved.getId(), "created_at")).isEqualTo(FIRST_AUDIT_TIME);
 		assertThat(rawInstant(saved.getId(), "updated_at")).isEqualTo(blockedAt);
 		assertThat(rawString(saved.getId(), "status")).isEqualTo("BLOCKED");
-		assertThat(rawString(saved.getId(), "password_hash")).isEqualTo(OPERATOR_PASSWORD_HASH.value());
 
 		Instant deletedAt = blockedAt.plus(Duration.ofMinutes(5));
 		clock.setInstant(deletedAt);
@@ -256,18 +266,73 @@ class AccountPersistenceIntegrationTest extends PostgisContainerIntegrationTestS
 	}
 
 	@Test
-	@DisplayName("role과 password_hash의 불일치는 DB check constraint가 거절한다")
-	void rejectsRolePasswordHashMismatch() {
+	@DisplayName("USER 계정에 운영자 자격증명을 붙이면 복합 FK가 거절한다")
+	void rejectsCredentialOnUserAccount() {
+		Account user = accountRepository.save(Account.createUser(
+			REGION_CODE, "ko-KR", "Asia/Seoul", "plain-user"));
+
 		assertThatThrownBy(() -> jdbcTemplate.update("""
-			INSERT INTO user_account (role, coarse_region_code, locale, timezone, nickname, password_hash)
-			VALUES ('USER', ?, 'ko-KR', 'Asia/Seoul', 'user-with-hash', 'unexpected-hash')
-			""", REGION_CODE))
+			INSERT INTO operator_credential (user_id, login_id, password_hash)
+			VALUES (?, 'not-an-operator', ?)
+			""", user.getId(), OPERATOR_PASSWORD_HASH))
+			.isInstanceOf(DataIntegrityViolationException.class);
+	}
+
+	@Test
+	@DisplayName("자격증명이 있는 계정을 USER로 강등하면 복합 FK가 거절한다")
+	void rejectsRoleDemotionWhileCredentialExists() {
+		Account operator = accountRepository.save(Account.createOperator(
+			REGION_CODE, "ko-KR", "Asia/Seoul", "demote-target"));
+		jdbcTemplate.update("""
+			INSERT INTO operator_credential (user_id, login_id, password_hash)
+			VALUES (?, 'demote-target', ?)
+			""", operator.getId(), OPERATOR_PASSWORD_HASH);
+
+		assertThatThrownBy(() -> jdbcTemplate.update(
+			"UPDATE user_account SET role = 'USER' WHERE id = ?", operator.getId()))
+			.isInstanceOf(DataIntegrityViolationException.class);
+	}
+
+	@Test
+	@DisplayName("login_id는 유일하고 대문자와 공백만인 값을 거절한다")
+	void rejectsInvalidLoginId() {
+		Account first = accountRepository.save(Account.createOperator(
+			REGION_CODE, "ko-KR", "Asia/Seoul", "first-operator"));
+		Account second = accountRepository.save(Account.createOperator(
+			REGION_CODE, "ko-KR", "Asia/Seoul", "second-operator"));
+		jdbcTemplate.update("""
+			INSERT INTO operator_credential (user_id, login_id, password_hash)
+			VALUES (?, 'taken-login', ?)
+			""", first.getId(), OPERATOR_PASSWORD_HASH);
+
+		assertThatThrownBy(() -> jdbcTemplate.update("""
+			INSERT INTO operator_credential (user_id, login_id, password_hash)
+			VALUES (?, 'taken-login', ?)
+			""", second.getId(), OPERATOR_PASSWORD_HASH))
 			.isInstanceOf(DataIntegrityViolationException.class);
 		assertThatThrownBy(() -> jdbcTemplate.update("""
-			INSERT INTO user_account (role, coarse_region_code, locale, timezone, nickname)
-			VALUES ('OPERATOR', ?, 'ko-KR', 'Asia/Seoul', 'operator-without-hash')
-			""", REGION_CODE))
+			INSERT INTO operator_credential (user_id, login_id, password_hash)
+			VALUES (?, 'Mixed-Case', ?)
+			""", second.getId(), OPERATOR_PASSWORD_HASH))
 			.isInstanceOf(DataIntegrityViolationException.class);
+	}
+
+	@Test
+	@DisplayName("계정을 지우면 자격증명도 함께 사라진다")
+	void cascadesCredentialDeletionWithAccount() {
+		Account operator = accountRepository.save(Account.createOperator(
+			REGION_CODE, "ko-KR", "Asia/Seoul", "cascade-target"));
+		jdbcTemplate.update("""
+			INSERT INTO operator_credential (user_id, login_id, password_hash)
+			VALUES (?, 'cascade-target', ?)
+			""", operator.getId(), OPERATOR_PASSWORD_HASH);
+
+		jdbcTemplate.update("DELETE FROM user_account WHERE id = ?", operator.getId());
+
+		Integer remaining = jdbcTemplate.queryForObject(
+			"SELECT count(*) FROM operator_credential WHERE user_id = ?",
+			Integer.class, operator.getId());
+		assertThat(remaining).isZero();
 	}
 
 	@Test

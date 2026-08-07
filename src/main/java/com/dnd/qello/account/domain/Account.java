@@ -21,7 +21,6 @@ public final class Account {
 	private final String locale;
 	private final String timezone;
 	private final String nickname;
-	private final PasswordHash passwordHash;
 	private final Instant deletedAt;
 
 	private Account(
@@ -32,7 +31,6 @@ public final class Account {
 		String locale,
 		String timezone,
 		String nickname,
-		PasswordHash passwordHash,
 		Instant deletedAt
 	) {
 		this.id = validateId(id);
@@ -43,7 +41,6 @@ public final class Account {
 		this.locale = requireText(locale, "locale", LOCALE_MAX_LENGTH);
 		this.timezone = requireTimezone(timezone);
 		this.nickname = validateNickname(nickname);
-		this.passwordHash = validatePasswordHash(role, passwordHash);
 		this.deletedAt = deletedAt;
 		validateDeletionState(status, deletedAt);
 	}
@@ -65,21 +62,22 @@ public final class Account {
 			locale,
 			timezone,
 			nickname,
-			null,
 			null
 		);
 	}
 
 	/**
-	 * 관리자 계정 생성. 일반 가입 유스케이스에서는 호출할 수 없으며,
-	 * 호출자는 이미 검증된 {@link PasswordHash}만 전달해야 한다.
+	 * 관리자 계정 생성. 일반 가입 유스케이스에서는 호출할 수 없다.
+	 *
+	 * <p>자격증명은 이 애그리거트에 없다. 운영자 생성은 계정 생성과
+	 * {@code operator_credential} 생성 두 단계로 나뉜다. 근거는
+	 * {@code docs/adr/0006-split-operator-and-device-authentication.md}에 있다.
 	 */
 	public static Account createOperator(
 		String coarseRegionCode,
 		String locale,
 		String timezone,
-		String nickname,
-		PasswordHash passwordHash
+		String nickname
 	) {
 		return new Account(
 			null,
@@ -89,7 +87,6 @@ public final class Account {
 			locale,
 			timezone,
 			nickname,
-			passwordHash,
 			null
 		);
 	}
@@ -105,7 +102,6 @@ public final class Account {
 		String locale,
 		String timezone,
 		String nickname,
-		PasswordHash passwordHash,
 		Instant deletedAt
 	) {
 		if (id == null) {
@@ -120,7 +116,6 @@ public final class Account {
 			locale,
 			timezone,
 			nickname,
-			passwordHash,
 			deletedAt
 		);
 	}
@@ -139,7 +134,6 @@ public final class Account {
 			locale,
 			timezone,
 			nickname,
-			passwordHash,
 			deletedAt
 		);
 	}
@@ -150,7 +144,7 @@ public final class Account {
 				AccountErrorCode.INVALID_STATUS_TRANSITION, "status", "삭제된 계정은 차단할 수 없습니다");
 		}
 		return new Account(
-			id, role, AccountStatus.BLOCKED, coarseRegionCode, locale, timezone, nickname, passwordHash, deletedAt);
+			id, role, AccountStatus.BLOCKED, coarseRegionCode, locale, timezone, nickname, deletedAt);
 	}
 
 	public Account unblock() {
@@ -159,7 +153,7 @@ public final class Account {
 				AccountErrorCode.INVALID_STATUS_TRANSITION, "status", "차단 상태인 계정만 차단 해제할 수 있습니다");
 		}
 		return new Account(
-			id, role, AccountStatus.ACTIVE, coarseRegionCode, locale, timezone, nickname, passwordHash, deletedAt);
+			id, role, AccountStatus.ACTIVE, coarseRegionCode, locale, timezone, nickname, deletedAt);
 	}
 
 	public Account delete(Instant deletedAt) {
@@ -169,7 +163,7 @@ public final class Account {
 				AccountErrorCode.INVALID_STATUS_TRANSITION, "status", "이미 삭제된 계정입니다");
 		}
 		return new Account(
-			id, role, AccountStatus.DELETED, coarseRegionCode, locale, timezone, nickname, passwordHash, deletedAt);
+			id, role, AccountStatus.DELETED, coarseRegionCode, locale, timezone, nickname, deletedAt);
 	}
 
 	public Long getId() {
@@ -198,10 +192,6 @@ public final class Account {
 
 	public String getNickname() {
 		return nickname;
-	}
-
-	public PasswordHash getPasswordHash() {
-		return passwordHash;
 	}
 
 	public Instant getDeletedAt() {
@@ -262,24 +252,6 @@ public final class Account {
 			);
 		}
 		return nickname;
-	}
-
-	private static PasswordHash validatePasswordHash(AccountRole role, PasswordHash passwordHash) {
-		if (role == AccountRole.OPERATOR && passwordHash == null) {
-			throw new AccountException(
-				AccountErrorCode.INVALID_PASSWORD_HASH_STATE,
-				"passwordHash",
-				"OPERATOR 계정은 passwordHash가 필수입니다"
-			);
-		}
-		if (role == AccountRole.USER && passwordHash != null) {
-			throw new AccountException(
-				AccountErrorCode.INVALID_PASSWORD_HASH_STATE,
-				"passwordHash",
-				"USER 계정은 passwordHash를 가질 수 없습니다"
-			);
-		}
-		return passwordHash;
 	}
 
 	private static void validateDeletionState(AccountStatus status, Instant deletedAt) {

@@ -1,7 +1,6 @@
 package com.dnd.qello.account.repository.jpa;
 
 import com.dnd.qello.account.domain.Account;
-import com.dnd.qello.account.domain.PasswordHash;
 import com.dnd.qello.account.error.AccountErrorCode;
 import com.dnd.qello.account.error.AccountException;
 
@@ -25,8 +24,7 @@ final class AccountJpaMapper {
 			account.getCoarseRegionCode(),
 			account.getLocale(),
 			account.getTimezone(),
-			account.getNickname(),
-			toHashValue(account.getPasswordHash())
+			account.getNickname()
 		);
 	}
 
@@ -39,7 +37,6 @@ final class AccountJpaMapper {
 			entity.getLocale(),
 			entity.getTimezone(),
 			entity.getNickname(),
-			toPasswordHash(entity.getPasswordHash()),
 			entity.getDeletedAt()
 		);
 	}
@@ -58,14 +55,6 @@ final class AccountJpaMapper {
 
 	static void updateStatus(AccountJpaEntity entity, Account account) {
 		entity.updateStatus(account.getStatus(), account.getDeletedAt());
-	}
-
-	private static String toHashValue(PasswordHash passwordHash) {
-		return passwordHash == null ? null : passwordHash.value();
-	}
-
-	private static PasswordHash toPasswordHash(String value) {
-		return value == null ? null : new PasswordHash(value);
 	}
 
 }

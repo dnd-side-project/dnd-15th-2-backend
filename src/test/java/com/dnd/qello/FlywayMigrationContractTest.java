@@ -47,7 +47,9 @@ class FlywayMigrationContractTest {
 			"V1__create_direction_communication_schema.sql",
 			"V2__add_reactions_and_skip_pending.sql",
 			"V3__add_user_account_password_hash.sql",
-			"V4__add_user_account_optimistic_lock.sql");
+			"V4__add_user_account_optimistic_lock.sql",
+			"V5__add_operator_credential.sql",
+			"V6__add_spring_session_tables.sql");
 	}
 
 	@Test
@@ -68,7 +70,8 @@ class FlywayMigrationContractTest {
 			.containsEntry("spring.flyway.locations", "classpath:db/migration")
 			.containsEntry("spring.flyway.clean-disabled", "true")
 			.containsEntry("spring.flyway.baseline-on-migrate", "false")
-			.containsEntry("spring.flyway.validate-migration-naming", "true");
+			.containsEntry("spring.flyway.validate-migration-naming", "true")
+			.containsEntry("spring.session.jdbc.initialize-schema", "never");
 	}
 
 	private String sha256(ClassPathResource resource)

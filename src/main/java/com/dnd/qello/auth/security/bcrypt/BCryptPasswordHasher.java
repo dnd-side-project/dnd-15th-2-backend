@@ -1,11 +1,11 @@
-package com.dnd.qello.account.security.bcrypt;
+package com.dnd.qello.auth.security.bcrypt;
 
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Component;
 
-import com.dnd.qello.account.domain.PasswordHash;
-import com.dnd.qello.account.security.PasswordHasher;
-import com.dnd.qello.account.security.RawPassword;
+import com.dnd.qello.auth.security.PasswordHash;
+import com.dnd.qello.auth.security.PasswordHasher;
+import com.dnd.qello.auth.security.RawPassword;
 
 @Component
 public class BCryptPasswordHasher implements PasswordHasher {
