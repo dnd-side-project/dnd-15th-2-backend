@@ -1,5 +1,6 @@
 package com.dnd.qello.auth.config;
 
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.Ordered;
@@ -28,11 +29,34 @@ public class SecurityConfiguration {
 	public static final String API_PATH = "/api/**";
 	public static final String DEVICE_REGISTRATION_PATH = "/api/v1/auth/devices";
 	public static final String DEVICE_TOKEN_PATH = "/api/v1/auth/token";
+	public static final String API_DOCS_PATH = "/v3/api-docs";
+	public static final String API_DOCS_SUBPATH = "/v3/api-docs/**";
 
 	private final AuthEntryPoints authEntryPoints;
 
 	public SecurityConfiguration(AuthEntryPoints authEntryPoints) {
 		this.authEntryPoints = authEntryPoints;
+	}
+
+	// OpenAPI 스펙 엔드포인트. springdoc이 켜진 환경에만 존재한다.
+	//
+	// 운영 기본값은 springdoc.api-docs.enabled=false라 라우트 자체가 생기지 않으므로,
+	// 이 체인이 없으면 fallback denyAll이 받는다. 인증 규칙이 아니라 기능 비활성으로
+	// 노출을 막는 것이 이 설정의 의도다. 스펙은 docs/api/openapi.json으로 커밋한다.
+	@Bean
+	@Order(0)
+	@ConditionalOnProperty(prefix = "springdoc.api-docs", name = "enabled", havingValue = "true")
+	SecurityFilterChain apiDocsSecurityFilterChain(HttpSecurity http) throws Exception {
+		return http
+			.securityMatcher(API_DOCS_PATH, API_DOCS_SUBPATH)
+			.sessionManagement(session -> session
+				.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+			.csrf(csrf -> csrf.disable())
+			.authorizeHttpRequests(requests -> requests.anyRequest().permitAll())
+			.formLogin(form -> form.disable())
+			.httpBasic(basic -> basic.disable())
+			.logout(logout -> logout.disable())
+			.build();
 	}
 
 	@Bean
