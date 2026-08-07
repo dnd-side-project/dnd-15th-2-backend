@@ -108,9 +108,72 @@ JPA 감사 시각(`JpaAuditingConfiguration`)도 같은 빈을 쓴다. 테스트
 
 `Instant.now()`를 직접 호출하지 않는다.
 
-## 5. 아직 정하지 않은 것
+## 5. OpenAPI 문서
+
+스펙은 손으로 쓰지 않는다. springdoc이 실행 중인 애플리케이션에서 추출하고,
+`docs/api/openapi.json`으로 커밋한다.
+
+```bash
+./gradlew integrationTest --tests "*OpenApiSpecificationIntegrationTest"
+```
+
+`OpenApiSpecificationIntegrationTest`가 `/v3/api-docs`를 호출해 산출물을 덮어쓴다.
+키 순서와 개행을 고정하므로 같은 코드에서는 항상 같은 파일이 나온다.
+
+### 자동 동기화
+
+**손으로 재생성하지 않아도 된다.** PR을 올리면 `harness-policy.yml`의
+`sync-api-docs` job이 스펙을 다시 만들고, 달라졌으면 PR 브랜치에 직접 커밋한다.
+커밋 메시지는 브랜치에서 타입과 이슈 번호를 뽑아 저장소 커밋 규칙에 맞춘다.
+
+```text
+feat/gh-73-device-credential-token
+  → feat(docs): sync the openapi specification (#73)
+```
+
+`GITHUB_TOKEN`으로 만든 push는 새 workflow 실행을 트리거하지 않으므로 봇 커밋이
+자신을 다시 깨우는 순환은 생기지 않는다. 대신 그 커밋은 policy job의 검사를 받지
+못하므로 job이 커밋 직전에 `scripts/validate-conventions.py`로 메시지를 직접
+확인한다.
+
+fork에서 올린 PR은 토큰이 읽기 전용이라 되돌려 push할 수 없다. 이 경우에만
+job이 실패하며, 개발자가 직접 재생성해 커밋해야 한다.
+
+### 노출 범위
+
+`springdoc.api-docs.enabled`는 기본값이 `false`다. 운영에서는 스펙 엔드포인트
+라우트 자체가 생기지 않는다. 인증 규칙이 아니라 기능 비활성으로 막는 쪽을 택했다.
+`local`과 통합 테스트 프로필에서만 켜진다. Swagger UI 번들은 아예 넣지 않았다.
+
+### 제네릭 스키마
+
+`ApiResponse<T>`는 springdoc이 타입 인자별로 풀어 `ApiResponseOperatorSessionResponse`
+같은 스키마 이름을 만든다. 래퍼 때문에 별도 설정을 넣지 않는다.
+
+### 공통 규칙 주입
+
+springdoc은 반환 타입만 보고 성공 응답을 추론한다. 어느 엔드포인트에서나 참인 규칙은
+`OpenApiConventionCustomizer`가 한곳에서 넣으므로 컨트롤러마다 반복하지 않는다.
+새 컨트롤러도 자동으로 같은 규칙을 받는다.
+
+| 규칙 | 근거 |
+| --- | --- |
+| 모든 응답 content type을 `application/json`으로 좁힌다 | 이 서비스는 JSON만 반환한다 |
+| 모든 operation에 `400`, `500`을 넣는다 | `GlobalExceptionHandler`가 어떤 요청에서든 낼 수 있다 |
+| `ApiErrorResponse` 스키마를 등록한다 | 어떤 컨트롤러도 반환 타입으로 쓰지 않아 springdoc이 찾지 못한다 |
+
+### 남는 보강
+
+엔드포인트마다 다른 정보는 커스터마이저가 추측하면 안 된다. 다음은 각 컨트롤러의
+애노테이션으로 적는다.
+
+- 엔드포인트별 오류 응답(로그인 `423`, 기기 등록 `409` 등)
+- operation `summary`와 `description`
+- 경로별 `security` 요구
+
+`/harness-api-docs` 스킬과 `agents/api-docs-executor.md`가 이 작업을 돕는다.
+
+## 6. 아직 정하지 않은 것
 
 - **목록 응답과 페이지네이션.** 목록 API가 생길 때 `data` 안에 들어갈
   `PageResponse<T>` 형식을 별도로 정한다. 현재 계약은 이를 막지 않는다.
-- **OpenAPI 문서화.** springdoc을 도입하면 `ApiResponse<T>`의 제네릭 스키마
-  노출 방식을 함께 정한다.
