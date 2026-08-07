@@ -11,6 +11,10 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -35,13 +39,16 @@ import jakarta.validation.constraints.NotBlank;
 
 class GlobalExceptionHandlerTest {
 
+	private static final Instant FIXED_NOW = Instant.parse("2026-08-04T00:00:00Z");
+
 	private MockMvc mockMvc;
 
 	@BeforeEach
 	void setUp() {
+		Clock clock = Clock.fixed(FIXED_NOW, ZoneOffset.UTC);
 		mockMvc = MockMvcBuilders.standaloneSetup(new ProbeController())
 			.setControllerAdvice(new GlobalExceptionHandler(
-				new ApiErrorResponseFactory(), new ConstraintExceptionMapper()))
+				new ApiErrorResponseFactory(clock), new ConstraintExceptionMapper()))
 			.build();
 	}
 
@@ -55,7 +62,7 @@ class GlobalExceptionHandlerTest {
 			.andExpect(jsonPath("$.errorDetail.code").value("ACC-VAL-004"))
 			.andExpect(jsonPath("$.errorDetail.field").value("timezone"))
 			.andExpect(jsonPath("$.errorDetail.reason").value("timezone은 유효한 IANA ID여야 합니다"))
-			.andExpect(jsonPath("$.timestamp").exists());
+			.andExpect(jsonPath("$.timestamp").value(FIXED_NOW.toString()));
 	}
 
 	@Test
