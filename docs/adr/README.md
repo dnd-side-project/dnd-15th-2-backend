@@ -35,6 +35,7 @@ ADR은 **Architecture Decision Record**의 약자입니다.
 | [ADR-0003](0003-global-exception-handling.md) | 도메인 예외를 기능별 오류 코드로 정의하고 전역 처리기에서 응답으로 옮긴다 | proposed |
 | [ADR-0004](0004-adopt-terraform-for-aws-iac.md) | AWS 인프라 관리 도구로 Terraform을 단독 채택한다 | proposed |
 | [ADR-0005](0005-api-success-response-contract.md) | 성공 응답을 ApiResponse로 고정하고 controller가 직접 감싼다 | proposed |
+| [ADR-0006](0006-split-operator-and-device-authentication.md) | 운영자는 서버 세션, 앱 사용자는 기기 자격증명 기반 토큰으로 인증한다 | proposed |
 
 역할은 다음과 같이 구분합니다.
 
