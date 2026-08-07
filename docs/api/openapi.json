@@ -12,7 +12,8 @@
           "reason" : {
             "type" : "string"
           }
-        }
+        },
+        "type" : "object"
       },
       "ApiErrorResponse" : {
         "properties" : {
@@ -33,7 +34,8 @@
             "format" : "date-time",
             "type" : "string"
           }
-        }
+        },
+        "type" : "object"
       },
       "ApiResponseCsrfTokenResponse" : {
         "properties" : {
@@ -91,23 +93,29 @@
         "type" : "object"
       },
       "CsrfTokenResponse" : {
+        "description" : "CSRF 토큰과 그 토큰을 실어 보낼 헤더 이름",
         "properties" : {
           "headerName" : {
+            "description" : "토큰을 실어 보낼 요청 헤더 이름",
             "type" : "string"
           },
           "token" : {
+            "description" : "다음 상태 변경 요청에 실어 보낼 CSRF 토큰",
             "type" : "string"
           }
         },
         "type" : "object"
       },
       "OperatorLoginRequest" : {
+        "description" : "운영자 로그인 요청",
         "properties" : {
           "loginId" : {
+            "description" : "운영자 로그인 식별자. 소문자와 숫자만 허용한다.",
             "minLength" : 1,
             "type" : "string"
           },
           "password" : {
+            "description" : "평문 비밀번호. 전송 구간은 TLS로 보호한다.",
             "minLength" : 1,
             "type" : "string"
           }
@@ -119,8 +127,10 @@
         "type" : "object"
       },
       "OperatorSessionResponse" : {
+        "description" : "로그인 성공 응답. 세션은 Set-Cookie로 전달되며 본문에는 담기지 않는다.",
         "properties" : {
           "userId" : {
+            "description" : "로그인한 운영자의 계정 id",
             "format" : "int64",
             "type" : "integer"
           }
@@ -152,6 +162,7 @@
   "paths" : {
     "/admin/csrf" : {
       "get" : {
+        "description" : "다음 상태 변경 요청에 실어 보낼 CSRF 토큰과 그 헤더 이름을 돌려준다.\n\n인증이 필요 없다. 로그인 POST도 CSRF 보호 대상이라 로그인 전에 토큰을 받을 경로가 있어야 한다.\n\n토큰은 인증 상태와 무관한 값이라 노출해도 안전하다. 방어의 근거는 공격자가 피해자의\n브라우저에서 이 응답을 읽을 수 없다는 same-origin 정책이다.",
         "operationId" : "issue",
         "responses" : {
           "200" : {
@@ -185,13 +196,15 @@
             "description" : "서버 내부 오류가 발생했습니다."
           }
         },
+        "summary" : "CSRF 토큰 발급",
         "tags" : [
-          "csrf-token-controller"
+          "백오피스 인증"
         ]
       }
     },
     "/admin/login" : {
       "post" : {
+        "description" : "자격증명을 검증하고 세션 쿠키를 발급한다.\n\n실패 원인은 구분해 알리지 않는다. 존재하지 않는 loginId와 잘못된 비밀번호가 같은 401로 나간다.\n계정 열거를 막기 위한 것이다.\n\nCSRF 보호 대상이므로 GET /admin/csrf로 받은 토큰을 함께 보내야 한다.",
         "operationId" : "login",
         "requestBody" : {
           "content" : {
@@ -212,7 +225,7 @@
                 }
               }
             },
-            "description" : "OK"
+            "description" : "로그인에 성공했습니다. 세션 쿠키가 발급됩니다."
           },
           "400" : {
             "content" : {
@@ -223,6 +236,36 @@
               }
             },
             "description" : "요청 값이 올바르지 않습니다. 오류 코드는 docs/error-codes.md를 따른다."
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "로그인 정보가 올바르지 않습니다. (AUT-APP-001)"
+          },
+          "403" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "사용할 수 없는 계정이거나 CSRF 토큰이 유효하지 않습니다. (AUT-APP-003, CMN-DOM-001)"
+          },
+          "423" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "연속 실패로 잠긴 계정입니다. 잠금이 풀리면 해소됩니다. (AUT-APP-002)"
           },
           "500" : {
             "content" : {
@@ -235,13 +278,15 @@
             "description" : "서버 내부 오류가 발생했습니다."
           }
         },
+        "summary" : "운영자 로그인",
         "tags" : [
-          "operator-login-controller"
+          "백오피스 인증"
         ]
       }
     },
     "/admin/logout" : {
       "post" : {
+        "description" : "세션을 무효화한다. 권한은 즉시 회수되며 유예 시간이 없다.\n\nCSRF 보호 대상이므로 GET /admin/csrf로 받은 토큰을 함께 보내야 한다.",
         "operationId" : "logout",
         "responses" : {
           "200" : {
@@ -252,7 +297,7 @@
                 }
               }
             },
-            "description" : "OK"
+            "description" : "로그아웃했습니다. 세션이 무효화됩니다."
           },
           "400" : {
             "content" : {
@@ -263,6 +308,26 @@
               }
             },
             "description" : "요청 값이 올바르지 않습니다. 오류 코드는 docs/error-codes.md를 따른다."
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "세션이 없거나 만료되었습니다. (CMN-VAL-003)"
+          },
+          "403" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "운영자 권한이 없거나 CSRF 토큰이 유효하지 않습니다. (CMN-DOM-001)"
           },
           "500" : {
             "content" : {
@@ -275,8 +340,14 @@
             "description" : "서버 내부 오류가 발생했습니다."
           }
         },
+        "security" : [
+          {
+            "operatorSession" : [ ]
+          }
+        ],
+        "summary" : "운영자 로그아웃",
         "tags" : [
-          "operator-login-controller"
+          "백오피스 인증"
         ]
       }
     }
@@ -285,6 +356,12 @@
     {
       "description" : "Generated server url",
       "url" : "http://localhost"
+    }
+  ],
+  "tags" : [
+    {
+      "description" : "운영자 세션 로그인과 로그아웃",
+      "name" : "백오피스 인증"
     }
   ]
 }
