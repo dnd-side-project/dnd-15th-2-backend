@@ -3,9 +3,13 @@
 이 문서는 API 오류 응답의 계약이다. 결정 배경은
 `docs/adr/0003-global-exception-handling.md`에 있다.
 
+성공 응답 형식과 HTTP 상태 매핑을 포함한 응답 전체 계약은
+`docs/api-response.md`에 있다. 이 문서는 오류 코드 목록과 예외 사용 규칙을 다룬다.
+
 ## 1. 응답 형식
 
-상태 코드와 무관하게 모든 오류는 같은 본문으로 나간다.
+상태 코드와 무관하게 모든 오류는 같은 본문으로 나간다. 성공 응답과는 `status`,
+`timestamp`를 공유한다.
 
 ```json
 {
@@ -94,6 +98,9 @@
 
 `CMN-VAL-003`과 `CMN-DOM-001`은 인증·인가 도입 전에 응답 형식을 고정해 두기 위해 정의했다.
 
+낙관적 잠금 충돌(`OptimisticLockingFailureException`)도 `CMN-DOM-003`으로 나간다. 같은 행을
+동시에 수정한 요청 중 뒤늦은 쪽이며, 기능과 무관하게 의미가 같아 공통 코드로 둔다.
+
 ## 6. account (ACC)
 
 | 코드 | 이름 | HTTP | 분류 | 메시지 |
@@ -104,6 +111,11 @@
 | `ACC-VAL-004` | INVALID_TIMEZONE | 400 | VAL | timezone은 유효한 IANA 지역 ID여야 합니다. |
 | `ACC-DOM-001` | INVALID_AUDIT_TIMESTAMPS | 400 | DOM | 계정 생성·수정 시각이 올바르지 않습니다. |
 | `ACC-DOM-002` | INVALID_DELETION_STATE | 400 | DOM | 탈퇴 상태와 탈퇴 시각이 일치하지 않습니다. |
+| `ACC-DOM-003` | INVALID_PASSWORD_HASH_STATE | 400 | DOM | 계정 권한과 비밀번호 설정이 맞지 않습니다. |
+| `ACC-DOM-004` | INVALID_STATUS_TRANSITION | 409 | DOM | 현재 계정 상태로는 요청을 처리할 수 없습니다. |
+| `ACC-APP-001` | ACCOUNT_NOT_FOUND | 404 | APP | 계정을 찾을 수 없습니다. |
+
+`ACC-DOM-001`은 생성·수정 시각 관리가 저장 계층으로 옮겨가면서 사용을 중단했다.
 
 ## 7. question (QUE)
 
