@@ -34,4 +34,9 @@ public class JpaAnswerRepository implements AnswerRepository {
 		return repository.findByAuthorIdAndIdempotencyKey(authorId, idempotencyKey)
 			.map(AnswerJpaMapper::toDomain);
 	}
+
+	@Override
+	public Optional<Answer> findByIdAndAuthorId(long id, long authorId) {
+		return repository.findByIdAndAuthorId(id, authorId).map(AnswerJpaMapper::toDomain);
+	}
 }

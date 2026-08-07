@@ -7,4 +7,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
 interface SpringDataAnswerRepository extends JpaRepository<AnswerJpaEntity, Long> {
 
 	Optional<AnswerJpaEntity> findByAuthorIdAndIdempotencyKey(long authorId, String idempotencyKey);
+
+	Optional<AnswerJpaEntity> findByIdAndAuthorId(long id, long authorId);
 }

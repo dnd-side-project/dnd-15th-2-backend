@@ -27,6 +27,9 @@ public enum AnswerErrorCode implements ErrorCode {
 	// 미디어 첨부 대상이 게시글과 답변 중 정확히 하나가 아니거나 식별자 오류
 	INVALID_MEDIA_TARGET(HttpStatus.BAD_REQUEST, "ANS-VAL-005", ErrorCategory.VAL, "미디어 첨부 대상이 올바르지 않습니다."),
 
+	// 미디어 metadata(mime type, 크기, storage key, checksum) 형식·화이트리스트 위반
+	INVALID_MEDIA_METADATA(HttpStatus.BAD_REQUEST, "ANS-VAL-006", ErrorCategory.VAL, "미디어 값이 올바르지 않습니다."),
+
 	// 답변 상태와 게시·삭제 시각의 불일치
 	INVALID_ANSWER_STATE(HttpStatus.BAD_REQUEST, "ANS-DOM-001", ErrorCategory.DOM, "답변 상태와 값이 맞지 않습니다."),
 
@@ -39,8 +42,27 @@ public enum AnswerErrorCode implements ErrorCode {
 	// 질문 작성자가 아닌 사용자의 답변 공감. answer_reaction의 지연 constraint trigger에서 커밋 시점에 감지. 재시도로 해결 불가
 	INELIGIBLE_REACTOR(HttpStatus.FORBIDDEN, "ANS-DOM-004", ErrorCategory.DOM, "답변에 공감할 수 있는 질문 작성자가 아닙니다."),
 
+	// 미디어 상태와 삭제 시각처럼 함께 있어야 하는 값의 불일치
+	INVALID_MEDIA_STATE(HttpStatus.BAD_REQUEST, "ANS-DOM-005", ErrorCategory.DOM, "미디어 상태와 값이 맞지 않습니다."),
+
+	// 현재 미디어 상태에서 허용되지 않는 전이 시도(예: DELETED 이후 재전이). 재시도로 해결 불가
+	INVALID_MEDIA_STATUS(HttpStatus.CONFLICT, "ANS-DOM-006", ErrorCategory.DOM, "현재 미디어 상태로는 요청을 처리할 수 없습니다."),
+
+	// 요청한 미디어 자산을 찾을 수 없음
+	MEDIA_NOT_FOUND(HttpStatus.NOT_FOUND, "ANS-DOM-007", ErrorCategory.DOM, "미디어를 찾을 수 없습니다."),
+
+	// presigned URL 발급 요청자 또는 attach 요청자가 미디어·대상 콘텐츠의 소유자가 아님
+	MEDIA_OWNER_MISMATCH(HttpStatus.FORBIDDEN, "ANS-DOM-008", ErrorCategory.DOM, "본인 소유의 미디어만 사용할 수 있습니다."),
+
+	// attach/detach 결과로 공개 상태 콘텐츠가 본문도 READY 미디어도 없게 됨. ct_media_attachment_preserves_content/
+	// ct_media_status_preserves_content deferred trigger의 애플리케이션 사전 검증
+	MEDIA_CONTENT_REQUIRED(HttpStatus.CONFLICT, "ANS-DOM-009", ErrorCategory.DOM, "공개된 콘텐츠는 본문 또는 미디어가 있어야 합니다."),
+
 	// 같은 멱등키로 이미 등록된 답변 존재. DB 유일성 제약에서 감지
-	DUPLICATED_ANSWER(HttpStatus.CONFLICT, "ANS-INFRA-001", ErrorCategory.INFRA, "이미 등록된 답변입니다.");
+	DUPLICATED_ANSWER(HttpStatus.CONFLICT, "ANS-INFRA-001", ErrorCategory.INFRA, "이미 등록된 답변입니다."),
+
+	// presigned URL 발급/HeadObject 호출 중 객체 존재 여부와 무관한 S3 통신 실패(네트워크, timeout, 5xx). 재시도 후보
+	STORAGE_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "ANS-EXT-001", ErrorCategory.EXT, "미디어 저장소에 연결할 수 없습니다.");
 
 	private final HttpStatus httpStatus;
 	private final String code;
