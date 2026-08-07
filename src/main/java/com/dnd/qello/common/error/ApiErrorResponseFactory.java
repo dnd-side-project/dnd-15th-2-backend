@@ -1,5 +1,8 @@
 package com.dnd.qello.common.error;
 
+import java.time.Clock;
+import java.time.Instant;
+
 import org.springframework.stereotype.Component;
 
 import com.dnd.qello.common.web.response.ApiErrorDetail;
@@ -11,6 +14,12 @@ import com.dnd.qello.common.web.response.ApiErrorResponse;
 @Component
 public class ApiErrorResponseFactory {
 
+	private final Clock clock;
+
+	public ApiErrorResponseFactory(Clock clock) {
+		this.clock = clock;
+	}
+
 	public ApiErrorResponse from(DomainException exception) {
 		ErrorCode errorCode = exception.getErrorCode();
 		return from(errorCode, exception.getField(), exception.getReason());
@@ -20,7 +29,8 @@ public class ApiErrorResponseFactory {
 		String safeReason = reason != null ? reason : errorCode.message();
 		return ApiErrorResponse.error(
 			errorCode.message(),
-			new ApiErrorDetail(errorCode.code(), field, safeReason)
+			new ApiErrorDetail(errorCode.code(), field, safeReason),
+			Instant.now(clock)
 		);
 	}
 }
