@@ -48,6 +48,12 @@ dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-oauth2-resource-server'
 	implementation 'org.springframework.session:spring-session-jdbc'
 	implementation 'org.springframework.security:spring-security-crypto'
+	// OpenAPI 스펙 생성 전용. Swagger UI 번들(-ui)은 넣지 않는다. UI를 서빙하면
+	// 그 자체가 공격면이 되고, 스펙 산출물은 docs/api/openapi.json으로 커밋한다.
+	//
+	// Spring Boot BOM이 springdoc을 관리하지 않으므로 버전을 직접 고정한다.
+	// 3.x는 Spring Boot 4 계열 대상이라 현재 3.5.x에는 2.8 라인을 쓴다.
+	implementation 'org.springdoc:springdoc-openapi-starter-webmvc-api:2.8.17'
 	runtimeOnly 'org.flywaydb:flyway-database-postgresql'
 	runtimeOnly 'org.postgresql:postgresql'
 
