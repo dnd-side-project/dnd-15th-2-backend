@@ -1,52 +1,45 @@
-# GitHub Issue #70 Task Contract
+# GitHub Issue #72 Task Contract
 
-> Generated at: `2026-08-06T20:19:43+09:00`
+> Generated at: `2026-08-07T13:13:20+09:00`
 >
 > 이 파일은 현재 작업 브랜치의 계약이다. 저장소 전역 정책은 `AGENTS.md`를
 > 따른다.
 
 ## Work gate
 
-- Title: `질문글·답변 이미지 첨부 MediaAsset 업로드 서비스 구현`
-- GitHub Issue: `#70`
-- Branch: `feat/gh-70-media-asset-service`
-- Base branch: `feat/gh-67-inbox-sent-post-service`
+- Title: `백오피스 운영자 로그인과 Spring Security 골격`
+- GitHub Issue: `#72`
+- Branch: `feat/gh-72-operator-login-security`
+- Base branch: `main`
 
 ## Objective
 
-- 방향글(`DirectionPost`)과 답변(`Answer`) 작성 시 이미지를 첨부할 수 있도록,
-  S3 presigned URL 기반 업로드 흐름과 `MediaAsset` 도메인 서비스 계층을
-  구현한다.
-- Terraform으로 이미 준비된 dev S3 버킷(#63/PR #68)과 이미 존재하는
-  `media_asset`/`media_attachment` DB 스키마(V1 마이그레이션)를 활용해,
-  지금은 비어 있는 애플리케이션 계층을 채운다.
-- Issue: `#70`
+- 저장소에 API 계층과 인증이 없다. 백오피스 운영자 로그인을 첫 수직 슬라이스로
+  삼아 Spring Security 골격을 세우고, 앱 사용자 인증(#73)이 얹힐 기반을 만든다.
+  운영자는 팀 내부 5명 규모라 위험이 낮다.
 
 ## Scope
 
-- `MediaAsset` 도메인 + JDBC 리포지토리 (상태 전이:
-  UPLOADING→READY/REJECTED/DELETED)
-- presigned URL 발급 서비스 (AWS SDK v2 `S3Presigner`, `storage_key` 채번
-  규칙, mime/size 화이트리스트 검증)
-- 업로드 완료 확인(confirm) 서비스 — `HeadObject`로 실제 업로드 검증 후
-  READY 전환
-- `MediaAttachmentService` — 질문글/답변 작성 시 `media_asset` attach,
-  소유권·`display_order` 검증(기존 `answer.domain.MediaAttachment` record와
-  `MediaAttachmentRepository`가 이미 존재 — `save()`만 있고 조회는 없음)
-- Testcontainers + LocalStack 기반 통합 테스트
+- `docs/adr/0006-split-operator-and-device-authentication.md` — 운영자·기기 인증
+  분리 결정 기록. 설계 초안이 근거로 든 `0003`은 전역 예외 처리가, Issue 본문이
+  적은 `0005`는 API 응답 계약(#74)이 이미 점유해 `0006`으로 정한다.
+- 의존성 추가 — `spring-boot-starter-security`,
+  `spring-boot-starter-oauth2-resource-server`, `spring-session-jdbc`
+- `SecurityFilterChain` 2개 분리 — `/admin/**`(세션+CSRF), `/api/**`(stateless)
+- `V5` 마이그레이션 — `operator_credential` 생성, `user_account (id, role)` 복합
+  unique 추가, `password_hash` 컬럼과 `ck_user_account_password_hash` 제거
+- `Account` 도메인에서 `passwordHash` 제거, `createOperator()` 정리,
+  `ACC-DOM-003 INVALID_PASSWORD_HASH_STATE` 사용 중단
+- `auth` feature 패키지 신설 — domain / repository / service / web
+- `POST /admin/login`, 로그아웃, 실패 5회 15분 잠금, 세션 ID 재발급
+- 운영자 계정 시드 경로 (Flyway 시드 또는 관리 CLI)
 
 ## Explicit exclusions
 
-- HTTP controller, API 문서, DTO
-- 고아 UPLOADING 미디어 정리 배치
-- 실제 이미지 모더레이션 파이프라인 연동(`moderation_status`는 스키마상
-  PENDING 유지)
-- feed(Inbox/SentPost) 조회 응답에 미디어 노출
-- 애플리케이션 런타임 IAM Role 생성/부착 — 컴퓨팅 인프라가 아직 없어 별도
-  이슈로 유예(Infra Design Report `docs/reports/infrastructure/gh-63-D-1.md`
-  §5)
-- 새 Flyway migration(`media_asset`/`media_attachment`는 V1에 이미 존재,
-  컬럼·인덱스만 사용)
+- 앱 사용자 기기 인증과 액세스 토큰 발급 — #73
+- 등록 rate limit, 차단 사용자 캐시, 복구 코드 — 설계 문서 8절 제품 결정 후
+- 운영자 자체 가입, 비밀번호 재설정 메일
+- 백오피스 화면
 - 인프라 apply, 배포, 프로덕션 변경은 별도 승인 없이는 실행하지 않는다.
 - Secret, 계정 식별자, 토큰, `.env` 값은 기록하지 않는다.
 
@@ -54,39 +47,36 @@
 
 | Area | Owner | Required review |
 | --- | --- | --- |
-| `answer/**`(media 관련), `direction/**`(attach 통합 지점), `build.gradle`(AWS SDK 의존성 추가) | 본인(Claude Code 세션) | 사용자 |
+| TODO | TODO | TODO |
 
 ## Existing user-owned changes
 
-- 브랜치 생성 시점(`git status --short`) 결과: worktree에 untracked
-  `src/main/java/com/dnd/.DS_Store`(macOS 자동 생성 파일)만 있었음 — 사용자
-  승인 후 삭제하고 `.gitignore`에 추가(`feat(harness): ignore macOS
-  .DS_Store files (#70)`). 그 외 보존해야 할 기존 변경 없음(clean 상태에서
-  `feat/gh-67-inbox-sent-post-service` 위에 stacked로 분기).
+- `docs/product/AUTH_DESIGN.md`와 인증 ADR은 이 브랜치 생성 전에 사용자가 작성해
+  `stash`에 보관돼 있던 초안이다. 브랜치 생성 후 복원했다.
+- 복원하면서 다음을 고쳤다. 설계 내용 자체는 사용자 초안을 유지한다.
+  - ADR 번호를 `0003` → `0006`으로 조정 (`0003`, `0005` 모두 점유됨)
+  - `POST /admin/login` 응답을 204에서 200 + `ApiResponse<Void>`로 변경
+    (ADR-0005가 204를 쓰지 않기로 결정)
+  - 9절의 "`V3`가 main에 없다" 전제를 `V5` 추가 경로로 갱신 (#48 병합 완료)
 
 ## Validation
 
 ```bash
-./gradlew test
-./gradlew integrationTest
 ./harness check
 ./harness pr-ready --project-tests
-npm run hooks:validate
 git diff --check
 ```
 
 ## Completion criteria
 
-- [ ] `MediaAsset` 상태 전이 단위 테스트 통과
-- [ ] presigned URL 발급이 소유자 검증과 mime/size 화이트리스트를 통과한
-      요청에만 응답함을 테스트로 확인
-- [ ] 업로드 완료 확인 시 실제 S3 객체가 없거나 크기/타입이 다르면
-      REJECTED로 전이됨을 확인
-- [ ] 다른 사용자의 `media_asset`을 attach 시도하면 실패함을 통합 테스트로
-      확인(소유권 미검증 시 남의 자산이 첨부되지 않음)
-- [ ] 본문 없는 질문글/답변에 READY 미디어가 없으면 attach가 거부됨을 확인
-      (DB 트리거와 서비스 레벨 사전 검증 모두)
-- [ ] LocalStack 기반 통합 테스트로 presigned URL 발급 → PUT → confirm
-      흐름 검증
-- [ ] `./harness check`, `./harness pr-ready --project-tests`,
-      `npm run hooks:validate`, `git diff --check` 통과
+- [ ] `(user_id, role)` 복합 FK로 USER 계정에 자격증명이 붙지 않음을 DB가 거절한다.
+- [ ] `user_account.role`을 USER로 강등하면 FK 위반으로 실패한다.
+- [ ] 로그인 실패 5회 후 15분 잠금되고, 잠금 중 요청은 423을 받는다.
+- [ ] 존재하지 않는 `login_id`와 잘못된 비밀번호의 응답 메시지와 응답 시간이
+      구분되지 않는다.
+- [ ] 로그인 성공 시 세션 ID가 재발급된다.
+- [ ] `/admin/**`에 CSRF가 켜져 있고 `/api/**`는 stateless임을 테스트가 고정한다.
+- [ ] 운영자 계정 생성 엔드포인트가 존재하지 않는다.
+- [ ] 평문 비밀번호가 로그·응답·예외에 남지 않는다.
+- [ ] 인증 엔드포인트가 ADR-0005의 응답 계약을 따르고
+      `ApiResponseConventionTest`가 통과한다.
