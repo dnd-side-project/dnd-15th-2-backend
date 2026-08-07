@@ -57,6 +57,12 @@ public enum DirectionErrorCode implements ErrorCode {
 	// 수신 자격 없는 사용자의 질문글 공감. post_reaction의 복합 FK에서 감지. 재시도로 해결 불가
 	INELIGIBLE_REACTOR(HttpStatus.FORBIDDEN, "DIR-DOM-007", ErrorCategory.DOM, "질문글에 공감할 수 있는 수신자가 아닙니다."),
 
+	// 존재하지 않거나 본인 소유가 아닌 수신 항목. 두 경우를 구분하지 않는다.
+	RECIPIENT_NOT_FOUND(HttpStatus.NOT_FOUND, "DIR-DOM-008", ErrorCategory.DOM, "수신 항목을 찾을 수 없습니다."),
+
+	// 존재하지 않거나 본인이 보내지 않은 질문글. 두 경우를 구분하지 않는다.
+	POST_NOT_FOUND(HttpStatus.NOT_FOUND, "DIR-DOM-009", ErrorCategory.DOM, "질문글을 찾을 수 없습니다."),
+
 	// 전송 시각에 활성 상태가 아닌 질문. 질문 풀 변경 시 해소
 	QUESTION_NOT_ACTIVE(HttpStatus.CONFLICT, "DIR-APP-001", ErrorCategory.APP, "전송 시각에 활성인 질문이 아닙니다."),
 

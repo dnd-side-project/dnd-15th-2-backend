@@ -3,6 +3,7 @@ package com.dnd.qello.direction.repository.jdbc;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.time.Instant;
 import java.util.Optional;
 
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
@@ -14,12 +15,13 @@ import com.dnd.qello.direction.domain.DirectionPostModerationStatus;
 import com.dnd.qello.direction.domain.DirectionPostStatus;
 import com.dnd.qello.direction.repository.DirectionPostRepository;
 
+import lombok.RequiredArgsConstructor;
+
 @Repository
+@RequiredArgsConstructor
 public class JdbcDirectionPostRepository implements DirectionPostRepository {
 
 	private final NamedParameterJdbcTemplate jdbc;
-
-	public JdbcDirectionPostRepository(NamedParameterJdbcTemplate jdbc) { this.jdbc = jdbc; }
 
 	@Override
 	public DirectionPost save(DirectionPost post) {
@@ -48,12 +50,29 @@ public class JdbcDirectionPostRepository implements DirectionPostRepository {
 	}
 
 	@Override
+	public DirectionPost advanceAnswersReadAt(long id, Instant at) {
+		return jdbc.query("""
+			UPDATE direction_post
+			SET answers_read_at = GREATEST(answers_read_at, :at)
+			WHERE id = :id
+			RETURNING *
+			""", new MapSqlParameterSource().addValue("id", id).addValue("at", timestamp(at)),
+			rs -> { rs.next(); return map(rs); });
+	}
+
+	@Override
 	public Optional<DirectionPost> findById(long id) { return one("SELECT * FROM direction_post WHERE id = :id", new MapSqlParameterSource("id", id)); }
 
 	@Override
 	public Optional<DirectionPost> findBySenderAndIdempotencyKey(long senderId, String idempotencyKey) {
 		return one("SELECT * FROM direction_post WHERE sender_id = :senderId AND idempotency_key = :idempotencyKey",
 			new MapSqlParameterSource().addValue("senderId", senderId).addValue("idempotencyKey", idempotencyKey));
+	}
+
+	@Override
+	public Optional<DirectionPost> findByIdAndSenderId(long id, long senderId) {
+		return one("SELECT * FROM direction_post WHERE id = :id AND sender_id = :senderId",
+			new MapSqlParameterSource().addValue("id", id).addValue("senderId", senderId));
 	}
 
 	private Optional<DirectionPost> one(String sql, MapSqlParameterSource p) {

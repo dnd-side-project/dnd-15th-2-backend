@@ -159,4 +159,112 @@ class DirectionDomainTest {
 			.hasFieldOrPropertyWithValue("errorCode", DirectionErrorCode.INVALID_TIME_ORDER)
 			.hasFieldOrPropertyWithValue("field", "answersReadAt");
 	}
+
+	private static final Instant MATCHED = Instant.parse("2026-08-06T12:00:00Z");
+
+	private PostRecipient availableRecipient() {
+		return PostRecipient.available(1L, 2L, "NEAR", BigDecimal.valueOf(45), "TEST-REGION", MATCHED);
+	}
+
+	@Test
+	@DisplayName("open은 AVAILABLE에서 discoveredAt과 openedAt을 함께 채운다")
+	void openFillsDiscoveredAndOpenedTimestamps() {
+		PostRecipient opened = availableRecipient().open(MATCHED.plusSeconds(10));
+
+		assertThat(opened.getStatus()).isEqualTo(PostRecipientStatus.OPENED);
+		assertThat(opened.getDiscoveredAt()).isEqualTo(MATCHED.plusSeconds(10));
+		assertThat(opened.getOpenedAt()).isEqualTo(MATCHED.plusSeconds(10));
+		assertThat(opened.getCapacityReleasedAt()).isNull();
+	}
+
+	@Test
+	@DisplayName("open은 멱등이며 최초 열람 시각을 유지한다")
+	void openKeepsFirstOpenedAt() {
+		PostRecipient opened = availableRecipient().open(MATCHED.plusSeconds(10));
+		PostRecipient reopened = opened.open(MATCHED.plusSeconds(99));
+
+		assertThat(reopened.getOpenedAt()).isEqualTo(MATCHED.plusSeconds(10));
+	}
+
+	@Test
+	@DisplayName("open은 discoveredAt보다 이른 시각을 거부한다")
+	void openRejectsTimeBeforeDiscovered() {
+		PostRecipient discovered = availableRecipient().discover(MATCHED.plusSeconds(10));
+
+		assertThatThrownBy(() -> discovered.open(MATCHED.plusSeconds(9)))
+			.isInstanceOf(DirectionException.class)
+			.hasFieldOrPropertyWithValue("errorCode", DirectionErrorCode.INVALID_TIME_ORDER);
+	}
+
+	@Test
+	@DisplayName("discover는 AVAILABLE만 DISCOVERED로 바꾸고 이후 상태는 그대로 둔다")
+	void discoverOnlyAdvancesFromAvailable() {
+		PostRecipient discovered = availableRecipient().discover(MATCHED.plusSeconds(5));
+		assertThat(discovered.getStatus()).isEqualTo(PostRecipientStatus.DISCOVERED);
+		assertThat(discovered.getDiscoveredAt()).isEqualTo(MATCHED.plusSeconds(5));
+
+		PostRecipient opened = discovered.open(MATCHED.plusSeconds(6));
+		assertThat(opened.discover(MATCHED.plusSeconds(7)).getStatus()).isEqualTo(PostRecipientStatus.OPENED);
+	}
+
+	@Test
+	@DisplayName("answered는 capacityReleasedAt을 함께 설정한다")
+	void answeredReleasesCapacity() {
+		PostRecipient answered = availableRecipient()
+			.open(MATCHED.plusSeconds(10))
+			.answered(MATCHED.plusSeconds(20));
+
+		assertThat(answered.getStatus()).isEqualTo(PostRecipientStatus.ANSWERED);
+		assertThat(answered.getCapacityReleasedAt()).isEqualTo(MATCHED.plusSeconds(20));
+	}
+
+	@Test
+	@DisplayName("answered는 openedAt보다 이른 시각을 거부한다")
+	void answeredRejectsTimeBeforeOpened() {
+		PostRecipient opened = availableRecipient().open(MATCHED.plusSeconds(10));
+
+		assertThatThrownBy(() -> opened.answered(MATCHED.plusSeconds(9)))
+			.isInstanceOf(DirectionException.class)
+			.hasFieldOrPropertyWithValue("errorCode", DirectionErrorCode.INVALID_TIME_ORDER);
+	}
+
+	@Test
+	@DisplayName("넘김이 확정된 수신 항목은 다시 열람하거나 답변할 수 없다")
+	void terminalRecipientRejectsOpenAndAnswer() {
+		PostRecipient skipped = availableRecipient()
+			.requestSkip(MATCHED.plusSeconds(10))
+			.confirmSkip(MATCHED.plusSeconds(20));
+
+		assertThatThrownBy(() -> skipped.open(MATCHED.plusSeconds(30)))
+			.isInstanceOf(DirectionException.class)
+			.hasFieldOrPropertyWithValue("errorCode", DirectionErrorCode.INVALID_RECIPIENT_STATE);
+		assertThatThrownBy(() -> skipped.answered(MATCHED.plusSeconds(30)))
+			.isInstanceOf(DirectionException.class)
+			.hasFieldOrPropertyWithValue("errorCode", DirectionErrorCode.INVALID_RECIPIENT_STATE);
+	}
+
+	@Test
+	@DisplayName("markAnswersRead는 답변 열람 시각을 기록한다")
+	void marksAnswersRead() {
+		Instant submitted = Instant.parse("2026-08-06T12:00:00Z");
+		DirectionPost post = DirectionPost.submit(1L, 2L, "key", "글", "TEST-REGION",
+			submitted, submitted.plusSeconds(3600));
+
+		DirectionPost read = post.markAnswersRead(submitted.plusSeconds(60));
+
+		assertThat(read.getAnswersReadAt()).isEqualTo(submitted.plusSeconds(60));
+		assertThat(read.getStatus()).isEqualTo(post.getStatus());
+	}
+
+	@Test
+	@DisplayName("markAnswersRead는 발송 시각보다 이른 시각을 거부한다")
+	void markAnswersReadRejectsBeforeSubmission() {
+		Instant submitted = Instant.parse("2026-08-06T12:00:00Z");
+		DirectionPost post = DirectionPost.submit(1L, 2L, "key", "글", "TEST-REGION",
+			submitted, submitted.plusSeconds(3600));
+
+		assertThatThrownBy(() -> post.markAnswersRead(submitted.minusSeconds(1)))
+			.isInstanceOf(DirectionException.class)
+			.hasFieldOrPropertyWithValue("errorCode", DirectionErrorCode.INVALID_TIME_ORDER);
+	}
 }

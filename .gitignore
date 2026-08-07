@@ -67,3 +67,6 @@ override.tf.json
 *.tfvars
 *.tfvars.json
 !*.tfvars.example
+
+### Subagent-driven-development scratch workspace ###
+.superpowers/

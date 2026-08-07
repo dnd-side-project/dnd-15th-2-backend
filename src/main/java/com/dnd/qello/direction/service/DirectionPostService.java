@@ -26,8 +26,14 @@ import com.dnd.qello.direction.repository.PostRecipientRepository;
 import com.dnd.qello.direction.repository.RecipientReceiveStateRepository;
 import com.dnd.qello.question.repository.ApprovedQuestionRepository;
 
-/** 방향 preview를 참고값으로만 사용하고, send transaction에서 다시 계산한다. */
+import lombok.RequiredArgsConstructor;
+
+/**
+ * 방향 글 발송과 질문자 측 읽음 표시를 소유한다.
+ * 방향 preview는 참고값으로만 사용하고 send transaction에서 다시 계산한다.
+ */
 @Service
+@RequiredArgsConstructor
 public class DirectionPostService {
 
 	private final DirectionSchemeRepository schemeRepository;
@@ -38,20 +44,6 @@ public class DirectionPostService {
 	private final PostRecipientRepository recipientRepository;
 	private final ApprovedQuestionRepository approvedQuestionRepository;
 	private final DirectionReceiveProperties receiveProperties;
-
-	public DirectionPostService(DirectionSchemeRepository schemeRepository, ActiveUserPresenceRepository presenceRepository,
-		RecipientReceiveStateRepository receiveStateRepository, DirectionPostRepository postRepository,
-		PostAudienceRepository audienceRepository, PostRecipientRepository recipientRepository,
-		ApprovedQuestionRepository approvedQuestionRepository, DirectionReceiveProperties receiveProperties) {
-		this.schemeRepository = schemeRepository;
-		this.presenceRepository = presenceRepository;
-		this.receiveStateRepository = receiveStateRepository;
-		this.postRepository = postRepository;
-		this.audienceRepository = audienceRepository;
-		this.recipientRepository = recipientRepository;
-		this.approvedQuestionRepository = approvedQuestionRepository;
-		this.receiveProperties = receiveProperties;
-	}
 
 	@Transactional(readOnly = true)
 	public List<DirectionCandidate> preview(PreviewCommand command) {
@@ -88,6 +80,21 @@ public class DirectionPostService {
 				candidate.bearingDegrees(), candidate.matchedRegionCode(), command.submittedAt())))
 			.toList();
 		return new SendResult(post, audience, recipients);
+	}
+
+	/**
+	 * 질문자가 답변 목록을 읽었음을 기록한다. `새로운 답변 n개` 배지가 이 값으로 계산된다.
+	 * post.markAnswersRead(at)는 유효성만 검증하고 결과는 버린다 — 실제 반영은
+	 * advanceAnswersReadAt()의 DB 단일 UPDATE(max 비교)로 위임해, 순서가 뒤바뀌어
+	 * 도착한 요청이 이미 기록된 더 늦은 시각을 덮어쓰지 않게 한다.
+	 */
+	@Transactional
+	public DirectionPost markAnswersRead(long senderId, long postId, Instant at) {
+		DirectionPost post = postRepository.findByIdAndSenderId(postId, senderId)
+			.orElseThrow(() -> new DirectionException(
+				DirectionErrorCode.POST_NOT_FOUND, "postId", "질문글을 찾을 수 없습니다"));
+		post.markAnswersRead(at);
+		return postRepository.advanceAnswersReadAt(postId, at);
 	}
 
 	private List<DirectionCandidate> candidates(PreviewCommand command, ActiveUserPresence sender, DirectionSegment segment) {

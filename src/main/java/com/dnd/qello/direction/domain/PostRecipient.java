@@ -6,6 +6,9 @@ import java.time.Instant;
 import com.dnd.qello.direction.error.DirectionErrorCode;
 import com.dnd.qello.direction.error.DirectionException;
 
+import lombok.Getter;
+
+@Getter
 public final class PostRecipient {
 
 	private final Long id;
@@ -175,19 +178,63 @@ public final class PostRecipient {
 		return PostRecipientStatus.AVAILABLE;
 	}
 
-	public Long getId() { return id; }
-	public Long getPostId() { return postId; }
-	public Long getRecipientId() { return recipientId; }
-	public PostRecipientStatus getStatus() { return status; }
-	public String getDistanceBand() { return distanceBand; }
-	public BigDecimal getMatchedBearingDegrees() { return matchedBearingDegrees; }
-	public String getMatchedRegionCode() { return matchedRegionCode; }
-	public Instant getMatchedAt() { return matchedAt; }
-	public Instant getDiscoveredAt() { return discoveredAt; }
-	public Instant getOpenedAt() { return openedAt; }
-	public Instant getSkipRequestedAt() { return skipRequestedAt; }
-	public Instant getSkippedAt() { return skippedAt; }
-	public Instant getCapacityReleasedAt() { return capacityReleasedAt; }
-	public Instant getExpiredAt() { return expiredAt; }
-	public Instant getBlockedAt() { return blockedAt; }
+	/** AVAILABLE만 DISCOVERED로 올린다. 이미 열람 이력이 있으면 그대로 둔다. */
+	public PostRecipient discover(Instant at) {
+		requireValue(at, "at");
+		if (status == PostRecipientStatus.DISCOVERED || status == PostRecipientStatus.OPENED) return this;
+		if (status != PostRecipientStatus.AVAILABLE) {
+			throw new DirectionException(
+				DirectionErrorCode.INVALID_RECIPIENT_STATE, "status", "발견 처리를 할 수 없는 상태입니다");
+		}
+		return new PostRecipient(id, postId, recipientId, PostRecipientStatus.DISCOVERED, distanceBand,
+			matchedBearingDegrees, matchedRegionCode, matchedAt, at, null, null, null, null, null, null);
+	}
+
+	/**
+	 * 멱등이며 최초 열람 시각을 유지한다.
+	 * AVAILABLE에서 바로 열면 discoveredAt도 함께 채운다 — 생성자 검증과
+	 * ck_post_recipient_status_timestamps가 OPENED에 두 시각을 모두 요구한다.
+	 */
+	public PostRecipient open(Instant at) {
+		requireValue(at, "at");
+		if (status == PostRecipientStatus.OPENED) return this;
+		if (status != PostRecipientStatus.AVAILABLE && status != PostRecipientStatus.DISCOVERED) {
+			throw new DirectionException(
+				DirectionErrorCode.INVALID_RECIPIENT_STATE, "status", "열람 처리를 할 수 없는 상태입니다");
+		}
+		if (discoveredAt != null && at.isBefore(discoveredAt)) {
+			throw new DirectionException(
+				DirectionErrorCode.INVALID_TIME_ORDER, "at", "at은 discoveredAt보다 빠를 수 없습니다");
+		}
+		return new PostRecipient(id, postId, recipientId, PostRecipientStatus.OPENED, distanceBand,
+			matchedBearingDegrees, matchedRegionCode, matchedAt, discoveredAt == null ? at : discoveredAt, at,
+			null, null, null, null, null);
+	}
+
+	/**
+	 * 답변 확정. capacityReleasedAt을 함께 설정한다 —
+	 * ct_post_recipient_capacity_release가 ANSWERED와 capacity_released_at의 동치성을
+	 * commit 시점에 검사한다. 실제 카운터 감소는 호출자가 RecipientReceiveStateRepository로 수행한다.
+	 */
+	public PostRecipient answered(Instant at) {
+		requireValue(at, "at");
+		if (status == PostRecipientStatus.ANSWERED) return this;
+		if (status != PostRecipientStatus.AVAILABLE && status != PostRecipientStatus.DISCOVERED
+			&& status != PostRecipientStatus.OPENED) {
+			throw new DirectionException(
+				DirectionErrorCode.INVALID_RECIPIENT_STATE, "status", "답변 처리를 할 수 없는 상태입니다");
+		}
+		if (discoveredAt != null && at.isBefore(discoveredAt)) {
+			throw new DirectionException(
+				DirectionErrorCode.INVALID_TIME_ORDER, "at", "at은 discoveredAt보다 빠를 수 없습니다");
+		}
+		if (openedAt != null && at.isBefore(openedAt)) {
+			throw new DirectionException(
+				DirectionErrorCode.INVALID_TIME_ORDER, "at", "at은 openedAt보다 빠를 수 없습니다");
+		}
+		return new PostRecipient(id, postId, recipientId, PostRecipientStatus.ANSWERED, distanceBand,
+			matchedBearingDegrees, matchedRegionCode, matchedAt, discoveredAt == null ? at : discoveredAt,
+			openedAt == null ? at : openedAt, null, null, at, null, null);
+	}
+
 }
