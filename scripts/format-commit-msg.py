@@ -43,7 +43,36 @@ def current_branch() -> str:
     )
     if result.returncode != 0:
         raise FormatError("unable to read the current Git branch")
-    return result.stdout.strip()
+    branch = result.stdout.strip()
+    if branch:
+        return branch
+    return rebase_branch()
+
+
+def rebase_branch() -> str:
+    """Return the branch being rebased, or an empty string outside a rebase.
+
+    rebase 중에는 HEAD가 detached라 `git branch --show-current`가 빈 값을 준다.
+    이때 원래 브랜치 이름을 읽지 못하면 충돌을 해결한 rebase를 끝낼 수 없다.
+    git이 rebase 상태 디렉터리에 남기는 head-name을 대신 읽는다.
+    """
+    result = subprocess.run(
+        ["git", "rev-parse", "--git-dir"],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        return ""
+
+    git_dir = (ROOT / result.stdout.strip()).resolve()
+    # rebase-merge는 interactive와 merge backend, rebase-apply는 am backend가 쓴다.
+    for relative in ("rebase-merge/head-name", "rebase-apply/head-name"):
+        head_name = git_dir / relative
+        if head_name.is_file():
+            return head_name.read_text(encoding="utf-8").strip().removeprefix("refs/heads/")
+    return ""
 
 
 def format_subject(subject: str, branch: str) -> str:
