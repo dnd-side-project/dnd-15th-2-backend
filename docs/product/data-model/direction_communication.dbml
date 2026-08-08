@@ -349,6 +349,7 @@ Table region_code [headercolor: #4E79A7] {
   created_at timestamptz [not null, default: `clock_timestamp()`, note: '행이 생성된 시각']
 
   indexes {
+    (code, level) [unique, name: 'uq_region_code_code_level', note: '국가 코드가 COUNTRY 행을 정확히 참조하도록 코드와 계층을 함께 유일하게 만든다. V9 migration에서 추가되었다']
     parent_code [name: 'region_code_parent_idx', note: 'SQL DDL은 parent_code IS NOT NULL인 partial index']
   }
 
@@ -365,6 +366,8 @@ Table user_account [headercolor: #4E79A7] {
   id bigint [pk, increment, not null, note: '행을 식별하는 기본키']
   role user_role [not null, default: 'USER', note: '일반 사용자와 운영자를 구분하는 권한']
   status user_status [not null, default: 'ACTIVE', note: '현재 처리 상태']
+  country_code varchar(2) [note: '온보딩에서 검증한 ISO 3166-1 alpha-2 국가 코드. USER는 필수이고 OPERATOR는 NULL을 허용한다']
+  country_level varchar(20) [note: 'country_code가 region_code의 COUNTRY 행만 참조하도록 사용하는 생성 컬럼이며 항상 COUNTRY로 계산된다']
   coarse_region_code varchar(100) [not null, note: '사용자의 공개용 기준 지역 코드']
   locale varchar(35) [not null, note: '언어와 지역별 표시 형식을 결정하는 로케일']
   timezone varchar(64) [not null, note: '날짜 경계와 알림 계산에 사용하는 IANA 시간대']
@@ -377,11 +380,14 @@ Table user_account [headercolor: #4E79A7] {
   indexes {
     (id, role) [unique, name: 'uq_user_account_id_role', note: 'id가 이미 PK지만 operator_credential의 (user_id, role) 복합 외래키가 참조하려면 그 컬럼 조합에 unique가 따로 있어야 한다. PostgreSQL의 요구사항이다. V5 migration에서 추가되었다']
     coarse_region_code [name: 'user_account_region_idx', note: 'region_code 삭제 시 RESTRICT 검사와 지역 단위 조회용 FK 인덱스']
+    country_code [name: 'user_account_country_idx', note: '국가 단위 조회와 country_code 복합 FK의 역방향 검사에 사용한다. V9 migration에서 추가되었다']
   }
 
   checks {
     `nickname IS NULL OR btrim(nickname) <> ''` [name: 'ck_user_account_nickname']
     `(status = 'DELETED' AND deleted_at IS NOT NULL) OR (status <> 'DELETED' AND deleted_at IS NULL)` [name: 'ck_user_account_deleted_at']
+    `country_code IS NULL OR country_code ~ '^[A-Z]{2}$'` [name: 'ck_user_account_country_code']
+    `role <> 'USER' OR country_code IS NOT NULL` [name: 'ck_user_account_user_country']
   }
 
   Note: '테이블 설명: 사용자의 기본 식별자, 권한, 계정 상태, 기준 지역과 시간대를 관리하는 계정 테이블이다. 필요 이유: 사용자 식별자와 서비스 공통 권한·계정 상태를 한곳에서 관리해 모든 도메인이 동일한 계정 기준을 참조하게 한다.'

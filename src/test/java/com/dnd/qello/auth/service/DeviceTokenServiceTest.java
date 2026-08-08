@@ -144,7 +144,7 @@ class DeviceTokenServiceTest {
 	private void givenAccount(AccountStatus status) {
 		Instant deletedAt = status == AccountStatus.DELETED ? NOW : null;
 		accountRepository.store(Account.restore(
-			USER_ID, AccountRole.USER, status, "KR-TEST", "ko-KR", "Asia/Seoul", "바람", deletedAt));
+			USER_ID, AccountRole.USER, status, "KR", "KR-TEST", "ko-KR", "Asia/Seoul", "바람", deletedAt));
 	}
 
 	private void givenCredential(CredentialStatus status) {

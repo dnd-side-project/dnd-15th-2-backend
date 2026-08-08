@@ -150,6 +150,10 @@
             "minLength" : 1,
             "type" : "string"
           },
+          "countryCode" : {
+            "minLength" : 1,
+            "type" : "string"
+          },
           "installationId" : {
             "minLength" : 1,
             "type" : "string"
@@ -175,6 +179,7 @@
         },
         "required" : [
           "coarseRegionCode",
+          "countryCode",
           "installationId",
           "locale",
           "platform",
@@ -477,7 +482,7 @@
     },
     "/api/v1/auth/devices" : {
       "post" : {
-        "description" : "설치 식별자로 계정과 기기 자격증명을 만들고 첫 액세스 토큰을 발급한다.\n\ndeviceSecret은 이 응답에서만 평문으로 나간다. 서버는 해시만 보관하므로 다시 받을 수 없다.\n클라이언트가 이 값을 잃으면 재발급 경로를 쓸 수 없다.\n\n인증이 필요 없다. 등록 자체가 인증 수단을 얻는 과정이다.",
+        "description" : "설치 식별자와 검증된 국가·기준 지역으로 계정과 기기 자격증명을 만들고 첫 액세스 토큰을 발급한다.\ncountryCode는 ISO 3166-1 alpha-2 국가 코드이며, coarseRegionCode의 최상위 국가와 일치해야 한다.\n\ndeviceSecret은 이 응답에서만 평문으로 나간다. 서버는 해시만 보관하므로 다시 받을 수 없다.\n클라이언트가 이 값을 잃으면 재발급 경로를 쓸 수 없다.\n\n인증이 필요 없다. 등록 자체가 인증 수단을 얻는 과정이다.",
         "operationId" : "register",
         "requestBody" : {
           "content" : {
@@ -508,7 +513,7 @@
                 }
               }
             },
-            "description" : "요청 값이 올바르지 않습니다. 오류 코드는 docs/error-codes.md를 따른다."
+            "description" : "국가가 누락되었거나 지원되지 않거나 기준 지역과 일치하지 않습니다. (AUT-VAL-004)"
           },
           "409" : {
             "content" : {

@@ -26,7 +26,8 @@ public interface DeviceAuthApiSpec {
 	@Operation(
 		summary = "기기 등록",
 		description = """
-			설치 식별자로 계정과 기기 자격증명을 만들고 첫 액세스 토큰을 발급한다.
+			설치 식별자와 검증된 국가·기준 지역으로 계정과 기기 자격증명을 만들고 첫 액세스 토큰을 발급한다.
+			countryCode는 ISO 3166-1 alpha-2 국가 코드이며, coarseRegionCode의 최상위 국가와 일치해야 한다.
 
 			deviceSecret은 이 응답에서만 평문으로 나간다. 서버는 해시만 보관하므로 다시 받을 수 없다.
 			클라이언트가 이 값을 잃으면 재발급 경로를 쓸 수 없다.
@@ -36,6 +37,12 @@ public interface DeviceAuthApiSpec {
 		@io.swagger.v3.oas.annotations.responses.ApiResponse(
 			responseCode = "201",
 			description = "기기를 등록했습니다. deviceSecret과 첫 액세스 토큰이 함께 발급됩니다."),
+		@io.swagger.v3.oas.annotations.responses.ApiResponse(
+			responseCode = "400",
+			description = "국가가 누락되었거나 지원되지 않거나 기준 지역과 일치하지 않습니다. (AUT-VAL-004)",
+			content = @Content(
+				mediaType = MediaType.APPLICATION_JSON_VALUE,
+				schema = @Schema(implementation = ApiErrorResponse.class))),
 		@io.swagger.v3.oas.annotations.responses.ApiResponse(
 			responseCode = "409",
 			description = "이미 등록된 installationId입니다. (AUT-APP-005)",

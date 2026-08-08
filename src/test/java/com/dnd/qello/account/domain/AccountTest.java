@@ -13,18 +13,19 @@ import com.dnd.qello.account.error.AccountException;
 
 /**
  * Created at: 2026-08-04T12:00:00+09:00
- * Source scenario: TEST-PLAN-GH-48-ACCOUNT-PASSWORD-UNIT-001
+ * Source scenario: TEST-PLAN-GH-48-ACCOUNT-PASSWORD-UNIT-001, TEST-PLAN-GH-88-COUNTRY-ONBOARDING-UNIT-001
  */
 class AccountTest {
 
 	@Test
 	@DisplayName("createUser는 항상 USER 역할과 ACTIVE 상태로 생성되며 비밀번호를 가지지 않는다")
 	void createsActiveUserAccountWithoutPassword() {
-		Account account = Account.createUser("KR-TEST", "ko-KR", "Asia/Seoul", "qello-user");
+		Account account = Account.createUser("KR", "KR-TEST", "ko-KR", "Asia/Seoul", "qello-user");
 
 		assertThat(account.getId()).isNull();
 		assertThat(account.getRole()).isEqualTo(AccountRole.USER);
 		assertThat(account.getStatus()).isEqualTo(AccountStatus.ACTIVE);
+		assertThat(account.getCountryCode()).isEqualTo("KR");
 		assertThat(account.getDeletedAt()).isNull();
 	}
 
@@ -36,27 +37,34 @@ class AccountTest {
 		assertThat(account.getId()).isNull();
 		assertThat(account.getRole()).isEqualTo(AccountRole.OPERATOR);
 		assertThat(account.getStatus()).isEqualTo(AccountStatus.ACTIVE);
+		assertThat(account.getCountryCode()).isNull();
 	}
 
 	@Test
 	@DisplayName("Account는 필수 문자열과 schema 길이 및 IANA timezone을 검증한다")
 	void rejectsInvalidProfileValues() {
-		assertThatThrownBy(() -> Account.createUser(" ", "ko-KR", "Asia/Seoul", null))
+		assertThatThrownBy(() -> Account.createUser("KR", " ", "ko-KR", "Asia/Seoul", null))
 			.isInstanceOf(AccountException.class);
-		assertThatThrownBy(() -> Account.createUser("KR-TEST", " ", "Asia/Seoul", null))
+		assertThatThrownBy(() -> Account.createUser("KR", "KR-TEST", " ", "Asia/Seoul", null))
 			.isInstanceOf(AccountException.class);
-		assertThatThrownBy(() -> Account.createUser("KR-TEST", "ko-KR", "invalid/timezone", null))
+		assertThatThrownBy(() -> Account.createUser("KR", "KR-TEST", "ko-KR", "invalid/timezone", null))
 			.isInstanceOf(AccountException.class)
 			.hasFieldOrPropertyWithValue("errorCode", AccountErrorCode.INVALID_TIMEZONE)
 			.hasFieldOrPropertyWithValue("field", "timezone");
-		assertThatThrownBy(() -> Account.createUser("KR-TEST", "ko-KR", "Asia/Seoul", "   "))
+		assertThatThrownBy(() -> Account.createUser("KR", "KR-TEST", "ko-KR", "Asia/Seoul", "   "))
 			.isInstanceOf(AccountException.class);
-		assertThatThrownBy(() -> Account.createUser("R".repeat(101), "ko-KR", "Asia/Seoul", null))
+		assertThatThrownBy(() -> Account.createUser("KR", "R".repeat(101), "ko-KR", "Asia/Seoul", null))
 			.isInstanceOf(AccountException.class)
 			.hasFieldOrPropertyWithValue("errorCode", AccountErrorCode.TEXT_TOO_LONG);
-		assertThatThrownBy(() -> Account.createUser("KR-TEST", "ko-KR", "Asia/Seoul", "N".repeat(51)))
+		assertThatThrownBy(() -> Account.createUser("KR", "KR-TEST", "ko-KR", "Asia/Seoul", "N".repeat(51)))
 			.isInstanceOf(AccountException.class)
 			.hasFieldOrPropertyWithValue("errorCode", AccountErrorCode.TEXT_TOO_LONG);
+		assertThatThrownBy(() -> Account.createUser(null, "KR-TEST", "ko-KR", "Asia/Seoul", null))
+			.isInstanceOf(AccountException.class)
+			.hasFieldOrPropertyWithValue("errorCode", AccountErrorCode.REQUIRED_VALUE_MISSING);
+		assertThatThrownBy(() -> Account.createUser("KOR", "KR-TEST", "ko-KR", "Asia/Seoul", null))
+			.isInstanceOf(AccountException.class)
+			.hasFieldOrPropertyWithValue("errorCode", AccountErrorCode.INVALID_COUNTRY_CODE);
 	}
 
 	@Test
@@ -65,9 +73,9 @@ class AccountTest {
 		// 자격증명은 operator_credential이 소유하고, role과의 조합은 (user_id, role)
 		// 복합 FK가 DB에서 거절한다(V5). 도메인이 같은 규칙을 중복 검사하지 않는다.
 		Account operator = Account.restore(
-			1L, AccountRole.OPERATOR, AccountStatus.ACTIVE, "KR-TEST", "ko-KR", "Asia/Seoul", null, null);
+			1L, AccountRole.OPERATOR, AccountStatus.ACTIVE, "KR", "KR-TEST", "ko-KR", "Asia/Seoul", null, null);
 		Account user = Account.restore(
-			2L, AccountRole.USER, AccountStatus.ACTIVE, "KR-TEST", "ko-KR", "Asia/Seoul", null, null);
+			2L, AccountRole.USER, AccountStatus.ACTIVE, "KR", "KR-TEST", "ko-KR", "Asia/Seoul", null, null);
 
 		assertThat(operator.getRole()).isEqualTo(AccountRole.OPERATOR);
 		assertThat(user.getRole()).isEqualTo(AccountRole.USER);
@@ -77,12 +85,12 @@ class AccountTest {
 	@DisplayName("restore는 유효한 기존 id를 반드시 요구한다")
 	void restoreRequiresExistingId() {
 		assertThatThrownBy(() -> Account.restore(
-			null, AccountRole.USER, AccountStatus.ACTIVE, "KR-TEST", "ko-KR", "Asia/Seoul",
+			null, AccountRole.USER, AccountStatus.ACTIVE, "KR", "KR-TEST", "ko-KR", "Asia/Seoul",
 			null, null))
 			.isInstanceOf(AccountException.class)
 			.hasFieldOrPropertyWithValue("errorCode", AccountErrorCode.INVALID_ID);
 		assertThatThrownBy(() -> Account.restore(
-			0L, AccountRole.USER, AccountStatus.ACTIVE, "KR-TEST", "ko-KR", "Asia/Seoul",
+			0L, AccountRole.USER, AccountStatus.ACTIVE, "KR", "KR-TEST", "ko-KR", "Asia/Seoul",
 			null, null))
 			.isInstanceOf(AccountException.class)
 			.hasFieldOrPropertyWithValue("errorCode", AccountErrorCode.INVALID_ID);
@@ -94,12 +102,12 @@ class AccountTest {
 		Instant deletedAt = Instant.parse("2026-08-03T09:00:00Z");
 
 		assertThatThrownBy(() -> Account.restore(
-			1L, AccountRole.USER, AccountStatus.DELETED, "KR-TEST", "ko-KR", "Asia/Seoul",
+			1L, AccountRole.USER, AccountStatus.DELETED, "KR", "KR-TEST", "ko-KR", "Asia/Seoul",
 			null, null))
 			.isInstanceOf(AccountException.class)
 			.hasFieldOrPropertyWithValue("errorCode", AccountErrorCode.INVALID_DELETION_STATE);
 		assertThatThrownBy(() -> Account.restore(
-			1L, AccountRole.USER, AccountStatus.ACTIVE, "KR-TEST", "ko-KR", "Asia/Seoul",
+			1L, AccountRole.USER, AccountStatus.ACTIVE, "KR", "KR-TEST", "ko-KR", "Asia/Seoul",
 			null, deletedAt))
 			.isInstanceOf(AccountException.class)
 			.hasFieldOrPropertyWithValue("errorCode", AccountErrorCode.INVALID_DELETION_STATE);
@@ -109,7 +117,7 @@ class AccountTest {
 	@DisplayName("프로필과 상태 변경은 Account 식별자를 보존한다")
 	void updatesProfileAndStatusWithoutChangingIdentity() {
 		Account restored = Account.restore(
-			1L, AccountRole.OPERATOR, AccountStatus.ACTIVE, "KR-TEST", "ko-KR", "Asia/Seoul",
+			1L, AccountRole.OPERATOR, AccountStatus.ACTIVE, "KR", "KR-TEST", "ko-KR", "Asia/Seoul",
 			"before", null);
 
 		Account updated = restored
@@ -128,7 +136,7 @@ class AccountTest {
 	@Test
 	@DisplayName("block/unblock/delete는 허용된 상태 전이만 수행한다")
 	void enforcesAllowedStatusTransitions() {
-		Account active = Account.createUser("KR-TEST", "ko-KR", "Asia/Seoul", "user");
+		Account active = Account.createUser("KR", "KR-TEST", "ko-KR", "Asia/Seoul", "user");
 		Account blocked = active.block();
 		Account unblocked = blocked.unblock();
 		Account deleted = active.delete(Instant.parse("2026-08-03T09:00:00Z"));

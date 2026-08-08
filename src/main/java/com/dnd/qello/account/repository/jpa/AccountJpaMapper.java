@@ -21,6 +21,7 @@ final class AccountJpaMapper {
 		return new AccountJpaEntity(
 			account.getRole(),
 			account.getStatus(),
+			account.getCountryCode(),
 			account.getCoarseRegionCode(),
 			account.getLocale(),
 			account.getTimezone(),
@@ -33,6 +34,7 @@ final class AccountJpaMapper {
 			entity.getId(),
 			entity.getRole(),
 			entity.getStatus(),
+			entity.getCountryCode(),
 			entity.getCoarseRegionCode(),
 			entity.getLocale(),
 			entity.getTimezone(),

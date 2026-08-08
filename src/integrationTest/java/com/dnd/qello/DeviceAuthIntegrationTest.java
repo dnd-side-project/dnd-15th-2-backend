@@ -1,6 +1,7 @@
 /**
  * Created at: 2026-08-07T20:52:09+09:00
- * Source scenario: TEST-PLAN-GH-73-DEVICE-AUTH-INT-001 through INT-009
+ * Source scenario: TEST-PLAN-GH-73-DEVICE-AUTH-INT-001 through INT-009,
+ * TEST-PLAN-GH-88-COUNTRY-ONBOARDING-INT-001 through INT-002
  */
 package com.dnd.qello;
 
@@ -33,6 +34,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 class DeviceAuthIntegrationTest extends PostgisContainerIntegrationTestSupport {
 
 	private static final String REGION_CODE = "TEST-COUNTRY";
+	private static final String COUNTRY_CODE = "KR";
 	private static final String INSTALLATION_ID = "installation-a";
 
 	@Autowired
@@ -49,10 +51,11 @@ class DeviceAuthIntegrationTest extends PostgisContainerIntegrationTestSupport {
 		jdbcTemplate.update("DELETE FROM device_credential");
 		jdbcTemplate.update("DELETE FROM user_account");
 		jdbcTemplate.update("DELETE FROM region_code WHERE code = ?", REGION_CODE);
+		jdbcTemplate.update("DELETE FROM region_code WHERE code = ?", COUNTRY_CODE);
 		jdbcTemplate.update("""
-			INSERT INTO region_code (code, display_name, level)
-			VALUES (?, 'Test Country', 'COUNTRY')
-			""", REGION_CODE);
+			INSERT INTO region_code (code, parent_code, display_name, level)
+			VALUES (?, NULL, 'Korea', 'COUNTRY'), (?, ?, 'Test Region', 'REGION')
+			""", COUNTRY_CODE, REGION_CODE, COUNTRY_CODE);
 	}
 
 	@Test
@@ -160,9 +163,40 @@ class DeviceAuthIntegrationTest extends PostgisContainerIntegrationTestSupport {
 		mockMvc.perform(post("/api/v1/auth/devices")
 				.contentType(MediaType.APPLICATION_JSON)
 				.content("""
-					{"platform":"IOS","coarseRegionCode":"%s","locale":"ko-KR","timezone":"Asia/Seoul"}
+					{"platform":"IOS","countryCode":"%s","coarseRegionCode":"%s","locale":"ko-KR","timezone":"Asia/Seoul"}
+					""".formatted(COUNTRY_CODE, REGION_CODE)))
+			.andExpect(status().isBadRequest());
+	}
+
+	@Test
+	@DisplayName("국가가 없는 등록 요청은 계정과 자격증명을 만들지 않고 400을 반환한다")
+	void rejectsRegistrationWithoutCountryBeforePersistence() throws Exception {
+		mockMvc.perform(post("/api/v1/auth/devices")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("""
+					{"installationId":"missing-country","platform":"IOS","coarseRegionCode":"%s",
+					 "locale":"ko-KR","timezone":"Asia/Seoul"}
 					""".formatted(REGION_CODE)))
 			.andExpect(status().isBadRequest());
+
+		assertThat(jdbcTemplate.queryForObject("SELECT count(*) FROM user_account", Integer.class)).isZero();
+		assertThat(jdbcTemplate.queryForObject("SELECT count(*) FROM device_credential", Integer.class)).isZero();
+	}
+
+	@Test
+	@DisplayName("국가와 기준 지역이 다르면 계정과 자격증명을 만들지 않고 400을 반환한다")
+	void rejectsRegistrationWhenCountryDoesNotMatchRegion() throws Exception {
+		mockMvc.perform(post("/api/v1/auth/devices")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("""
+					{"installationId":"mismatched-country","platform":"IOS","countryCode":"US",
+					 "coarseRegionCode":"%s","locale":"ko-KR","timezone":"Asia/Seoul"}
+					""".formatted(REGION_CODE)))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.errorDetail.code").value("AUT-VAL-004"));
+
+		assertThat(jdbcTemplate.queryForObject("SELECT count(*) FROM user_account", Integer.class)).isZero();
+		assertThat(jdbcTemplate.queryForObject("SELECT count(*) FROM device_credential", Integer.class)).isZero();
 	}
 
 	private MockHttpServletRequestBuilder register(String installationId) {
@@ -172,12 +206,13 @@ class DeviceAuthIntegrationTest extends PostgisContainerIntegrationTestSupport {
 				{
 				  "installationId": "%s",
 				  "platform": "IOS",
+				  "countryCode": "%s",
 				  "coarseRegionCode": "%s",
 				  "locale": "ko-KR",
 				  "timezone": "Asia/Seoul",
 				  "nickname": "바람"
 				}
-				""".formatted(installationId, REGION_CODE));
+				""".formatted(installationId, COUNTRY_CODE, REGION_CODE));
 	}
 
 	private MockHttpServletRequestBuilder reissue(

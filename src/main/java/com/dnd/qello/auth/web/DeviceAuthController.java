@@ -44,6 +44,7 @@ public class DeviceAuthController implements DeviceAuthApiSpec {
 		DeviceRegistrationResult result = registrationService.register(
 			request.installationId(),
 			request.platform(),
+			request.countryCode(),
 			request.coarseRegionCode(),
 			request.locale(),
 			request.timezone(),
