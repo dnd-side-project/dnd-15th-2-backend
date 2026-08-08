@@ -13,7 +13,8 @@ import org.junit.jupiter.api.Test;
 
 /**
  * Created at: 2026-08-06T14:30:00+09:00
- * Source scenario: TEST-PLAN-GH-67-INBOX-SENT-POST-UNIT-006 through UNIT-008
+ * Source scenario: TEST-PLAN-GH-67-INBOX-SENT-POST-UNIT-006 through UNIT-008,
+ * TEST-PLAN-GH-79-ANSWER-VISIBILITY-RECIPIENTS (2026-08-08 개정 반영)
  */
 class FeedPersistenceBoundaryTest {
 
@@ -45,16 +46,11 @@ class FeedPersistenceBoundaryTest {
 	}
 
 	@Test
-	@DisplayName("수신함 projection은 답변 수와 공감 수를 노출하지 않는다")
-	void inboxProjectionsHideAnswerAndReactionCounts() throws IOException {
-		List<Path> inboxViews = List.of(
-			Path.of("src/main/java/com/dnd/qello/feed/view/InboxCard.java"),
-			Path.of("src/main/java/com/dnd/qello/feed/view/InboxDetail.java"));
+	@DisplayName("수신함 projection은 답변 수와 공감 수를 노출한다 — 2026-08-07 개정(ADR 0002)으로 답변이 수신 자격자 전원에게 공개됐다")
+	void inboxProjectionsExposeAnswerAndReactionCounts() throws IOException {
+		String source = read(Path.of("src/main/java/com/dnd/qello/feed/view/InboxCard.java"));
 
-		for (Path path : inboxViews) {
-			String source = read(path);
-			assertThat(source).doesNotContain("answerCount").doesNotContain("reactionCount");
-		}
+		assertThat(source).contains("answerCount").contains("reactionCount").contains("unreadAnswerCount");
 	}
 
 	private String read(Path path) {
