@@ -4,6 +4,17 @@
 > GitHub Issue: `#78`
 > Branch: `feat/gh-78-schema-revision-v7`
 > Commit: `7c8ea8c`
+>
+> **2026-08-08 재검증 추가.** PR #81(Issue #73)의 `device_credential` 마이그레이션이
+> `main`에 먼저 merge되어 `V7` 번호를 점유했다. 이 문서 본문의 `V7` 마이그레이션은
+> `V8__widen_answer_visibility_to_recipients.sql`로 재번호했다 — 아래 시나리오·본문의
+> "V7" 서술은 그 시점 기준이며 파일 자체만 `V8`로 바뀌었다는 뜻이다(내용은 무관한
+> `device_credential`과 겹치지 않아 동일). `origin/main` rebase 후 `./gradlew test`
+> (152 tests, 0 failures)와 `./gradlew integrationTest`(125 tests, 0 failures)를
+> 다시 실행해 통과를 확인했다 — §3 표를 이 값으로 갱신했다. 손으로 재계산한 카탈로그
+> 카운트(check constraints 111, `EXPECTED_INDEXES` 58 등, `device_credential`의 4개
+> check·2개 unique index·1개 FK·1개 non-unique index 반영)가 실제 DB catalog와
+> 일치함을 `FlywayMigrationIntegrationTest.catalogMatchesApprovedManifest`로 검증했다.
 
 ## 1. Executive summary
 
@@ -37,8 +48,8 @@
 
 | Command / suite | Result | Tests | Duration | Evidence |
 | --- | --- | --- | --- | --- |
-| Unit (`./gradlew test`) | PASS | 123 tests, 0 failures, 0 errors, 0 skipped | ~3s | `build/test-results/test/*.xml` |
-| Integration (`./gradlew integrationTest`) | PASS | 116 tests, 0 failures, 0 errors, 0 skipped | ~1m | `build/test-results/integrationTest/*.xml` |
+| Unit (`./gradlew test`) | PASS | 152 tests, 0 failures, 0 errors, 0 skipped (2026-08-08 재검증, `main`의 PR #81 테스트 포함) | ~7s | `build/test-results/test/*.xml` |
+| Integration (`./gradlew integrationTest`) | PASS | 125 tests, 0 failures, 0 errors, 0 skipped (2026-08-08 재검증, `main`의 PR #81 테스트 포함) | ~1m | `build/test-results/integrationTest/*.xml` |
 
 ## 4. Scenario results
 

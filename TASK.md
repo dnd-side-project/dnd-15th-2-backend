@@ -88,5 +88,5 @@ git diff --check
 - [x] 답변을 삭제한 뒤 같은 `post_recipient`로 새 답변을 만들 수 없다. (`AnswerSafetyNotificationPersistenceIntegrationTest.deletedAnswerNoLongerFreesTheSlot`)
 - [x] `(edit_count = 0) = (edited_at IS NULL)` 위반과 `edit_count > 10`이 거절된다. (도메인: `AnswerPersistenceBoundaryTest.requiresEditCountAndEditedAtToAgree`, DB: `AnswerSafetyNotificationPersistenceIntegrationTest.rejectsEditCountEditedAtViolationsAtTheDatabaseLevel`)
 - [x] `NOT NULL` 신규 컬럼의 기존 행 백필 경로가 migration에 포함돼 있다. (`SchemaRevisionMigrationIntegrationTest.v7BackfillsLegacyRowsWithConstraintSatisfyingPlaceholders`. 백필 값은 정확한 값이 아니라 제약을 만족하는 placeholder다 — 근거는 `V8__…sql` 상단 주석과 테스트 보고서 §6 참고)
-- [ ] `schema-manifest.md`의 SHA-256이 실제 파일과 일치한다. (DBML·ERD·target DDL 3곳 갱신, `V8` 기준 재검증 + `device_credential`(#81) 반영 필요 — rebase 진행 중)
-- [ ] `FlywayMigrationContractTest`와 기존 통합 테스트가 통과한다. (`V8` 리네이밍과 두 마이그레이션 합산 카탈로그 카운트 재측정 필요 — rebase 진행 중)
+- [x] `schema-manifest.md`의 SHA-256이 실제 파일과 일치한다. (DBML·ERD·target DDL 3곳 갱신. §5~§12를 `V8` 기준 + `device_credential`(#81, `V7`) 포함으로 재정리했다. 모든 섹션 항목 수를 `FlywayMigrationIntegrationTest`의 실측값과 grep으로 대조해 정확히 일치함을 확인했다)
+- [x] `FlywayMigrationContractTest`와 기존 통합 테스트가 통과한다. (`V8`로 리네이밍 후 재실행. 단위 152개, 통합 125개 전부 통과 — `docs/reports/tests/gh-78-SCHEMA-REVISION-V7.md` 2026-08-08 재검증 항목 참고)
