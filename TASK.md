@@ -219,5 +219,5 @@ git diff --check
       (`.unknownSegmentKeyYieldsEmptyListButChipsRemain`)
 - [x] controller와 endpoint를 추가하지 않는다
 - [x] `./gradlew test`와 `./gradlew integrationTest`가 통과한다 (단위 160개, 통합
-      153개, 전부 통과)
+      154개, 전부 통과 — 154는 코드 리뷰 반영분 1건 포함, `docs/reports/tests/gh-80-INBOX-DIRECTION-CHIPS.md` §7a)
 - [x] `./harness pr-ready --project-tests`가 통과한다

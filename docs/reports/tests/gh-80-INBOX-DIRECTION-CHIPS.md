@@ -38,7 +38,7 @@
 | Command / suite | Result | Tests | Duration | Evidence |
 | --- | --- | --- | --- | --- |
 | Unit (`./gradlew test`) | PASS | 160 tests, 0 failed (기존 156 + 신규 4) | 2.4s | `build/test-results/test/*.xml` |
-| Integration (`./gradlew integrationTest`) | PASS | 153 tests, 0 failed (기존 138 + `#89` 회귀분 5 + 신규 10) | 5.3s(테스트 실행) / 약 1m 20s(컨테이너 기동 포함 전체) | `build/test-results/integrationTest/*.xml` |
+| Integration (`./gradlew integrationTest`) | PASS | 154 tests, 0 failed (기존 138 + `#89` 회귀분 5 + 신규 10 + 코드 리뷰 반영분 1, §7a) | 5.3s(테스트 실행) / 약 1m 20s(컨테이너 기동 포함 전체) | `build/test-results/integrationTest/*.xml` |
 | `./harness check` | PASS | Secret preflight 525 파일, JUnit 정책 54 파일 | — | 명령 출력 |
 | `./harness pr-ready --project-tests` | PASS | 위 unit/integration 재확인 포함 | — | 명령 출력 |
 | `git diff --check` | PASS | 공백 오류 없음 | — | exit code 0 |
@@ -65,6 +65,7 @@
 | INT-009 | PASS | `.unfilteredListIsUnaffectedByMissingActiveScheme` | 시드 스킴을 `INACTIVE`로 바꿔도 필터 없는 목록은 그대로, 칩만 빈 리스트. `finally`에서 스킴 상태 원상 복구 확인 |
 | INT-010 | PASS | `.otherActiveSchemeDoesNotCauseDuplicateAggregation` | 다른 code의 ACTIVE 스킴을 추가해도 `N` 칩 count가 2로 중복되지 않고 1 유지 — `qello.direction.scheme-code` 설정이 실제로 스킴을 고정함을 확인. `finally`에서 추가 스킴·세그먼트 삭제 확인 |
 | INT-011 | PASS | `InboxQueryIntegrationTest`(11개 재실행), `InboxSentPostWriteIntegrationTest`(28개 재실행) | 방향 필터를 `null`로 넘기는 `cards(...)` 헬퍼로 시그니처 교체를 흡수, 기존 assertion 전부 무수정 통과 |
+| (계획 외, 코드 리뷰 반영) | PASS | `InboxDirectionChipIntegrationTest.blankSegmentKeyIsTreatedAsNoFilter` | §7a. 공백 `directionSegmentKey`가 `null`과 동일하게 필터 없음으로 처리됨을 확인 |
 
 ## 5. Failures and diagnostics
 
@@ -152,6 +153,36 @@
   `SELECT_CHIP_AGGREGATE`의 `MOD` 연산은 그보다 가볍다. 후속 이슈로 관찰이 필요하다.
 - 잔여 위험: §6 동시성 항목의 스냅샷 불일치는 운영에서 배지 숫자가 순간적으로
   어긋나는 정도이며, 현재 설계에서는 의도적으로 남겨둔 트레이드오프다.
+
+## 7a. Code review addendum (2026-08-08T21:55:00+09:00)
+
+`superpowers:requesting-code-review`로 독립 subagent 리뷰를 받았다
+(base `ae3e956`, head `e27c88d` — 이 보고서 최초 작성 시점까지의 6개 커밋).
+리뷰어가 조립된 SQL 문자열 3경로(필터 있는/없는 목록, 칩 집계)를 직접
+대조해 `SCOPE_FILTER`/`SEGMENT_JOIN` 공유가 실제로 지켜지는지 확인했고,
+전체 테스트를 독립 재실행해 본 보고서의 수치(단위 160, 통합 153)와 일치함을
+검증했다. Critical/Important 0건, Minor 3건, **Ready to merge: Yes** 판정.
+
+Minor 3건 중 조치한 것:
+
+- **`directionSegmentKey`가 빈 문자열("")일 때 "필터 없음"으로 취급되지
+  않던 문제.** `JdbcInboxQueryRepository.findInbox`가 `!= null`만 검사해,
+  컨트롤러가 아직 없는 지금은 무해하지만 향후 빈 요청 파라미터가 `""`로
+  들어오는 경로에서 "필터는 있는데 아무 구간도 안 걸림"으로 조용히 빈
+  목록이 나갈 수 있었다. `directionSegmentKey != null && !isBlank()`로
+  정규화하고 `blankSegmentKeyIsTreatedAsNoFilter` 통합 테스트를 추가했다
+  (통합 테스트 153 → 154). 단위 테스트는 변화 없음(160).
+
+조치하지 않은 것(리뷰어도 비차단으로 판단):
+
+- 기존 `InboxQueryIntegrationTest`·`InboxSentPostWriteIntegrationTest`의
+  클래스 헤더 `Source scenario`에 `#80`을 추가하지 않았다 — 두 파일은 이번
+  변경으로 호출 문법만 바뀌었을 뿐 assertion이 바뀌지 않아, `FeedPersistenceBoundaryTest`처럼
+  실제 검증 내용이 바뀐 경우와 다르다고 판단했다.
+- `boundaryAnglesBelongToExactlyOneSegment`가 "경계각 직전 각이 정확히
+  *이전* 구간에 속하는지"를 개별적으로 확인하지 않고 총합만 본다 — 같은
+  파일의 `sqlDerivedSegmentMatchesDomainContainsAcrossSweep`이 실제 필터
+  조회 결과로 그 성질을 이미 훨씬 강하게 검증하므로 중복 보강하지 않았다.
 
 ## 8. Artifacts
 
