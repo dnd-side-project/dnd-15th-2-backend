@@ -2,8 +2,6 @@ package com.dnd.qello.auth.web;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -15,15 +13,15 @@ import com.dnd.qello.auth.token.IssuedAccessToken;
 import com.dnd.qello.common.web.response.ApiResponse;
 import com.dnd.qello.common.web.response.ApiResponseFactory;
 
-import jakarta.validation.Valid;
-
 // 앱 기기 등록과 토큰 재발급.
 //
 // 두 경로 모두 SecurityConfiguration의 appApiSecurityFilterChain에서 인증 없이
 // 열려 있다. 등록·재발급 자체가 인증 수단을 얻는 과정이라 그 전에는 인증할 수 없다.
+//
+// 경로와 문서 애노테이션은 DeviceAuthApiSpec에 있다.
 @RestController
 @RequestMapping("/api/v1/auth")
-public class DeviceAuthController {
+public class DeviceAuthController implements DeviceAuthApiSpec {
 
 	private final DeviceRegistrationService registrationService;
 	private final DeviceTokenService tokenService;
@@ -39,9 +37,9 @@ public class DeviceAuthController {
 		this.responseFactory = responseFactory;
 	}
 
-	@PostMapping("/devices")
+	@Override
 	public ResponseEntity<ApiResponse<DeviceRegistrationResponse>> register(
-		@RequestBody @Valid DeviceRegistrationRequest request
+		DeviceRegistrationRequest request
 	) {
 		DeviceRegistrationResult result = registrationService.register(
 			request.installationId(),
@@ -61,9 +59,9 @@ public class DeviceAuthController {
 		return ResponseEntity.status(HttpStatus.CREATED).body(responseFactory.success(body));
 	}
 
-	@PostMapping("/token")
+	@Override
 	public ResponseEntity<ApiResponse<DeviceTokenResponse>> reissue(
-		@RequestBody @Valid DeviceTokenRequest request
+		DeviceTokenRequest request
 	) {
 		IssuedAccessToken issuedToken = tokenService.reissue(
 			request.installationId(), new DeviceSecret(request.deviceSecret()));
