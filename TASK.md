@@ -191,6 +191,7 @@ ACTIVE가 될 때 한 수신 항목이 두 스킴의 구간에 각각 잡혀 cou
 ```bash
 ./harness check
 ./harness pr-ready --project-tests
+npm run hooks:validate
 git diff --check
 ```
 
@@ -221,3 +222,9 @@ git diff --check
 - [x] `./gradlew test`와 `./gradlew integrationTest`가 통과한다 (단위 160개, 통합
       154개, 전부 통과 — 154는 코드 리뷰 반영분 1건 포함, `docs/reports/tests/gh-80-INBOX-DIRECTION-CHIPS.md` §7a)
 - [x] `./harness pr-ready --project-tests`가 통과한다
+- [x] `npm run hooks:validate`가 통과한다 (`Husky validation passed` — `./harness
+      check`가 내부적으로 실행하는 `scripts/validate-husky.py`와 동일 스크립트를
+      호출한다)
+- [x] `findInbox`와 `countByDirection`이 같은 트랜잭션 스냅샷에서 읽는다
+      (`InboxQueryService.list`에 `isolation = Isolation.REPEATABLE_READ` 지정,
+      2차 코드 리뷰 반영 — `docs/reports/tests/gh-80-INBOX-DIRECTION-CHIPS.md` §7b)

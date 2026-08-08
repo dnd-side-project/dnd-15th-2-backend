@@ -41,6 +41,7 @@
 | Integration (`./gradlew integrationTest`) | PASS | 154 tests, 0 failed (기존 138 + `#89` 회귀분 5 + 신규 10 + 코드 리뷰 반영분 1, §7a) | 5.3s(테스트 실행) / 약 1m 20s(컨테이너 기동 포함 전체) | `build/test-results/integrationTest/*.xml` |
 | `./harness check` | PASS | Secret preflight 525 파일, JUnit 정책 54 파일 | — | 명령 출력 |
 | `./harness pr-ready --project-tests` | PASS | 위 unit/integration 재확인 포함 | — | 명령 출력 |
+| `npm run hooks:validate` | PASS | `Husky validation passed` | — | 명령 출력. `scripts/validate-husky.py`를 직접 호출하며 `./harness check`가 내부에서 실행하는 것과 동일한 스크립트다(§7b) |
 | `git diff --check` | PASS | 공백 오류 없음 | — | exit code 0 |
 
 첫 실행부터 신규 시나리오 14개(단위 4 + 통합 10) 전부 통과했다. 계획 대비 재현·수정
@@ -113,14 +114,18 @@
 
 ### Concurrency and idempotency
 
-- `findInbox`와 `countByDirection`은 같은 `@Transactional(readOnly = true)`
-  안에서 실행되지만 PostgreSQL 기본 격리 수준(READ COMMITTED)에서는 두 쿼리가
-  서로 다른 스냅샷을 본다. 조회 도중 답변이 새로 공개되거나 만료 시각이 지나면
-  칩 count와 목록 건수가 순간적으로 1 어긋날 수 있다. 테스트는 고정 `Instant`와
-  단일 스레드라 이 경합을 재현하지 않으며, 계획 단계에서부터 "결함이 아니라
-  알려진 동작"으로 분류했다(§7 Cross-cutting, 테스트 계획 문서). 막으려면 이
-  메서드만 `REPEATABLE READ`로 올리거나 두 쿼리를 `GROUPING SETS`로 합쳐야 하는데,
-  이득 대비 구현·유지비용이 커 이번 범위에서 보류한다.
+- `findInbox`와 `countByDirection`은 같은 트랜잭션 안에서 실행된다. 최초 구현은
+  `@Transactional(readOnly = true)`만 지정해 PostgreSQL 기본 격리 수준(READ
+  COMMITTED)을 그대로 썼는데, 이 경우 두 SELECT가 서로 다른 statement 스냅샷을
+  볼 수 있어 조회 도중 답변이 공개되거나 만료 시각이 지나면 칩 count와 목록
+  건수가 순간적으로 어긋날 수 있었다. 2차 코드 리뷰(§7b)에서 이 부분을 지적받아
+  `InboxQueryService.list`에 `isolation = Isolation.REPEATABLE_READ`를 지정해
+  트랜잭션 시작 시점의 스냅샷을 고정했다 — 이제 두 쿼리는 항상 같은 데이터에서
+  계산된다. 읽기 전용 트랜잭션이므로 PostgreSQL에서 `REPEATABLE READ`가 흔히
+  동반하는 serialization 실패(동시 쓰기 충돌) 위험이 없다. 테스트는 고정
+  `Instant`와 단일 스레드라 원래도 이 경합을 재현하지 않았으므로, 이 변경 전후
+  테스트 결과에는 차이가 없다(160/154 그대로) — 격리 수준 자체는 단일 스레드
+  테스트로 직접 검증할 수 없고, Spring/JDBC의 표준 동작에 의존한다.
 
 ### Transactions and event ordering
 
@@ -151,8 +156,8 @@
   계속 누적된다(`#79` 이후의 기존 특성이며 이번 이슈가 만들지 않았다). 이 카테고리가
   커지면 `SELECT_CARD`의 카드당 서브쿼리 4개가 먼저 비용 문제를 일으킬 곳이고,
   `SELECT_CHIP_AGGREGATE`의 `MOD` 연산은 그보다 가볍다. 후속 이슈로 관찰이 필요하다.
-- 잔여 위험: §6 동시성 항목의 스냅샷 불일치는 운영에서 배지 숫자가 순간적으로
-  어긋나는 정도이며, 현재 설계에서는 의도적으로 남겨둔 트레이드오프다.
+- 스냅샷 불일치 위험은 §6·§7b에 기록한 대로 `REPEATABLE_READ` 지정으로 해소했다.
+  잔여 위험 목록에서 제외한다.
 
 ## 7a. Code review addendum (2026-08-08T21:55:00+09:00)
 
@@ -160,8 +165,10 @@
 (base `ae3e956`, head `e27c88d` — 이 보고서 최초 작성 시점까지의 6개 커밋).
 리뷰어가 조립된 SQL 문자열 3경로(필터 있는/없는 목록, 칩 집계)를 직접
 대조해 `SCOPE_FILTER`/`SEGMENT_JOIN` 공유가 실제로 지켜지는지 확인했고,
-전체 테스트를 독립 재실행해 본 보고서의 수치(단위 160, 통합 153)와 일치함을
-검증했다. Critical/Important 0건, Minor 3건, **Ready to merge: Yes** 판정.
+전체 테스트를 독립 재실행해 **그 시점 기준** 수치(단위 160, 통합 153 — 아래
+조치로 154가 되기 전)와 일치함을 검증했다. Critical/Important 0건, Minor 3건,
+**Ready to merge: Yes** 판정. 이 절 이후 §3·§4의 통합 테스트 수는 조치 반영 후
+최종값인 154로 통일한다.
 
 Minor 3건 중 조치한 것:
 
@@ -179,18 +186,71 @@ Minor 3건 중 조치한 것:
   클래스 헤더 `Source scenario`에 `#80`을 추가하지 않았다 — 두 파일은 이번
   변경으로 호출 문법만 바뀌었을 뿐 assertion이 바뀌지 않아, `FeedPersistenceBoundaryTest`처럼
   실제 검증 내용이 바뀐 경우와 다르다고 판단했다.
-- `boundaryAnglesBelongToExactlyOneSegment`가 "경계각 직전 각이 정확히
-  *이전* 구간에 속하는지"를 개별적으로 확인하지 않고 총합만 본다 — 같은
-  파일의 `sqlDerivedSegmentMatchesDomainContainsAcrossSweep`이 실제 필터
-  조회 결과로 그 성질을 이미 훨씬 강하게 검증하므로 중복 보강하지 않았다.
+
+`boundaryAnglesBelongToExactlyOneSegment`의 배타성 검증 부족은 이 시점에는
+"중복 보강 불필요"로 판단해 조치하지 않았으나, §7b(2차 코드 리뷰)에서 같은
+지적을 CodeRabbit이 별도로 제기했고 재검토 결과 실제 결함 은폐 가능성이
+있다고 판단해 조치했다. 최초 판단을 뒤집은 사례로 §7b에 근거를 남긴다.
+
+## 7b. Second code review pass — CodeRabbit on PR #92 (2026-08-08T22:15:00+09:00)
+
+PR #92 생성 후 CodeRabbit이 자동 리뷰를 남겼다(commit `cbef26b` 기준,
+actionable comments 8건). 각 항목을 검토해 실제 결함인지 판단했다.
+
+### 조치한 것
+
+1. **`findInbox`/`countByDirection`의 스냅샷 불일치를 구조적으로 제거.**
+   §7a 시점에는 "이득 대비 비용이 커 보류"로 판단했으나, 재검토 결과 비용
+   추정이 잘못됐다 — `InboxQueryService.list`에
+   `isolation = Isolation.REPEATABLE_READ` 한 줄만 추가하면 되고, 읽기 전용
+   트랜잭션이라 `REPEATABLE READ`의 일반적 비용(동시 쓰기 serialization
+   실패)도 발생하지 않는다. "구현 비용이 크다"는 최초 판단 자체가 틀렸다고
+   결론 내리고 반영했다(§6).
+2. **`boundaryAnglesBelongToExactlyOneSegment`와
+   `sqlDerivedSegmentMatchesDomainContainsAcrossSweep`이 배타적 소속을
+   검증하지 않던 공백.** 기존 테스트는 "기대 구간에 속하는지"만 확인하고
+   "다른 7개 구간에는 속하지 않는지"를 확인하지 않아, 한 방위각이 두 구간에
+   동시에 걸리는 결함이 있어도 통과할 수 있었다. 두 테스트 모두
+   `assertBelongsToExactlyOneSegment` 헬퍼로 8개 구간 전체를 대조하도록
+   강화했다. §7a에서 "중복 보강 불필요"로 판단했던 것을 뒤집었다 — 첫 판단은
+   "다른 테스트가 이미 강하게 검증한다"고 봤지만, 그 다른 테스트(스윕
+   테스트) 역시 같은 종류의 공백(배타성 미검증)을 갖고 있어서 상호 보완이
+   되지 않았다.
+3. **`InboxQueryRepository.findInbox`의 Javadoc이 공백 문자열 처리를
+   명시하지 않던 문제.** 구현은 이미 `!= null && !isBlank()`로 처리하지만
+   포트 계약 문서에는 `null`만 적혀 있었다. 다른 구현체가 공백을 실제 구간
+   키로 오인해 바인딩하지 않도록 명시했다.
+4. **`npm run hooks:validate` 미기록.** AGENTS.md 10절이 요구하는 4개 기본
+   검증 명령(`./harness check`, `./harness pr-ready --project-tests`,
+   `npm run hooks:validate`, `git diff --check`) 중 이 명령을 실행·기록하지
+   않았다. 실행한 결과 `Husky validation passed`로 통과했다 — 이 스크립트는
+   `./harness check`가 내부적으로 이미 실행하는 `scripts/validate-husky.py`와
+   동일하므로 새로운 위험이 드러난 것은 아니지만, 계약에 명시된 명령을
+   누락한 것은 사실이라 기록을 보완했다.
+5. **통합 테스트 수 표기 불일치(153 vs 154).** §7a 서술이 시점에 따라
+   153과 154를 섞어 써서 최종 수치가 불분명했다. §7a에 "그 시점 기준"이라고
+   명시하고, 이후 절은 전부 최종값 154로 통일했다(`docs/test-plans/gh-80-INBOX-DIRECTION-CHIPS.md`의
+   완료 기준도 동일하게 보완).
+
+### 유효하지 않다고 판단해 조치하지 않은 것
+
+- **"최종 보고서에 `task_id`·`design_id`가 없으면 `PASS`가 아니라 `BLOCKED`로
+  보고하라"는 지적.** 이 요구는 AGENTS.md 11절(에이전트 세션의 최종 상태
+  보고 계약)을 이 markdown 파일에 그대로 적용한 것으로 보이는데, 그 절은
+  대화 세션의 최종 응답 형식을 규정하지 대상이지 `docs/reports/tests/*.md`
+  산출물의 스키마가 아니다. 실제로 저장소의 선행 사례(`gh-79`, `gh-89`
+  보고서)도 이 필드들을 포함하지 않으며, 이 이슈는 인프라 설계가 아니라서
+  `design_id` 자체가 존재하지 않는다(TASK.md에 `DESIGN-ID` 필드가 없다).
+  빈 필드를 채우는 대신 상태를 `BLOCKED`로 낮추면 실제로는 통과한 검증
+  결과를 감추게 되므로, `PASS` 상태를 유지하고 이 판단 근거만 남긴다.
 
 ## 8. Artifacts
 
 - Test plan: `docs/test-plans/gh-80-INBOX-DIRECTION-CHIPS.md`
-- CI run: (해당 없음 — 로컬 실행. PR 생성 시 CI 링크로 대체)
+- CI run: PR #92의 GitHub Actions 체크 참고 (`gh pr checks 92`)
 - Related ADR: `docs/reports/private/direction/gh-80-inbox-direction-chip.local.md`
   (설계 결정 근거, gitignore 대상 로컬 문서)
-- PR: (아직 생성되지 않음 — `/harness-pr`에서 연결)
+- PR: https://github.com/dnd-side-project/dnd-15th-2-backend/pull/92
 
 ## 9. Reviewer checklist
 
@@ -199,4 +259,7 @@ Minor 3건 중 조치한 것:
 - [x] 잠재 문제에 후속 GitHub Issue가 연결됨 — 신규 후속 Issue 없음. `ANSWERED`
       누적에 따른 카드 서브쿼리 비용은 §7에 관찰 필요 항목으로만 기록(신규 Issue
       생성은 PR 리뷰 후 필요시 진행)
-- [ ] 실행 결과와 PR 설명이 일치함 — PR 생성 시 확인
+- [x] 실행 결과와 PR 설명이 일치함 — PR #92 본문의 테스트 절(단위 160개, 통합
+      154개, `./harness pr-ready --project-tests` 통과)이 본 보고서 §3과
+      일치함을 확인. §7b 조치 후에도 테스트 수 자체는 바뀌지 않아 PR 본문
+      수정은 필요 없었다

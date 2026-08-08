@@ -173,7 +173,8 @@ Executor 2의 시그니처 교체가 끝난 뒤에만 착수한다 — 세 실�
 - [x] 모든 테스트 메서드에 `@DisplayName`
 - [x] 테스트 클래스 헤더의 timestamp와 source scenario 검증
 - [x] 단위 테스트 통과 (160 tests, 0 failed)
-- [x] 통합 테스트 통과 (153 tests, 0 failed)
+- [x] 통합 테스트 통과 (계획 시나리오 기준 153 tests, 0 failed. 이후 코드 리뷰
+      반영으로 1건이 추가돼 최종 154 — `docs/reports/tests/gh-80-INBOX-DIRECTION-CHIPS.md` §7a)
 - [x] 잠재 문제 분석 (`docs/reports/tests/gh-80-INBOX-DIRECTION-CHIPS.md` §6)
 - [x] 테스트 보고서 생성
 - [x] INT-009·INT-010이 건드린 시드 `direction_scheme`이 테스트 종료 후 원상
