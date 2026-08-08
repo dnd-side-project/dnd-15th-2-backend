@@ -15,11 +15,31 @@
 > 카운트(check constraints 111, `EXPECTED_INDEXES` 58 등, `device_credential`의 4개
 > check·2개 unique index·1개 FK·1개 non-unique index 반영)가 실제 DB catalog와
 > 일치함을 `FlywayMigrationIntegrationTest.catalogMatchesApprovedManifest`로 검증했다.
+>
+> **2026-08-08 PR #84 리뷰 반영 재검증.** CodeRabbit 리뷰의 타당한 지적을 반영했다 —
+> `FlywayMigrationIntegrationTest`의 PK 컬럼 순서 검증을 `conkey` ordinality 기준으로
+> 수정(기존 alphabetical 정렬은 컬럼 순서가 바뀌어도 통과했다), `DirectionPostgisPersistenceIntegrationTest`의
+> inbound bearing 검증 좌표를 위도·경도가 모두 다른 지점으로 교체(기존 정북 좌표는 단순
+> `+180` 평면 근사와 실제 `ST_Azimuth` 재계산을 구분하지 못했다), `edit_count`/`edited_at`
+> CHECK의 반대 방향 위반과 정상 대조군 테스트 추가, `Answer` 도메인의 음수 `editCount` 거부와
+> 그 단위 테스트 추가. `./gradlew test`(153 tests, 0 failures)와
+> `./gradlew integrationTest`(125 tests, 0 failures)를 다시 실행해 통과를 확인했다.
+> `AnswerReactionService.toggle`의 수신 자격 확장(현재는 sender만 반응 가능)과 `answer_reaction`
+> DB constraint trigger 간 격차를 CodeRabbit이 지적했으나, 이는 TASK.md Scope에 이미
+> "자격 판정 service 로직 — #79"로 명시적으로 제외된 범위라 반영하지 않았다.
+>
+> CodeRabbit이 ERD.md의 dbml 경로 표기를 지적해 처음에는 백엔드 사본만 직접 고쳤으나,
+> vault 원본을 대조한 결과 그 경로 표기(`dbml/direction_communication.dbml`)와 코드펜스는
+> vault 원본 그대로였다 — 오타가 아니라 vault의 상대경로 표기였다. 대신 vault 원본 §2
+> 이후 본문이 그사이 2026-08-07 개정으로 완전히 갱신돼 있어(이전 판은 상단 안내문으로만
+> "본문은 아직 2026-08-04 기준"이라 알렸었다), ERD.md 전체를 vault 원본과 byte-for-byte로
+> 다시 동기화했다. `schema-manifest.md`의 ERD checksum을 그 결과로 갱신했다.
 
 ## 1. Executive summary
 
 - Result: `PASS`
-- Tested scope: `V7` 마이그레이션(answer_reaction 복합 PK·자격 트리거 교체, post_recipient/answer
+- Tested scope: `V7`(현재 파일명 `V8__widen_answer_visibility_to_recipients.sql`, 상단 참고)
+  마이그레이션(answer_reaction 복합 PK·자격 트리거 교체, post_recipient/answer
   컬럼 추가와 백필, uq_answer_one_per_recipient 조건 축소), 이를 반영한 도메인·매핑
   갱신(PostRecipient, Answer, AnswerReaction JPA 매핑, JdbcPostRecipientRepository),
   실제 매칭 시점 inbound bearing/distance 계산 배선(PostGIS ST_Azimuth), 기존
@@ -55,14 +75,14 @@
 
 | Scenario ID | Result | Test class / method | Notes |
 | --- | --- | --- | --- |
-| UNIT-001 | PASS | `FlywayMigrationContractTest.migrationsMatchAcceptedContent`, `.v7MatchesAcceptedContent` | V7 파일명·순서·SHA-256 잠금 |
+| UNIT-001 | PASS | `FlywayMigrationContractTest.migrationsMatchAcceptedContent`, `.v8MatchesAcceptedContent` | V8 파일명·순서·SHA-256 잠금 |
 | UNIT-002 | PASS | `DirectionDomainTest.rejectsInboundBearingOutOfRange` | `[0,360)` 경계값 3종 |
 | UNIT-003 | PASS | `DirectionDomainTest.rejectsNegativeDistanceM` | |
 | UNIT-004 | PASS | `DirectionDomainTest.rejectsAnswersReadAtBeforeMatchedAt` | matchedAt 이전 시각 거절 |
 | UNIT-005 | PASS | `AnswerPersistenceBoundaryTest.requiresEditCountAndEditedAtToAgree` | 도메인 레벨 동치 검증(TASK.md 완료 조건 대응) |
 | UNIT-006 | PASS | `AnswerPersistenceBoundaryTest.rejectsNegativeDistanceM` | |
 | INT-001 | PASS | `FlywayMigrationIntegrationTest.appliesAllMigrationsOnApplicationStartup`, `.catalogMatchesApprovedManifest` | 함수·트리거 개명, CHECK 개수 101→107, 복합 PK 컬럼 확인 |
-| INT-002 | PASS | `SchemaRevisionMigrationIntegrationTest.v7BackfillsLegacyRowsWithConstraintSatisfyingPlaceholders`, `.v7FailsLoudlyWhenADeletedAnswerCoexistsWithALiveAnswer` | 백필 값 검증 + uq 조건 축소 loud-failure 시나리오 추가 |
+| INT-002 | PASS | `SchemaRevisionMigrationIntegrationTest.v8BackfillsLegacyRowsWithConstraintSatisfyingPlaceholders`, `.v8FailsLoudlyWhenADeletedAnswerCoexistsWithALiveAnswer` | 백필 값 검증 + uq 조건 축소 loud-failure 시나리오 추가 |
 | INT-003 | PASS | `ReactionPersistenceIntegrationTest.senderAndEligibleRecipientCanBothReactToTheSameAnswer` | 복합 PK로 두 사용자 공감 성공 |
 | INT-004 | PASS | `ReactionPersistenceIntegrationTest.outsiderCannotReactToAnAnswer` | |
 | INT-005 | PASS | `ReactionPersistenceIntegrationTest.theAnswerAuthorCannotReactToTheirOwnAnswer` | |

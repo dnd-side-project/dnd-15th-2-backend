@@ -3,6 +3,11 @@
 > Created at: `2026-08-07T18:23:58+09:00`
 > GitHub Issue: `#78`
 > Status: Approved
+>
+> **2026-08-08 참고**: 이 계획 수립 당시 마이그레이션은 `V7`로 설계됐으나, PR #81의
+> `device_credential`이 먼저 `main`에 merge되며 실제 파일은
+> `V8__widen_answer_visibility_to_recipients.sql`로 재번호됐다. 본문의 `V7` 서술은
+> 계획 수립 시점 기준이며, 실행 가능한 파일·버전은 `V8`이다.
 
 ## 1. Objective
 
@@ -98,7 +103,7 @@
 | TEST-PLAN-GH-78-SCHEMA-REVISION-V7-INT-003 | `ReactionPersistenceIntegrationTest`(재작성), `AnswerReactionRepository` | 질문자(sender)와 수신 자격자(recipient)가 모두 `post_recipient`로 존재하는 질문글에 답변 1건 | sender와 recipient가 각각 그 답변에 공감(직접 repository 호출) | 둘 다 성공하고 서로 다른 행(복합 PK)으로 저장된다 — 이전엔 PK 충돌로 두 번째가 실패했던 지점 | `@BeforeEach`에서 관련 테이블 delete |
 | TEST-PLAN-GH-78-SCHEMA-REVISION-V7-INT-004 | 위와 동일 fixture + outsider(질문글과 무관한 계정) | outsider가 그 답변에 공감 시도(직접 repository 호출, 서비스 우회) | `ct_answer_reaction_reactor_can_view`가 거부 | `DataIntegrityViolationException` | 동일 |
 | TEST-PLAN-GH-78-SCHEMA-REVISION-V7-INT-005 | 위와 동일 fixture | 답변 작성자 본인(수신 자격자 중 한 명)이 자기 답변에 공감 시도 | 트리거가 자기 답변 공감을 거부 | `DataIntegrityViolationException` — 수신 자격이 있어도 자기 답변에는 안 된다는 규칙을 DB가 직접 강제하는지 확인 | 동일 |
-| TEST-PLAN-GH-78-SCHEMA-REVISION-V7-INT-006 | 위와 동일 fixture | 같은 사용자가 같은 답변에 공감 → 취소 → 재공감 | 매 단계 성공, PK 충돌 없음(멱등 재삽입) | 동일 |
+| TEST-PLAN-GH-78-SCHEMA-REVISION-V7-INT-006 | 위와 동일 fixture | 답변 1건, 아직 공감 없음 | 같은 사용자가 같은 답변에 공감 → 취소 → 재공감 | 매 단계 성공, PK 충돌 없음(멱등 재삽입) | 동일 |
 | TEST-PLAN-GH-78-SCHEMA-REVISION-V7-INT-007 | 신규 통합 테스트 또는 `AnswerJdbcBoundaryTest` 인접 클래스, raw JDBC | `status='DELETED'`인 기존 답변이 있는 `post_recipient`에 새 답변 INSERT 시도 | `uq_answer_one_per_recipient` 위반 확인 | `DataIntegrityViolationException` — 이전엔 `DELETED`가 예외 목록에 있어 통과하던 경로 | 트랜잭션 롤백 |
 | TEST-PLAN-GH-78-SCHEMA-REVISION-V7-INT-008 | 동일 | `status='REJECTED'`인 기존 답변이 있는 `post_recipient`에 새 답변 INSERT | 정상 삽입(회귀 없음 확인) | 성공 | 동일 |
 | TEST-PLAN-GH-78-SCHEMA-REVISION-V7-INT-009 | `answer` 테이블, raw JDBC | (a) `edit_count=0, edited_at=NOW()` 삽입, (b) `edit_count=11` 삽입을 각각 시도 | 신규 CHECK 위반 | 둘 다 `DataIntegrityViolationException`. `edit_count=0, edited_at=NULL`(기본값)은 정상 삽입되는 대조군도 함께 확인 | 동일 |
