@@ -49,7 +49,8 @@ class FlywayMigrationContractTest {
 			"V3__add_user_account_password_hash.sql",
 			"V4__add_user_account_optimistic_lock.sql",
 			"V5__add_operator_credential.sql",
-			"V6__add_spring_session_tables.sql");
+			"V6__add_spring_session_tables.sql",
+			"V7__add_device_credential.sql");
 	}
 
 	@Test

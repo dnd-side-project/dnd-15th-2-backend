@@ -56,7 +56,8 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 		"notification_delivery",
 		"operator_credential",
 		"spring_session",
-		"spring_session_attributes"
+		"spring_session_attributes",
+		"device_credential"
 	);
 
 	private static final Set<String> EXPECTED_INDEXES = Set.of(
@@ -114,7 +115,10 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 		"uq_operator_credential_login_id",
 		"spring_session_ix1",
 		"spring_session_ix2",
-		"spring_session_ix3"
+		"spring_session_ix3",
+		"uq_device_credential_secret",
+		"uq_active_device_installation",
+		"device_credential_user_idx"
 	);
 
 	private static final Set<String> EXPECTED_FUNCTIONS = Set.of(
@@ -151,7 +155,7 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 	private JdbcTemplate jdbcTemplate;
 
 	@Test
-	@DisplayName("빈 PostGIS 데이터베이스의 startup에서 V1부터 V6까지 migration을 적용한다")
+	@DisplayName("빈 PostGIS 데이터베이스의 startup에서 V1부터 V7까지 migration을 적용한다")
 	void appliesAllMigrationsOnApplicationStartup() {
 		Integer successfulV1 = jdbcTemplate.queryForObject("""
 			SELECT count(*)
@@ -183,6 +187,11 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 			FROM flyway_schema_history
 			WHERE version = '6' AND success
 			""", Integer.class);
+		Integer successfulV7 = jdbcTemplate.queryForObject("""
+			SELECT count(*)
+			FROM flyway_schema_history
+			WHERE version = '7' AND success
+			""", Integer.class);
 		String postgisVersion = jdbcTemplate.queryForObject(
 			"SELECT PostGIS_Version()", String.class);
 
@@ -192,7 +201,8 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 		assertThat(successfulV4).isEqualTo(1);
 		assertThat(successfulV5).isEqualTo(1);
 		assertThat(successfulV6).isEqualTo(1);
-		assertThat(flyway.info().applied()).hasSize(6);
+		assertThat(successfulV7).isEqualTo(1);
+		assertThat(flyway.info().applied()).hasSize(7);
 		assertThat(postgisVersion).isNotBlank();
 	}
 
@@ -246,10 +256,10 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 			""", (resultSet, rowNumber) -> new ConstraintDescriptor(
 			resultSet.getString(1), resultSet.getString(2)));
 
-		assertThat(countConstraints(constraints, "f")).isEqualTo(50);
+		assertThat(countConstraints(constraints, "f")).isEqualTo(51);
 		assertThat(countConstraints(constraints, "u")).isEqualTo(20);
-		assertThat(countConstraints(constraints, "c")).isEqualTo(101);
-		assertThat(EXPECTED_INDEXES).hasSize(55);
+		assertThat(countConstraints(constraints, "c")).isEqualTo(105);
+		assertThat(EXPECTED_INDEXES).hasSize(58);
 		assertThat(EXPECTED_FUNCTIONS).hasSize(11);
 		assertThat(EXPECTED_TRIGGERS).hasSize(10);
 
