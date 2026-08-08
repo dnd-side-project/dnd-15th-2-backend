@@ -26,11 +26,15 @@ public final class PostRecipient {
 	private final Instant capacityReleasedAt;
 	private final Instant expiredAt;
 	private final Instant blockedAt;
+	private final BigDecimal inboundBearingDegrees;
+	private final long distanceM;
+	private final Instant answersReadAt;
 
 	private PostRecipient(Long id, Long postId, Long recipientId, PostRecipientStatus status,
 		String distanceBand, BigDecimal matchedBearingDegrees, String matchedRegionCode,
 		Instant matchedAt, Instant discoveredAt, Instant openedAt, Instant skipRequestedAt, Instant skippedAt,
-		Instant capacityReleasedAt, Instant expiredAt, Instant blockedAt) {
+		Instant capacityReleasedAt, Instant expiredAt, Instant blockedAt,
+		BigDecimal inboundBearingDegrees, long distanceM, Instant answersReadAt) {
 		this.id = id;
 		this.postId = requireId(postId, "postId");
 		this.recipientId = requireId(recipientId, "recipientId");
@@ -50,6 +54,17 @@ public final class PostRecipient {
 		this.capacityReleasedAt = capacityReleasedAt;
 		this.expiredAt = expiredAt;
 		this.blockedAt = blockedAt;
+		this.inboundBearingDegrees = requireValue(inboundBearingDegrees, "inboundBearingDegrees");
+		if (inboundBearingDegrees.signum() < 0 || inboundBearingDegrees.compareTo(BigDecimal.valueOf(360)) >= 0) {
+			throw new DirectionException(
+				DirectionErrorCode.INVALID_BEARING, "inboundBearingDegrees", "inboundBearingDegrees는 [0, 360)이어야 합니다");
+		}
+		if (distanceM < 0) {
+			throw new DirectionException(
+				DirectionErrorCode.INVALID_VALUE_RANGE, "distanceM", "distanceM은 음수일 수 없습니다");
+		}
+		this.distanceM = distanceM;
+		this.answersReadAt = answersReadAt;
 		validateTimestamp(discoveredAt, "discoveredAt");
 		validateTimestamp(openedAt, "openedAt");
 		validateTimestamp(skipRequestedAt, "skipRequestedAt");
@@ -57,6 +72,7 @@ public final class PostRecipient {
 		validateTimestamp(capacityReleasedAt, "capacityReleasedAt");
 		validateTimestamp(expiredAt, "expiredAt");
 		validateTimestamp(blockedAt, "blockedAt");
+		validateTimestamp(answersReadAt, "answersReadAt");
 		if ((status == PostRecipientStatus.SKIP_PENDING) != (skipRequestedAt != null && skippedAt == null)) {
 			throw new DirectionException(
 				DirectionErrorCode.INVALID_RECIPIENT_STATE, "status", "SKIP_PENDING은 넘김 요청만 있고 확정이 없는 상태여야 합니다");
@@ -94,18 +110,21 @@ public final class PostRecipient {
 	}
 
 	public static PostRecipient available(Long postId, Long recipientId, String distanceBand,
-		BigDecimal matchedBearingDegrees, String matchedRegionCode, Instant matchedAt) {
+		BigDecimal matchedBearingDegrees, String matchedRegionCode, Instant matchedAt,
+		BigDecimal inboundBearingDegrees, long distanceM) {
 		return new PostRecipient(null, postId, recipientId, PostRecipientStatus.AVAILABLE,
-			distanceBand, matchedBearingDegrees, matchedRegionCode, matchedAt, null, null, null, null, null, null, null);
+			distanceBand, matchedBearingDegrees, matchedRegionCode, matchedAt, null, null, null, null, null, null, null,
+			inboundBearingDegrees, distanceM, null);
 	}
 
 	public static PostRecipient restore(Long id, Long postId, Long recipientId, PostRecipientStatus status,
 		String distanceBand, BigDecimal matchedBearingDegrees, String matchedRegionCode, Instant matchedAt,
 		Instant discoveredAt, Instant openedAt, Instant skipRequestedAt, Instant skippedAt,
-		Instant capacityReleasedAt, Instant expiredAt, Instant blockedAt) {
+		Instant capacityReleasedAt, Instant expiredAt, Instant blockedAt,
+		BigDecimal inboundBearingDegrees, long distanceM, Instant answersReadAt) {
 		return new PostRecipient(id, postId, recipientId, status, distanceBand, matchedBearingDegrees,
 			matchedRegionCode, matchedAt, discoveredAt, openedAt, skipRequestedAt, skippedAt,
-			capacityReleasedAt, expiredAt, blockedAt);
+			capacityReleasedAt, expiredAt, blockedAt, inboundBearingDegrees, distanceM, answersReadAt);
 	}
 
 	private void validateTimestamp(Instant value, String field) {
@@ -146,7 +165,7 @@ public final class PostRecipient {
 		}
 		return new PostRecipient(id, postId, recipientId, PostRecipientStatus.SKIP_PENDING, distanceBand,
 			matchedBearingDegrees, matchedRegionCode, matchedAt, discoveredAt, openedAt, at, null,
-			null, null, null);
+			null, null, null, inboundBearingDegrees, distanceM, answersReadAt);
 	}
 
 	public PostRecipient revertSkip() {
@@ -156,7 +175,7 @@ public final class PostRecipient {
 		}
 		return new PostRecipient(id, postId, recipientId, previousStatus(), distanceBand,
 			matchedBearingDegrees, matchedRegionCode, matchedAt, discoveredAt, openedAt, null, null,
-			null, null, null);
+			null, null, null, inboundBearingDegrees, distanceM, answersReadAt);
 	}
 
 	public PostRecipient confirmSkip(Instant at) {
@@ -169,7 +188,7 @@ public final class PostRecipient {
 		// 카운터 해제는 후속 SKIP_CONFIRMATION_DUE 워커의 몫이며 이 메서드 범위 밖이다.
 		return new PostRecipient(id, postId, recipientId, PostRecipientStatus.SKIPPED, distanceBand,
 			matchedBearingDegrees, matchedRegionCode, matchedAt, discoveredAt, openedAt, skipRequestedAt, at,
-			at, null, null);
+			at, null, null, inboundBearingDegrees, distanceM, answersReadAt);
 	}
 
 	private PostRecipientStatus previousStatus() {
@@ -187,7 +206,8 @@ public final class PostRecipient {
 				DirectionErrorCode.INVALID_RECIPIENT_STATE, "status", "발견 처리를 할 수 없는 상태입니다");
 		}
 		return new PostRecipient(id, postId, recipientId, PostRecipientStatus.DISCOVERED, distanceBand,
-			matchedBearingDegrees, matchedRegionCode, matchedAt, at, null, null, null, null, null, null);
+			matchedBearingDegrees, matchedRegionCode, matchedAt, at, null, null, null, null, null, null,
+			inboundBearingDegrees, distanceM, answersReadAt);
 	}
 
 	/**
@@ -208,7 +228,7 @@ public final class PostRecipient {
 		}
 		return new PostRecipient(id, postId, recipientId, PostRecipientStatus.OPENED, distanceBand,
 			matchedBearingDegrees, matchedRegionCode, matchedAt, discoveredAt == null ? at : discoveredAt, at,
-			null, null, null, null, null);
+			null, null, null, null, null, inboundBearingDegrees, distanceM, answersReadAt);
 	}
 
 	/**
@@ -234,7 +254,8 @@ public final class PostRecipient {
 		}
 		return new PostRecipient(id, postId, recipientId, PostRecipientStatus.ANSWERED, distanceBand,
 			matchedBearingDegrees, matchedRegionCode, matchedAt, discoveredAt == null ? at : discoveredAt,
-			openedAt == null ? at : openedAt, null, null, at, null, null);
+			openedAt == null ? at : openedAt, null, null, at, null, null,
+			inboundBearingDegrees, distanceM, answersReadAt);
 	}
 
 }

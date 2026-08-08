@@ -28,10 +28,10 @@ public class JdbcPostRecipientRepository implements PostRecipientRepository {
 			INSERT INTO post_recipient
 				(post_id, recipient_id, status, distance_band, matched_bearing_deg, matched_region_code,
 				 matched_at, discovered_at, opened_at, skip_requested_at, skipped_at, capacity_released_at,
-				 expired_at, blocked_at)
+				 expired_at, blocked_at, inbound_bearing_deg, distance_m, answers_read_at)
 			VALUES (:postId, :recipientId, :status, :distanceBand, :bearing, :regionCode,
 				:matchedAt, :discoveredAt, :openedAt, :skipRequestedAt, :skippedAt, :capacityReleasedAt,
-				:expiredAt, :blockedAt)
+				:expiredAt, :blockedAt, :inboundBearing, :distanceM, :answersReadAt)
 			RETURNING id
 			""" : """
 			UPDATE post_recipient
@@ -39,7 +39,8 @@ public class JdbcPostRecipientRepository implements PostRecipientRepository {
 			    matched_bearing_deg = :bearing, matched_region_code = :regionCode, matched_at = :matchedAt,
 			    discovered_at = :discoveredAt, opened_at = :openedAt, skip_requested_at = :skipRequestedAt,
 			    skipped_at = :skippedAt, capacity_released_at = :capacityReleasedAt, expired_at = :expiredAt,
-			    blocked_at = :blockedAt
+			    blocked_at = :blockedAt, inbound_bearing_deg = :inboundBearing, distance_m = :distanceM,
+			    answers_read_at = :answersReadAt
 			WHERE id = :id
 			RETURNING id
 			""";
@@ -47,7 +48,8 @@ public class JdbcPostRecipientRepository implements PostRecipientRepository {
 		return PostRecipient.restore(id, recipient.getPostId(), recipient.getRecipientId(), recipient.getStatus(),
 			recipient.getDistanceBand(), recipient.getMatchedBearingDegrees(), recipient.getMatchedRegionCode(), recipient.getMatchedAt(),
 			recipient.getDiscoveredAt(), recipient.getOpenedAt(), recipient.getSkipRequestedAt(), recipient.getSkippedAt(),
-			recipient.getCapacityReleasedAt(), recipient.getExpiredAt(), recipient.getBlockedAt());
+			recipient.getCapacityReleasedAt(), recipient.getExpiredAt(), recipient.getBlockedAt(),
+			recipient.getInboundBearingDegrees(), recipient.getDistanceM(), recipient.getAnswersReadAt());
 	}
 
 	@Override
@@ -107,7 +109,9 @@ public class JdbcPostRecipientRepository implements PostRecipientRepository {
 			.addValue("discoveredAt", timestamp(r.getDiscoveredAt())).addValue("openedAt", timestamp(r.getOpenedAt()))
 			.addValue("skipRequestedAt", timestamp(r.getSkipRequestedAt()))
 			.addValue("skippedAt", timestamp(r.getSkippedAt())).addValue("capacityReleasedAt", timestamp(r.getCapacityReleasedAt()))
-			.addValue("expiredAt", timestamp(r.getExpiredAt())).addValue("blockedAt", timestamp(r.getBlockedAt()));
+			.addValue("expiredAt", timestamp(r.getExpiredAt())).addValue("blockedAt", timestamp(r.getBlockedAt()))
+			.addValue("inboundBearing", r.getInboundBearingDegrees()).addValue("distanceM", r.getDistanceM())
+			.addValue("answersReadAt", timestamp(r.getAnswersReadAt()));
 	}
 
 	private static Timestamp timestamp(java.time.Instant value) { return value == null ? null : Timestamp.from(value); }
@@ -118,7 +122,8 @@ public class JdbcPostRecipientRepository implements PostRecipientRepository {
 			rs.getString("matched_region_code"), rs.getTimestamp("matched_at").toInstant(),
 			instant(rs, "discovered_at"), instant(rs, "opened_at"), instant(rs, "skip_requested_at"),
 			instant(rs, "skipped_at"), instant(rs, "capacity_released_at"),
-			instant(rs, "expired_at"), instant(rs, "blocked_at"));
+			instant(rs, "expired_at"), instant(rs, "blocked_at"),
+			rs.getBigDecimal("inbound_bearing_deg"), rs.getLong("distance_m"), instant(rs, "answers_read_at"));
 	}
 
 	private static java.time.Instant instant(ResultSet rs, String column) throws SQLException {
