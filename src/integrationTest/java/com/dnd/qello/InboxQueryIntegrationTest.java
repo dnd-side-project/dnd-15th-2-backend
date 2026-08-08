@@ -147,13 +147,18 @@ class InboxQueryIntegrationTest extends PostgisContainerIntegrationTestSupport {
 			""", Long.class, postRecipientId, authorId, key, REGION, Timestamp.from(NOW), Timestamp.from(publishedAt));
 	}
 
+	/** 방향 필터 없이 목록만 확인하는 기존 시나리오를 위한 편의 메서드. 칩은 InboxDirectionChipIntegrationTest가 다룬다. */
+	private List<InboxCard> cards(InboxCategory category, Instant at) {
+		return inboxQueryService.list(recipientId, category, null, at).cards();
+	}
+
 	@Test
 	@DisplayName("답변 안 한 카테고리는 아직 처리하지 않은 질문글만 보여주고 방향은 수신자 기준이다")
 	void listsOnlyUnhandledPostsInUnansweredCategory() {
 		long active = post(senderId, "p-active", NOW.plus(1, ChronoUnit.HOURS), "ACTIVE");
 		recipient(active, "AVAILABLE", NOW);
 
-		List<InboxCard> cards = inboxQueryService.list(recipientId, InboxCategory.UNANSWERED, NOW.plusSeconds(1));
+		List<InboxCard> cards = cards(InboxCategory.UNANSWERED, NOW.plusSeconds(1));
 
 		assertThat(cards).hasSize(1);
 		assertThat(cards.getFirst().postId()).isEqualTo(active);
@@ -181,7 +186,7 @@ class InboxQueryIntegrationTest extends PostgisContainerIntegrationTestSupport {
 		long blocked = post(senderId, "p-blocked-recipient", NOW.plus(1, ChronoUnit.HOURS), "ACTIVE");
 		recipient(blocked, "BLOCKED", NOW);
 
-		List<InboxCard> cards = inboxQueryService.list(recipientId, InboxCategory.UNANSWERED, NOW.plusSeconds(1));
+		List<InboxCard> cards = cards(InboxCategory.UNANSWERED, NOW.plusSeconds(1));
 
 		assertThat(cards).hasSize(1);
 		assertThat(cards.getFirst().postId()).isEqualTo(open);
@@ -193,11 +198,11 @@ class InboxQueryIntegrationTest extends PostgisContainerIntegrationTestSupport {
 		long shortLived = post(senderId, "p-answered-expiring", NOW.plusSeconds(30), "ACTIVE");
 		recipient(shortLived, "ANSWERED", NOW);
 
-		assertThat(inboxQueryService.list(recipientId, InboxCategory.ANSWERED, NOW.plusSeconds(29)))
+		assertThat(cards(InboxCategory.ANSWERED, NOW.plusSeconds(29)))
 			.extracting(InboxCard::postId).containsExactly(shortLived);
-		assertThat(inboxQueryService.list(recipientId, InboxCategory.UNANSWERED, NOW.plusSeconds(29))).isEmpty();
+		assertThat(cards(InboxCategory.UNANSWERED, NOW.plusSeconds(29))).isEmpty();
 
-		assertThat(inboxQueryService.list(recipientId, InboxCategory.ANSWERED, NOW.plusSeconds(31))).isEmpty();
+		assertThat(cards(InboxCategory.ANSWERED, NOW.plusSeconds(31))).isEmpty();
 	}
 
 	@Test
@@ -206,8 +211,8 @@ class InboxQueryIntegrationTest extends PostgisContainerIntegrationTestSupport {
 		long post = post(senderId, "p-pending", NOW.plus(1, ChronoUnit.HOURS), "ACTIVE");
 		recipient(post, "SKIP_PENDING", NOW);
 
-		assertThat(inboxQueryService.list(recipientId, InboxCategory.UNANSWERED, NOW.plusSeconds(1))).hasSize(1);
-		assertThat(inboxQueryService.list(recipientId, InboxCategory.ANSWERED, NOW.plusSeconds(1))).isEmpty();
+		assertThat(cards(InboxCategory.UNANSWERED, NOW.plusSeconds(1))).hasSize(1);
+		assertThat(cards(InboxCategory.ANSWERED, NOW.plusSeconds(1))).isEmpty();
 	}
 
 	@Test
@@ -216,9 +221,9 @@ class InboxQueryIntegrationTest extends PostgisContainerIntegrationTestSupport {
 		long post = post(senderId, "p-expired", NOW.plusSeconds(30), "ACTIVE");
 		recipient(post, "AVAILABLE", NOW);
 
-		assertThat(inboxQueryService.list(recipientId, InboxCategory.UNANSWERED, NOW.plusSeconds(31))).isEmpty();
-		assertThat(inboxQueryService.list(recipientId, InboxCategory.UNANSWERED, NOW.plusSeconds(30))).isEmpty();
-		assertThat(inboxQueryService.list(recipientId, InboxCategory.UNANSWERED, NOW.plusSeconds(29))).hasSize(1);
+		assertThat(cards(InboxCategory.UNANSWERED, NOW.plusSeconds(31))).isEmpty();
+		assertThat(cards(InboxCategory.UNANSWERED, NOW.plusSeconds(30))).isEmpty();
+		assertThat(cards(InboxCategory.UNANSWERED, NOW.plusSeconds(29))).hasSize(1);
 	}
 
 	@Test
@@ -228,7 +233,7 @@ class InboxQueryIntegrationTest extends PostgisContainerIntegrationTestSupport {
 		recipient(post, "AVAILABLE", NOW);
 		jdbc.update("INSERT INTO user_block (blocker_id, blocked_id) VALUES (?, ?)", recipientId, senderId);
 
-		assertThat(inboxQueryService.list(recipientId, InboxCategory.UNANSWERED, NOW.plusSeconds(1))).isEmpty();
+		assertThat(cards(InboxCategory.UNANSWERED, NOW.plusSeconds(1))).isEmpty();
 	}
 
 	@Test
@@ -249,7 +254,7 @@ class InboxQueryIntegrationTest extends PostgisContainerIntegrationTestSupport {
 		answer(otherRowId, otherRecipientId, "a-other", NOW.plusSeconds(90));
 		jdbc.update("INSERT INTO user_block (blocker_id, blocked_id) VALUES (?, ?)", recipientId, otherRecipientId);
 
-		InboxCard card = inboxQueryService.list(recipientId, InboxCategory.UNANSWERED, NOW.plusSeconds(100)).getFirst();
+		InboxCard card = cards(InboxCategory.UNANSWERED, NOW.plusSeconds(100)).getFirst();
 
 		assertThat(card.postId()).isEqualTo(postId);
 		assertThat(card.answerCount()).isEqualTo(1L);
@@ -267,7 +272,7 @@ class InboxQueryIntegrationTest extends PostgisContainerIntegrationTestSupport {
 		long aboveFloor = post(senderId, "p-above-floor", NOW.plus(1, ChronoUnit.HOURS), "ACTIVE");
 		recipient(aboveFloor, "AVAILABLE", NOW, NEAR_FLOOR_M + 1);
 
-		List<InboxCard> cards = inboxQueryService.list(recipientId, InboxCategory.UNANSWERED, NOW.plusSeconds(1));
+		List<InboxCard> cards = cards(InboxCategory.UNANSWERED, NOW.plusSeconds(1));
 
 		InboxCard below = cards.stream().filter(card -> card.postId() == belowFloor).findFirst().orElseThrow();
 		InboxCard at = cards.stream().filter(card -> card.postId() == atFloor).findFirst().orElseThrow();
@@ -290,7 +295,7 @@ class InboxQueryIntegrationTest extends PostgisContainerIntegrationTestSupport {
 		long ownRowId = recipient(postId, "ANSWERED", NOW);
 		answer(ownRowId, recipientId, "a-self", NOW.plusSeconds(60));
 
-		InboxCard card = inboxQueryService.list(recipientId, InboxCategory.ANSWERED, NOW.plusSeconds(100)).getFirst();
+		InboxCard card = cards(InboxCategory.ANSWERED, NOW.plusSeconds(100)).getFirst();
 
 		assertThat(card.unreadAnswerCount()).isZero();
 	}
@@ -312,7 +317,7 @@ class InboxQueryIntegrationTest extends PostgisContainerIntegrationTestSupport {
 		answer(ownRowId, recipientId, "a-self", NOW.plusSeconds(60));
 		answer(otherRowId, otherRecipientId, "a-other", NOW.plusSeconds(90));
 
-		InboxCard card = inboxQueryService.list(recipientId, InboxCategory.ANSWERED, NOW.plusSeconds(100)).getFirst();
+		InboxCard card = cards(InboxCategory.ANSWERED, NOW.plusSeconds(100)).getFirst();
 
 		assertThat(card.answerCount()).isEqualTo(2L);
 		assertThat(card.unreadAnswerCount()).isEqualTo(1L);

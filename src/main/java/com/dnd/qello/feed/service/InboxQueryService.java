@@ -8,9 +8,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.dnd.qello.feed.repository.InboxQueryRepository;
-import com.dnd.qello.feed.view.InboxCard;
 import com.dnd.qello.feed.view.InboxCategory;
 import com.dnd.qello.feed.view.InboxDetail;
+import com.dnd.qello.feed.view.InboxListing;
 
 import lombok.RequiredArgsConstructor;
 
@@ -25,8 +25,15 @@ public class InboxQueryService {
 
 	private final InboxQueryRepository inboxQueryRepository;
 
-	public List<InboxCard> list(long recipientId, InboxCategory category, Instant at) {
-		return inboxQueryRepository.findInbox(recipientId, category, at);
+	/**
+	 * 목록과 방향 칩을 같은 시각 기준으로 함께 반환한다. 칩은 directionSegmentKey와
+	 * 무관하게 category 스코프 전체를 집계한다 — 필터를 건 상태에서도 다른 방향으로
+	 * 갈아탈 수 있어야 하기 때문이다.
+	 */
+	public InboxListing list(long recipientId, InboxCategory category, String directionSegmentKey, Instant at) {
+		return new InboxListing(
+			inboxQueryRepository.findInbox(recipientId, category, directionSegmentKey, at),
+			inboxQueryRepository.countByDirection(recipientId, category, at));
 	}
 
 	public Optional<InboxDetail> detail(long recipientId, long postRecipientId) {
