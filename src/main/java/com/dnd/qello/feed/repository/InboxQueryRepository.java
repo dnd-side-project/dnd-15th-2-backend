@@ -15,8 +15,9 @@ public interface InboxQueryRepository {
 	 * category에 맞는 수신 질문글만 반환한다. 두 카테고리 모두 만료 전(expires_at > at)
 	 * 항목만 담는다 — 답변한 질문글도 만료되면 목록에서 빠진다. 수신 상한 이하이므로
 	 * 페이징하지 않는다.
-	 * directionSegmentKey가 null이면 방향 필터를 걸지 않는다 — 이때는 조회 시점의
-	 * ACTIVE direction_scheme 상태와 무관하게 결과가 정해진다.
+	 * directionSegmentKey가 null이거나 공백이면 방향 필터를 걸지 않는다 — 이때는
+	 * 조회 시점의 ACTIVE direction_scheme 상태와 무관하게 결과가 정해진다. 구현체는
+	 * 공백 문자열을 실제 구간 키로 바인딩해서는 안 된다.
 	 */
 	List<InboxCard> findInbox(long recipientId, InboxCategory category, String directionSegmentKey, Instant at);
 
