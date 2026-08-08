@@ -9,6 +9,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.dnd.qello.feed.repository.InboxQueryRepository;
 import com.dnd.qello.feed.view.InboxCard;
+import com.dnd.qello.feed.view.InboxCategory;
 import com.dnd.qello.feed.view.InboxDetail;
 
 import lombok.RequiredArgsConstructor;
@@ -24,8 +25,8 @@ public class InboxQueryService {
 
 	private final InboxQueryRepository inboxQueryRepository;
 
-	public List<InboxCard> list(long recipientId, Instant at) {
-		return inboxQueryRepository.findInbox(recipientId, at);
+	public List<InboxCard> list(long recipientId, InboxCategory category, Instant at) {
+		return inboxQueryRepository.findInbox(recipientId, category, at);
 	}
 
 	public Optional<InboxDetail> detail(long recipientId, long postRecipientId) {

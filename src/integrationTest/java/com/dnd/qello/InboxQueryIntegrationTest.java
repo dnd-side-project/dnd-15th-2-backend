@@ -1,12 +1,14 @@
 /**
  * Created at: 2026-08-06T15:00:00+09:00
  * Source scenario: TEST-PLAN-GH-67-INBOX-QUERY-INT-001 through INT-005,
- * TEST-PLAN-GH-78-SCHEMA-REVISION-V7-INT-010
+ * TEST-PLAN-GH-78-SCHEMA-REVISION-V7-INT-010,
+ * TEST-PLAN-GH-79-ANSWER-VISIBILITY-RECIPIENTS-INT-005, INT-007, INT-008, INT-009
  */
 package com.dnd.qello;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.math.BigDecimal;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -24,6 +26,7 @@ import org.springframework.test.context.ActiveProfiles;
 
 import com.dnd.qello.feed.service.InboxQueryService;
 import com.dnd.qello.feed.view.InboxCard;
+import com.dnd.qello.feed.view.InboxCategory;
 
 @SpringBootTest
 @ActiveProfiles("test")
@@ -31,6 +34,9 @@ class InboxQueryIntegrationTest extends PostgisContainerIntegrationTestSupport {
 
 	private static final String REGION = "TEST-INBOXQ";
 	private static final Instant NOW = Instant.parse("2026-08-06T12:00:00Z");
+	private static final long DEFAULT_DISTANCE_M = 5000L;
+	/** application.properties의 qello.feed.near-distance-floor-m 기본값과 일치시킨다. */
+	private static final long NEAR_FLOOR_M = 10_000L;
 
 	@Autowired
 	private JdbcTemplate jdbc;
@@ -86,6 +92,10 @@ class InboxQueryIntegrationTest extends PostgisContainerIntegrationTestSupport {
 	}
 
 	private long recipient(long targetPostId, String status, Instant matchedAt) {
+		return recipient(targetPostId, status, matchedAt, DEFAULT_DISTANCE_M);
+	}
+
+	private long recipient(long targetPostId, String status, Instant matchedAt, long distanceM) {
 		// V1 ck_post_recipient_status_timestamps와 V2 ck_post_recipient_skip_pending,
 		// ct_post_recipient_capacity_release(지연 트리거)가 상태별로 채워야 하는 타임스탬프를
 		// 강제한다. SKIPPED/EXPIRED/BLOCKED/ANSWERED는 자신의 종결 타임스탬프에 더해
@@ -104,45 +114,58 @@ class InboxQueryIntegrationTest extends PostgisContainerIntegrationTestSupport {
 				INSERT INTO post_recipient
 					(post_id, recipient_id, status, distance_band, matched_bearing_deg, matched_region_code, matched_at,
 					 inbound_bearing_deg, distance_m)
-				VALUES (?, ?, ?, 'NEAR', 45, ?, ?, 225, 5000)
+				VALUES (?, ?, ?, 'NEAR', 45, ?, ?, 225, ?)
 				RETURNING id
-				""", Long.class, targetPostId, recipientId, status, REGION, Timestamp.from(matchedAt));
+				""", Long.class, targetPostId, recipientId, status, REGION, Timestamp.from(matchedAt), distanceM);
 		}
 		String columnList = String.join(", ", columns);
 		String placeholderList = Arrays.stream(columns).map(column -> "?").collect(Collectors.joining(", "));
-		Object[] params = new Object[5 + columns.length];
+		Object[] params = new Object[6 + columns.length];
 		params[0] = targetPostId;
 		params[1] = recipientId;
 		params[2] = status;
 		params[3] = REGION;
 		params[4] = Timestamp.from(matchedAt);
-		Arrays.fill(params, 5, params.length, Timestamp.from(matchedAt));
+		params[5] = distanceM;
+		Arrays.fill(params, 6, params.length, Timestamp.from(matchedAt));
 		return jdbc.queryForObject("""
 			INSERT INTO post_recipient
 				(post_id, recipient_id, status, distance_band, matched_bearing_deg, matched_region_code,
 				 matched_at, inbound_bearing_deg, distance_m, %s)
-			VALUES (?, ?, ?, 'NEAR', 45, ?, ?, 225, 5000, %s)
+			VALUES (?, ?, ?, 'NEAR', 45, ?, ?, 225, ?, %s)
 			RETURNING id
 			""".formatted(columnList, placeholderList), Long.class, params);
 	}
 
+	private long answer(long postRecipientId, long authorId, String key, Instant publishedAt) {
+		return jdbc.queryForObject("""
+			INSERT INTO answer
+				(post_recipient_id, author_id, status, idempotency_key, body_text, coarse_region_code,
+				 bearing_from_sender_deg, distance_band, distance_m, moderation_status, submitted_at, published_at)
+			VALUES (?, ?, 'PUBLISHED', ?, '답변 본문', ?, 45, 'NEAR', 5000, 'PASSED', ?, ?)
+			RETURNING id
+			""", Long.class, postRecipientId, authorId, key, REGION, Timestamp.from(NOW), Timestamp.from(publishedAt));
+	}
+
 	@Test
-	@DisplayName("수신함은 아직 처리하지 않은 질문글만 보여준다")
-	void listsOnlyUnhandledPosts() {
+	@DisplayName("답변 안 한 카테고리는 아직 처리하지 않은 질문글만 보여주고 방향은 수신자 기준이다")
+	void listsOnlyUnhandledPostsInUnansweredCategory() {
 		long active = post(senderId, "p-active", NOW.plus(1, ChronoUnit.HOURS), "ACTIVE");
 		recipient(active, "AVAILABLE", NOW);
 
-		List<InboxCard> cards = inboxQueryService.list(recipientId, NOW.plusSeconds(1));
+		List<InboxCard> cards = inboxQueryService.list(recipientId, InboxCategory.UNANSWERED, NOW.plusSeconds(1));
 
 		assertThat(cards).hasSize(1);
 		assertThat(cards.getFirst().postId()).isEqualTo(active);
 		assertThat(cards.getFirst().questionText()).isEqualTo("오늘 뭐 하고 있나요?");
 		assertThat(cards.getFirst().mediaIds()).isEmpty();
+		// inbound_bearing_deg(225)를 쓴다 — matched_bearing_deg(45)를 그대로 쓰면 방향이 뒤집혀 보인다.
+		assertThat(cards.getFirst().inboundBearingDegrees()).isEqualByComparingTo(BigDecimal.valueOf(225));
 	}
 
 	@Test
-	@DisplayName("답변·넘김 확정·만료·차단으로 종료된 수신 항목은 수신함에서 빠진다")
-	void excludesTerminalRecipientStatuses() {
+	@DisplayName("넘김·만료·차단으로 종료된 수신 항목과 답변한 항목은 답변 안 한 카테고리에서 빠진다")
+	void excludesTerminalAndAnsweredStatusesFromUnanswered() {
 		long open = post(senderId, "p-open", NOW.plus(1, ChronoUnit.HOURS), "ACTIVE");
 		recipient(open, "AVAILABLE", NOW);
 
@@ -158,40 +181,141 @@ class InboxQueryIntegrationTest extends PostgisContainerIntegrationTestSupport {
 		long blocked = post(senderId, "p-blocked-recipient", NOW.plus(1, ChronoUnit.HOURS), "ACTIVE");
 		recipient(blocked, "BLOCKED", NOW);
 
-		List<InboxCard> cards = inboxQueryService.list(recipientId, NOW.plusSeconds(1));
+		List<InboxCard> cards = inboxQueryService.list(recipientId, InboxCategory.UNANSWERED, NOW.plusSeconds(1));
 
 		assertThat(cards).hasSize(1);
 		assertThat(cards.getFirst().postId()).isEqualTo(open);
 	}
 
 	@Test
-	@DisplayName("넘김 되돌리기 대기(SKIP_PENDING) 항목은 수신함에 남는다")
-	void keepsSkipPendingInInbox() {
+	@DisplayName("답변한 항목은 답변한 카테고리에 있고 만료 전까지 남으며 만료되면 두 카테고리 모두에서 빠진다")
+	void answeredItemsStayInAnsweredCategoryUntilExpiry() {
+		long shortLived = post(senderId, "p-answered-expiring", NOW.plusSeconds(30), "ACTIVE");
+		recipient(shortLived, "ANSWERED", NOW);
+
+		assertThat(inboxQueryService.list(recipientId, InboxCategory.ANSWERED, NOW.plusSeconds(29)))
+			.extracting(InboxCard::postId).containsExactly(shortLived);
+		assertThat(inboxQueryService.list(recipientId, InboxCategory.UNANSWERED, NOW.plusSeconds(29))).isEmpty();
+
+		assertThat(inboxQueryService.list(recipientId, InboxCategory.ANSWERED, NOW.plusSeconds(31))).isEmpty();
+	}
+
+	@Test
+	@DisplayName("넘김 되돌리기 대기(SKIP_PENDING) 항목은 답변 안 한 카테고리에 남고 답변한 카테고리에는 없다")
+	void keepsSkipPendingInUnansweredCategoryOnly() {
 		long post = post(senderId, "p-pending", NOW.plus(1, ChronoUnit.HOURS), "ACTIVE");
 		recipient(post, "SKIP_PENDING", NOW);
 
-		assertThat(inboxQueryService.list(recipientId, NOW.plusSeconds(1))).hasSize(1);
+		assertThat(inboxQueryService.list(recipientId, InboxCategory.UNANSWERED, NOW.plusSeconds(1))).hasSize(1);
+		assertThat(inboxQueryService.list(recipientId, InboxCategory.ANSWERED, NOW.plusSeconds(1))).isEmpty();
 	}
 
 	@Test
-	@DisplayName("만료된 질문글은 수신함에서 빠진다")
-	void hidesExpiredPosts() {
+	@DisplayName("만료된 질문글은 답변 안 한 카테고리에서 빠진다")
+	void hidesExpiredPostsFromUnanswered() {
 		long post = post(senderId, "p-expired", NOW.plusSeconds(30), "ACTIVE");
 		recipient(post, "AVAILABLE", NOW);
 
-		assertThat(inboxQueryService.list(recipientId, NOW.plusSeconds(31))).isEmpty();
-		assertThat(inboxQueryService.list(recipientId, NOW.plusSeconds(30))).isEmpty();
-		assertThat(inboxQueryService.list(recipientId, NOW.plusSeconds(29))).hasSize(1);
+		assertThat(inboxQueryService.list(recipientId, InboxCategory.UNANSWERED, NOW.plusSeconds(31))).isEmpty();
+		assertThat(inboxQueryService.list(recipientId, InboxCategory.UNANSWERED, NOW.plusSeconds(30))).isEmpty();
+		assertThat(inboxQueryService.list(recipientId, InboxCategory.UNANSWERED, NOW.plusSeconds(29))).hasSize(1);
 	}
 
 	@Test
-	@DisplayName("차단한 사용자가 보낸 질문글은 수신함에서 빠진다")
+	@DisplayName("차단한 사용자가 보낸 질문글 전체가 수신함에서 빠진다")
 	void hidesBlockedSenderPosts() {
 		long post = post(senderId, "p-blocked", NOW.plus(1, ChronoUnit.HOURS), "ACTIVE");
 		recipient(post, "AVAILABLE", NOW);
 		jdbc.update("INSERT INTO user_block (blocker_id, blocked_id) VALUES (?, ?)", recipientId, senderId);
 
-		assertThat(inboxQueryService.list(recipientId, NOW.plusSeconds(1))).isEmpty();
+		assertThat(inboxQueryService.list(recipientId, InboxCategory.UNANSWERED, NOW.plusSeconds(1))).isEmpty();
+	}
+
+	@Test
+	@DisplayName("발신자가 아니라 답변 작성자를 차단하면 항목은 남고 그 작성자의 답변만 집계에서 빠진다")
+	void hidesBlockedAnswerAuthorFromAggregateCountsOnly() {
+		long postId = post(senderId, "p-blocked-author", NOW.plus(2, ChronoUnit.HOURS), "ACTIVE");
+		long ownRowId = recipient(postId, "OPENED", NOW);
+		long otherRecipientId = account("iq-other-recipient");
+		long otherRowId = jdbc.queryForObject("""
+			INSERT INTO post_recipient
+				(post_id, recipient_id, status, distance_band, matched_bearing_deg, matched_region_code,
+				 matched_at, discovered_at, opened_at, inbound_bearing_deg, distance_m)
+			VALUES (?, ?, 'OPENED', 'NEAR', 45, ?, ?, ?, ?, 225, ?)
+			RETURNING id
+			""", Long.class, postId, otherRecipientId, REGION, Timestamp.from(NOW), Timestamp.from(NOW), Timestamp.from(NOW),
+			DEFAULT_DISTANCE_M);
+		answer(ownRowId, recipientId, "a-self", NOW.plusSeconds(60));
+		answer(otherRowId, otherRecipientId, "a-other", NOW.plusSeconds(90));
+		jdbc.update("INSERT INTO user_block (blocker_id, blocked_id) VALUES (?, ?)", recipientId, otherRecipientId);
+
+		InboxCard card = inboxQueryService.list(recipientId, InboxCategory.UNANSWERED, NOW.plusSeconds(100)).getFirst();
+
+		assertThat(card.postId()).isEqualTo(postId);
+		assertThat(card.answerCount()).isEqualTo(1L);
+	}
+
+	@Test
+	@DisplayName("근거리 하한 미만은 distanceBand만, 하한과 그 이상은 distanceM만 노출한다")
+	void exposesExactDistanceAtAndAboveFloorOnly() {
+		long belowFloor = post(senderId, "p-below-floor", NOW.plus(1, ChronoUnit.HOURS), "ACTIVE");
+		recipient(belowFloor, "AVAILABLE", NOW, NEAR_FLOOR_M - 1);
+
+		long atFloor = post(senderId, "p-at-floor", NOW.plus(1, ChronoUnit.HOURS), "ACTIVE");
+		recipient(atFloor, "AVAILABLE", NOW, NEAR_FLOOR_M);
+
+		long aboveFloor = post(senderId, "p-above-floor", NOW.plus(1, ChronoUnit.HOURS), "ACTIVE");
+		recipient(aboveFloor, "AVAILABLE", NOW, NEAR_FLOOR_M + 1);
+
+		List<InboxCard> cards = inboxQueryService.list(recipientId, InboxCategory.UNANSWERED, NOW.plusSeconds(1));
+
+		InboxCard below = cards.stream().filter(card -> card.postId() == belowFloor).findFirst().orElseThrow();
+		InboxCard at = cards.stream().filter(card -> card.postId() == atFloor).findFirst().orElseThrow();
+		InboxCard above = cards.stream().filter(card -> card.postId() == aboveFloor).findFirst().orElseThrow();
+
+		assertThat(below.distanceM()).isNull();
+		assertThat(below.distanceBand()).isEqualTo("NEAR");
+
+		assertThat(at.distanceM()).isEqualTo(NEAR_FLOOR_M);
+		assertThat(at.distanceBand()).isNull();
+
+		assertThat(above.distanceM()).isEqualTo(NEAR_FLOOR_M + 1);
+		assertThat(above.distanceBand()).isNull();
+	}
+
+	@Test
+	@DisplayName("unreadAnswerCount는 뷰어 본인이 쓴 답변은 세지 않는다")
+	void excludesViewersOwnAnswerFromUnreadCount() {
+		long postId = post(senderId, "p-answered-self", NOW.plus(2, ChronoUnit.HOURS), "ACTIVE");
+		long ownRowId = recipient(postId, "ANSWERED", NOW);
+		answer(ownRowId, recipientId, "a-self", NOW.plusSeconds(60));
+
+		InboxCard card = inboxQueryService.list(recipientId, InboxCategory.ANSWERED, NOW.plusSeconds(100)).getFirst();
+
+		assertThat(card.unreadAnswerCount()).isZero();
+	}
+
+	@Test
+	@DisplayName("unreadAnswerCount는 남이 쓴 답변 중 읽지 않은 것만 센다")
+	void countsOthersUnreadAnswers() {
+		long postId = post(senderId, "p-answered-others", NOW.plus(2, ChronoUnit.HOURS), "ACTIVE");
+		long ownRowId = recipient(postId, "ANSWERED", NOW);
+		long otherRecipientId = account("iq-unread-other");
+		long otherRowId = jdbc.queryForObject("""
+			INSERT INTO post_recipient
+				(post_id, recipient_id, status, distance_band, matched_bearing_deg, matched_region_code,
+				 matched_at, discovered_at, opened_at, inbound_bearing_deg, distance_m)
+			VALUES (?, ?, 'OPENED', 'NEAR', 45, ?, ?, ?, ?, 225, ?)
+			RETURNING id
+			""", Long.class, postId, otherRecipientId, REGION, Timestamp.from(NOW), Timestamp.from(NOW), Timestamp.from(NOW),
+			DEFAULT_DISTANCE_M);
+		answer(ownRowId, recipientId, "a-self", NOW.plusSeconds(60));
+		answer(otherRowId, otherRecipientId, "a-other", NOW.plusSeconds(90));
+
+		InboxCard card = inboxQueryService.list(recipientId, InboxCategory.ANSWERED, NOW.plusSeconds(100)).getFirst();
+
+		assertThat(card.answerCount()).isEqualTo(2L);
+		assertThat(card.unreadAnswerCount()).isEqualTo(1L);
 	}
 
 	@Test

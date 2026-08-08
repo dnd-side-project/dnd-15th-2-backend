@@ -19,6 +19,24 @@
 > `catalogMatchesApprovedManifest()`의 제약 개수 assertion이다 — 이 테스트가 매
 > 마이그레이션마다 실제 DB catalog와 대조하므로, 이후에도 이 절들이 뒤처지면 그
 > 테스트를 1차 대조군으로 다시 맞춘다.
+>
+> **2026-08-08(Issue #79) 정정**: 이 표의 DBML 행 SHA-256이 저장소에 실제로 커밋된
+> 파일과 불일치했다(`3b443c4b…` 기록 vs 실제 파일 `fb39599f…`) — `#78`이 §5~§12
+> 인벤토리는 갱신했지만 이 SHA-256 값을 재계산하지 않고 남긴 결함이다. 같은 시점에
+> vault 원본도 `post_reaction` 테이블 Note가 08-07 개정(공감 개수 노출 범위 확대)을
+> 놓친 것을 뒤늦게 발견해 정정했다. 이번에 저장소 DBML·ERD를 vault의 2026-08-08
+> 정정본으로 다시 동기화하고 SHA-256을 재계산했다 — 스키마·제약 변경은 없고 Note
+> 문구만 바뀌었으므로 §5~§12 인벤토리는 그대로 유효하다.
+>
+> **2026-08-08b 재동기화**: 위 `#79` 판 이후 vault DBML이 인증 부록(§6 참고)을 더
+> 정합화했다 — `uq_user_account_id_role`/`uq_operator_credential_login_id`/
+> `uq_active_device_installation`은 전부 `V5`·`V7`이 이미 만든 실제 제약인데 vault
+> DBML의 `indexes{}` 선언이 빠져 있거나 `[unique]` 태그가 누락돼 있던 것을 vault
+> 쪽에서 바로잡았다. 이 저장소 DBML·ERD를 그 판으로 다시 byte-for-byte 재동기화하고
+> SHA-256을 갱신했다. 스키마·제약 개수는 바뀌지 않는다 — §5~§12는 그대로 유효하다.
+> 같은 작업 중 `ck_answer_edit_count_matches_edited_at`(vault) vs
+> `ck_answer_edit_count_edited_at`(`V8` 실제)이라는 두 번째 이름 불일치를 발견해
+> §3에 기록했다.
 
 ## 1. 목적
 
@@ -39,9 +57,14 @@
 
 | Artifact | Repository path or source | SHA-256 | Role |
 | --- | --- | --- | --- |
-| DBML (2026-08-07, 현행) | `docs/product/data-model/direction_communication.dbml` | `3b443c4bea41a92d4f803e78d004fbe1ca6e1475f7ed6ae8f94fa8cc3121acc1` | logical schema source. vault 원본에는 없는 `operator_credential`(V5)을 백엔드 전용 부록으로 복원해 반영함 — 근거는 §6 |
-| ERD (2026-08-08, 현행) | `docs/product/data-model/DIRECTION_COMMUNICATION_ERD.md` | `05b0a7e3f93ce0b89b2a8cfde7d7cead41dc5655b414e135bb3297b68c4ecf85` | explanatory contract. 이전 판은 §2 이후 본문이 2026-08-04 기준으로 남아 있었고 그 사실을 상단 안내문으로 알렸을 뿐이었다. vault 원본이 §1·§2·mermaid·알림·불변식 전체를 2026-08-07 개정으로 완전히 갱신해, byte-for-byte로 다시 동기화했다 |
-| target DDL (2026-08-07) | source workspace `docs/sql/direction_communication_ddl.sql` | `d873908c802b4c3ff73637e3ef4c1ec84862146055f3ff7672e6908947fb2d31` | V8 authoring reference only (원래 V7로 작성, `#81`과의 번호 충돌로 재번호) |
+| DBML (2026-08-08b, 현행) | `docs/product/data-model/direction_communication.dbml` | `ef5e9885f9308d1b86946094dfa49f084e2e3ace4094482d8b3e4b3c3dccd13c` | logical schema source. vault를 인증 부록까지 재동기화한 판. `post_reaction` Note 정정(08a)은 그대로 유지하면서 `user_account`의 `uq_user_account_id_role` 인덱스, `operator_credential.login_id`의 `uq_operator_credential_login_id` 인덱스, `device_credential.installation_id`의 `[unique]` 태그를 DBML `indexes{}` 블록에 정식으로 선언했다 — 셋 다 V5/V7이 이미 만든 실제 제약이며, 이번 동기화는 vault DBML의 표현 누락만 고친 것이다. `authentication` TableGroup과 Spring Session(V6) 제외 각주 추가. `ck_answer_edit_count`/`ck_answer_edit_count_matches_edited_at`의 `note:` 속성 제거(무관한 dbml-cli 파서 에러 해소). 스키마·제약 개수 변경은 없다 — §5~§12 갱신 불필요 |
+| ERD (2026-08-08b, 현행) | `docs/product/data-model/DIRECTION_COMMUNICATION_ERD.md` | `6d99297f5bf771a48db98f616c3bbeb7282e44311aadf47080214f276dd8c4ac` | explanatory contract. DBML과 같은 판으로 byte-for-byte 재동기화 |
+| target DDL (2026-08-08b) | source workspace `docs/sql/direction_communication_ddl.sql` | `98b611c9d5ca8a912a97fb0be77de4ae9c6d31b3982acac04cfb3a44ac47e5a9` | vault의 최신 상태 스크립트. `uq_operator_credential_login_id` UNIQUE INDEX 추가와 헤더 주석 갱신. 이 저장소는 이 판도 어떤 migration의 authoring reference로 쓰지 않았다 |
+| DBML (2026-08-08a, 이력) | 위 파일의 2026-08-08a 판 | `2386e15ebcf6eb3f89b093fe3904b9402c41b50fcd4cfbc24ca83f09ff9ea4da` | `post_reaction` Note 정정만 반영하고 인증 부록 정합화(위 08-08b) 이전인 판. `#79`가 만든 판 |
+| ERD (2026-08-08a, 이력) | 위 파일의 2026-08-08a 판 | `a8487e35d63d174eb73e3b18fcc26172881e29eefdd74a9dd36329f39070309c` | 위 DBML(08-08a)과 짝을 이루는 판 |
+| target DDL (2026-08-08a, 이력) | source workspace `docs/sql/direction_communication_ddl.sql`의 2026-08-08a 판 | `ac57f3229a4bc439153c1c3e8b39d37877e064ce07adf01e54254bd7094892c7` | `post_reaction` Note 정정에 더해 `user_account.version`(V4)/`operator_credential`(V5)/`device_credential`(V7)을 처음 반영한 판 |
+| DBML (2026-08-07, 이력) | 위 파일의 2026-08-07 판 | `3b443c4bea41a92d4f803e78d004fbe1ca6e1475f7ed6ae8f94fa8cc3121acc1` | `post_reaction` Note 정정 이전 판. 이 표는 이 값을 `현행`으로 잘못 기록한 채 `#78`에서 남아 있었다(§5~§12 갱신 시 SHA-256 재계산을 누락) — `#79`에서 바로잡았다 |
+| target DDL (2026-08-07, 이력) | source workspace `docs/sql/direction_communication_ddl.sql`의 2026-08-07 판 | `d873908c802b4c3ff73637e3ef4c1ec84862146055f3ff7672e6908947fb2d31` | V8 authoring reference(원래 V7로 작성, `#81`과의 번호 충돌로 재번호). `V8`은 이 판을 기준으로 작성됐고 그 사실은 바뀌지 않는다 |
 | DBML (2026-08-04, 이력) | 위 파일의 2026-08-04 판 | `4637f956f9703a8bdc38590957c2e48d60633e6d633beb3f193151b5c4c928f5` | 답변 격리 폐기(ADR-0002) 이전 판 |
 | ERD (2026-08-04, 이력) | 위 파일의 2026-08-04 판 | `181604080ecffd58752e2b40bc3008fbdcdfb7736caff00820535ed6ba128886` | 답변 격리 폐기(ADR-0002) 이전 판 |
 | target DDL (2026-08-04, 이력) | source workspace `docs/sql/direction_communication_ddl.sql`의 2026-08-04 판 | `be8aaee3b4671aa218c78c15bf33d6ade3ad1cfce902dc10d2cbd45b9fe5805f` | V2 authoring reference only |
@@ -60,6 +83,14 @@ vault DBML과 target DDL 사이에는 알려진 불일치가 하나 있다. vaul
 `ck_post_recipient_skip_pending`은 vault DBML에도 선언되어 있어 이런 불일치가 없다.
 2026-08-07 판에서 이 불일치는 다시 확인하지 않았다 — `V8`이 이 제약을 건드리지
 않으므로 범위 밖이다.
+
+**2026-08-08b에 새로 발견한 두 번째 불일치**: vault DBML은 `answer` 테이블에
+`ck_answer_edit_count_matches_edited_at`이라는 이름의 check를 선언하지만, `V8`이
+실제로 만든 제약 이름은 `ck_answer_edit_count_edited_at`이다(§12 참고, 검증 근거는
+`FlywayMigrationIntegrationTest`). 검사하는 조건(`(edit_count = 0) = (edited_at IS
+NULL)`)은 동일하고 이름만 다르다. 앞의 `ck_direction_post_answers_read_at` 사례와
+같은 종류의 결함 — vault DBML의 표현 오류이며 `V8`이나 이 저장소가 보관한 DBML
+사본의 오류가 아니다. 임의로 고치지 않고 기록만 해둔다.
 
 ## 4. 폐기된 계보
 

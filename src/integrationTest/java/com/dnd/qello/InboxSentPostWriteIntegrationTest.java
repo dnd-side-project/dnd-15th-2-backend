@@ -1,7 +1,8 @@
 /**
  * Created at: 2026-08-06T14:00:00+09:00
  * Source scenario: TEST-PLAN-GH-67-INBOX-SENT-POST-INT-001 through INT-019,
- * TEST-PLAN-GH-78-SCHEMA-REVISION-V7-INT-010, INT-011
+ * TEST-PLAN-GH-78-SCHEMA-REVISION-V7-INT-010, INT-011,
+ * TEST-PLAN-GH-79-ANSWER-VISIBILITY-RECIPIENTS-INT-004, INT-010, INT-011
  */
 package com.dnd.qello;
 
@@ -48,6 +49,7 @@ import com.dnd.qello.direction.service.DirectionPostService;
 import com.dnd.qello.direction.service.PostReactionService;
 import com.dnd.qello.direction.service.PostRecipientService;
 import com.dnd.qello.feed.service.InboxQueryService;
+import com.dnd.qello.feed.view.InboxCategory;
 
 @SpringBootTest
 @ActiveProfiles("test")
@@ -256,6 +258,36 @@ class InboxSentPostWriteIntegrationTest extends PostgisContainerIntegrationTestS
 	}
 
 	@Test
+	@DisplayName("markAnswersRead는 수신자의 답변 열람 시각을 기록한다")
+	void recipientMarksAnswersRead() {
+		PostRecipient read = postRecipientService.markAnswersRead(recipientId, postRecipientId, NOW.plusSeconds(120));
+
+		assertThat(read.getAnswersReadAt()).isEqualTo(NOW.plusSeconds(120));
+		assertThat(postRecipientRepository.findById(postRecipientId).orElseThrow().getAnswersReadAt())
+			.isEqualTo(NOW.plusSeconds(120));
+	}
+
+	@Test
+	@DisplayName("남의 수신 항목은 답변 열람 시각을 기록할 수 없다")
+	void outsiderCannotMarkRecipientAnswersRead() {
+		assertThatThrownBy(() -> postRecipientService.markAnswersRead(outsiderId, postRecipientId, NOW.plusSeconds(120)))
+			.isInstanceOf(DirectionException.class)
+			.hasFieldOrPropertyWithValue("errorCode", DirectionErrorCode.RECIPIENT_NOT_FOUND);
+	}
+
+	@Test
+	@DisplayName("markAnswersRead는 이미 기록된 시각보다 이른 시각으로 되돌아가지 않는다 — advanceAnswersReadAt의 GREATEST 보장")
+	void recipientMarksAnswersReadNeverRegresses() {
+		postRecipientService.markAnswersRead(recipientId, postRecipientId, NOW.plusSeconds(120));
+
+		PostRecipient result = postRecipientService.markAnswersRead(recipientId, postRecipientId, NOW.plusSeconds(60));
+
+		assertThat(result.getAnswersReadAt()).isEqualTo(NOW.plusSeconds(120));
+		assertThat(postRecipientRepository.findById(postRecipientId).orElseThrow().getAnswersReadAt())
+			.isEqualTo(NOW.plusSeconds(120));
+	}
+
+	@Test
 	@DisplayName("markAnswersRead는 질문자의 답변 열람 시각을 기록한다")
 	void marksAnswersReadForSender() {
 		DirectionPost read = directionPostService.markAnswersRead(senderId, postId, NOW.plusSeconds(120));
@@ -317,8 +349,19 @@ class InboxSentPostWriteIntegrationTest extends PostgisContainerIntegrationTestS
 	}
 
 	@Test
-	@DisplayName("질문자가 아니면 답변에 공감할 수 없고 commit 전에 차단된다")
-	void nonSenderCannotReactToAnswer() {
+	@DisplayName("2026-08-07 개정: 질문자가 아닌 수신 자격자도 남의 답변에 공감할 수 있다")
+	void eligibleRecipientCanReactToAnotherRecipientsAnswer() {
+		long secondRecipientId = account("inbox-second-recipient");
+		recipient(postId, secondRecipientId, "AVAILABLE");
+		long answerId = publishedAnswer(postRecipientId, recipientId, "answer-1", NOW.plusSeconds(30));
+
+		assertThat(answerReactionService.toggle(answerId, secondRecipientId, NOW.plusSeconds(40))).isTrue();
+		assertThat(answerReactionRepository.findByAnswerIdAndReactorId(answerId, secondRecipientId)).isPresent();
+	}
+
+	@Test
+	@DisplayName("수신 자격자가 아니면 답변에 공감할 수 없고 commit 전에 차단된다")
+	void outsiderCannotReactToAnswer() {
 		long answerId = publishedAnswer(postRecipientId, recipientId, "answer-1", NOW.plusSeconds(30));
 
 		assertThatThrownBy(() -> answerReactionService.toggle(answerId, outsiderId, NOW.plusSeconds(40)))
@@ -328,13 +371,14 @@ class InboxSentPostWriteIntegrationTest extends PostgisContainerIntegrationTestS
 	}
 
 	@Test
-	@DisplayName("답변 작성자 본인도 자기 답변에 공감할 수 없다")
+	@DisplayName("답변 작성자 본인은 자기 답변을 볼 자격이 있어도 공감할 수 없다 — 거절 사유는 자기 답변 금지")
 	void answerAuthorCannotReactToOwnAnswer() {
 		long answerId = publishedAnswer(postRecipientId, recipientId, "answer-1", NOW.plusSeconds(30));
 
 		assertThatThrownBy(() -> answerReactionService.toggle(answerId, recipientId, NOW.plusSeconds(40)))
 			.isInstanceOf(AnswerException.class)
-			.hasFieldOrPropertyWithValue("errorCode", AnswerErrorCode.INELIGIBLE_REACTOR);
+			.hasFieldOrPropertyWithValue("errorCode", AnswerErrorCode.INELIGIBLE_REACTOR)
+			.hasFieldOrPropertyWithValue("reason", "자기 답변에는 공감할 수 없습니다");
 	}
 
 	private long submittedAnswer(long targetPostRecipientId, long authorId, String idempotencyKey) {
@@ -422,23 +466,24 @@ class InboxSentPostWriteIntegrationTest extends PostgisContainerIntegrationTestS
 	}
 
 	@Test
-	@DisplayName("답변을 보내면 그 질문글이 수신함 목록에서 사라진다")
-	void answeredPostDisappearsFromInbox() {
+	@DisplayName("답변을 보내면 그 질문글이 답변 안 한 목록에서 답변한 목록으로 옮겨간다")
+	void answeredPostMovesFromUnansweredToAnsweredCategory() {
 		receiveStateRepository.save(RecipientReceiveState.restore(recipientId, 1, 1, NOW, NOW, NOW));
 		postRecipientService.open(recipientId, postRecipientId, NOW.plusSeconds(10));
-		assertThat(inboxQueryService.list(recipientId, NOW.plusSeconds(15))).hasSize(1);
+		assertThat(inboxQueryService.list(recipientId, InboxCategory.UNANSWERED, NOW.plusSeconds(15))).hasSize(1);
 
 		long answerId = submittedAnswer(postRecipientId, recipientId, "answer-vanish");
 		answerNotificationService.publish(answerId, NOW.plusSeconds(30));
 
-		assertThat(inboxQueryService.list(recipientId, NOW.plusSeconds(35))).isEmpty();
+		assertThat(inboxQueryService.list(recipientId, InboxCategory.UNANSWERED, NOW.plusSeconds(35))).isEmpty();
+		assertThat(inboxQueryService.list(recipientId, InboxCategory.ANSWERED, NOW.plusSeconds(35))).hasSize(1);
 	}
 
 	@Test
-	@DisplayName("넘김을 요청해도 되돌릴 수 있는 동안에는 수신함에 남는다")
+	@DisplayName("넘김을 요청해도 되돌릴 수 있는 동안에는 답변 안 한 목록에 남는다")
 	void skipPendingStaysVisibleUntilConfirmed() {
 		postRecipientService.requestSkip(recipientId, postRecipientId, NOW.plusSeconds(10));
 
-		assertThat(inboxQueryService.list(recipientId, NOW.plusSeconds(15))).hasSize(1);
+		assertThat(inboxQueryService.list(recipientId, InboxCategory.UNANSWERED, NOW.plusSeconds(15))).hasSize(1);
 	}
 }

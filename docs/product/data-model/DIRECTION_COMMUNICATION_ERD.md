@@ -23,7 +23,7 @@
 
 | 파일 | 역할 | 상태 |
 |---|---|---|
-| `dbml/direction_communication.dbml` | 스키마 기준. 테이블 **28개** | 기준 |
+| `dbml/direction_communication.dbml` | 스키마 기준. 제품 논리 테이블 **28개** + 백엔드 인증 부록 **2개**(`operator_credential`, `device_credential`) | 기준 |
 | `sql/direction_communication_ddl.sql` | DBML에서 파생한 독립 실행형 기준 DDL | 기준과 동기화됨 |
 | `sql/001~004_*.sql` | 이전 증분 계보. 아래 "폐기된 계보" 참고 | **더 이상 기준이 아님** |
 
@@ -158,7 +158,7 @@
 | `ct_post_recipient_capacity_release` | **그대로 쓴다.** 슬롯 해제 조건(답변·넘김·만료)이 바뀌지 않았다. `ANSWERED`가 여전히 해제 대상이고, 다만 해제 후에도 행이 화면에 남을 뿐이다 |
 | `direction_scheme` / `direction_segment` | **그대로 쓴다.** `segment_count`와 `start_offset_deg`가 이미 N방향을 수용한다. 8은 구조가 아니라 데이터다 |
 | `post_audience.selected_segment_key` | **스냅샷 유지.** 발신자가 고른 구간은 사용자의 의사 표시이자 매칭 판정의 근거라 스킴이 바뀌어도 변하지 않는다. 수신 측만 파생값을 쓴다(의도된 비대칭) |
-| `post_reaction` | **그대로 쓴다.** `(post_id, reactor_id)`가 `post_recipient`를 참조하는 구조가 "수신 자격자만 질문글에 공감" + "작성자는 자기 글에 공감 불가"를 이미 키로 강제한다 |
+| `post_reaction` | **키 구조는 그대로 쓴다.** `(post_id, reactor_id)`가 `post_recipient`를 참조하는 구조가 "수신 자격자만 질문글에 공감" + "작성자는 자기 글에 공감 불가"를 이미 키로 강제한다. 다만 **공감 개수를 보는 범위는 바뀐다** — 기능 명세서 08-07판(§F06 공감 표)은 "개수를 보는 사람"을 질문자 한정에서 **볼 수 있는 사람 전원**으로 넓혔다. 이 절을 처음 정리할 때 이 부분을 놓쳐 DBML·DDL·이 문서 모두에 "질문자에게만 노출"이 한동안 남아 있었다(2026-08-08 발견, 정정) |
 | `answer.bearing_from_sender_deg`, `answer.distance_band` | **컬럼은 유지, 노출 규칙만 바뀐다.** 질문자 기준 고정값이며 보는 사람마다 재계산하지 않는다. 재계산하면 여러 관측을 모아 답변자 위치를 삼각측량할 수 있다 |
 | 댓글 테이블 | **만들지 않는다.** 근거가 "자리가 없다"에서 "제품 결정"으로 바뀌었다 |
 
@@ -174,6 +174,13 @@
 2. **근거리 하한 10km** — 호 길이는 거리에 비례하므로 가까울수록 좁아진다. 지역 라벨이 광역권으로 확정되면서 광역권 내부에 하한 위 구간(예: 15km)이 남지만, 그 반경에 실제로 사용자가 들어올 빈도가 낮다고 보아 감수한 값이다. 실사용 데이터에서 근거리 매칭 빈도가 예상보다 높으면 재검토 대상이다
 
 **따라서 불변식 13에 조건을 덧붙여야 한다**: *외부에 정확 거리를 내보내는 것은 방향 구간이 45° 이상이고 근거리 하한이 적용될 때만 허용한다.* `distance_band` 컬럼은 하한 구간 표시에 계속 사용하므로 폐기하지 않는다.
+
+### 2026-08-08 문서 정정
+
+두 가지를 뒤늦게 발견해 DBML·DDL·이 문서 세 파일 모두 고쳤다.
+
+1. **`post_reaction` 공감 개수 노출 범위 누락.** 기능 명세서 §F06 공감 표는 "개수를 보는 사람"을 질문글·답변 모두 질문자 한정에서 **볼 수 있는 사람 전원**으로 넓혔는데(2026-08-07), 위 "2026-08-07 스키마 영향" 절을 정리할 때 답변 쪽(`answer_reaction`)만 반영하고 `post_reaction`은 "그대로다"로 잘못 분류했다. 키 구조(`pk_post_reaction`, `fk_post_reaction_recipient`)는 실제로 안 바뀌어 스키마 변경은 없다 — DBML Note, DDL 주석·`COMMENT`, 이 문서 §6·§8·§9·§11의 서술만 정정했다.
+2. **`operator_credential`(V5, `#72`)·`device_credential`(V7, `#73`)·`user_account.version`(V4, `#48`) 반영.** 팀원이 DBML에 추가한 뒤 DDL과 이 문서에는 옮기지 않은 상태였다. §12가 미결로 남겨뒀던 "인증·신원 수단" 항목을 이 두 테이블이 실제로 채운다. 제품 논리 테이블 28개와는 출처가 다른 **백엔드 인증 부록**이라 따로 센다 — DBML §"백엔드 인증 부록" 참고. 기준 문서로 적힌 `docs/product/AUTH_DESIGN.md`, `docs/adr/0006-split-operator-and-device-authentication.md`는 **이 저장소에는 없다.** 실제 백엔드 저장소 문서로 추정되며, 이 문서에서는 열어보고 대조하지 못했다. 병합 중 `operator_credential.login_id`에 유니크 인덱스(`uq_operator_credential_login_id`)가 DBML에는 있는데 DDL엔 빠져 있던 것도 발견해 추가했다 — 로그인 시스템에 중복 로그인ID를 막는 제약이 없었던 실제 버그였다. `spring_session`/`spring_session_attributes`(V6)는 프레임워크 소유 테이블이라 애초에 이 문서 범위 밖이다.
 
 ### P06 위치 정책 (2026-08-03 확정: 1안)
 
@@ -233,6 +240,7 @@
 | 애그리거트 | 루트                                          | 함께 일관성을 지키는 데이터                     | 다른 애그리거트와의 연결                  |
 | ----- | ------------------------------------------- | ----------------------------------- | ------------------------------ |
 | 계정    | `user_account`                              | 닉네임, 계정 상태, 알림 설정, 푸시 기기, 수신 용량 투영값 | 다른 도메인은 `user_id`만 참조          |
+| 인증(2026-08-08) | `operator_credential`, `device_credential` | 운영자 로그인 자격증명, 기기 인증 자격증명 | 둘 다 `user_id`로 계정을 참조하되 생명주기가 계정과 독립적이라 분리 |
 | 질문 제안 | `question_proposal`                         | 제안 문구, 현재 상태, 검토 이력        | 승인 시 별도 `approved_question` 생성 |
 | 질문 풀  | `approved_question`                         | 승인 질문 문구, 활성 기간            | 배정은 승인 질문 ID를 참조              |
 | 질문 추천 | `question_assignment_cycle`                 | 사용자·주기별 고정 질문 목록                    | 승인 질문을 읽어 추천 스냅샷 생성              |
@@ -326,7 +334,33 @@ erDiagram
         varchar nickname "익명 닉네임. 유일 제약 없음"
         timestamptz created_at
         timestamptz updated_at
+        bigint version "2026-08-08 반영(V4). JPA 낙관적 잠금용 행 버전"
         timestamptz deleted_at
+    }
+
+    OPERATOR_CREDENTIAL {
+        bigint user_id PK,FK
+        varchar role "항상 OPERATOR. (user_id,role) 복합 FK로 USER 계정엔 못 붙는다"
+        varchar login_id "소문자만"
+        varchar password_hash
+        smallint failed_attempt_count
+        timestamptz locked_until
+        timestamptz password_updated_at
+        timestamptz last_login_at
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    DEVICE_CREDENTIAL {
+        bigint id PK
+        bigint user_id FK
+        varchar installation_id "ACTIVE 행에만 적용되는 partial unique"
+        char secret_hash "device_secret의 SHA-256. 전역 unique"
+        varchar platform "IOS or ANDROID"
+        varchar credential_status "ACTIVE or REVOKED"
+        timestamptz last_used_at
+        timestamptz created_at
+        timestamptz revoked_at
     }
 
     USER_PRIVATE_ATTRIBUTE {
@@ -414,6 +448,8 @@ erDiagram
     REGION_CODE ||--o{ REGION_CODE : parent_of
     REGION_CODE ||--o{ USER_ACCOUNT : locates
     REGION_CODE ||--o{ ACTIVE_USER_PRESENCE : locates
+    USER_ACCOUNT ||--o| OPERATOR_CREDENTIAL : may_authenticate_as_operator
+    USER_ACCOUNT ||--o{ DEVICE_CREDENTIAL : authenticates_via
     USER_ACCOUNT ||--o| USER_PRIVATE_ATTRIBUTE : optionally_declares
     USER_ACCOUNT ||--o| ACTIVE_USER_PRESENCE : publishes
     USER_ACCOUNT ||--|| RECIPIENT_RECEIVE_STATE : controls_capacity
@@ -426,6 +462,8 @@ erDiagram
     QUESTION_ASSIGNMENT_CYCLE ||--|{ QUESTION_ASSIGNMENT : contains
     APPROVED_QUESTION ||--o{ QUESTION_ASSIGNMENT : assigned
 ```
+
+**인증(2026-08-08 반영, 백엔드 인증 부록)**: `operator_credential`은 `(user_id, role)` 복합 FK로 `user_account(id, role)`을 참조한다. `role`이 항상 `'OPERATOR'`로 고정된 쪽과 `user_account.role`이 실제로 `OPERATOR`인 행만 매칭되므로, `USER` 역할 계정에는 이 자격증명이 붙을 수 없다는 규칙이 트리거 없이 키로 성립한다 — `answer`가 `(post_recipient_id, author_id)` 복합 FK로 "답변 작성자 = 수신자"를 강제하는 것과 같은 패턴이다. `login_id`에는 별도로 `uq_operator_credential_login_id` 유니크 인덱스를 건다. 원래 `user_account.password_hash`(V3)로 계정에 직접 붙어 있던 것을 V5에서 분리했다. `device_credential`은 클라이언트가 만든 `installation_id`를 인증에 쓰지 않는다 — 서버가 발급한 32바이트 랜덤 `device_secret`의 SHA-256 해시(`secret_hash`)만 전역 unique로 걸어, 그 해시를 아는 클라이언트만 재인증할 수 있게 한다. salt 없는 SHA-256을 쓰는 이유는 이 값이 조회 경로이기 때문이다 — 256bit 랜덤 값이라 무차별 대입이 성립하지 않아 salt 없이도 안전하다. `installation_id`는 `credential_status = 'ACTIVE'`인 행에만 적용되는 partial unique라 해지된 자격증명은 같은 기기 식별자를 다시 쓸 수 있다. `push_device`와 물리적으로 같은 기기를 가리키지만, 푸시 토큰은 FCM/APNs가 소유하고 수시로 갱신되는 반면 이 자격증명은 서버가 발급·해지하는 값이라 생명주기가 독립적이라 테이블을 나눴다.
 
 ### 질문 공급 상태
 
@@ -930,7 +968,7 @@ ALTER TABLE answer_reaction
 | 같은 사람이 같은 질문글에 두 번 공감 불가 | `pk_post_reaction` |
 | 한 사람은 한 답변에 한 번만 공감 | `pk_answer_reaction` (복합 PK) |
 | **답변 공감은 그 답변을 볼 수 있는 사람(질문자 또는 그 질문글의 수신 자격자)만, 자기 답변은 불가** | `ct_answer_reaction_reactor_can_view` **트리거** |
-| **질문글 공감 수를 질문자에게만 노출** | **아무것도 강제하지 않는다. 조회 계층의 책임이다** |
+| **질문글 공감 수를 볼 수 있는 사람 전원에게 노출**(2026-08-07 개정) | **아무것도 강제하지 않는다. 조회 계층의 책임이다** |
 | **답변을 질문자와 수신 자격자 전원에게 노출**(ADR 0002) | **아무것도 강제하지 않는다. 조회 계층의 책임이다** |
 
 마지막 두 줄이 중요하다. 이 제품에서 가장 중요한 규칙 두 개가 DB 제약으로 표현되지 않는다. 스키마만 보고 구현하면 어긴다.
@@ -1092,7 +1130,7 @@ PostgreSQL은 FK에 인덱스를 자동 생성하지 않는다. 아래는 기존
 | `post_reaction` | `reactor_id` | PK 선두가 `post_id`. 사용자 삭제 시 `CASCADE` 검사와 "내가 공감한 것" 조회에 필요 |
 | `answer_reaction` | `reactor_id` | 복합 PK `(answer_id, reactor_id)`의 두 번째 컬럼이라 선두로 커버되지 않음 |
 
-`media_attachment`의 `post_id`·`answer_id`는 `uq_media_attachment_post_order`와 `uq_media_attachment_answer_order`가 선두 컬럼으로 커버하므로 별도 인덱스를 만들지 않는다. `post_reaction.post_id`와 `answer_reaction.answer_id`도 각각 PK 선두라 별도 인덱스가 필요 없다 — 질문자가 공감 수를 세는 조회(`WHERE post_id = ?`)가 PK를 그대로 탄다.
+`media_attachment`의 `post_id`·`answer_id`는 `uq_media_attachment_post_order`와 `uq_media_attachment_answer_order`가 선두 컬럼으로 커버하므로 별도 인덱스를 만들지 않는다. `post_reaction.post_id`와 `answer_reaction.answer_id`도 각각 PK 선두라 별도 인덱스가 필요 없다 — 공감 수를 세는 조회(`WHERE post_id = ?`, 볼 수 있는 사람 누구나 요청)가 PK를 그대로 탄다.
 
 ### 만들지 않기로 한 인덱스
 
@@ -1271,7 +1309,7 @@ FOR UPDATE OF pr, p;
 
 - 만료된 질문글의 답변에도 공감할 수 있다. 만료는 새 답변만 차단한다.
 - 반복 탭은 같은 키에 대한 INSERT/DELETE이므로 결과가 누적되지 않는다.
-- 질문글 공감 수는 질문자에게만 집계해 내려보낸다. 수신자 응답에는 "내가 눌렀는지" 여부만 넣는다.
+- 질문글 공감 수는 볼 수 있는 사람 전원(질문자+수신 자격자)에게 집계해 내려보낸다(2026-08-07 개정).
 
 ### T6B. 만료 슬롯 해제
 
@@ -1318,7 +1356,7 @@ user_block upsert
 9. 답변 작성자는 반드시 해당 `post_recipient.recipient_id`와 같아야 한다. 한 수신 권한당 답변은 1건이다(`uq_answer_one_per_recipient`).
 10. 서버 시각의 `expires_at` 이후에는 새 답변을 만들 수 없다. **공감은 만료 후에도 가능하다.**
 10-1. **답변을 조회할 수 있는 주체는 질문글 작성자와 그 질문글의 수신 자격자 전원이다.** 수신 자격이 없는 사용자에게는 답변 내용도, 답변 개수도 노출하지 않으며, 넘겼거나(SKIPPED) 답변 없이 만료된 수신자는 열람 자격을 잃는다. DB 제약이 아니라 조회 계층에서 강제한다(ADR 0002, 2026-08-07 개정 — 이전에는 질문자와 답변 작성자 본인뿐이었다, ADR 0001 superseded).
-10-2. **질문글 공감 수는 질문글 작성자에게만 노출한다.** 수신자 응답에는 총합 대신 "내가 눌렀는지" 여부만 담는다.
+10-2. **질문글 공감 수는 볼 수 있는 사람 전원(질문자+수신 자격자)에게 노출한다**(2026-08-07 개정 — 8/4 판까지는 질문자에게만 노출하고 수신자 응답에는 "내가 눌렀는지" 여부만 담았다).
 10-3. **답변 공감을 남길 수 있는 사람은 그 답변을 볼 수 있는 사람(질문글 작성자 또는 그 질문글의 수신 자격자)이며, 자기 답변에는 남길 수 없다. 사용자당 같은 답변에 최대 1건이다.**
 11. 차단 관계가 어느 방향으로든 활성 상태면 매칭·수신함·알림·재회에서 제외한다.
 12. 푸시 성공 여부는 수신 자격이나 앱 내 알림의 진실의 원천이 아니다.
@@ -1355,7 +1393,7 @@ P06은 확정됐다. P07, P10, P11, P12가 승인되기 전에는 실제 사용�
 
 정본 PRD의 Non-goal과 충돌하므로 다음 테이블은 현재 ERD에 넣지 않는다.
 
-- ~~`like`~~: **2026-08-04에 이 제외를 철회했다.** 공감은 확정 MVP 기능이며 `post_reaction`, `answer_reaction`으로 모델링했다. 다만 "공개 좋아요"는 아니다 — 질문글 공감 수는 질문자만 보고, 답변 공감은 그 답변을 볼 수 있는 사람(질문자·수신 자격자)이 답변자에게 주는 것이다. 공개 인기 점수와 순위는 여전히 만들지 않는다.
+- ~~`like`~~: **2026-08-04에 이 제외를 철회했다.** 공감은 확정 MVP 기능이며 `post_reaction`, `answer_reaction`으로 모델링했다. 다만 무제한 공개 좋아요는 아니다 — 질문글 공감이든 답변 공감이든 그 개수는 그 질문글을 **볼 수 있는 사람 전원**(질문자·수신 자격자)에게만 보이고, 그 밖의 사람에게는 보이지 않는다(2026-08-07 개정). 공개 인기 점수와 순위는 여전히 만들지 않는다.
 - `comment`: **만들지 않는다.** 이전에는 정본 PRD의 Non-goal이라 제외했고, 답변을 볼 수 있는 사람이 질문자 한 명뿐이던 시절에는 애초에 댓글이 놓일 자리 자체가 없었다(ADR 0001). 2026-08-07 개정으로 답변이 수신 자격자 전원에게 공개되면서 "자리가 없다"는 논리는 성립하지 않게 됐지만, 여전히 만들지 않는다 — 이제는 구조적 불가능이 아니라 **제품 결정**이다(ADR 0002: "답변에 답변할 수 없다", 대화가 두 겹의 스레드가 되는 것을 막는다). 질문자가 답변자에게 텍스트를 되보내는 통로는 자유 DM과 구별할 수 없어 열지 않는다.
 - 공개 인기 점수: 제외한다. 공감 수를 노출 순위나 사용자 등급에 사용하지 않는다.
 - `follow`, `direct_message`, `user_search_index`: 팔로우·DM·사용자 검색은 제품 Non-goal이다.
@@ -1369,7 +1407,8 @@ P06은 확정됐다. P07, P10, P11, P12가 승인되기 전에는 실제 사용�
 - [ ] P06 1안의 실제 데이터 흐름·접근 권한·로그 제외·암호화·삭제 작업을 Security/Privacy가 승인했다.
 - [ ] P04 만료 시간과 P07 보관·삭제 범위를 제품이 결정했다.
 - [ ] P10 연령, P11 얼굴, P12 신고 운영 정책이 승인됐다.
-- [ ] **인증·신원 수단을 결정했다.** 현재 스키마에는 로그인 식별자가 없다. 아래 "인증 공백" 참고.
+- [x] **인증·신원 수단을 결정했다.** `operator_credential`(운영자 로그인)과 `device_credential`(기기 인증)로 반영했다(2026-08-08). 아래 "인증" 참고.
+- [ ] `device_credential` 재발급 절차를 정했다. 기기 분실·재설치 시 새 `device_secret`을 어떻게 발급하고 이전 자격증명을 어떻게 처리할지 미정이다.
 - [ ] 닉네임 정규화 규칙과 변경 주기를 결정했다.
 - [ ] 답변을 수신자당 한 개로 제한할지 결정했다.
 - [ ] 질문 제안 승인 주체와 운영자 계정 권한을 결정했다.
@@ -1384,9 +1423,17 @@ P06은 확정됐다. P07, P10, P11, P12가 승인되기 전에는 실제 사용�
 - [ ] 답변-만료, 차단-알림, 중복 발송, 중복 승인 경쟁 조건 테스트를 작성했다.
 - [ ] FK 삭제 정책을 정리했다. `direction_post → post_recipient`는 `CASCADE`인데 `post_recipient → answer`는 `RESTRICT`라, 답변이 달린 글은 하드 삭제가 중간에서 막힌다.
 
-### 인증 공백
+### 인증
 
-`user_account`에 로그인 식별자가 없다. 이메일, 전화번호, OAuth subject, 기기 식별자 어느 것도 없어 **재방문 사용자를 식별할 방법이 스키마에 존재하지 않는다.** 외부 IdP에 위임하더라도 `user_account`와 외부 주체를 잇는 매핑 테이블은 필요하다. 구현 시작 전에 결정해야 한다.
+2026-08-08 이전에는 `user_account`에 로그인 식별자가 없어 **재방문 사용자를 식별할 방법이 스키마에 존재하지 않았다.** 팀원이 DBML에 두 테이블을 추가해 이 공백을 채웠고, 이번에 DDL과 이 문서에도 반영했다.
+
+- **`device_credential`(V7 migration)**: 일반 사용자의 재방문 식별 수단이다. 이메일·전화번호·OAuth 없이, 클라이언트가 만든 `installation_id`가 아니라 **서버가 발급한 고엔트로피 `device_secret`의 SHA-256 해시**(`secret_hash`)로만 기기를 인증한다 — 이 제품이 익명 닉네임(P09) 기반이라는 것과 정합적인 선택이다. `push_device`와 물리적으로 같은 기기를 가리키지만 발급·해지 주체가 다르고 생명주기가 독립적이라 분리했다. `installation_id`는 `credential_status = 'ACTIVE'`인 행에만 적용되는 partial unique라, 해지된 자격증명은 같은 기기 식별자를 다시 쓸 수 있다.
+- **`operator_credential`(V5 migration)**: 백오피스 운영자 전용 로그인(`login_id` + `password_hash`)과 잠금 상태다. 원래는 `user_account.password_hash`(V3)로 계정에 직접 붙어 있었으나, 일반 사용자가 운영자 때문에 존재하는 NULL 컬럼을 들고 다니는 구조라 V5에서 분리했다 — 분리하며 `user_account.password_hash`와 그 CHECK는 제거됐다. `(user_id, role)` 복합 FK가 `user_account(id, role)`을 참조하므로, `role`이 `OPERATOR`가 아닌 계정에는 이 자격증명이 붙을 수 없다 — DB가 키로 거절한다. `login_id`에는 `uq_operator_credential_login_id` 유니크 인덱스를 건다.
+- **`user_account.version`(V4 migration)**: JPA 낙관적 잠금용 행 버전. 인증과 직접 관련은 없지만 같은 출처(팀원이 DBML에 먼저 추가하고 DDL 반영이 늦었던 항목)라 함께 정리했다.
+
+**기기가 바뀌는 경우(분실·재설치)의 재인증 경로는 아직 이 문서에 없다.** `device_secret`을 다시 발급하는 절차와, 그 사이 이전 자격증명을 어떻게 처리할지가 §12 미결 목록에 남아 있다.
+
+`spring_session` / `spring_session_attributes`(V6 migration)는 이 목록에 없다. Spring Session이 소유하는 프레임워크 테이블이라 애초에 이 스키마 문서의 범위 밖이며, 실제 DB에는 존재하지만 백엔드 저장소의 `docs/product/data-model/schema-manifest.md` §6에서 별도로 센다.
 
 ## 13. 폐기된 증분 계보 (`sql/001`~`004`)
 

@@ -9,7 +9,7 @@ Project direction_connected_communication {
     > **2026-08-07 개정으로 답변 열람 범위가 뒤집혔다.** 답변은 이제 질문자 한 명이 아니라 **그 질문글의 수신 자격자 전원**에게 보인다. 아래 `2026-08-07 스키마 변경` 절을 먼저 읽는다. 그 이전 판(`2026-08-04`)의 "답변 격리" 서술은 폐기됐으나 이력을 위해 남겨둔다.
 
     - 이 파일이 스키마의 기준(source of truth)이다. `docs/sql/direction_communication_ddl.sql`은 여기서 파생한다.
-    - 범위: 사용자가 확정한 실제 테이블 28개 (2026-08-04에 `post_reaction`, `answer_reaction` 추가)
+    - 범위: 제품 논리 테이블 28개 (2026-08-04에 `post_reaction`, `answer_reaction` 추가)와 백엔드 인증 부록 2개 (`operator_credential`, `device_credential`). 아래 `백엔드 인증 부록` 절 참고.
     - DB: PostgreSQL 16+ / PostGIS 3+
     - DBML의 Enum은 SQL DDL의 `VARCHAR + CHECK` 값 집합을 문서화한 것이다.
     - DBML로 표현되지 않는 PostgreSQL 기능은 아래 위치의 Note에 기록했다.
@@ -17,9 +17,10 @@ Project direction_connected_communication {
       - GiST index: `active_user_presence`의 `position` 컬럼 Note와 테이블 Note
       - partial index / partial unique index: 각 인덱스의 Note
       - 인덱스 컬럼 DESC 정렬: 각 인덱스의 Note
-    - `report`와 `push_device`의 `unique` 인덱스는 다이어그램상 무조건 unique로 보이지만 실제로는 partial unique다. 각 인덱스 Note의 "주의" 항목을 확인해야 한다.
+    - `report`, `push_device`와 `device_credential`의 일부 `unique` 인덱스는 다이어그램상 무조건 unique로 보이지만 실제로는 partial unique다. 각 인덱스 Note의 "주의" 항목을 확인해야 한다.
     - P02 거리, P03 수신자 수, P04 만료 기간, P10 연령 수집, P15 질문 배정량·주기는 정책 미정이다.
     - 2026-08-07 기준 남은 미결: 신고 누적 자동 숨김 기준, 수정 횟수 상한의 실제 초기값(3으로 시작).
+    - Spring Session이 쓰는 `spring_session` / `spring_session_attributes`(V6)는 프레임워크가 소유하는 테이블이라 이 문서에 넣지 않는다. 실제 DB에는 존재하므로 `docs/product/data-model/schema-manifest.md` §6에서 센다.
 
     ## P06 위치 정책 (2026-08-03 확정: 1안)
 
@@ -72,7 +73,7 @@ Project direction_connected_communication {
     - **슬롯도 그대로다.** `ct_post_recipient_capacity_release`가 `ANSWERED`를 여전히 해제 대상으로 보고, 다만 해제 후에도 행이 화면에 남을 뿐이다. 수신 상한은 `답변 안 한` 것만 센다.
     - **답변 수정 중 처리에 새 컬럼이 필요 없다.** 검토 중인 답변은 다른 사람에게 감추므로 대기 중인 본문을 따로 보관하지 않는다. `status = 'SAFETY_CHECKING'`으로 되돌리고 `body_text`와 `media_attachment`를 직접 교체하면, 조회 계층이 `PUBLISHED`만 노출하는 것으로 충분하다. `ct_answer_has_content`와 `ct_media_attachment_preserves_content`가 `PUBLISHED`만 검사하므로 교체 중간에 첨부가 비어도 통과한다. **덕분에 사진 수정이 텍스트 수정과 같은 규칙으로 처리된다** — 반대로 기존 내용을 계속 보여주는 방식은 대기 중인 미디어를 붙일 대상이 없어 텍스트 수정만 가능해진다.
     - **`direction_scheme` / `direction_segment`도 그대로다.** `segment_count`와 `start_offset_deg`가 이미 N방향을 수용한다. **8은 구조가 아니라 데이터다.**
-    - **`post_reaction`도 그대로다.** `(post_id, reactor_id)`가 `post_recipient`를 참조하는 구조가 "수신 자격자만 질문글에 공감" + "작성자는 자기 글에 공감 불가"를 이미 키로 강제한다.
+    - **`post_reaction`의 키 구조는 그대로다.** `(post_id, reactor_id)`가 `post_recipient`를 참조하는 구조가 "수신 자격자만 질문글에 공감" + "작성자는 자기 글에 공감 불가"를 이미 키로 강제한다. *(2026-08-08 정정: 다만 "그대로다"는 키 구조에만 해당한다. 기능 명세서 §F06 공감 표는 공감 **개수를 보는 사람**도 질문자 한정에서 볼 수 있는 사람 전원으로 넓혔는데, 이 목록을 작성할 때 그 변화를 놓쳐 `post_reaction` 테이블 Note가 한동안 "질문자에게만 노출"인 채로 남아 있었다. Note를 고쳤다.)*
 
     ### 조회·쓰기 계층이 강제해야 하는 것 (DB 제약으로 표현하지 않음)
 
@@ -88,6 +89,25 @@ Project direction_connected_communication {
     외부에 정확 거리를 내보내는 것은 **방향 구간이 45°(8방향)라는 사실에 기대어 성립한다.** 방향은 부채꼴을 주고 거리는 원을 주므로, 둘이 겹치면 호가 된다. 1,157km에서 45° 호는 약 909km라 넓지만, 구간을 16방향(22.5°)으로 좁히면 절반, 32방향(11.25°)이면 4분의 1이 된다. 호 길이는 거리에도 비례해 가까울수록 좁아지므로 근거리 하한 10km가 그 아래를 막는다.
 
     **방향 스킴을 세분화할 때는 정확 거리 표시와 근거리 하한을 반드시 같이 재검토한다.** 방향만 늘리고 거리 정책을 그대로 두면 위치 노출 수준이 조용히 올라간다.
+
+    ## 백엔드 인증 부록 (2026-08-08)
+
+    기준 문서는 `docs/product/AUTH_DESIGN.md`와 `docs/adr/0006-split-operator-and-device-authentication.md`다.
+
+    제품 기획에서 나온 28개 테이블과 달리, 아래 두 테이블은 **백엔드가 인증을 구현하면서 필요해진 것**이라 원래 이 문서의 범위 밖이었다. 그러나 이 파일이 스키마의 기준인 이상 실제 DB에만 있고 여기에는 없는 테이블을 남겨두면 문서가 기준 역할을 못 한다. 부록으로 명시해 반영한다.
+
+    - **`operator_credential` 신설 (V5, `#72`).** 백오피스 운영자 로그인 자격증명이다. 원래 `user_account.password_hash`(V3)로 계정에 직접 붙어 있었으나, 일반 사용자가 운영자 때문에 존재하는 NULL 컬럼을 들고 다니는 구조였다. 계정 생명주기와 자격증명 생명주기는 변경 주기가 다르므로 분리했고, `user_account.password_hash`와 `ck_user_account_password_hash`는 함께 제거됐다. `(user_id, role)` 복합 외래키가 USER 계정에 자격증명이 붙는 것을 DB에서 거절하며, 그 대상이 되기 위해 `user_account`에 `uq_user_account_id_role`이 추가됐다.
+    - **`device_credential` 신설 (V7, `#73`).** 앱 사용자 기기 자격증명이다. 클라이언트가 만든 `installation_id`는 식별자일 뿐 인증 수단이 아니며, 서버가 발급한 32바이트 랜덤 `device_secret`의 SHA-256 해시로만 인증한다. 평문 시크릿은 등록 응답에서 한 번만 나가고 어디에도 저장하지 않는다. `push_device`와 물리적으로 같은 기기를 가리키지만, 푸시 토큰은 FCM/APNs가 소유하고 수시로 갱신되는 반면 이 자격증명은 우리가 발급·해지하는 값이라 생명주기가 독립적이어서 테이블을 나눴다.
+    - **`user_account.version` 추가 (V4, `#48`).** JPA 낙관적 잠금용 행 버전이다.
+
+    해시 알고리즘을 bcrypt가 아니라 salt 없는 SHA-256으로 둔 것은 `secret_hash`가 조회 경로이기 때문이다. 256bit 랜덤 값이라 무차별 대입이 성립하지 않아 salt 없이도 안전하고, 덕분에 unique index로 재발급 조회를 직접 처리할 수 있다. 대신 값 자체가 유일해야 하므로 `uq_device_credential_secret`을 건다.
+
+    `#74`(API 성공 응답 공통 포맷)와 `#75`(MediaAsset 업로드 서비스)는 스키마를 바꾸지 않았다. `#75`는 V1의 `media_asset` / `media_attachment`를 그대로 쓴다.
+
+    ## 2026-08-08 문서 정정
+
+    - **`post_reaction` 공감 개수 노출 범위.** 기능 명세서 08-07 개정(§F06 공감 표)은 질문글 공감 "개수를 보는 사람"도 질문자 한정에서 **볼 수 있는 사람 전원**으로 넓혔는데, 08-07 스키마 정리 당시 답변 쪽(`answer_reaction`)만 반영하고 `post_reaction`은 "그대로다"로 잘못 분류해 이 테이블 Note가 낡은 채로 남아 있었다. 키 구조는 실제로 안 바뀌어 스키마 변경은 없고, `post_reaction` 테이블 Note만 고쳤다(아래 "스키마를 바꾸지 않아도 되는 것" 목록의 `post_reaction` 항목 참고).
+    - **`user_account.version`(V4) / `operator_credential`(V5) / `device_credential`(V7)을 `docs/sql/direction_communication_ddl.sql`에 반영.** 팀원이 이 DBML에 추가한 뒤 DDL에는 옮기지 않은 상태였다. 이 셋이 §12 미결 항목이던 "인증·신원 수단"을 실제로 채운다. `docs/3. ...ERD.md`도 함께 갱신했다.
   '''
 }
 
@@ -355,6 +375,7 @@ Table user_account [headercolor: #4E79A7] {
   deleted_at timestamptz [note: '삭제 처리된 시각']
 
   indexes {
+    (id, role) [unique, name: 'uq_user_account_id_role', note: 'id가 이미 PK지만 operator_credential의 (user_id, role) 복합 외래키가 참조하려면 그 컬럼 조합에 unique가 따로 있어야 한다. PostgreSQL의 요구사항이다. V5 migration에서 추가되었다']
     coarse_region_code [name: 'user_account_region_idx', note: 'region_code 삭제 시 RESTRICT 검사와 지역 단위 조회용 FK 인덱스']
   }
 
@@ -377,6 +398,10 @@ Table operator_credential [headercolor: #4E79A7] {
   last_login_at timestamptz [note: '마지막 로그인 성공 시각']
   created_at timestamptz [not null, default: `clock_timestamp()`, note: '행이 생성된 시각']
   updated_at timestamptz [not null, default: `clock_timestamp()`, note: '마지막으로 변경된 시각']
+
+  indexes {
+    login_id [unique, name: 'uq_operator_credential_login_id', note: '로그인 식별자는 계정 간 유일하다. CHECK가 소문자만 허용하므로 대소문자 차이로 같은 식별자가 둘 생기지 않는다']
+  }
 
   checks {
     `role = 'OPERATOR'` [name: 'ck_operator_credential_role']
@@ -401,7 +426,7 @@ Table device_credential [headercolor: #4E79A7] {
 
   indexes {
     secret_hash [unique, name: 'uq_device_credential_secret', note: 'SHA-256에는 salt가 없어 값 자체가 유일해야 하며, 토큰 재발급의 조회 경로이기도 하다']
-    installation_id [name: 'uq_active_device_installation', note: '주의: 무조건 unique가 아니다. SQL DDL은 credential_status=ACTIVE인 행에만 적용되는 partial unique index이므로 REVOKED 자격증명은 같은 installation_id를 여러 행 가질 수 있다']
+    installation_id [unique, name: 'uq_active_device_installation', note: '주의: 무조건 unique가 아니다. SQL DDL은 credential_status=ACTIVE인 행에만 적용되는 partial unique index이므로 REVOKED 자격증명은 같은 installation_id를 여러 행 가질 수 있다']
     user_id [name: 'device_credential_user_idx', note: 'SQL DDL은 credential_status=ACTIVE인 partial index. 사용자별 활성 기기 조회와 user_account CASCADE 삭제용']
   }
 
@@ -819,8 +844,8 @@ Table answer [headercolor: #F28E2B] {
     `btrim(distance_band) <> ''` [name: 'ck_answer_distance_band']
     `status <> 'PUBLISHED' OR published_at IS NOT NULL` [name: 'ck_answer_published_at']
     `edited_at IS NULL OR (published_at IS NOT NULL AND edited_at >= published_at)` [name: 'ck_answer_edited_at']
-    `edit_count >= 0 AND edit_count <= 10` [name: 'ck_answer_edit_count', note: 'DB는 폭주를 막는 안전 상한만 둔다. 실효 상한(초기값 3)은 애플리케이션 설정에서 읽는다']
-    `(edit_count = 0) = (edited_at IS NULL)` [name: 'ck_answer_edit_count_matches_edited_at', note: '반영된 수정이 있으면 반영 시각이 있어야 하고, 그 반대도 성립해야 한다']
+    `edit_count >= 0 AND edit_count <= 10` [name: 'ck_answer_edit_count']
+    `(edit_count = 0) = (edited_at IS NULL)` [name: 'ck_answer_edit_count_matches_edited_at']
     `(status = 'DELETED') = (deleted_at IS NOT NULL)` [name: 'ck_answer_deleted_at']
   }
 
@@ -837,7 +862,7 @@ Table post_reaction [headercolor: #F28E2B] {
     reactor_id [name: 'post_reaction_reactor_idx', note: '사용자 삭제 시 CASCADE 검사와 내 공감 조회용']
   }
 
-  Note: '테이블 설명: 질문글에 남긴 공감(화면 문구 좋아요)을 기록하는 테이블이다. 필요 이유: 답변은 부담스럽지만 반응은 하고 싶은 수신자에게 유일한 저비용 표현 수단을 제공한다. 누를 수 있는 사람: (post_id, reactor_id) 복합 FK가 post_recipient(post_id, recipient_id)를 참조하므로, 수신 자격이 있는 사용자만 공감할 수 있다는 규칙이 별도 트리거 없이 키로 성립한다. 질문글 작성자는 자기 글의 수신자가 될 수 없으므로(ct_post_recipient_not_sender) 자기 글에 공감하는 경로도 함께 막힌다. 열람 격리: 공감 수는 질문글 작성자에게만 노출한다. 받은 사람 화면에는 총합을 표시하지 않으며 자신이 눌렀는지만 보여준다. 슬롯: 공감은 수신 용량을 해제하지 않는다. 답변을 한 것이 아니기 때문이다. 취소: 다시 누르면 행을 삭제한다. 상태 컬럼을 두지 않는 이유는 취소 이력을 보관할 제품 요구가 없기 때문이다.'
+  Note: '테이블 설명: 질문글에 남긴 공감(화면 문구 좋아요)을 기록하는 테이블이다. 필요 이유: 답변은 부담스럽지만 반응은 하고 싶은 수신자에게 유일한 저비용 표현 수단을 제공한다. 누를 수 있는 사람: (post_id, reactor_id) 복합 FK가 post_recipient(post_id, recipient_id)를 참조하므로, 수신 자격이 있는 사용자만 공감할 수 있다는 규칙이 별도 트리거 없이 키로 성립한다. 질문글 작성자는 자기 글의 수신자가 될 수 없으므로(ct_post_recipient_not_sender) 자기 글에 공감하는 경로도 함께 막힌다. 열람(2026-08-07 개정, ADR 0002): 공감 수는 그 질문글을 볼 수 있는 사람 전원(질문자 + 수신 자격자)에게 노출한다. 8/4 판까지는 질문자에게만 노출하고 받은 사람 화면에는 내가 눌렀는지 여부만 보여줬으나, 답변 열람이 전원 공개로 바뀌면서 이 규칙도 함께 뒤집혔다. 2026-08-08 정정: 이 Note가 그 변화를 놓치고 "질문자에게만 노출"로 남아 있던 것을 뒤늦게 발견해 고쳤다 — 아래 "스키마를 바꾸지 않아도 되는 것" 목록의 post_reaction 항목도 함께 참고. 슬롯: 공감은 수신 용량을 해제하지 않는다. 답변을 한 것이 아니기 때문이다. 취소: 다시 누르면 행을 삭제한다. 상태 컬럼을 두지 않는 이유는 취소 이력을 보관할 제품 요구가 없기 때문이다.'
 }
 
 Table answer_reaction [headercolor: #F28E2B] {
@@ -1123,6 +1148,11 @@ TableGroup account_and_location [color: #D9EAF7, note: '계정, 지역, 위치 T
   user_private_attribute
   active_user_presence
   recipient_receive_state
+}
+
+TableGroup authentication [color: #DCE3EE, note: '백오피스 운영자와 앱 기기의 인증 자격증명. 제품 논리 스키마가 아니라 백엔드 인증 부록이다'] {
+  operator_credential
+  device_credential
 }
 
 TableGroup question_supply [color: #DFF2D8, note: '질문 제안, 운영 검토, 승인 질문, 사용자별 배정'] {

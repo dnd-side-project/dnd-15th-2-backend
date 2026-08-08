@@ -42,8 +42,9 @@ public enum AnswerErrorCode implements ErrorCode {
 	// 안전 검사 미통과 답변의 공개 시도
 	SAFETY_CHECK_NOT_PASSED(HttpStatus.CONFLICT, "ANS-DOM-003", ErrorCategory.DOM, "안전 검사를 통과한 답변만 공개할 수 있습니다."),
 
-	// 질문 작성자가 아닌 사용자의 답변 공감. answer_reaction의 지연 constraint trigger에서 커밋 시점에 감지. 재시도로 해결 불가
-	INELIGIBLE_REACTOR(HttpStatus.FORBIDDEN, "ANS-DOM-004", ErrorCategory.DOM, "답변에 공감할 수 있는 질문 작성자가 아닙니다."),
+	// 그 질문글을 볼 수 있는 사람(질문글 작성자 또는 수신 자격자)이 아니거나 자기 답변에 공감을 시도. answer_reaction의
+	// 지연 constraint trigger에서 커밋 시점에도 감지. 재시도로 해결 불가
+	INELIGIBLE_REACTOR(HttpStatus.FORBIDDEN, "ANS-DOM-004", ErrorCategory.DOM, "그 질문글을 볼 수 있는 사람만 답변에 공감할 수 있습니다."),
 
 	// 미디어 상태와 삭제 시각처럼 함께 있어야 하는 값의 불일치
 	INVALID_MEDIA_STATE(HttpStatus.BAD_REQUEST, "ANS-DOM-005", ErrorCategory.DOM, "미디어 상태와 값이 맞지 않습니다."),
