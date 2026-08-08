@@ -270,10 +270,29 @@ class AnswerSafetyNotificationPersistenceIntegrationTest extends PostgisContaine
 				(post_recipient_id, author_id, status, idempotency_key, body_text, coarse_region_code,
 				 bearing_from_sender_deg, distance_band, distance_m, moderation_status, submitted_at,
 				 published_at, edited_at, edit_count)
+			VALUES (?, ?, 'PUBLISHED', 'edit-check-equivalence-reverse', '답변', ?, 45, 'NEAR', 5000, 'PASSED', ?, ?, NULL, 1)
+			""", postRecipientId, authorId, REGION, Timestamp.from(NOW), Timestamp.from(NOW)))
+			.isInstanceOf(DataIntegrityViolationException.class);
+
+		assertThatThrownBy(() -> jdbc.update("""
+			INSERT INTO answer
+				(post_recipient_id, author_id, status, idempotency_key, body_text, coarse_region_code,
+				 bearing_from_sender_deg, distance_band, distance_m, moderation_status, submitted_at,
+				 published_at, edited_at, edit_count)
 			VALUES (?, ?, 'PUBLISHED', 'edit-check-ceiling', '답변', ?, 45, 'NEAR', 5000, 'PASSED', ?, ?, ?, 11)
 			""", postRecipientId, authorId, REGION, Timestamp.from(NOW), Timestamp.from(NOW),
 			Timestamp.from(NOW.plusSeconds(60))))
 			.isInstanceOf(DataIntegrityViolationException.class);
+
+		int insertedRows = jdbc.update("""
+			INSERT INTO answer
+				(post_recipient_id, author_id, status, idempotency_key, body_text, coarse_region_code,
+				 bearing_from_sender_deg, distance_band, distance_m, moderation_status, submitted_at,
+				 published_at, edited_at, edit_count)
+			VALUES (?, ?, 'PUBLISHED', 'edit-check-valid-control', '답변', ?, 45, 'NEAR', 5000, 'PASSED', ?, ?, NULL, 0)
+			""", postRecipientId, authorId, REGION, Timestamp.from(NOW), Timestamp.from(NOW));
+
+		assertThat(insertedRows).isEqualTo(1);
 	}
 
 	private boolean claimInTransaction(long eventId, CountDownLatch ready, CountDownLatch start) throws Exception {
