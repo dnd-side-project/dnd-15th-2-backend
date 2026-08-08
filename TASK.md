@@ -1,152 +1,230 @@
-# GitHub Issue #89 Task Contract
+# GitHub Issue #80 Task Contract
 
-> Generated at: `2026-08-08T17:28:42+09:00`
+> Generated at: `2026-08-08T21:07:35+09:00`
 >
 > 이 파일은 현재 작업 브랜치의 계약이다. 저장소 전역 정책은 `AGENTS.md`를
 > 따른다.
 
 ## Work gate
 
-- Title: `JDBC 저장소의 긴 SQL을 sql/ 서브패키지 상수 클래스로 분리`
-- GitHub Issue: `#89`
-- Branch: `refactor/gh-89-jdbc-query-sql-split`
-- Base branch: `main`
+- Title: `수신함 방향 칩 집계와 방향 필터`
+- GitHub Issue: `#80`
+- Branch: `feat/gh-80-inbox-direction-chips`
+- Base branch: `main` (`ae3e956` — `#89` JDBC SQL 분리 머지 직후에서 분기)
+- 선행 Issue:
+  - `#78` — `post_recipient.inbound_bearing_deg`를 V8로 추가. 이번 이슈는 그 컬럼을
+    읽기만 한다.
+  - `#79` — `InboxCategory`(`UNANSWERED`/`ANSWERED`)를 신설. 칩 집계는 이 카테고리를
+    그대로 공유한다.
+  - `#89` — `JdbcInboxQueryRepository`의 `SELECT_CARD`가
+    `feed.repository.jdbc.sql.InboxQuerySql`로 이관됐다. 이번에 추가하는 정적 SQL도
+    같은 규약(정적 뼈대는 `Sql` 클래스, 동적 조합은 리포지토리)을 따른다.
+- 설계 근거:
+  - `V8__widen_answer_visibility_to_recipients.sql:118,158` — "구간 키는 저장하지 않고
+    조회 시점의 ACTIVE `direction_scheme`으로 파생시킨다"
+  - `V1__create_direction_communication_schema.sql:1259~1282` — `OCTANT` v1 시드
+    (8구간 × 45°, `start_offset_deg = 337.5`)
+  - `direction_communication.dbml:85` — "목록 API는 방향별 집계를 함께 내려준다"
+  - `docs/reports/private/direction/gh-80-inbox-direction-chip.local.md` — 이 계약의
+    결정 근거를 정리한 로컬 설계 기록(gitignore 대상)
 
 ## Objective
 
-코드 리뷰 피드백("SQL이 길어지면 유지보수가 어려우니 긴 SQL은 따로 폴더에서 관리하는
-방법을 고려해달라")에 따라, 13개 `Jdbc*Repository`의 긴 SQL 텍스트 블록을 리포지토리
-클래스 밖으로 분리한다. 순수 리팩터링이며 SQL 실행 결과와 파라미터 바인딩 동작은
-바꾸지 않는다.
+`내게 온 질문` 목록에 방향 칩 필터가 추가됐다(2026-08-07 개정). 칩을 클라이언트가
+받은 목록으로 만들면 두 가지가 깨진다.
 
-1차 범위(서브쿼리·CTE가 중첩된 복잡한 `SELECT`)로 시작했으나, 구현 중 추가 피드백을
-받아 "서브쿼리 유무와 무관하게 한 메서드의 SQL 리터럴 합이 대략 12줄을 넘으면 상수로
-뺀다"는 기준으로 2차 확장했다(컬럼이 많은 단순 INSERT/UPDATE도 포함). Notification/Safety는
-이 기준으로도 제외된다 — 개별 쿼리가 전부 8~9줄 이하라 SQL이 길어서가 아니라 엔티티가
-5개·3개라서 파일이 긴 경우다.
+1. `답변한` 카테고리는 수신 상한의 통제를 받지 않는다. 답변하면 슬롯이 즉시 해제되지만
+   (`ct_post_recipient_capacity_release`) 행은 만료까지 목록에 남으므로, 그 크기는
+   만료 창 안의 답변 횟수로 정해진다 — 코드에 상한이 없다(`expires_at`은 호출자 지정).
+2. 구간 정의가 `direction_segment` 행이다. 클라이언트가 스킴을 복제하면 8방향에서
+   16방향으로 바꿔도 클라 배포 전까지 칩이 재분류되지 않는다.
+
+그래서 서버가 카테고리 스코프 전체에서 집계해 목록과 함께 내려준다.
+
+`#69`·`#79`와 마찬가지로 API 계층은 만들지 않고 service·repository 메서드까지만
+제공한다.
 
 ## Scope
 
-### 대상 저장소
+### `DirectionChip` / `InboxListing` view 신설
 
-**1차(복잡한 SELECT/CTE)**
+`feed.view`에 두 record를 추가한다. 둘 다 Spring·JPA를 참조하지 않는다
+(`FeedPersistenceBoundaryTest.viewsAndPortsRemainIndependent`).
 
-- `feed.repository.jdbc.JdbcInboxQueryRepository` — `SELECT_CARD`
-- `feed.repository.jdbc.JdbcSentPostQueryRepository` — `SELECT_CARD`
-- `feed.repository.jdbc.JdbcPostAnswerQueryRepository` — `CAN_VIEW_ANSWERS_SQL`
-- `direction.repository.jdbc.JdbcActiveUserPresenceRepository` — `findCandidates`의
-  PostGIS CTE 쿼리
+- `DirectionChip(String segmentKey, String displayName, int sortOrder, long count)` —
+  compact constructor로 공백 키·공백 표시명·음수 count를 차단한다.
+- `InboxListing(List<InboxCard> cards, List<DirectionChip> chips)` — `InboxCard`와 같이
+  `List.copyOf`로 방어 복사한다.
 
-**2차(긴 단순 INSERT/UPDATE, 12줄 기준)**
+### `InboxQueryRepository` 포트 확장
 
-- `direction.repository.jdbc.JdbcDirectionPostRepository` — `save`의 INSERT/UPDATE
-  (id 유무 삼항 분기)
-- `direction.repository.jdbc.JdbcDirectionSchemeRepository` — `save`,
-  `saveSegment`의 INSERT/UPDATE(각 삼항 분기)
-- `direction.repository.jdbc.JdbcPostAudienceRepository` — `save`의
-  INSERT ON CONFLICT
-- `direction.repository.jdbc.JdbcPostRecipientRepository` — `save`의 INSERT/UPDATE
-  (id 유무 삼항 분기)
-- `direction.repository.jdbc.JdbcActiveUserPresenceRepository` — `save`의
-  INSERT ON CONFLICT (1차에서 이미 손댄 파일이라 같은 Sql 클래스에 추가)
+```java
+List<InboxCard> findInbox(long recipientId, InboxCategory category,
+    String directionSegmentKey, Instant at);
+List<DirectionChip> countByDirection(long recipientId, InboxCategory category, Instant at);
+```
 
-제외 검토했으나 12줄 기준 미달로 뺀 곳: `JdbcRecipientReceiveStateRepository.save`(9줄),
-`JdbcMediaAssetRepository`/`JdbcMediaAttachmentRepository`(전부 7줄 이하).
+- `findInbox`의 `directionSegmentKey`가 null이면 필터 없음이다.
+- `countByDirection`은 **방향 필터를 받지 않는다.** 칩 집계에 자기 필터를 걸면
+  선택한 칩만 남아 다른 방향으로 갈아탈 수 없다. 포트 시그니처에 인자를 두지 않아
+  실수로 넘길 수조차 없게 한다.
+- 기존 3인자 `findInbox`는 오버로드로 남기지 않고 교체한다. `#79`의 "이관이지
+  병존이 아니다"와 같은 이유로, 스코프 규칙이 두 경로로 갈라지는 것을 막는다.
 
-### 신설 `sql/` 서브패키지
+### 구간 파생과 원형 각도 비교
 
-각 feature 패키지의 `repository/jdbc/` 아래 `sql/` 서브패키지를 두고, 대상 저장소당
-하나의 `public final class` 상수 클래스를 신설한다(`private` 생성자로 인스턴스화
-금지, `public static final String` 상수만 포함).
+구간 키는 저장하지 않고 조회 시점에 파생한다(`V8` 기결정). `direction_segment`를
+`inbound_bearing_deg`에 대조하는 조인 조건은 다음 형태다.
 
-- `feed/repository/jdbc/sql/InboxQuerySql.java`
-- `feed/repository/jdbc/sql/SentPostQuerySql.java`
-- `feed/repository/jdbc/sql/PostAnswerQuerySql.java`
-- `direction/repository/jdbc/sql/ActiveUserPresenceSql.java` (`UPSERT` +
-  `FIND_CANDIDATES_SQL`)
-- `direction/repository/jdbc/sql/DirectionPostSql.java` (`INSERT` / `UPDATE`)
-- `direction/repository/jdbc/sql/DirectionSchemeSql.java` (`SCHEME_INSERT` /
-  `SCHEME_UPDATE` / `SEGMENT_INSERT` / `SEGMENT_UPDATE`)
-- `direction/repository/jdbc/sql/PostAudienceSql.java` (`UPSERT`)
-- `direction/repository/jdbc/sql/PostRecipientSql.java` (`INSERT` / `UPDATE`)
+```sql
+JOIN direction_scheme ds  ON ds.status = 'ACTIVE' AND ds.code = :schemeCode
+JOIN direction_segment seg ON seg.scheme_id = ds.id
+ AND MOD(pr.inbound_bearing_deg - (seg.center_bearing_deg - seg.angular_width_deg / 2) + 720, 360)
+     < seg.angular_width_deg
+```
 
-### 이동 원칙
+- 구간 시작각을 원점으로 옮긴 뒤 오프셋이 폭 미만인지만 본다. 북 구간(시작 337.5°)에서
+  350°는 오프셋 12.5, 10°는 32.5로 둘 다 45 미만이라 같은 칩에 들어간다.
+- `+720`은 `center - width/2`가 음수일 때(북 구간의 −22.5°) `MOD` 피연산자를 양수로
+  올리기 위한 보정이다. PostgreSQL의 `MOD`는 피연산자 부호를 따라가므로 이 보정이
+  없으면 음수 오프셋이 나와 비교가 깨진다.
+- 비교는 반열림(`<`)이라 경계각이 두 칩에 중복 계상되지 않는다. 도메인
+  `DirectionSegment.contains`의 `bearing >= start && bearing < end`와 같은 규칙이다.
+- `NUMERIC`을 `double precision`으로 캐스팅하지 않는다. 부동소수 반올림이 22.5°·67.5°
+  같은 경계각을 인접 칩으로 밀어낼 수 있고, 세그먼트 8행 × 대상 행 수 규모에서는
+  속도 차이가 무의미하다.
 
-- 이동 대상은 "정적 SQL 뼈대"뿐이다. `id == null ? INSERT : UPDATE` 같은 삼항
-  분기, WHERE 필터 `switch`, cursor 페이지네이션, `StringBuilder` 조립 같은 동적
-  조합 로직은 리포지토리 클래스에 그대로 둔다 — 옮기면 오히려 조립 순서가 Sql
-  클래스와 리포지토리 두 곳에 흩어져 가독성이 떨어진다. 삼항의 각 분기(INSERT
-  한 덩어리, UPDATE 한 덩어리)는 그 자체로 완전한 정적 SQL이므로 이동 대상이다.
-- 상수 옆에 있던 WHY 주석(예: `JdbcInboxQueryRepository`의 `distance_m`/
-  `distance_band` 상호배제 사유, `JdbcActiveUserPresenceRepository`의
-  `ST_Azimuth` 인자 순서 사유)은 상수와 함께 그대로 옮긴다. `docs/adr/0002-jpa-jdbc-boundary.md`가
-  raw JDBC를 선택한 이유("SQL 의도와 lock 대상을 가리지 않기 위함")를 지키기
-  위함이다.
-- 기존에 이름이 있던 상수는 이름을 바꾸지 않는다(`SELECT_CARD`,
-  `CAN_VIEW_ANSWERS_SQL` 등). 원래 이름 없는 로컬 변수였던 것(예:
-  `JdbcActiveUserPresenceRepository.findCandidates`의 `sql`, 2차 확장의 모든
-  INSERT/UPDATE)은 상수로 빼면서 최소한으로 이름을 붙였다(`FIND_CANDIDATES_SQL`,
-  `INSERT`/`UPDATE`, `UPSERT` 등).
-- 리포지토리 클래스는 새 상수 클래스를 import해서 조회·조합·실행만 담당한다.
-- 원본 SQL 텍스트 블록의 상대 들여쓰기를 그대로 보존해 옮긴다(`sed`로 줄 범위를
-  추출하고, 메서드 로컬 변수 → 클래스 필드로 옮기며 깊이가 달라진 경우에만
-  전체 블록을 동일한 탭 수만큼 일괄 이동한다) — 텍스트 블록의 공백 제거는
-  블록 내부 최소 들여쓰기를 기준으로 계산되므로, 상대적 들여쓰기만 보존하면
-  컴파일된 문자열이 완전히 동일하다.
+### 목록 쿼리에는 필터가 있을 때만 조인한다
+
+`directionSegmentKey`가 null이면 세그먼트 조인을 걸지 않는다. 항상 조인하면 스킴이
+360°를 완전히 덮지 못하게 바뀌는 날 **방향 필터를 쓰지도 않은 사용자의 목록에서
+항목이 조용히 사라진다.** 필터 없는 목록은 스킴 데이터에 의존하지 않아야 한다.
+
+### 공유 scope 조건 추출
+
+"칩 count == 그 칩으로 필터한 목록 건수"(`#80` 완료 조건)를 테스트가 아니라 구조로
+보장한다. 두 쿼리가 공유하는 조건을 `InboxQuerySql`의 상수 하나로 뺀다.
+
+```text
+pr.recipient_id = :recipientId
+dp.status = 'ACTIVE'
+dp.deleted_at IS NULL
+dp.expires_at > :at
+NOT EXISTS (user_block: blocker_id = :recipientId AND blocked_id = dp.sender_id)
+```
+
+카테고리별 상태 필터는 `switch`로 만드는 동적 조합이므로 `#89`의 이동 원칙에 따라
+리포지토리에 남긴다.
+
+### `InboxQueryService`가 목록과 칩을 함께 반환
+
+```java
+InboxListing list(long recipientId, InboxCategory category,
+    String directionSegmentKey, Instant at);
+```
+
+두 쿼리를 같은 `at`, 같은 `@Transactional(readOnly = true)` 안에서 실행한다.
+
+### ACTIVE 스킴 선택
+
+`qello.direction.scheme-code`(기본 `OCTANT`) 설정을 추가하고 `ds.code = :schemeCode AND
+ds.status = 'ACTIVE'`로 조인한다. `uq_direction_scheme_active`가 `(code) WHERE status =
+'ACTIVE'`라 code별로만 유일하므로, code를 고정하지 않으면 다른 code의 스킴이 동시에
+ACTIVE가 될 때 한 수신 항목이 두 스킴의 구간에 각각 잡혀 count가 중복 집계된다.
+`DirectionReceiveProperties`·`FeedDistanceProperties`가 이미 쓰는 "운영 설정값을 코드
+상수로 박지 않는다" 패턴을 따른다. 아래 `Assumptions` 참고 — 리뷰 대상이다.
 
 ## Explicit exclusions
 
-- `JdbcNotificationRepository`, `JdbcSafetyRepository`는 다루지 않는다 — 길이의
-  원인이 SQL이 아니라 한 클래스가 여러 엔티티를 담당하는 책임 분리 문제라서 이
-  이슈의 해법(SQL 분리)으로는 풀리지 않는다.
-- MyBatis, jOOQ 등 신규 SQL 관리 라이브러리를 도입하지 않는다.
-- 외부 `.sql` 리소스 파일 + 클래스패스 로더 방식은 채택하지 않는다(동적 SQL 조합
-  표현이 어색해지고 WHY 주석이 SQL과 호출부 사이에 쪼개진다 — 논의 후 Java 상수
-  클래스 방식으로 결정).
-- SQL 상수 이름 변경, 쿼리 성능 튜닝은 다루지 않는다.
-- API, DTO, controller, endpoint 변경 없음.
+- controller, DTO, API 문서, endpoint — 이번 회차도 service 계층까지다.
+- `내가 쓴 질문` 탭의 방향 필터 — 방향 칩을 쓰지 않는다(이슈 명시).
+- 지도 마커 방향 집계.
+- `ANSWERED` 목록 페이징 — 상한이 없어 언젠가 필요하지만 `#80`이 요구하지 않았다.
+  이번 칩 계약은 페이지가 아니라 카테고리 스코프를 집계하므로 페이징이 나중에 붙어도
+  바뀌지 않는다.
+- 수신 상한(`qello.direction.receive-capacity`) 상향 — 별도 판단 사항이다.
+- `SELECT_CARD`의 카드별 상관 서브쿼리 최적화 — `#79`에서 들어온 기존 비용이며 이번
+  변경이 늘리지 않는다. `ANSWERED`가 커지면 먼저 아플 곳이지만 이 이슈 범위가 아니다.
+- 신규 마이그레이션 — `#78`의 V8과 `#39` 시점의 V1 시드를 그대로 쓴다. DB 변경 없음.
+- 만료 전이 배치, `SKIP_PENDING` 확정 워커 — `#79`와 같이 제외이며, 그래서 상태만
+  보지 않고 `expires_at`을 함께 본다.
 - 인프라 apply, 배포, 프로덕션 변경은 별도 승인 없이는 실행하지 않는다.
 - Secret, 계정 식별자, 토큰, `.env` 값은 기록하지 않는다.
+
+## Assumptions
+
+구현을 위해 확정한 값이며 리뷰에서 뒤집힐 수 있다.
+
+- `ASSUMED` — ACTIVE 스킴을 `qello.direction.scheme-code` 설정값으로 고정한다.
+  대안은 (a) `status='ACTIVE'`만 조인 — 중복 집계 위험을 그대로 안는다, (b) ACTIVE가
+  1개가 아니면 예외 — 스킴 전환 중 수신함 조회 전체가 막힌다. 설정값 방식을 골랐다.
+- `ASSUMED` — 알 수 없는 `segmentKey`는 예외가 아니라 빈 목록이다. `#79`에서 자격
+  없는 뷰어에게 예외 대신 빈 결과를 준 것과 같은 방향이며, 클라이언트가 옛 스킴의
+  키를 들고 있는 전환기에 목록 전체가 400으로 죽는 것을 막는다. 이때도 칩은 카테고리
+  전체를 그대로 반환하므로 사용자가 다른 방향으로 갈아타 빠져나올 수 있다.
+- `CONFIRMED` — 구간 키를 저장하지 않고 조회 시점에 파생하는 것은 V8이 이미 확정했다
+  (`V8:118`).
+- `CONFIRMED` — 칩 집계가 서버에 있어야 하는 이유는 페이징 유무가 아니라 `ANSWERED`의
+  무상한 누적과 구간 정의 소유권이다. 이슈 본문의 "페이지네이션" 근거는 `ANSWERED`에
+  대해서는 지금도 실질적으로 성립한다.
 
 ## Ownership
 
 | Area | Owner | Required review |
 | --- | --- | --- |
-| `feed` 패키지 3개 Sql 클래스 이관 | Feed executor | 동적 조합 로직이 리포지토리에 남았는지, WHY 주석 보존 여부 리뷰 |
-| `direction` 패키지 6개 Sql 클래스 이관(`ActiveUserPresenceSql`, `DirectionPostSql`, `DirectionSchemeSql`, `PostAudienceSql`, `PostRecipientSql`) | Direction executor | PostGIS 주석·인자 순서 보존 여부, 삼항 분기(id 유무)가 리포지토리에 남았는지 리뷰 |
-| 회귀 검증 | Test orchestrator | 기존 단위/통합 테스트가 통과하는지, `FeedPersistenceBoundaryTest` 수정이 오탐 수정으로 타당한지 리뷰 |
+| `DirectionChip`·`InboxListing` view | Feed executor | 불변식(공백 키·음수 count·방어 복사) 리뷰 |
+| 구간 파생 SQL과 원형 각도 비교 | Feed executor | `+720` 보정·반열림 경계·`NUMERIC` 유지 근거 리뷰 |
+| 공유 scope 상수와 두 쿼리 일치 | Feed executor | 칩 count와 목록 건수가 같은 조건에서 나오는지 리뷰 |
+| 목록 쿼리의 조건부 조인 | Feed executor | 필터 없는 목록이 스킴에 의존하지 않는지 리뷰 |
+| `qello.direction.scheme-code` 설정 | Direction executor | 중복 ACTIVE 스킴 방어와 설정 기본값 리뷰 |
+| 단위/통합 테스트 | Test orchestrator | 원형 경계·카테고리 한정·count 일치·0건 방향 제외 리뷰 |
 
 ## Existing user-owned changes
 
 - `./harness start` 직전 `git status --short`는 비어 있었다. 보존할 다른 사람의
-  미커밋 변경이 없다. `TASK.md`는 `h task-init --replace`로 #89 계약을 새로 썼다.
+  미커밋 변경이 없다. `TASK.md`는 `h task-init --replace`로 `#80` 계약을 새로 썼다.
+- `docs/reports/private/direction/gh-80-inbox-direction-chip.local.md`는 이 브랜치에서
+  만든 설계 기록이며 `.gitignore:51`(`docs/reports/**/*.local.md`)로 커밋되지 않는다.
 
 ## Validation
 
 ```bash
 ./harness check
 ./harness pr-ready --project-tests
+npm run hooks:validate
 git diff --check
 ```
 
-- `./gradlew test`와 `./gradlew integrationTest`를 모두 통과시킨다. 이번 변경은
-  SQL 텍스트 위치만 옮기므로 기존 테스트가 수정 없이 통과해야 회귀가 없다고 볼 수
-  있다.
+- Docker가 사용 가능하므로 Testcontainers 기반 통합 테스트를 로컬에서 실행한다.
+  `./gradlew test`와 `./gradlew integrationTest`를 모두 통과시킨다.
 
 ## Completion criteria
 
-- [x] 9개 Sql 상수 클래스(1차 4개 + 2차 5개, `ActiveUserPresenceSql`은 1차·2차
-      공용)가 `sql/` 서브패키지에 생성되고, 각 리포지토리가 이를 참조한다
-- [x] SQL 실행 결과와 파라미터 바인딩 동작에 변화가 없다 (순수 위치 이동 —
-      4개 통합 테스트 클래스가 무수정으로 전부 통과해 확인됨)
-- [x] 기존 단위/통합 테스트가 그대로 통과한다 (`./gradlew test`,
-      `./gradlew integrationTest`) — 단, `FeedPersistenceBoundaryTest`는 예외:
-      기존 검증 로직이 "다른 feature의 jdbc/jpa 참조 금지"를 feature 이름 없이
-      `.repository.jdbc.` 부분 문자열로만 체크해서, feed 자신의 신설
-      `repository.jdbc.sql` 서브패키지까지 오탐하는 기존 버그였다. `answer`
-      패키지의 동일 취지 테스트(`AnswerJdbcBoundaryTest`)가 이미 쓰던 "다른
-      feature 이름을 명시" 패턴으로 맞춰 고쳤다 — 검증 의도(다른 feature
-      비침투)는 그대로 유지되고, 같은 feature 내부 서브패키지만 허용하도록
-      정밀해졌다.
-- [x] 이동한 WHY 주석이 원래 의미를 유지한 채 새 위치에 남아 있다
-- [x] `./harness check`, `./harness pr-ready --project-tests`가 통과한다
+- [x] 구간 키를 저장하지 않고 조회 시점에 파생한다 — `direction_scheme`을 8방향에서
+      16방향으로 바꾸면 데이터 마이그레이션 없이 칩이 재분류된다
+      (`InboxQuerySql.SEGMENT_JOIN`은 저장된 구간 키를 참조하지 않는다)
+- [x] 북 구간이 350°와 10°를 모두 포함한다
+      (`InboxDirectionChipIntegrationTest.northSegmentWrapsAroundZeroDegrees`)
+- [x] 경계각(22.5°·67.5°…)이 정확히 한 칩에만 잡힌다
+      (`.boundaryAnglesBelongToExactlyOneSegment`)
+- [x] 0~359° 대표각 스윕에서 SQL 파생 구간과 `DirectionSegment.contains` 결과가 모두
+      일치한다 (`.sqlDerivedSegmentMatchesDomainContainsAcrossSweep`, 28개 방위각)
+- [x] 0건인 방향은 칩 목록에 나오지 않는다 (`.excludesZeroCountDirectionsFromChips`)
+- [x] 카테고리를 바꾸면 칩 집계 범위도 그 카테고리로 한정된다
+      (`.chipAggregationIsScopedToCategory`)
+- [x] 모든 칩에 대해 count가 그 `segmentKey`로 필터한 목록 건수와 일치한다
+      (`.chipCountMatchesFilteredListSizeForEveryChip`)
+- [x] 만료·차단·`SKIPPED` 항목이 목록과 칩에서 동일하게 빠진다
+      (`.expiredBlockedAndSkippedAreExcludedFromBothListAndChips`)
+- [x] 알 수 없는 `segmentKey`는 예외 없이 빈 목록이고, 칩은 그대로 반환된다
+      (`.unknownSegmentKeyYieldsEmptyListButChipsRemain`)
+- [x] controller와 endpoint를 추가하지 않는다
+- [x] `./gradlew test`와 `./gradlew integrationTest`가 통과한다 (단위 160개, 통합
+      154개, 전부 통과 — 154는 코드 리뷰 반영분 1건 포함, `docs/reports/tests/gh-80-INBOX-DIRECTION-CHIPS.md` §7a)
+- [x] `./harness pr-ready --project-tests`가 통과한다
+- [x] `npm run hooks:validate`가 통과한다 (`Husky validation passed` — `./harness
+      check`가 내부적으로 실행하는 `scripts/validate-husky.py`와 동일 스크립트를
+      호출한다)
+- [x] `findInbox`와 `countByDirection`이 같은 트랜잭션 스냅샷에서 읽는다
+      (`InboxQueryService.list`에 `isolation = Isolation.REPEATABLE_READ` 지정,
+      2차 코드 리뷰 반영 — `docs/reports/tests/gh-80-INBOX-DIRECTION-CHIPS.md` §7b)
