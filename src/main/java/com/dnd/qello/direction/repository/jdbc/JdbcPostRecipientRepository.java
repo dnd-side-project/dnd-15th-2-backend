@@ -14,6 +14,7 @@ import org.springframework.stereotype.Repository;
 import com.dnd.qello.direction.domain.PostRecipient;
 import com.dnd.qello.direction.domain.PostRecipientStatus;
 import com.dnd.qello.direction.repository.PostRecipientRepository;
+import com.dnd.qello.direction.repository.jdbc.sql.PostRecipientSql;
 
 import lombok.RequiredArgsConstructor;
 
@@ -25,26 +26,7 @@ public class JdbcPostRecipientRepository implements PostRecipientRepository {
 
 	@Override
 	public PostRecipient save(PostRecipient recipient) {
-		String sql = recipient.getId() == null ? """
-			INSERT INTO post_recipient
-				(post_id, recipient_id, status, distance_band, matched_bearing_deg, matched_region_code,
-				 matched_at, discovered_at, opened_at, skip_requested_at, skipped_at, capacity_released_at,
-				 expired_at, blocked_at, inbound_bearing_deg, distance_m, answers_read_at)
-			VALUES (:postId, :recipientId, :status, :distanceBand, :bearing, :regionCode,
-				:matchedAt, :discoveredAt, :openedAt, :skipRequestedAt, :skippedAt, :capacityReleasedAt,
-				:expiredAt, :blockedAt, :inboundBearing, :distanceM, :answersReadAt)
-			RETURNING id
-			""" : """
-			UPDATE post_recipient
-			SET post_id = :postId, recipient_id = :recipientId, status = :status, distance_band = :distanceBand,
-			    matched_bearing_deg = :bearing, matched_region_code = :regionCode, matched_at = :matchedAt,
-			    discovered_at = :discoveredAt, opened_at = :openedAt, skip_requested_at = :skipRequestedAt,
-			    skipped_at = :skippedAt, capacity_released_at = :capacityReleasedAt, expired_at = :expiredAt,
-			    blocked_at = :blockedAt, inbound_bearing_deg = :inboundBearing, distance_m = :distanceM,
-			    answers_read_at = :answersReadAt
-			WHERE id = :id
-			RETURNING id
-			""";
+		String sql = recipient.getId() == null ? PostRecipientSql.INSERT : PostRecipientSql.UPDATE;
 		Long id = jdbc.queryForObject(sql, params(recipient), Long.class);
 		return PostRecipient.restore(id, recipient.getPostId(), recipient.getRecipientId(), recipient.getStatus(),
 			recipient.getDistanceBand(), recipient.getMatchedBearingDegrees(), recipient.getMatchedRegionCode(), recipient.getMatchedAt(),

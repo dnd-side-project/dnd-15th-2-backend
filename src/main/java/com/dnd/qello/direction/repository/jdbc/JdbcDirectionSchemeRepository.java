@@ -15,6 +15,7 @@ import com.dnd.qello.direction.domain.DirectionSchemeStatus;
 import com.dnd.qello.direction.domain.DirectionSchemeType;
 import com.dnd.qello.direction.domain.DirectionSegment;
 import com.dnd.qello.direction.repository.DirectionSchemeRepository;
+import com.dnd.qello.direction.repository.jdbc.sql.DirectionSchemeSql;
 
 @Repository
 public class JdbcDirectionSchemeRepository implements DirectionSchemeRepository {
@@ -25,19 +26,7 @@ public class JdbcDirectionSchemeRepository implements DirectionSchemeRepository 
 
 	@Override
 	public DirectionScheme save(DirectionScheme scheme) {
-		String sql = scheme.getId() == null
-			? """
-			INSERT INTO direction_scheme (code, version, type, segment_count, start_offset_deg, status)
-			VALUES (:code, :version, :type, :segmentCount, :startOffset, :status)
-			RETURNING id
-			"""
-			: """
-			UPDATE direction_scheme
-		SET code = :code, version = :version, type = :type, segment_count = :segmentCount,
-		    start_offset_deg = :startOffset, status = :status
-		WHERE id = :id
-		RETURNING id
-		""";
+		String sql = scheme.getId() == null ? DirectionSchemeSql.SCHEME_INSERT : DirectionSchemeSql.SCHEME_UPDATE;
 		MapSqlParameterSource p = parameters(scheme);
 		Long id = jdbc.queryForObject(sql, p, Long.class);
 		return DirectionScheme.restore(id, scheme.getCode(), scheme.getVersion(), scheme.getType(),
@@ -64,20 +53,7 @@ public class JdbcDirectionSchemeRepository implements DirectionSchemeRepository 
 
 	@Override
 	public DirectionSegment saveSegment(DirectionSegment segment) {
-		String sql = segment.getId() == null
-			? """
-			INSERT INTO direction_segment (scheme_id, segment_key, display_name, center_bearing_deg,
-				angular_width_deg, sort_order)
-			VALUES (:schemeId, :segmentKey, :displayName, :center, :width, :sortOrder)
-			RETURNING id
-			"""
-			: """
-			UPDATE direction_segment
-		SET scheme_id = :schemeId, segment_key = :segmentKey, display_name = :displayName,
-		    center_bearing_deg = :center, angular_width_deg = :width, sort_order = :sortOrder
-		WHERE id = :id
-		RETURNING id
-		""";
+		String sql = segment.getId() == null ? DirectionSchemeSql.SEGMENT_INSERT : DirectionSchemeSql.SEGMENT_UPDATE;
 		MapSqlParameterSource p = new MapSqlParameterSource()
 			.addValue("id", segment.getId()).addValue("schemeId", segment.getSchemeId())
 			.addValue("segmentKey", segment.getSegmentKey()).addValue("displayName", segment.getDisplayName())
