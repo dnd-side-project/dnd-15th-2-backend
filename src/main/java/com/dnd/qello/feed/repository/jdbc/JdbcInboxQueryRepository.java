@@ -36,7 +36,10 @@ public class JdbcInboxQueryRepository implements InboxQueryRepository {
 
 	@Override
 	public List<InboxCard> findInbox(long recipientId, InboxCategory category, String directionSegmentKey, Instant at) {
-		boolean filterByDirection = directionSegmentKey != null;
+		// 공백 문자열도 "필터 없음"으로 다룬다 — 나중에 컨트롤러가 붙어 빈 요청 파라미터를
+		// 그대로 넘기게 되면 null 대신 ""가 들어올 수 있다. 여기서 정규화해 그 경로에서
+		// "필터 있음, 아무 구간도 매칭 안 됨"으로 조용히 빈 목록이 나가는 사고를 막는다.
+		boolean filterByDirection = directionSegmentKey != null && !directionSegmentKey.isBlank();
 		// statusFilter와 방향 필터 조각은 텍스트 블록이 아니라 일반 String 연결이다 —
 		// 텍스트 블록은 줄 끝 공백을 잘라내므로 "AND" 뒤에 이어붙이면
 		// "ANDpr.status..."처럼 토큰이 붙는다.

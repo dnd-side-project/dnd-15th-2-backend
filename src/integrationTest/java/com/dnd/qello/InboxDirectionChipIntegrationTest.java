@@ -291,6 +291,17 @@ class InboxDirectionChipIntegrationTest extends PostgisContainerIntegrationTestS
 	}
 
 	@Test
+	@DisplayName("공백 segmentKey는 필터 없음과 같게 취급되어 전체 목록을 반환한다")
+	void blankSegmentKeyIsTreatedAsNoFilter() {
+		unansweredRecipient(post(NOW.plus(1, ChronoUnit.HOURS)), 0.0);
+		unansweredRecipient(post(NOW.plus(1, ChronoUnit.HOURS)), 90.0);
+
+		InboxListing listing = inboxQueryService.list(recipientId, InboxCategory.UNANSWERED, "  ", NOW.plusSeconds(1));
+
+		assertThat(listing.cards()).hasSize(2);
+	}
+
+	@Test
 	@DisplayName("필터 없는 목록은 ACTIVE 스킴이 없어도 온전하고, 칩만 비어 있다")
 	void unfilteredListIsUnaffectedByMissingActiveScheme() {
 		long postId = post(NOW.plus(1, ChronoUnit.HOURS));
