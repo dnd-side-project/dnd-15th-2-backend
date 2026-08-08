@@ -19,7 +19,8 @@ import org.springframework.core.io.support.PropertiesLoaderUtils;
 
 /**
  * Created at: 2026-08-03T17:45:39+09:00
- * Source scenario: TEST-PLAN-GH-36-FLYWAY-BASELINE-UNIT-001, TEST-PLAN-GH-36-FLYWAY-BASELINE-UNIT-002
+ * Source scenario: TEST-PLAN-GH-36-FLYWAY-BASELINE-UNIT-001, TEST-PLAN-GH-36-FLYWAY-BASELINE-UNIT-002,
+ * TEST-PLAN-GH-78-SCHEMA-REVISION-V7-UNIT-001
  */
 class FlywayMigrationContractTest {
 
@@ -27,6 +28,8 @@ class FlywayMigrationContractTest {
 		"cc93ba87aa5999bdd48589b63fa4da4e383270626fb36ecb7adac482ed3d95a7";
 	private static final String ACCEPTED_V2_SHA_256 =
 		"c8daf71f9ce75fb75b6c30ecb49a4b2d912b887a34d8f602617c2ca8a27f4e04";
+	private static final String ACCEPTED_V8_SHA_256 =
+		"082ed77d45bf48deaf31b9705baa979fd24633e78d3c3490a40421663eb852cb";
 
 	@Test
 	@DisplayName("V1은 승인된 독립 DDL과 동일하고 V2는 승인된 delta와 동일하다")
@@ -50,7 +53,17 @@ class FlywayMigrationContractTest {
 			"V4__add_user_account_optimistic_lock.sql",
 			"V5__add_operator_credential.sql",
 			"V6__add_spring_session_tables.sql",
-			"V7__add_device_credential.sql");
+			"V7__add_device_credential.sql",
+			"V8__widen_answer_visibility_to_recipients.sql");
+	}
+
+	@Test
+	@DisplayName("V8은 승인된 delta와 동일하다")
+	void v8MatchesAcceptedContent() throws Exception {
+		ClassPathResource v8 = new ClassPathResource(
+			"db/migration/V8__widen_answer_visibility_to_recipients.sql");
+
+		assertThat(sha256(v8)).isEqualTo(ACCEPTED_V8_SHA_256);
 	}
 
 	@Test
