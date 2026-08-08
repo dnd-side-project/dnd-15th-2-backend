@@ -10,8 +10,6 @@ import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 import org.springframework.security.web.context.SecurityContextRepository;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -24,15 +22,16 @@ import com.dnd.qello.common.web.response.ApiResponseFactory;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
-import jakarta.validation.Valid;
 
 // 백오피스 로그인과 로그아웃.
 //
 // 운영자 계정 생성 엔드포인트는 두지 않는다. 자체 가입 경로는 그 자체가 공격면이며
 // 운영자는 시드 migration으로만 만든다.
+//
+// 경로와 문서 애노테이션은 OperatorLoginApiSpec에 있다.
 @RestController
 @RequestMapping("/admin")
-public class OperatorLoginController {
+public class OperatorLoginController implements OperatorLoginApiSpec {
 
 	private static final String OPERATOR_AUTHORITY = "ROLE_OPERATOR";
 
@@ -49,9 +48,9 @@ public class OperatorLoginController {
 		this.responseFactory = responseFactory;
 	}
 
-	@PostMapping("/login")
+	@Override
 	public ResponseEntity<ApiResponse<OperatorSessionResponse>> login(
-		@RequestBody @Valid OperatorLoginRequest request,
+		OperatorLoginRequest request,
 		HttpServletRequest httpRequest,
 		HttpServletResponse httpResponse
 	) {
@@ -78,7 +77,7 @@ public class OperatorLoginController {
 	}
 
 	// 세션 행을 지우면 권한이 즉시 회수된다. 앱 API의 토큰과 달리 유예가 없다.
-	@PostMapping("/logout")
+	@Override
 	public ResponseEntity<ApiResponse<Void>> logout(HttpServletRequest httpRequest) {
 		HttpSession session = httpRequest.getSession(false);
 		if (session != null) {

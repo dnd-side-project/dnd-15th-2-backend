@@ -1,0 +1,629 @@
+{
+  "components" : {
+    "schemas" : {
+      "ApiErrorDetail" : {
+        "properties" : {
+          "code" : {
+            "type" : "string"
+          },
+          "field" : {
+            "type" : "string"
+          },
+          "reason" : {
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "ApiErrorResponse" : {
+        "properties" : {
+          "errorDetail" : {
+            "$ref" : "#/components/schemas/ApiErrorDetail"
+          },
+          "message" : {
+            "type" : "string"
+          },
+          "status" : {
+            "enum" : [
+              "success",
+              "error"
+            ],
+            "type" : "string"
+          },
+          "timestamp" : {
+            "format" : "date-time",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "ApiResponseCsrfTokenResponse" : {
+        "properties" : {
+          "data" : {
+            "$ref" : "#/components/schemas/CsrfTokenResponse"
+          },
+          "status" : {
+            "enum" : [
+              "success",
+              "error"
+            ],
+            "type" : "string"
+          },
+          "timestamp" : {
+            "format" : "date-time",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "ApiResponseDeviceRegistrationResponse" : {
+        "properties" : {
+          "data" : {
+            "$ref" : "#/components/schemas/DeviceRegistrationResponse"
+          },
+          "status" : {
+            "enum" : [
+              "success",
+              "error"
+            ],
+            "type" : "string"
+          },
+          "timestamp" : {
+            "format" : "date-time",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "ApiResponseDeviceTokenResponse" : {
+        "properties" : {
+          "data" : {
+            "$ref" : "#/components/schemas/DeviceTokenResponse"
+          },
+          "status" : {
+            "enum" : [
+              "success",
+              "error"
+            ],
+            "type" : "string"
+          },
+          "timestamp" : {
+            "format" : "date-time",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "ApiResponseOperatorSessionResponse" : {
+        "properties" : {
+          "data" : {
+            "$ref" : "#/components/schemas/OperatorSessionResponse"
+          },
+          "status" : {
+            "enum" : [
+              "success",
+              "error"
+            ],
+            "type" : "string"
+          },
+          "timestamp" : {
+            "format" : "date-time",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "ApiResponseVoid" : {
+        "properties" : {
+          "data" : { },
+          "status" : {
+            "enum" : [
+              "success",
+              "error"
+            ],
+            "type" : "string"
+          },
+          "timestamp" : {
+            "format" : "date-time",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "CsrfTokenResponse" : {
+        "description" : "CSRF 토큰과 그 토큰을 실어 보낼 헤더 이름",
+        "properties" : {
+          "headerName" : {
+            "description" : "토큰을 실어 보낼 요청 헤더 이름",
+            "type" : "string"
+          },
+          "token" : {
+            "description" : "다음 상태 변경 요청에 실어 보낼 CSRF 토큰",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "DeviceRegistrationRequest" : {
+        "properties" : {
+          "coarseRegionCode" : {
+            "minLength" : 1,
+            "type" : "string"
+          },
+          "installationId" : {
+            "minLength" : 1,
+            "type" : "string"
+          },
+          "locale" : {
+            "minLength" : 1,
+            "type" : "string"
+          },
+          "nickname" : {
+            "type" : "string"
+          },
+          "platform" : {
+            "enum" : [
+              "IOS",
+              "ANDROID"
+            ],
+            "type" : "string"
+          },
+          "timezone" : {
+            "minLength" : 1,
+            "type" : "string"
+          }
+        },
+        "required" : [
+          "coarseRegionCode",
+          "installationId",
+          "locale",
+          "platform",
+          "timezone"
+        ],
+        "type" : "object"
+      },
+      "DeviceRegistrationResponse" : {
+        "properties" : {
+          "accessToken" : {
+            "type" : "string"
+          },
+          "deviceSecret" : {
+            "type" : "string"
+          },
+          "expiresIn" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "userId" : {
+            "format" : "int64",
+            "type" : "integer"
+          }
+        },
+        "type" : "object"
+      },
+      "DeviceTokenRequest" : {
+        "properties" : {
+          "deviceSecret" : {
+            "minLength" : 1,
+            "type" : "string"
+          },
+          "installationId" : {
+            "minLength" : 1,
+            "type" : "string"
+          }
+        },
+        "required" : [
+          "deviceSecret",
+          "installationId"
+        ],
+        "type" : "object"
+      },
+      "DeviceTokenResponse" : {
+        "properties" : {
+          "accessToken" : {
+            "type" : "string"
+          },
+          "expiresIn" : {
+            "format" : "int64",
+            "type" : "integer"
+          }
+        },
+        "type" : "object"
+      },
+      "OperatorLoginRequest" : {
+        "description" : "운영자 로그인 요청",
+        "properties" : {
+          "loginId" : {
+            "description" : "운영자 로그인 식별자. 소문자와 숫자만 허용한다.",
+            "minLength" : 1,
+            "type" : "string"
+          },
+          "password" : {
+            "description" : "평문 비밀번호. 전송 구간은 TLS로 보호한다.",
+            "minLength" : 1,
+            "type" : "string"
+          }
+        },
+        "required" : [
+          "loginId",
+          "password"
+        ],
+        "type" : "object"
+      },
+      "OperatorSessionResponse" : {
+        "description" : "로그인 성공 응답. 세션은 Set-Cookie로 전달되며 본문에는 담기지 않는다.",
+        "properties" : {
+          "userId" : {
+            "description" : "로그인한 운영자의 계정 id",
+            "format" : "int64",
+            "type" : "integer"
+          }
+        },
+        "type" : "object"
+      }
+    },
+    "securitySchemes" : {
+      "appAccessToken" : {
+        "bearerFormat" : "JWT",
+        "description" : "앱 액세스 토큰. 기기 등록 또는 토큰 재발급으로 받는다.",
+        "scheme" : "bearer",
+        "type" : "http"
+      },
+      "operatorSession" : {
+        "description" : "백오피스 세션 쿠키. POST /admin/login 성공 시 발급된다.",
+        "in" : "cookie",
+        "name" : "SESSION",
+        "type" : "apiKey"
+      }
+    }
+  },
+  "info" : {
+    "description" : "Qello 백엔드 API. 모든 응답은 docs/api-response.md의 공통 계약을 따른다.\n성공은 status/data/timestamp, 실패는 status/message/errorDetail/timestamp를 갖는다.\n오류 코드 목록은 docs/error-codes.md에 있다.",
+    "title" : "Qello API",
+    "version" : "v1"
+  },
+  "openapi" : "3.1.0",
+  "paths" : {
+    "/admin/csrf" : {
+      "get" : {
+        "description" : "다음 상태 변경 요청에 실어 보낼 CSRF 토큰과 그 헤더 이름을 돌려준다.\n\n인증이 필요 없다. 로그인 POST도 CSRF 보호 대상이라 로그인 전에 토큰을 받을 경로가 있어야 한다.\n\n토큰은 인증 상태와 무관한 값이라 노출해도 안전하다. 방어의 근거는 공격자가 피해자의\n브라우저에서 이 응답을 읽을 수 없다는 same-origin 정책이다.",
+        "operationId" : "issue",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiResponseCsrfTokenResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          },
+          "400" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "요청 값이 올바르지 않습니다. 오류 코드는 docs/error-codes.md를 따른다."
+          },
+          "500" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "서버 내부 오류가 발생했습니다."
+          }
+        },
+        "summary" : "CSRF 토큰 발급",
+        "tags" : [
+          "백오피스 인증"
+        ]
+      }
+    },
+    "/admin/login" : {
+      "post" : {
+        "description" : "자격증명을 검증하고 세션 쿠키를 발급한다.\n\n실패 원인은 구분해 알리지 않는다. 존재하지 않는 loginId와 잘못된 비밀번호가 같은 401로 나간다.\n계정 열거를 막기 위한 것이다.\n\nCSRF 보호 대상이므로 GET /admin/csrf로 받은 토큰을 함께 보내야 한다.",
+        "operationId" : "login",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/OperatorLoginRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiResponseOperatorSessionResponse"
+                }
+              }
+            },
+            "description" : "로그인에 성공했습니다. 세션 쿠키가 발급됩니다."
+          },
+          "400" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "요청 값이 올바르지 않습니다. 오류 코드는 docs/error-codes.md를 따른다."
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "로그인 정보가 올바르지 않습니다. (AUT-APP-001)"
+          },
+          "403" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "사용할 수 없는 계정이거나 CSRF 토큰이 유효하지 않습니다. (AUT-APP-003, CMN-DOM-001)"
+          },
+          "423" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "연속 실패로 잠긴 계정입니다. 잠금이 풀리면 해소됩니다. (AUT-APP-002)"
+          },
+          "500" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "서버 내부 오류가 발생했습니다."
+          }
+        },
+        "summary" : "운영자 로그인",
+        "tags" : [
+          "백오피스 인증"
+        ]
+      }
+    },
+    "/admin/logout" : {
+      "post" : {
+        "description" : "세션을 무효화한다. 권한은 즉시 회수되며 유예 시간이 없다.\n\nCSRF 보호 대상이므로 GET /admin/csrf로 받은 토큰을 함께 보내야 한다.",
+        "operationId" : "logout",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiResponseVoid"
+                }
+              }
+            },
+            "description" : "로그아웃했습니다. 세션이 무효화됩니다."
+          },
+          "400" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "요청 값이 올바르지 않습니다. 오류 코드는 docs/error-codes.md를 따른다."
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "세션이 없거나 만료되었습니다. (CMN-VAL-003)"
+          },
+          "403" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "운영자 권한이 없거나 CSRF 토큰이 유효하지 않습니다. (CMN-DOM-001)"
+          },
+          "500" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "서버 내부 오류가 발생했습니다."
+          }
+        },
+        "security" : [
+          {
+            "operatorSession" : [ ]
+          }
+        ],
+        "summary" : "운영자 로그아웃",
+        "tags" : [
+          "백오피스 인증"
+        ]
+      }
+    },
+    "/api/v1/auth/devices" : {
+      "post" : {
+        "description" : "설치 식별자로 계정과 기기 자격증명을 만들고 첫 액세스 토큰을 발급한다.\n\ndeviceSecret은 이 응답에서만 평문으로 나간다. 서버는 해시만 보관하므로 다시 받을 수 없다.\n클라이언트가 이 값을 잃으면 재발급 경로를 쓸 수 없다.\n\n인증이 필요 없다. 등록 자체가 인증 수단을 얻는 과정이다.",
+        "operationId" : "register",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/DeviceRegistrationRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "201" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiResponseDeviceRegistrationResponse"
+                }
+              }
+            },
+            "description" : "기기를 등록했습니다. deviceSecret과 첫 액세스 토큰이 함께 발급됩니다."
+          },
+          "400" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "요청 값이 올바르지 않습니다. 오류 코드는 docs/error-codes.md를 따른다."
+          },
+          "409" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "이미 등록된 installationId입니다. (AUT-APP-005)"
+          },
+          "500" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "서버 내부 오류가 발생했습니다."
+          }
+        },
+        "summary" : "기기 등록",
+        "tags" : [
+          "앱 기기 인증"
+        ]
+      }
+    },
+    "/api/v1/auth/token" : {
+      "post" : {
+        "description" : "등록 때 받은 deviceSecret으로 새 액세스 토큰을 발급한다.\n\ninstallationId는 deviceSecret 조회 결과의 교차 검증용이다. 둘이 같은 기기를 가리키지\n않으면 자격증명 불일치와 같은 401로 나간다.\n\n인증이 필요 없다. 이 경로가 곧 토큰을 얻는 경로다.",
+        "operationId" : "reissue",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/DeviceTokenRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiResponseDeviceTokenResponse"
+                }
+              }
+            },
+            "description" : "새 액세스 토큰을 발급했습니다."
+          },
+          "400" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "요청 값이 올바르지 않습니다. 오류 코드는 docs/error-codes.md를 따른다."
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "기기 자격증명이 유효하지 않습니다. (AUT-APP-006)"
+          },
+          "403" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "사용할 수 없는 계정입니다. (AUT-APP-003)"
+          },
+          "500" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "서버 내부 오류가 발생했습니다."
+          }
+        },
+        "summary" : "액세스 토큰 재발급",
+        "tags" : [
+          "앱 기기 인증"
+        ]
+      }
+    }
+  },
+  "servers" : [
+    {
+      "description" : "Generated server url",
+      "url" : "http://localhost"
+    }
+  ],
+  "tags" : [
+    {
+      "description" : "앱 기기 등록과 액세스 토큰 재발급",
+      "name" : "앱 기기 인증"
+    },
+    {
+      "description" : "운영자 세션 로그인과 로그아웃",
+      "name" : "백오피스 인증"
+    }
+  ]
+}

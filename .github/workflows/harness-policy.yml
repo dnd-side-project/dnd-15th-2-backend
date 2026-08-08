@@ -81,3 +81,72 @@ jobs:
 
       - name: Run project tests
         run: ./gradlew check
+
+  # REST API가 바뀌면 OpenAPI 산출물을 개발자 대신 갱신해 PR 브랜치에 커밋한다.
+  #
+  # GITHUB_TOKEN으로 만든 push는 새 workflow 실행을 트리거하지 않으므로 봇 커밋이
+  # 자기 자신을 다시 깨우는 순환은 생기지 않는다. 대신 그 커밋은 policy job의 검사를
+  # 받지 못하므로, 커밋 직전에 같은 검증기로 메시지를 직접 확인한다.
+  sync-api-docs:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout the pull request head
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+
+      - name: Make Gradle wrapper executable
+        run: chmod +x gradlew
+
+      - name: Regenerate the OpenAPI specification
+        run: ./gradlew integrationTest --tests "*OpenApiSpecificationIntegrationTest"
+
+      - name: Sync the specification back to the pull request branch
+        env:
+          BRANCH: ${{ github.head_ref }}
+          SAME_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+        run: |
+          set -euo pipefail
+
+          # 추적되지 않은 신규 파일도 잡아야 하므로 git diff 대신 status를 본다.
+          if [ -z "$(git status --porcelain -- docs/api/openapi.json)" ]; then
+            echo "The specification is already current."
+            exit 0
+          fi
+
+          # fork pull request는 GITHUB_TOKEN이 읽기 전용이라 되돌려 push할 수 없다.
+          if [ "$SAME_REPOSITORY" != "true" ]; then
+            echo "::error::docs/api/openapi.json is stale and this pull request comes from a fork, so it cannot be synced automatically. Run ./gradlew integrationTest and commit the result."
+            exit 1
+          fi
+
+          COMMIT_TYPE="${BRANCH%%/*}"
+          if [ "$COMMIT_TYPE" = "feature" ]; then
+            COMMIT_TYPE="feat"
+          fi
+          ISSUE_NUMBER="$(printf '%s' "$BRANCH" | sed -n 's|^[^/]*/gh-\([0-9][0-9]*\)-.*$|\1|p')"
+          if [ -z "$ISSUE_NUMBER" ]; then
+            echo "::error::Cannot derive an issue number from the branch name: $BRANCH"
+            exit 1
+          fi
+          COMMIT_MESSAGE="$COMMIT_TYPE(docs): sync the openapi specification (#$ISSUE_NUMBER)"
+
+          # 커밋 규칙 위반을 커밋 전에 잡는다. 이 커밋은 push 후 재검증되지 않는다.
+          python3 scripts/validate-conventions.py --branch "$BRANCH" --commit "$COMMIT_MESSAGE"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- docs/api/openapi.json
+          git commit -m "$COMMIT_MESSAGE"
+          git push origin "HEAD:refs/heads/$BRANCH"
+          echo "Synced docs/api/openapi.json to $BRANCH."

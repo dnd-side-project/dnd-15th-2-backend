@@ -2,7 +2,6 @@ package com.dnd.qello.auth.web;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.web.csrf.CsrfToken;
-import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -17,9 +16,11 @@ import com.dnd.qello.common.web.response.ApiResponseFactory;
 //
 // 토큰은 인증 상태와 무관한 값이라 노출해도 안전하다. 방어의 근거는 공격자가 피해자의
 // 브라우저에서 이 응답을 읽을 수 없다는 same-origin 정책이다.
+//
+// 경로와 문서 애노테이션은 CsrfTokenApiSpec에 있다.
 @RestController
 @RequestMapping("/admin")
-public class CsrfTokenController {
+public class CsrfTokenController implements CsrfTokenApiSpec {
 
 	private final ApiResponseFactory responseFactory;
 
@@ -27,7 +28,7 @@ public class CsrfTokenController {
 		this.responseFactory = responseFactory;
 	}
 
-	@GetMapping("/csrf")
+	@Override
 	public ResponseEntity<ApiResponse<CsrfTokenResponse>> issue(CsrfToken csrfToken) {
 		return ResponseEntity.ok(responseFactory.success(
 			new CsrfTokenResponse(csrfToken.getHeaderName(), csrfToken.getToken())));

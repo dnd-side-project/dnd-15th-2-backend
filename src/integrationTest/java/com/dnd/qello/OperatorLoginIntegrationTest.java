@@ -204,6 +204,19 @@ class OperatorLoginIntegrationTest extends PostgisContainerIntegrationTestSuppor
 		assertThat(result.getRequest().getSession(false)).isNull();
 	}
 
+	// 매핑과 @RequestBody, @Valid는 OperatorLoginApiSpec 인터페이스에 선언되어 있고
+	// 컨트롤러는 @Override만 한다. 파라미터 애노테이션이 인터페이스에서 상속되지 않으면
+	// 본문 바인딩이나 검증이 조용히 사라지므로 그 지점을 여기서 고정한다.
+	@Test
+	@DisplayName("빈 loginId는 400과 CMN-VAL-001로 거절되어 인터페이스의 @Valid가 적용됨을 보인다")
+	void rejectsBlankLoginIdFromInterfaceValidation() throws Exception {
+		mockMvc.perform(login("", PASSWORD))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.status").value("error"))
+			.andExpect(jsonPath("$.errorDetail.code").value("CMN-VAL-001"))
+			.andExpect(jsonPath("$.errorDetail.field").value("loginId"));
+	}
+
 	private MockHttpServletRequestBuilder login(String loginId, String password) {
 		return withCsrf(post("/admin/login"))
 			.contentType(MediaType.APPLICATION_JSON)
