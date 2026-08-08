@@ -11,6 +11,7 @@ import org.springframework.stereotype.Repository;
 
 import com.dnd.qello.direction.domain.PostAudience;
 import com.dnd.qello.direction.repository.PostAudienceRepository;
+import com.dnd.qello.direction.repository.jdbc.sql.PostAudienceSql;
 
 @Repository
 public class JdbcPostAudienceRepository implements PostAudienceRepository {
@@ -21,26 +22,7 @@ public class JdbcPostAudienceRepository implements PostAudienceRepository {
 
 	@Override
 	public PostAudience save(PostAudience audience) {
-		String sql = """
-			INSERT INTO post_audience
-				(post_id, direction_scheme_id, selected_segment_key, center_bearing_deg, angular_width_deg,
-				 min_distance_m, max_distance_m, origin_position, origin_cell_id, snapshotted_at)
-			VALUES (:postId, :schemeId, :segmentKey, :center, :width, :minDistance, :maxDistance,
-				CASE WHEN :latitude IS NULL OR :longitude IS NULL THEN NULL
-				     ELSE ST_SetSRID(ST_MakePoint(:longitude, :latitude), 4326)::geography END,
-				:originCellId, :snapshottedAt)
-			ON CONFLICT (post_id) DO UPDATE SET
-				direction_scheme_id = EXCLUDED.direction_scheme_id,
-				selected_segment_key = EXCLUDED.selected_segment_key,
-				center_bearing_deg = EXCLUDED.center_bearing_deg,
-				angular_width_deg = EXCLUDED.angular_width_deg,
-				min_distance_m = EXCLUDED.min_distance_m,
-				max_distance_m = EXCLUDED.max_distance_m,
-				origin_position = EXCLUDED.origin_position,
-				origin_cell_id = EXCLUDED.origin_cell_id,
-				snapshotted_at = EXCLUDED.snapshotted_at
-			""";
-		jdbc.update(sql, new MapSqlParameterSource().addValue("postId", audience.getPostId())
+		jdbc.update(PostAudienceSql.UPSERT, new MapSqlParameterSource().addValue("postId", audience.getPostId())
 			.addValue("schemeId", audience.getDirectionSchemeId()).addValue("segmentKey", audience.getSelectedSegmentKey())
 			.addValue("center", audience.getCenterBearingDegrees()).addValue("width", audience.getAngularWidthDegrees())
 			.addValue("minDistance", audience.getMinDistanceMeters()).addValue("maxDistance", audience.getMaxDistanceMeters())
