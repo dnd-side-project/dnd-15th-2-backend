@@ -137,6 +137,9 @@ public final class Answer {
 			throw new AnswerException(
 				AnswerErrorCode.INVALID_ANSWER_STATE, "deletedAt", "DELETED 상태와 deletedAt은 함께 설정되어야 합니다");
 		}
+		if (editCount < 0) {
+			throw new AnswerException(AnswerErrorCode.INVALID_VALUE_RANGE, "editCount", "editCount는 음수일 수 없습니다");
+		}
 		if ((editCount == 0) != (editedAt == null)) {
 			throw new AnswerException(
 				AnswerErrorCode.INVALID_EDIT_STATE, "editCount", "editCount가 0이면 editedAt은 없어야 하고, 그 반대도 마찬가지입니다");

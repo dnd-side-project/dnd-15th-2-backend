@@ -105,4 +105,14 @@ class AnswerPersistenceBoundaryTest {
 			.isInstanceOf(AnswerException.class)
 			.hasFieldOrPropertyWithValue("errorCode", AnswerErrorCode.INVALID_VALUE_RANGE);
 	}
+
+	@Test
+	@DisplayName("editCount는 음수면 거절된다")
+	void rejectsNegativeEditCount() {
+		assertThatThrownBy(() -> Answer.restore(1L, 10L, 20L, AnswerStatus.PUBLISHED, "key", "답변", "TEST",
+			BigDecimal.ZERO, "NEAR", AnswerModerationStatus.PASSED, SUBMITTED, SUBMITTED, null,
+			DISTANCE_M, SUBMITTED.plusSeconds(60), -1))
+			.isInstanceOf(AnswerException.class)
+			.hasFieldOrPropertyWithValue("errorCode", AnswerErrorCode.INVALID_VALUE_RANGE);
+	}
 }
