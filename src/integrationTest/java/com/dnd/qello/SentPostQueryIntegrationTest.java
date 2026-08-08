@@ -1,6 +1,7 @@
 /**
  * Created at: 2026-08-06T15:30:00+09:00
- * Source scenario: TEST-PLAN-GH-67-SENT-POST-QUERY-INT-006 through INT-012
+ * Source scenario: TEST-PLAN-GH-67-SENT-POST-QUERY-INT-006 through INT-012,
+ * TEST-PLAN-GH-78-SCHEMA-REVISION-V7-INT-010
  */
 package com.dnd.qello;
 
@@ -95,8 +96,8 @@ class SentPostQueryIntegrationTest extends PostgisContainerIntegrationTestSuppor
 		return jdbc.queryForObject("""
 			INSERT INTO post_recipient
 				(post_id, recipient_id, status, distance_band, matched_bearing_deg, matched_region_code,
-				 matched_at, discovered_at, opened_at)
-			VALUES (?, ?, 'OPENED', 'NEAR', 45, ?, ?, ?, ?)
+				 matched_at, discovered_at, opened_at, inbound_bearing_deg, distance_m)
+			VALUES (?, ?, 'OPENED', 'NEAR', 45, ?, ?, ?, ?, 225, 5000)
 			RETURNING id
 			""", Long.class, postId, userId, REGION,
 			Timestamp.from(NOW), Timestamp.from(NOW), Timestamp.from(NOW));
@@ -106,8 +107,8 @@ class SentPostQueryIntegrationTest extends PostgisContainerIntegrationTestSuppor
 		return jdbc.queryForObject("""
 			INSERT INTO answer
 				(post_recipient_id, author_id, status, idempotency_key, body_text, coarse_region_code,
-				 bearing_from_sender_deg, distance_band, moderation_status, submitted_at, published_at)
-			VALUES (?, ?, ?, ?, '답변 본문', ?, 45, 'NEAR', 'PASSED', ?, ?)
+				 bearing_from_sender_deg, distance_band, distance_m, moderation_status, submitted_at, published_at)
+			VALUES (?, ?, ?, ?, '답변 본문', ?, 45, 'NEAR', 5000, 'PASSED', ?, ?)
 			RETURNING id
 			""", Long.class, postRecipientId, authorId, status, key, REGION,
 			Timestamp.from(NOW), publishedAt == null ? null : Timestamp.from(publishedAt));

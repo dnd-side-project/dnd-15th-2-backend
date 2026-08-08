@@ -1,6 +1,7 @@
 /**
  * Created at: 2026-08-06T14:00:00+09:00
- * Source scenario: TEST-PLAN-GH-67-INBOX-SENT-POST-INT-001 through INT-019
+ * Source scenario: TEST-PLAN-GH-67-INBOX-SENT-POST-INT-001 through INT-019,
+ * TEST-PLAN-GH-78-SCHEMA-REVISION-V7-INT-010, INT-011
  */
 package com.dnd.qello;
 
@@ -136,8 +137,9 @@ class InboxSentPostWriteIntegrationTest extends PostgisContainerIntegrationTestS
 	private long recipient(long targetPostId, long targetRecipientId, String status) {
 		return jdbc.queryForObject("""
 			INSERT INTO post_recipient
-				(post_id, recipient_id, status, distance_band, matched_bearing_deg, matched_region_code, matched_at)
-			VALUES (?, ?, ?, 'NEAR', 45, ?, ?)
+				(post_id, recipient_id, status, distance_band, matched_bearing_deg, matched_region_code, matched_at,
+				 inbound_bearing_deg, distance_m)
+			VALUES (?, ?, ?, 'NEAR', 45, ?, ?, 225, 5000)
 			RETURNING id
 			""", Long.class, targetPostId, targetRecipientId, status, REGION, Timestamp.from(NOW));
 	}
@@ -146,8 +148,8 @@ class InboxSentPostWriteIntegrationTest extends PostgisContainerIntegrationTestS
 		return jdbc.queryForObject("""
 			INSERT INTO answer
 				(post_recipient_id, author_id, status, idempotency_key, body_text, coarse_region_code,
-				 bearing_from_sender_deg, distance_band, moderation_status, submitted_at, published_at)
-			VALUES (?, ?, 'PUBLISHED', ?, '답변 본문', ?, 45, 'NEAR', 'PASSED', ?, ?)
+				 bearing_from_sender_deg, distance_band, distance_m, moderation_status, submitted_at, published_at)
+			VALUES (?, ?, 'PUBLISHED', ?, '답변 본문', ?, 45, 'NEAR', 5000, 'PASSED', ?, ?)
 			RETURNING id
 			""", Long.class, targetPostRecipientId, authorId, idempotencyKey, REGION,
 			Timestamp.from(publishedAt), Timestamp.from(publishedAt));
@@ -308,10 +310,10 @@ class InboxSentPostWriteIntegrationTest extends PostgisContainerIntegrationTestS
 		long answerId = publishedAnswer(postRecipientId, recipientId, "answer-1", NOW.plusSeconds(30));
 
 		assertThat(answerReactionService.toggle(answerId, senderId, NOW.plusSeconds(40))).isTrue();
-		assertThat(answerReactionRepository.findByAnswerId(answerId)).isPresent();
+		assertThat(answerReactionRepository.findByAnswerIdAndReactorId(answerId, senderId)).isPresent();
 
 		assertThat(answerReactionService.toggle(answerId, senderId, NOW.plusSeconds(50))).isFalse();
-		assertThat(answerReactionRepository.findByAnswerId(answerId)).isEmpty();
+		assertThat(answerReactionRepository.findByAnswerIdAndReactorId(answerId, senderId)).isEmpty();
 	}
 
 	@Test
@@ -322,7 +324,7 @@ class InboxSentPostWriteIntegrationTest extends PostgisContainerIntegrationTestS
 		assertThatThrownBy(() -> answerReactionService.toggle(answerId, outsiderId, NOW.plusSeconds(40)))
 			.isInstanceOf(AnswerException.class)
 			.hasFieldOrPropertyWithValue("errorCode", AnswerErrorCode.INELIGIBLE_REACTOR);
-		assertThat(answerReactionRepository.findByAnswerId(answerId)).isEmpty();
+		assertThat(answerReactionRepository.findByAnswerIdAndReactorId(answerId, outsiderId)).isEmpty();
 	}
 
 	@Test
@@ -339,8 +341,8 @@ class InboxSentPostWriteIntegrationTest extends PostgisContainerIntegrationTestS
 		return jdbc.queryForObject("""
 			INSERT INTO answer
 				(post_recipient_id, author_id, status, idempotency_key, body_text, coarse_region_code,
-				 bearing_from_sender_deg, distance_band, moderation_status, submitted_at)
-			VALUES (?, ?, 'SUBMITTED', ?, '답변 본문', ?, 45, 'NEAR', 'PENDING', ?)
+				 bearing_from_sender_deg, distance_band, distance_m, moderation_status, submitted_at)
+			VALUES (?, ?, 'SUBMITTED', ?, '답변 본문', ?, 45, 'NEAR', 5000, 'PENDING', ?)
 			RETURNING id
 			""", Long.class, targetPostRecipientId, authorId, idempotencyKey, REGION, Timestamp.from(NOW));
 	}

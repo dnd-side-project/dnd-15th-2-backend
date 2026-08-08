@@ -109,6 +109,10 @@ class DirectionPostgisPersistenceIntegrationTest extends PostgisContainerIntegra
 		assertThat(candidates).extracting(candidate -> candidate.userId()).containsExactly(northId);
 		assertThat(candidates.get(0).distanceMeters()).isGreaterThan(BigDecimal.ZERO);
 		assertThat(candidates.get(0).bearingDegrees()).isBetween(BigDecimal.ZERO, BigDecimal.valueOf(45));
+		// north는 sender 정북에 있다(발송자→후보 bearing이 0°에 가깝다). 역방위(후보→발송자)는
+		// 그 반대인 180°에 가까워야 하며, 단순 +180 평면 근사가 아니라 ST_Azimuth를 후보
+		// 위치를 원점으로 다시 계산한 값이라는 것을 이 경계로 확인한다.
+		assertThat(candidates.get(0).inboundBearingDegrees()).isBetween(BigDecimal.valueOf(135), BigDecimal.valueOf(225));
 	}
 
 	@Test
