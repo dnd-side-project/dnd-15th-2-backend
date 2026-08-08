@@ -94,11 +94,11 @@ class DirectionPostgisPersistenceIntegrationTest extends PostgisContainerIntegra
 	@DisplayName("PostGIS 후보 query는 현재이고 수신 허용이며 선택 sector 안의 사용자만 반환한다")
 	void findsCurrentCandidatesWithoutExposingCoordinates() {
 		long senderId = createUser("sender");
-		long northId = createUser("north");
+		long northeastId = createUser("northeast");
 		long expiredId = createUser("expired");
 		presenceRepository.save(ActiveUserPresence.create(senderId, BigDecimal.valueOf(37.5000), BigDecimal.valueOf(127.0000),
 			null, REGION, BigDecimal.ONE, true, AT.minusSeconds(10), AT.plusSeconds(3600)));
-		presenceRepository.save(ActiveUserPresence.create(northId, BigDecimal.valueOf(37.5010), BigDecimal.valueOf(127.0000),
+		presenceRepository.save(ActiveUserPresence.create(northeastId, BigDecimal.valueOf(37.5010), BigDecimal.valueOf(127.0010),
 			null, REGION, BigDecimal.ONE, true, AT.minusSeconds(10), AT.plusSeconds(3600)));
 		presenceRepository.save(ActiveUserPresence.create(expiredId, BigDecimal.valueOf(37.5020), BigDecimal.valueOf(127.0000),
 			null, REGION, BigDecimal.ONE, true, AT.minusSeconds(7200), AT.minusSeconds(1)));
@@ -106,13 +106,15 @@ class DirectionPostgisPersistenceIntegrationTest extends PostgisContainerIntegra
 		var candidates = presenceRepository.findCandidates(senderId, 37.5000, 127.0000, 0, 500,
 			0, 45, AT, REGION);
 
-		assertThat(candidates).extracting(candidate -> candidate.userId()).containsExactly(northId);
+		assertThat(candidates).extracting(candidate -> candidate.userId()).containsExactly(northeastId);
 		assertThat(candidates.get(0).distanceMeters()).isGreaterThan(BigDecimal.ZERO);
 		assertThat(candidates.get(0).bearingDegrees()).isBetween(BigDecimal.ZERO, BigDecimal.valueOf(45));
-		// north는 sender 정북에 있다(발송자→후보 bearing이 0°에 가깝다). 역방위(후보→발송자)는
-		// 그 반대인 180°에 가까워야 하며, 단순 +180 평면 근사가 아니라 ST_Azimuth를 후보
-		// 위치를 원점으로 다시 계산한 값이라는 것을 이 경계로 확인한다.
-		assertThat(candidates.get(0).inboundBearingDegrees()).isBetween(BigDecimal.valueOf(135), BigDecimal.valueOf(225));
+		// northeast는 위도·경도가 모두 sender와 다르다(발송자→후보 bearing이 약 38.4°).
+		// 위도·경도가 같은 축(정북)이면 forward+180과 실제 역방위가 우연히 정확히 일치해
+		// 단순 평면 근사와 ST_Azimuth 재계산을 구분하지 못한다. 여기서는 forward bearing과
+		// 뚜렷이 구분되는 좁은 범위(약 218.4° 부근)로, 후보 위치를 원점으로 다시 계산한
+		// 값이라는 것을 확인한다 — forward(38°)나 두 값의 평균(128°) 같은 오류값은 이 범위 밖이다.
+		assertThat(candidates.get(0).inboundBearingDegrees()).isBetween(BigDecimal.valueOf(215), BigDecimal.valueOf(222));
 	}
 
 	@Test
