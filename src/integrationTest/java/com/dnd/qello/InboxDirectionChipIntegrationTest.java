@@ -9,6 +9,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.List;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -140,30 +141,36 @@ class InboxDirectionChipIntegrationTest extends PostgisContainerIntegrationTestS
 	}
 
 	@Test
-	@DisplayName("경계각은 시작 구간에 포함되고 그 직전 각은 이전 구간에 남아 두 구간에 중복 계상되지 않는다")
+	@DisplayName("경계각은 시작 구간에만, 그 직전 각은 이전 구간에만 속해 두 구간에 중복 계상되지 않는다")
 	void boundaryAnglesBelongToExactlyOneSegment() {
-		// OCTANT: 8구간 45도, 시작각 = center - 22.5. N=337.5, NE=22.5, E=67.5, SE=112.5,
-		// S=157.5, SW=202.5, W=247.5, NW=292.5.
+		// OCTANT: 8구간 45도, 시작각 = center - 22.5. 이 목록 순서 자체가 원형 인접
+		// 순서다 — 인덱스 i의 이전 구간은 (i - 1 + size) % size다(N의 이전은 NW).
 		record Boundary(double startDeg, String startSegment) {
 		}
 		List<Boundary> boundaries = List.of(
 			new Boundary(22.5, "NE"), new Boundary(67.5, "E"), new Boundary(112.5, "SE"),
 			new Boundary(157.5, "S"), new Boundary(202.5, "SW"), new Boundary(247.5, "W"),
 			new Boundary(292.5, "NW"), new Boundary(337.5, "N"));
+		List<String> allSegmentKeys = boundaries.stream().map(Boundary::startSegment).toList();
 
+		List<Long> startPostIds = new ArrayList<>();
+		List<Long> beforePostIds = new ArrayList<>();
 		for (Boundary boundary : boundaries) {
-			unansweredRecipient(post(NOW.plus(1, ChronoUnit.HOURS)), boundary.startDeg());
-			unansweredRecipient(post(NOW.plus(1, ChronoUnit.HOURS)), boundary.startDeg() - 0.001);
+			long startPostId = post(NOW.plus(1, ChronoUnit.HOURS));
+			unansweredRecipient(startPostId, boundary.startDeg());
+			startPostIds.add(startPostId);
+
+			long beforePostId = post(NOW.plus(1, ChronoUnit.HOURS));
+			unansweredRecipient(beforePostId, boundary.startDeg() - 0.001);
+			beforePostIds.add(beforePostId);
 		}
 
-		List<DirectionChip> chips =
-			inboxQueryService.list(recipientId, InboxCategory.UNANSWERED, null, NOW.plusSeconds(1)).chips();
+		for (int i = 0; i < boundaries.size(); i++) {
+			Boundary boundary = boundaries.get(i);
+			String previousSegment = allSegmentKeys.get(Math.floorMod(i - 1, allSegmentKeys.size()));
 
-		assertThat(chips.stream().mapToLong(DirectionChip::count).sum()).isEqualTo(boundaries.size() * 2L);
-		for (Boundary boundary : boundaries) {
-			assertThat(chip(chips, boundary.startSegment()).count())
-				.as("시작각 %.3f는 %s 구간에 속해야 한다", boundary.startDeg(), boundary.startSegment())
-				.isGreaterThanOrEqualTo(1L);
+			assertBelongsToExactlyOneSegment(startPostIds.get(i), boundary.startSegment(), allSegmentKeys);
+			assertBelongsToExactlyOneSegment(beforePostIds.get(i), previousSegment, allSegmentKeys);
 		}
 	}
 
@@ -173,6 +180,7 @@ class InboxDirectionChipIntegrationTest extends PostgisContainerIntegrationTestS
 		long schemeId = jdbc.queryForObject(
 			"SELECT id FROM direction_scheme WHERE code = 'OCTANT' AND status = 'ACTIVE'", Long.class);
 		List<DirectionSegment> segments = directionSchemeRepository.findSegments(schemeId);
+		List<String> allSegmentKeys = segments.stream().map(DirectionSegment::getSegmentKey).toList();
 
 		double[] sweep = {
 			0, 45, 90, 135, 180, 225, 270, 315,
@@ -191,13 +199,22 @@ class InboxDirectionChipIntegrationTest extends PostgisContainerIntegrationTestS
 			long postId = post(NOW.plus(1, ChronoUnit.HOURS));
 			unansweredRecipient(postId, bearing);
 
-			boolean sqlAgreesWithDomain = inboxQueryService
-				.list(recipientId, InboxCategory.UNANSWERED, expectedKey, NOW.plusSeconds(1))
-				.cards().stream().anyMatch(card -> card.postId() == postId);
+			assertBelongsToExactlyOneSegment(postId, expectedKey, allSegmentKeys);
+		}
+	}
 
-			assertThat(sqlAgreesWithDomain)
-				.as("방위각 %.3f: 도메인은 %s로 판정했으나 SQL 필터가 이 행을 반환하지 않았다", bearing, expectedKey)
-				.isTrue();
+	/** postId가 expectedSegment로 필터했을 때만 나오고 나머지 구간 전부에서는 나오지 않는지 확인한다. */
+	private void assertBelongsToExactlyOneSegment(long postId, String expectedSegment, List<String> allSegmentKeys) {
+		for (String key : allSegmentKeys) {
+			boolean matches = inboxQueryService.list(recipientId, InboxCategory.UNANSWERED, key, NOW.plusSeconds(1))
+				.cards().stream().anyMatch(card -> card.postId() == postId);
+			if (key.equals(expectedSegment)) {
+				assertThat(matches).as("post %d는 %s 구간에 속해야 한다", postId, expectedSegment).isTrue();
+			} else {
+				assertThat(matches)
+					.as("post %d는 %s 구간에 속하지 않아야 한다(기대 구간: %s)", postId, key, expectedSegment)
+					.isFalse();
+			}
 		}
 	}
 
