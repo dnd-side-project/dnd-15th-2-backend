@@ -3,6 +3,7 @@ package com.dnd.qello.direction.repository.jdbc;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
@@ -95,6 +96,17 @@ public class JdbcPostRecipientRepository implements PostRecipientRepository {
 			.addValue("capacityReleasedAt", timestamp(answered.getCapacityReleasedAt()))
 			.addValue("previousStatus", previousStatus.name()),
 			rs -> rs.next() ? Optional.of(map(rs)) : Optional.empty());
+	}
+
+	@Override
+	public PostRecipient advanceAnswersReadAt(long id, Instant at) {
+		return jdbc.query("""
+			UPDATE post_recipient
+			SET answers_read_at = GREATEST(answers_read_at, :at)
+			WHERE id = :id
+			RETURNING *
+			""", new MapSqlParameterSource().addValue("id", id).addValue("at", timestamp(at)),
+			rs -> { rs.next(); return map(rs); });
 	}
 
 	private Optional<PostRecipient> one(String sql, MapSqlParameterSource params) {

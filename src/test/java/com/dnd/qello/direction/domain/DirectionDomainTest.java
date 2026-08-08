@@ -16,7 +16,8 @@ import com.dnd.qello.direction.error.DirectionException;
 /**
  * Created at: 2026-08-03T20:30:00+09:00
  * Source scenario: TEST-PLAN-GH-39-DIRECTION-POSTGIS-PERSISTENCE-UNIT-001 through UNIT-006,
- * TEST-PLAN-GH-78-SCHEMA-REVISION-V7-UNIT-002 through UNIT-004
+ * TEST-PLAN-GH-78-SCHEMA-REVISION-V7-UNIT-002 through UNIT-004,
+ * TEST-PLAN-GH-79-ANSWER-VISIBILITY-RECIPIENTS-UNIT-001 through UNIT-003
  */
 class DirectionDomainTest {
 
@@ -319,5 +320,36 @@ class DirectionDomainTest {
 		assertThatThrownBy(() -> post.markAnswersRead(submitted.minusSeconds(1)))
 			.isInstanceOf(DirectionException.class)
 			.hasFieldOrPropertyWithValue("errorCode", DirectionErrorCode.INVALID_TIME_ORDER);
+	}
+
+	@Test
+	@DisplayName("PostRecipient.markAnswersRead는 답변 읽음 시각을 기록하고 상태는 그대로 둔다")
+	void recipientMarksAnswersRead() {
+		PostRecipient recipient = availableRecipient();
+
+		PostRecipient read = recipient.markAnswersRead(MATCHED.plusSeconds(60));
+
+		assertThat(read.getAnswersReadAt()).isEqualTo(MATCHED.plusSeconds(60));
+		assertThat(read.getStatus()).isEqualTo(recipient.getStatus());
+	}
+
+	@Test
+	@DisplayName("PostRecipient.markAnswersRead는 matchedAt보다 이른 시각을 거부한다")
+	void recipientMarkAnswersReadRejectsBeforeMatchedAt() {
+		PostRecipient recipient = availableRecipient();
+
+		assertThatThrownBy(() -> recipient.markAnswersRead(MATCHED.minusSeconds(1)))
+			.isInstanceOf(DirectionException.class)
+			.hasFieldOrPropertyWithValue("errorCode", DirectionErrorCode.INVALID_TIME_ORDER);
+	}
+
+	@Test
+	@DisplayName("PostRecipient.markAnswersRead는 null 시각을 거부한다")
+	void recipientMarkAnswersReadRejectsNull() {
+		PostRecipient recipient = availableRecipient();
+
+		assertThatThrownBy(() -> recipient.markAnswersRead(null))
+			.isInstanceOf(DirectionException.class)
+			.hasFieldOrPropertyWithValue("errorCode", DirectionErrorCode.REQUIRED_VALUE_MISSING);
 	}
 }

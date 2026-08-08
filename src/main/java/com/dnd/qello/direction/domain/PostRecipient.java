@@ -258,4 +258,17 @@ public final class PostRecipient {
 			inboundBearingDegrees, distanceM, answersReadAt);
 	}
 
+	/**
+	 * 이 수신자가 그 질문글의 답변 목록을 읽은 시각을 기록한다. `새로운 답변 n개` 배지는
+	 * 이 시각 이후 공개된 답변만 센다. direction_post.answers_read_at(질문자 전용)과
+	 * 별도로 수신자마다 기준선이 필요하다 — 답변이 전원에게 공개되면서 사람마다 마지막으로
+	 * 본 시점이 달라졌기 때문이다.
+	 */
+	public PostRecipient markAnswersRead(Instant at) {
+		requireValue(at, "at");
+		return new PostRecipient(id, postId, recipientId, status, distanceBand,
+			matchedBearingDegrees, matchedRegionCode, matchedAt, discoveredAt, openedAt, skipRequestedAt, skippedAt,
+			capacityReleasedAt, expiredAt, blockedAt, inboundBearingDegrees, distanceM, at);
+	}
+
 }

@@ -1,5 +1,6 @@
 package com.dnd.qello.direction.repository;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
@@ -30,4 +31,12 @@ public interface PostRecipientRepository {
 	Optional<PostRecipient> findByIdAndRecipientId(long id, long recipientId);
 
 	Optional<PostRecipient> findByPostIdAndRecipientId(long postId, long recipientId);
+
+	/**
+	 * answers_read_at을 GREATEST(현재값, at)로 갱신하는 단일 UPDATE다.
+	 * DirectionPostRepository.advanceAnswersReadAt과 같은 이유로 read-then-write가
+	 * 아닌 이 방식을 쓴다 — 순서가 뒤바뀌어 도착한 요청이 이미 기록된 더 늦은 시각을
+	 * 덮어쓰지 않게 한다.
+	 */
+	PostRecipient advanceAnswersReadAt(long id, Instant at);
 }

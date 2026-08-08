@@ -50,6 +50,20 @@ public class PostRecipientService {
 		return recipientRepository.save(load(recipientId, postRecipientId).revertSkip());
 	}
 
+	/**
+	 * 이 수신자가 그 질문글의 답변 목록을 읽었음을 기록한다. `새로운 답변 n개` 배지가
+	 * 이 값으로 계산된다. recipient.markAnswersRead(at)는 유효성만 검증하고 결과는
+	 * 버린다 — 실제 반영은 advanceAnswersReadAt()의 DB 단일 UPDATE(GREATEST 비교)로
+	 * 위임해, 순서가 뒤바뀌어 도착한 요청이 이미 기록된 더 늦은 시각을 덮어쓰지 않게
+	 * 한다(direction.service.DirectionPostService.markAnswersRead와 같은 이유).
+	 */
+	@Transactional
+	public PostRecipient markAnswersRead(long recipientId, long postRecipientId, Instant at) {
+		PostRecipient recipient = load(recipientId, postRecipientId);
+		recipient.markAnswersRead(at);
+		return recipientRepository.advanceAnswersReadAt(postRecipientId, at);
+	}
+
 	/** 존재하지 않는 경우와 남의 항목인 경우를 구분하지 않는다. 구분하면 존재 여부가 새어나간다. */
 	private PostRecipient load(long recipientId, long postRecipientId) {
 		return recipientRepository.findByIdAndRecipientId(postRecipientId, recipientId)
