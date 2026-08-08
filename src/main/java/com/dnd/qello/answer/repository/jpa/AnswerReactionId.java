@@ -13,7 +13,7 @@ import java.util.Objects;
  */
 @NoArgsConstructor
 @AllArgsConstructor
-final class AnswerReactionId implements Serializable {
+public final class AnswerReactionId implements Serializable {
 
 	private Long answerId;
 	private Long reactorId;
