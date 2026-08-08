@@ -278,10 +278,10 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 			SELECT a.attname
 			FROM pg_constraint pc
 			JOIN pg_class c ON c.oid = pc.conrelid
-			JOIN unnest(pc.conkey) AS colnum ON true
-			JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum = colnum
+			JOIN unnest(pc.conkey) WITH ORDINALITY AS key_column(attnum, position) ON true
+			JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum = key_column.attnum
 			WHERE c.relname = 'answer_reaction' AND pc.contype = 'p'
-			ORDER BY a.attname
+			ORDER BY key_column.position
 			""", String.class);
 
 		assertThat(answerReactionPkColumns).containsExactly("answer_id", "reactor_id");
