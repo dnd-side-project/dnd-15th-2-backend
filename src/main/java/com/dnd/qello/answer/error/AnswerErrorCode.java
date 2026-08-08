@@ -30,6 +30,9 @@ public enum AnswerErrorCode implements ErrorCode {
 	// 미디어 metadata(mime type, 크기, storage key, checksum) 형식·화이트리스트 위반
 	INVALID_MEDIA_METADATA(HttpStatus.BAD_REQUEST, "ANS-VAL-006", ErrorCategory.VAL, "미디어 값이 올바르지 않습니다."),
 
+	// 거리(distanceM) 값이 음수
+	INVALID_VALUE_RANGE(HttpStatus.BAD_REQUEST, "ANS-VAL-007", ErrorCategory.VAL, "값의 범위가 올바르지 않습니다."),
+
 	// 답변 상태와 게시·삭제 시각의 불일치
 	INVALID_ANSWER_STATE(HttpStatus.BAD_REQUEST, "ANS-DOM-001", ErrorCategory.DOM, "답변 상태와 값이 맞지 않습니다."),
 
@@ -57,6 +60,10 @@ public enum AnswerErrorCode implements ErrorCode {
 	// attach/detach 결과로 공개 상태 콘텐츠가 본문도 READY 미디어도 없게 됨. ct_media_attachment_preserves_content/
 	// ct_media_status_preserves_content deferred trigger의 애플리케이션 사전 검증
 	MEDIA_CONTENT_REQUIRED(HttpStatus.CONFLICT, "ANS-DOM-009", ErrorCategory.DOM, "공개된 콘텐츠는 본문 또는 미디어가 있어야 합니다."),
+
+	// editCount와 editedAt의 동치(수정 이력이 있으면 반드시 시각이 있다) 위반. ck_answer_edit_count_edited_at의
+	// 애플리케이션 사전 검증
+	INVALID_EDIT_STATE(HttpStatus.BAD_REQUEST, "ANS-DOM-010", ErrorCategory.DOM, "수정 횟수와 수정 시각이 맞지 않습니다."),
 
 	// 같은 멱등키로 이미 등록된 답변 존재. DB 유일성 제약에서 감지
 	DUPLICATED_ANSWER(HttpStatus.CONFLICT, "ANS-INFRA-001", ErrorCategory.INFRA, "이미 등록된 답변입니다."),

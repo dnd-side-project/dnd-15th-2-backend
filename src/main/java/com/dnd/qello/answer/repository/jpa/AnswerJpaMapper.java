@@ -10,6 +10,7 @@ final class AnswerJpaMapper {
 		return Answer.restore(entity.getId(), entity.getPostRecipientId(), entity.getAuthorId(),
 			entity.getStatus(), entity.getIdempotencyKey(), entity.getBodyText(),
 			entity.getCoarseRegionCode(), entity.getBearingFromSenderDegrees(), entity.getDistanceBand(),
-			entity.getModerationStatus(), entity.getSubmittedAt(), entity.getPublishedAt(), entity.getDeletedAt());
+			entity.getModerationStatus(), entity.getSubmittedAt(), entity.getPublishedAt(), entity.getDeletedAt(),
+			entity.getDistanceM(), entity.getEditedAt(), entity.getEditCount());
 	}
 }

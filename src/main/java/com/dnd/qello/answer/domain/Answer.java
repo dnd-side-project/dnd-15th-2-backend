@@ -25,12 +25,15 @@ public final class Answer {
 	private final Instant submittedAt;
 	private final Instant publishedAt;
 	private final Instant deletedAt;
+	private final long distanceM;
+	private final Instant editedAt;
+	private final int editCount;
 
 	private Answer(Long id, long postRecipientId, long authorId, AnswerStatus status,
 		String idempotencyKey, String bodyText, String coarseRegionCode,
 		BigDecimal bearingFromSenderDegrees, String distanceBand,
 		AnswerModerationStatus moderationStatus, Instant submittedAt,
-		Instant publishedAt, Instant deletedAt) {
+		Instant publishedAt, Instant deletedAt, long distanceM, Instant editedAt, int editCount) {
 		this.id = validatePositiveOrNull(id, "id");
 		this.postRecipientId = requirePositive(postRecipientId, "postRecipientId");
 		this.authorId = requirePositive(authorId, "authorId");
@@ -44,25 +47,31 @@ public final class Answer {
 		this.submittedAt = requireValue(submittedAt, "submittedAt");
 		this.publishedAt = publishedAt;
 		this.deletedAt = deletedAt;
+		if (distanceM < 0) {
+			throw new AnswerException(AnswerErrorCode.INVALID_VALUE_RANGE, "distanceM", "distanceM은 음수일 수 없습니다");
+		}
+		this.distanceM = distanceM;
+		this.editedAt = editedAt;
+		this.editCount = editCount;
 		validateState();
 	}
 
 	public static Answer submit(long postRecipientId, long authorId, String idempotencyKey,
 		String bodyText, String coarseRegionCode, BigDecimal bearingFromSenderDegrees,
-		String distanceBand, Instant submittedAt) {
+		String distanceBand, Instant submittedAt, long distanceM) {
 		return new Answer(null, postRecipientId, authorId, AnswerStatus.SUBMITTED, idempotencyKey,
 			bodyText, coarseRegionCode, bearingFromSenderDegrees, distanceBand,
-			AnswerModerationStatus.PENDING, submittedAt, null, null);
+			AnswerModerationStatus.PENDING, submittedAt, null, null, distanceM, null, 0);
 	}
 
 	public static Answer restore(Long id, long postRecipientId, long authorId, AnswerStatus status,
 		String idempotencyKey, String bodyText, String coarseRegionCode,
 		BigDecimal bearingFromSenderDegrees, String distanceBand,
 		AnswerModerationStatus moderationStatus, Instant submittedAt,
-		Instant publishedAt, Instant deletedAt) {
+		Instant publishedAt, Instant deletedAt, long distanceM, Instant editedAt, int editCount) {
 		return new Answer(id, postRecipientId, authorId, status, idempotencyKey, bodyText,
 			coarseRegionCode, bearingFromSenderDegrees, distanceBand, moderationStatus,
-			submittedAt, publishedAt, deletedAt);
+			submittedAt, publishedAt, deletedAt, distanceM, editedAt, editCount);
 	}
 
 	public Answer startSafetyCheck() {
@@ -109,7 +118,7 @@ public final class Answer {
 		Instant nextPublishedAt, Instant nextDeletedAt) {
 		return new Answer(id, postRecipientId, authorId, nextStatus, idempotencyKey, bodyText,
 			coarseRegionCode, bearingFromSenderDegrees, distanceBand, nextModeration,
-			submittedAt, nextPublishedAt, nextDeletedAt);
+			submittedAt, nextPublishedAt, nextDeletedAt, distanceM, editedAt, editCount);
 	}
 
 	private void requireStatus(AnswerStatus expected, String action) {
@@ -127,6 +136,10 @@ public final class Answer {
 		if ((status == AnswerStatus.DELETED) != (deletedAt != null)) {
 			throw new AnswerException(
 				AnswerErrorCode.INVALID_ANSWER_STATE, "deletedAt", "DELETED 상태와 deletedAt은 함께 설정되어야 합니다");
+		}
+		if ((editCount == 0) != (editedAt == null)) {
+			throw new AnswerException(
+				AnswerErrorCode.INVALID_EDIT_STATE, "editCount", "editCount가 0이면 editedAt은 없어야 하고, 그 반대도 마찬가지입니다");
 		}
 		if (bodyText == null && status == AnswerStatus.PUBLISHED) {
 			// READY media 첨부가 있는 경우는 DB deferred trigger가 최종 판정한다.
@@ -191,4 +204,7 @@ public final class Answer {
 	public Instant getSubmittedAt() { return submittedAt; }
 	public Instant getPublishedAt() { return publishedAt; }
 	public Instant getDeletedAt() { return deletedAt; }
+	public long getDistanceM() { return distanceM; }
+	public Instant getEditedAt() { return editedAt; }
+	public int getEditCount() { return editCount; }
 }
