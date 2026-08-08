@@ -1,12 +1,14 @@
 /**
  * Created at: 2026-08-05T04:08:29+09:00
- * Source scenario: TEST-PLAN-GH-54-SCHEMA-REVISION-BACKFILL-INT-001, TEST-PLAN-GH-54-SCHEMA-REVISION-BACKFILL-INT-002, TEST-PLAN-GH-54-SCHEMA-REVISION-BACKFILL-INT-003
+ * Source scenario: TEST-PLAN-GH-54-SCHEMA-REVISION-BACKFILL-INT-001, TEST-PLAN-GH-54-SCHEMA-REVISION-BACKFILL-INT-002, TEST-PLAN-GH-54-SCHEMA-REVISION-BACKFILL-INT-003,
+ * TEST-PLAN-GH-78-SCHEMA-REVISION-V7-INT-002
  */
 package com.dnd.qello;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.math.BigDecimal;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -30,6 +32,8 @@ class SchemaRevisionMigrationIntegrationTest extends PostgisContainerIntegration
 
 	private static final String SCHEMA = "v2_backfill";
 	private static final String CONFLICT_SCHEMA = "v2_backfill_conflict";
+	private static final String V8_SCHEMA = "v8_backfill";
+	private static final String V8_CONFLICT_SCHEMA = "v8_backfill_conflict";
 	private static final Instant NOW = Instant.parse("2026-08-04T09:00:00Z");
 
 	@Autowired
@@ -52,18 +56,31 @@ class SchemaRevisionMigrationIntegrationTest extends PostgisContainerIntegration
 		return flywayForSchema(SCHEMA, targets);
 	}
 
-	@BeforeAll
-	static void applyV1Only() {
-		flywayFor("1").migrate();
-	}
-
 	// 세 번째 시나리오(post_recipient당 살아있는 답변 2건 이상)는 V2 마이그레이션이
 	// "실패"해야 검증되는 시나리오다. backfillsLegacyRowsBeforeTighteningConstraints가
 	// SCHEMA를 이미 V2까지 성공적으로 올려 버리므로 같은 schema를 재사용할 수 없다 —
 	// 별도 schema에 V1만 적용해 독립적으로 격리한다.
 	@BeforeAll
+	static void applyV1Only() {
+		flywayFor("1").migrate();
+	}
+
+	@BeforeAll
 	static void applyV1OnlyToConflictSchema() {
 		flywayForSchema(CONFLICT_SCHEMA, "1").migrate();
+	}
+
+	// v8BackfillsLegacyRowsWithConstraintSatisfyingPlaceholders가 V8_SCHEMA를 이미
+	// V8까지 성공적으로 올려 버리므로, uq_answer_one_per_recipient 조건 축소가
+	// 실패해야 하는 시나리오는 V6까지만 적용한 별도 schema에서 독립적으로 검증한다.
+	@BeforeAll
+	static void applyV1ThroughV6ToV8Schema() {
+		flywayForSchema(V8_SCHEMA, "6").migrate();
+	}
+
+	@BeforeAll
+	static void applyV1ThroughV6ToV8ConflictSchema() {
+		flywayForSchema(V8_CONFLICT_SCHEMA, "6").migrate();
 	}
 
 	@Test
@@ -165,6 +182,15 @@ class SchemaRevisionMigrationIntegrationTest extends PostgisContainerIntegration
 			.contains("SKIP_PENDING");
 		assertThat(constraintDefinition("ck_recipient_receive_state_active_count"))
 			.contains("50");
+		assertThat(constraintDefinition("ck_answer_edit_count"))
+			.contains("10");
+		assertThat(constraintDefinition("ck_answer_edit_count_edited_at"))
+			.contains("edited_at");
+
+		String uniqueIndexDefinition = jdbcTemplate.queryForObject(
+			"SELECT indexdef FROM pg_indexes WHERE indexname = 'uq_answer_one_per_recipient' AND schemaname = 'public'",
+			String.class);
+		assertThat(uniqueIndexDefinition).contains("REJECTED").doesNotContain("DELETED");
 	}
 
 	@Test
@@ -235,10 +261,160 @@ class SchemaRevisionMigrationIntegrationTest extends PostgisContainerIntegration
 		});
 	}
 
+	@Test
+	@DisplayName("V8은 신규 컬럼이 없던 레거시 post_recipient/answer 행을 제약을 만족하는 값으로 백필한 뒤 NOT NULL을 건다")
+	void v8BackfillsLegacyRowsWithConstraintSatisfyingPlaceholders() {
+		jdbcTemplate.execute((ConnectionCallback<Void>) connection -> {
+			JdbcTemplate scoped = new JdbcTemplate(new SingleConnectionDataSource(connection, true));
+			scoped.execute("SET search_path TO " + V8_SCHEMA);
+
+			scoped.update("INSERT INTO region_code (code, display_name, level) "
+				+ "VALUES ('TEST-V7', 'V7 Test', 'COUNTRY')");
+			Long senderId = insertV7Account(scoped, "v7-sender");
+			Long recipientId = insertV7Account(scoped, "v7-recipient");
+			Long questionId = scoped.queryForObject("""
+				INSERT INTO approved_question
+					(source_type, status, question_text, answer_format, active_from, approved_at, approved_by)
+				VALUES ('OPERATOR', 'ACTIVE', 'V7 질문', 'TEXT', ?, ?, ?)
+				RETURNING id
+				""", Long.class, Timestamp.from(NOW.minusSeconds(10)), Timestamp.from(NOW), senderId);
+			Long postId = scoped.queryForObject("""
+				INSERT INTO direction_post
+					(sender_id, approved_question_id, status, idempotency_key, body_text,
+					 coarse_region_code, moderation_status, submitted_at, published_at, expires_at)
+				VALUES (?, ?, 'ACTIVE', 'v7-post', '글', 'TEST-V7', 'PASSED', ?, ?, ?)
+				RETURNING id
+				""", Long.class, senderId, questionId, Timestamp.from(NOW), Timestamp.from(NOW),
+				Timestamp.from(NOW.plus(1, ChronoUnit.HOURS)));
+
+			// V6까지는 inbound_bearing_deg/distance_m/answers_read_at(post_recipient)과
+			// distance_m/edited_at/edit_count(answer) 컬럼이 없다. matched_bearing_deg=120은
+			// 백필 공식(180도 반전)의 결과를 검증하기 쉬운 임의의 값이다.
+			Long postRecipientId = scoped.queryForObject("""
+				INSERT INTO post_recipient
+					(post_id, recipient_id, status, distance_band, matched_bearing_deg,
+					 matched_region_code, matched_at)
+				VALUES (?, ?, 'AVAILABLE', 'NEAR', 120, 'TEST-V7', ?)
+				RETURNING id
+				""", Long.class, postId, recipientId, Timestamp.from(NOW));
+			Long answerId = scoped.queryForObject("""
+				INSERT INTO answer
+					(post_recipient_id, author_id, status, idempotency_key, body_text,
+					 coarse_region_code, bearing_from_sender_deg, distance_band,
+					 moderation_status, published_at)
+				VALUES (?, ?, 'PUBLISHED', 'v7-legacy-answer', '답변',
+					'TEST-V7', 120, 'NEAR', 'PASSED', ?)
+				RETURNING id
+				""", Long.class, postRecipientId, recipientId, Timestamp.from(NOW.plusSeconds(60)));
+
+			flywayForSchema(V8_SCHEMA).migrate();
+
+			BigDecimal inboundBearing = scoped.queryForObject(
+				"SELECT inbound_bearing_deg FROM post_recipient WHERE id = ?",
+				BigDecimal.class, postRecipientId);
+			Long recipientDistanceM = scoped.queryForObject(
+				"SELECT distance_m FROM post_recipient WHERE id = ?", Long.class, postRecipientId);
+			Long answerDistanceM = scoped.queryForObject(
+				"SELECT distance_m FROM answer WHERE id = ?", Long.class, answerId);
+			Integer editCount = scoped.queryForObject(
+				"SELECT edit_count FROM answer WHERE id = ?", Integer.class, answerId);
+
+			// 백필 값은 정확한 값이 아니라 제약을 만족하는 값이어야 한다(파일 상단 근거 참고).
+			// 매칭 시점 좌표가 이미 사라진 레거시 행에는 올바른 값이 존재하지 않는다.
+			// distance_m=0은 근거리 하한(10km) 미만이면 조회 계층이 정확 거리 대신
+			// distance_band를 보여주기로 한 규칙을 항상 타서, 조작된 정확 거리를 노출할
+			// 길을 원천 차단하는 유일하게 안전한 상수다.
+			assertThat(inboundBearing).isEqualByComparingTo(BigDecimal.valueOf(300));
+			assertThat(recipientDistanceM).isZero();
+			assertThat(answerDistanceM).isZero();
+			assertThat(editCount).isZero();
+
+			return null;
+		});
+	}
+
+	@Test
+	@DisplayName("V8은 DELETED와 살아있는 답변이 공존하면 조용히 정리하지 않고 시끄럽게 실패한다")
+	void v8FailsLoudlyWhenADeletedAnswerCoexistsWithALiveAnswer() {
+		jdbcTemplate.execute((ConnectionCallback<Void>) connection -> {
+			JdbcTemplate scoped = new JdbcTemplate(new SingleConnectionDataSource(connection, true));
+			scoped.execute("SET search_path TO " + V8_CONFLICT_SCHEMA);
+
+			scoped.update("INSERT INTO region_code (code, display_name, level) "
+				+ "VALUES ('TEST-V7', 'V7 Test', 'COUNTRY')");
+			Long senderId = insertV7Account(scoped, "v7-conflict-sender");
+			Long recipientId = insertV7Account(scoped, "v7-conflict-recipient");
+			Long questionId = scoped.queryForObject("""
+				INSERT INTO approved_question
+					(source_type, status, question_text, answer_format, active_from, approved_at, approved_by)
+				VALUES ('OPERATOR', 'ACTIVE', 'V7 충돌 질문', 'TEXT', ?, ?, ?)
+				RETURNING id
+				""", Long.class, Timestamp.from(NOW.minusSeconds(10)), Timestamp.from(NOW), senderId);
+			Long postId = scoped.queryForObject("""
+				INSERT INTO direction_post
+					(sender_id, approved_question_id, status, idempotency_key, body_text,
+					 coarse_region_code, moderation_status, submitted_at, published_at, expires_at)
+				VALUES (?, ?, 'ACTIVE', 'v7-conflict-post', '글', 'TEST-V7', 'PASSED', ?, ?, ?)
+				RETURNING id
+				""", Long.class, senderId, questionId, Timestamp.from(NOW), Timestamp.from(NOW),
+				Timestamp.from(NOW.plus(1, ChronoUnit.HOURS)));
+			Long postRecipientId = scoped.queryForObject("""
+				INSERT INTO post_recipient
+					(post_id, recipient_id, status, distance_band, matched_bearing_deg,
+					 matched_region_code, matched_at)
+				VALUES (?, ?, 'AVAILABLE', 'NEAR', 10, 'TEST-V7', ?)
+				RETURNING id
+				""", Long.class, postId, recipientId, Timestamp.from(NOW));
+
+			// V6까지는 uq_answer_one_per_recipient가 status NOT IN ('REJECTED', 'DELETED')라
+			// DELETED와 살아있는 답변 하나가 같은 post_recipient에 공존할 수 있었다 —
+			// "삭제 후 재작성"이 그동안 허용됐던 정책의 흔적이다. V8이 DELETED를 제외
+			// 목록에서 빼는 순간 이 조합이 새 partial unique index를 위반한다.
+			scoped.update("""
+				INSERT INTO answer
+					(post_recipient_id, author_id, status, idempotency_key, body_text,
+					 coarse_region_code, bearing_from_sender_deg, distance_band,
+					 moderation_status, published_at, deleted_at)
+				VALUES (?, ?, 'DELETED', 'v7-conflict-answer-deleted', '삭제된 답변',
+					'TEST-V7', 10, 'NEAR', 'PASSED', ?, ?)
+				""", postRecipientId, recipientId, Timestamp.from(NOW.plusSeconds(60)),
+				Timestamp.from(NOW.plusSeconds(90)));
+			scoped.update("""
+				INSERT INTO answer
+					(post_recipient_id, author_id, status, idempotency_key, body_text,
+					 coarse_region_code, bearing_from_sender_deg, distance_band,
+					 moderation_status, published_at)
+				VALUES (?, ?, 'PUBLISHED', 'v7-conflict-answer-live', '재작성된 답변',
+					'TEST-V7', 10, 'NEAR', 'PASSED', ?)
+				""", postRecipientId, recipientId, Timestamp.from(NOW.plusSeconds(120)));
+
+			assertThatThrownBy(() -> flywayForSchema(V8_CONFLICT_SCHEMA).migrate())
+				.isInstanceOf(FlywayException.class);
+
+			// V7(#81, device_credential)은 이 스키마와 무관해 성공한다 — 실패해야 하는
+			// 것은 우리 V8뿐이다.
+			Integer successfulV8Migrations = scoped.queryForObject("""
+				SELECT count(*) FROM flyway_schema_history
+				WHERE version = '8' AND success = true
+				""", Integer.class);
+			assertThat(successfulV8Migrations).isZero();
+
+			return null;
+		});
+	}
+
 	private Long insertAccount(JdbcTemplate template, String nickname) {
 		return template.queryForObject("""
 			INSERT INTO user_account (role, status, coarse_region_code, locale, timezone, nickname)
 			VALUES ('USER', 'ACTIVE', 'TEST-V2', 'ko-KR', 'Asia/Seoul', ?)
+			RETURNING id
+			""", Long.class, nickname);
+	}
+
+	private Long insertV7Account(JdbcTemplate template, String nickname) {
+		return template.queryForObject("""
+			INSERT INTO user_account (role, status, coarse_region_code, locale, timezone, nickname)
+			VALUES ('USER', 'ACTIVE', 'TEST-V7', 'ko-KR', 'Asia/Seoul', ?)
 			RETURNING id
 			""", Long.class, nickname);
 	}
