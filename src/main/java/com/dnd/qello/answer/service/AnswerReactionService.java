@@ -40,8 +40,8 @@ public class AnswerReactionService {
 			throw new AnswerException(
 				AnswerErrorCode.INELIGIBLE_REACTOR, "reactorId", "질문한 사람만 답변에 공감할 수 있습니다");
 		}
-		if (reactionRepository.findByAnswerId(answerId).isPresent()) {
-			reactionRepository.cancel(answerId);
+		if (reactionRepository.findByAnswerIdAndReactorId(answerId, reactorId).isPresent()) {
+			reactionRepository.cancel(answerId, reactorId);
 			return false;
 		}
 		reactionRepository.react(AnswerReaction.create(answerId, reactorId, at));
