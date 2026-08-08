@@ -1,20 +1,21 @@
 ---
-name: harness-test-run
-description: Implement and run approved JUnit 5 scenarios and create a safe report.
+name: "harness-test-run"
+description: "Implement and run approved JUnit 5 scenarios and create a safe report."
 ---
 
 # Test Execution
 
-Read `AGENTS.md`, `TASK.md`, `agents/test-executor.md`, and the approved plan.
-Modify only assigned files. Use JUnit 5, `@DisplayName` on every test, and exact
-ISO 8601 timestamp/source scenario headers on every test class.
+1. Read `AGENTS.md`, `TASK.md`, `agents/test-executor.md`, and the approved test
+   plan.
+2. Confirm the current branch includes the GitHub Issue number.
+3. Modify only assigned test/report files. Ask before changing production code.
+4. Use JUnit 5, `@DisplayName` on every test, and a class header containing the
+   exact ISO 8601 creation timestamp and source scenario ID.
+5. Run `./harness test-run --id <TEST-PLAN-ID>`.
+6. Complete the generated report, including potential issues across code,
+   infrastructure, database, concurrency, transactions, external APIs, and
+   failure recovery.
+7. Run `./harness pr-ready --project-tests`.
+8. Commit by purpose and link the report in the PR.
 
-Run:
-
-```bash
-./harness test-run --id <TEST-PLAN-ID>
-./harness pr-ready --project-tests
-```
-
-Complete the report with cross-system potential issues. Never report unexecuted
-tests as passing or copy `.env` values and secrets.
+Do not report unexecuted tests as passing. Never copy secrets or `.env` values.

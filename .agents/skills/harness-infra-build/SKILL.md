@@ -1,14 +1,59 @@
 ---
-name: harness-infra-build
-description: Implement approved Terraform or AWS CDK and produce plan evidence.
+name: "harness-infra-build"
+description: "\uc0ac\ub78c\uc5d0\uac8c \uc2b9\uc778\ub41c Infrastructure Design Report\ub97c Terraform\uc73c\ub85c \uad6c\ud604\ud558\uace0 \ub3c5\ub9bd \uac80\uc99d\uacfc plan \uc99d\uac70\ub97c \uc0dd\uc131\ud55c\ub2e4."
 ---
 
-# Infrastructure Execution
+# Infrastructure Build Workflow
 
-Read `AGENTS.md`, `TASK.md`, `agents/infrastructure-executor.md`, and the approved
-design. Implement only assigned IaC, then format, validate, statically inspect,
-and plan. Do not paste sensitive plan identifiers into PRs.
+`AGENTS.md`, `TASK.md`,
+`agents/infrastructure-executor.md`와 승인된 Infrastructure Design Report를 읽는다.
 
-Create a reviewable PR and request both `@Byuntil` and `@tkv00`. Stop before
-apply/deploy. Application requires both approvals, protected Environment review,
-OIDC, and explicit human confirmation.
+## 실행 전 게이트
+
+다음을 모두 확인한다.
+
+- GitHub Issue가 존재한다.
+- `TASK.md`와 브랜치의 Issue 번호가 일치한다.
+- `DESIGN-ID`가 일치한다.
+- 설계 상태가 `APPROVED_FOR_BUILD`이다.
+- 승인된 Terraform 수정 범위가 기록되어 있다.
+- 사람의 설계 승인 증거가 존재한다.
+- 기존 작업 트리 변경을 보존할 수 있다.
+
+하나라도 확인할 수 없으면 `BLOCKED`로 반환한다.
+
+## Skill 실행 순서
+
+다음 Skill을 사용한다.
+
+1. `terraform-module-conventions`
+2. `terraform-build`
+3. `terraform-verify`
+4. `infra-change-risk`
+
+구현과 검증은 동일한 판단으로 처리하지 않는다.
+
+## 실행
+
+```bash
+./harness infra-build --id <DESIGN-ID>
+```
+
+## 종료 조건
+
+다음 중 하나로 반환한다.
+
+- PASS
+- FAIL
+- BLOCKED
+
+다음을 실행하지 않는다.
+
+- terraform apply
+- terraform destroy
+- terraform import
+- terraform state
+- AWS 리소스 변경 명령
+- 프로덕션 배포
+
+PR을 생성할 수 있는 plan 증거까지만 만든다.
