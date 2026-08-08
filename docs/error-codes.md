@@ -110,6 +110,7 @@
 | `ACC-VAL-002` | REQUIRED_VALUE_MISSING | 400 | VAL | 계정 필수 값이 없습니다. |
 | `ACC-VAL-003` | TEXT_TOO_LONG | 400 | VAL | 계정 값이 허용 길이를 초과했습니다. |
 | `ACC-VAL-004` | INVALID_TIMEZONE | 400 | VAL | timezone은 유효한 IANA 지역 ID여야 합니다. |
+| `ACC-VAL-005` | INVALID_COUNTRY_CODE | 400 | VAL | 국가 코드가 올바르지 않습니다. |
 | `ACC-DOM-001` | INVALID_AUDIT_TIMESTAMPS | 400 | DOM | 계정 생성·수정 시각이 올바르지 않습니다. |
 | `ACC-DOM-002` | INVALID_DELETION_STATE | 400 | DOM | 탈퇴 상태와 탈퇴 시각이 일치하지 않습니다. |
 | `ACC-DOM-003` | INVALID_PASSWORD_HASH_STATE | 400 | DOM | 계정 권한과 비밀번호 설정이 맞지 않습니다. |
@@ -226,6 +227,7 @@
 | `AUT-VAL-001` | INVALID_LOGIN_ID | 400 | VAL | 로그인 식별자가 올바르지 않습니다. |
 | `AUT-VAL-002` | REQUIRED_VALUE_MISSING | 400 | VAL | 인증 필수 값이 없습니다. |
 | `AUT-VAL-003` | INVALID_INSTALLATION_ID | 400 | VAL | 기기 식별자가 올바르지 않습니다. |
+| `AUT-VAL-004` | INVALID_COUNTRY_CODE | 400 | VAL | 국가 코드가 올바르지 않습니다. |
 | `AUT-DOM-001` | INVALID_CREDENTIAL_STATE | 400 | DOM | 자격증명 상태가 올바르지 않습니다. |
 | `AUT-APP-001` | LOGIN_FAILED | 401 | APP | 로그인 정보가 올바르지 않습니다. |
 | `AUT-APP-002` | CREDENTIAL_LOCKED | 423 | APP | 잠긴 계정입니다. 잠시 후 다시 시도해 주세요. |

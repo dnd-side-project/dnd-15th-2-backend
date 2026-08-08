@@ -2,12 +2,16 @@ package com.dnd.qello.auth.service;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.util.List;
+import java.util.Locale;
+import java.util.regex.Pattern;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.dnd.qello.account.domain.Account;
 import com.dnd.qello.account.domain.AccountRole;
+import com.dnd.qello.account.repository.CountryCatalogRepository;
 import com.dnd.qello.account.repository.AccountRepository;
 import com.dnd.qello.auth.domain.DeviceCredential;
 import com.dnd.qello.auth.domain.DevicePlatform;
@@ -28,7 +32,10 @@ import com.dnd.qello.auth.token.IssuedAccessToken;
 @Service
 public class DeviceRegistrationService {
 
+	private static final Pattern COUNTRY_CODE_PATTERN = Pattern.compile("^[A-Z]{2}$");
+
 	private final AccountRepository accountRepository;
+	private final CountryCatalogRepository countryCatalogRepository;
 	private final DeviceCredentialRepository credentialRepository;
 	private final DeviceSecretGenerator secretGenerator;
 	private final DeviceSecretHasher secretHasher;
@@ -37,6 +44,7 @@ public class DeviceRegistrationService {
 
 	public DeviceRegistrationService(
 		AccountRepository accountRepository,
+		CountryCatalogRepository countryCatalogRepository,
 		DeviceCredentialRepository credentialRepository,
 		DeviceSecretGenerator secretGenerator,
 		DeviceSecretHasher secretHasher,
@@ -44,6 +52,7 @@ public class DeviceRegistrationService {
 		Clock clock
 	) {
 		this.accountRepository = accountRepository;
+		this.countryCatalogRepository = countryCatalogRepository;
 		this.credentialRepository = credentialRepository;
 		this.secretGenerator = secretGenerator;
 		this.secretHasher = secretHasher;
@@ -55,6 +64,7 @@ public class DeviceRegistrationService {
 	public DeviceRegistrationResult register(
 		String installationId,
 		DevicePlatform platform,
+		String countryCode,
 		String coarseRegionCode,
 		String locale,
 		String timezone,
@@ -68,9 +78,11 @@ public class DeviceRegistrationService {
 				AuthErrorCode.DEVICE_ALREADY_REGISTERED, "installationId", "이미 등록된 기기입니다");
 		}
 
+		String normalizedCountryCode = validateCountry(countryCode, coarseRegionCode);
+
 		Instant now = Instant.now(clock);
 		Account account = accountRepository.save(
-			Account.createUser(coarseRegionCode, locale, timezone, nickname));
+			Account.createUser(normalizedCountryCode, coarseRegionCode, locale, timezone, nickname));
 
 		DeviceSecret rawSecret = secretGenerator.generate();
 		SecretHash secretHash = secretHasher.hash(rawSecret);
@@ -81,6 +93,29 @@ public class DeviceRegistrationService {
 			account.getId(), AccountRole.USER, credential.getId());
 
 		return new DeviceRegistrationResult(account.getId(), rawSecret, issuedToken);
+	}
+
+	private String validateCountry(String countryCode, String coarseRegionCode) {
+		if (countryCode == null || countryCode.isBlank()) {
+			throw new AuthException(
+				AuthErrorCode.REQUIRED_VALUE_MISSING, "countryCode", "countryCode는 필수입니다");
+		}
+		String normalized = countryCode.trim().toUpperCase(Locale.ROOT);
+		if (!COUNTRY_CODE_PATTERN.matcher(normalized).matches()
+			|| !countryCatalogRepository.existsCountry(normalized)) {
+			throw invalidCountryCode();
+		}
+
+		List<String> countryAncestors = countryCatalogRepository.findCountryAncestors(coarseRegionCode);
+		if (countryAncestors.size() != 1 || !normalized.equals(countryAncestors.getFirst())) {
+			throw invalidCountryCode();
+		}
+		return normalized;
+	}
+
+	private AuthException invalidCountryCode() {
+		return new AuthException(
+			AuthErrorCode.INVALID_COUNTRY_CODE, "countryCode", "countryCode가 지원 국가와 일치하지 않습니다");
 	}
 
 }

@@ -1,10 +1,11 @@
 # Qello 인증 설계
 
-> 작성일: 2026-08-06 (2026-08-07 갱신)
+> 작성일: 2026-08-06 (2026-08-08 갱신)
 >
 > 상태: 초안 (팀 검토 대기)
 >
-> 결정 근거: `docs/adr/0006-split-operator-and-device-authentication.md`
+> 결정 근거: `docs/adr/0006-split-operator-and-device-authentication.md`,
+> `docs/adr/0007-require-country-before-user-account-creation.md`
 
 이 문서는 백오피스 운영자와 앱 사용자의 인증·세션 설계를 기술한다. 스키마,
 API 계약, 패키지 구조, 미결 제품 결정을 포함한다.
@@ -13,7 +14,7 @@ API 계약, 패키지 구조, 미결 제품 결정을 포함한다.
 
 | 항목 | 현재 | 필요 |
 | --- | --- | --- |
-| `user_account` | `role`, `status`, 프로필 컬럼 | 변경 없음 |
+| `user_account` | `role`, `status`, 프로필 컬럼 | `country_code` 추가. USER 필수, OPERATOR 선택 |
 | 운영자 비밀번호 | `V3`에서 `password_hash` 컬럼 추가 (main 병합 완료) | 로그인 식별자와 잠금 상태가 없어 로그인 불가. `V5`에서 `operator_credential`로 이동 |
 | 비밀번호 해시 | `PasswordHasher` / `BCryptPasswordHasher` / `RawPassword` | 그대로 사용 |
 | 기기 자격증명 | 없음 | 신규 |
@@ -135,6 +136,44 @@ CREATE INDEX device_credential_user_idx
 - 푸시 토큰이 갱신됐다고 로그인이 풀리면 안 되고, 푸시 권한을 거부한 사용자도
   로그인은 되어야 한다.
 
+### 3.4 `user_account.country_code`
+
+국가는 공개용 기준 지역인 `coarse_region_code`와 별도 속성으로 저장한다. 기준 지역은
+향후 도시나 권역으로 바뀔 수 있지만, 온보딩에서 확정한 국가는 그대로 남아야 한다.
+화면 표시 이름은 복사하지 않고 `region_code.display_name`에서 조회한다.
+
+DB 무결성은 다음 형태로 구성한다. 아래 DDL은 구현 시 새 Flyway migration으로
+옮기며, 이미 적용된 migration은 수정하지 않는다.
+
+```sql
+ALTER TABLE region_code
+    ADD CONSTRAINT uq_region_code_code_level UNIQUE (code, level);
+
+ALTER TABLE user_account
+    ADD COLUMN country_code VARCHAR(2),
+    ADD COLUMN country_level VARCHAR(20)
+        GENERATED ALWAYS AS ('COUNTRY'::VARCHAR(20)) STORED;
+
+-- 기존 USER의 country_code를 coarse_region_code의 최상위 COUNTRY로 먼저 이관한다.
+
+ALTER TABLE user_account
+    ADD CONSTRAINT fk_user_account_country
+        FOREIGN KEY (country_code, country_level)
+        REFERENCES region_code (code, level) ON DELETE RESTRICT,
+    ADD CONSTRAINT ck_user_account_country_code
+        CHECK (country_code IS NULL OR country_code ~ '^[A-Z]{2}$'),
+    ADD CONSTRAINT ck_user_account_user_country
+        CHECK (role <> 'USER' OR country_code IS NOT NULL);
+```
+
+`country_level`은 JPA 도메인 필드가 아니라 COUNTRY 행만 참조하기 위한 DB 생성
+컬럼이다. `country_code`가 NULL인 운영자는 복합 FK의 `MATCH SIMPLE` 규칙에 따라
+허용된다. 일반 사용자는 CHECK가 NULL을 거절한다. 기존 일반 사용자의 최상위 국가를
+정확히 하나로 결정할 수 없으면 migration을 실패시켜 부분 이관을 막는다.
+
+이 제약이 적용된 뒤에는 국가 필드를 저장하지 않는 이전 백엔드로 단독 롤백할 수
+없다. 배포·복구 순서와 잠금 위험은 ADR-0007의 「배포와 복구」를 따른다.
+
 ## 4. 앱 사용자 인증
 
 ### 4.1 절대 규칙: 클라이언트가 만든 ID는 인증 수단이 아니다
@@ -174,6 +213,7 @@ Content-Type: application/json
 {
   "installationId": "a3f1...",
   "platform": "IOS",
+  "countryCode": "KR",
   "coarseRegionCode": "KR-11",
   "locale": "ko-KR",
   "timezone": "Asia/Seoul",
@@ -195,15 +235,28 @@ Content-Type: application/json
 서버 처리 (단일 트랜잭션):
 
 1. `installation_id`로 ACTIVE 자격증명 조회. 존재하면 409 Conflict.
-2. `Account.createUser(coarseRegionCode, locale, timezone, nickname)` 호출.
-3. `AccountRepository.save()`.
-4. `SecureRandom` 32바이트 생성 → SHA-256 → `device_credential` insert.
-5. Access token 발급.
+2. `countryCode`가 `region_code.level = COUNTRY`인 코드인지 확인한다.
+3. `coarseRegionCode`의 최상위 국가가 `countryCode`와 같은지 확인한다.
+4. `Account.createUser(countryCode, coarseRegionCode, locale, timezone, nickname)` 호출.
+5. `AccountRepository.save()`.
+6. `SecureRandom` 32바이트 생성 → SHA-256 → `device_credential` insert.
+7. Access token 발급.
 
-`coarseRegionCode`, `locale`, `timezone`은 `user_account`에서 NOT NULL이고
-`Account` 도메인 생성자가 요구하므로 등록 요청에 포함해야 한다. 앱이 최초 실행
-시 이 값을 확보한 뒤 등록을 호출하는 순서가 되어야 하며, 클라이언트 팀과 합의가
-필요한 지점이다.
+`countryCode`, `coarseRegionCode`, `locale`, `timezone`은 일반 사용자 등록 요청의
+필수값이다. `countryCode`는 ISO 3166-1 alpha-2 대문자 코드로 정규화한다. 앱은 최초
+실행 시 국가를 선택하고 나머지 값을 확보한 뒤 등록을 호출한다. 자유 입력 국가명은
+API 식별자로 사용하지 않으며 화면 표시 이름은 국가 코드 마스터에서 현지화한다.
+
+국가 코드가 누락·공백·형식 오류이거나 마스터에 없거나 COUNTRY가 아니면 400으로
+거절한다. `coarseRegionCode`가 다른 국가에 속해도 같은 방식으로 거절한다. 누락·공백
+외의 국가 검증 실패는 `AUT-VAL-004 INVALID_COUNTRY_CODE`로 통일한다. 이 검증은 쓰기
+전에 수행하므로 실패한 요청은 `user_account`와 `device_credential`을 만들지 않고
+access token도 발급하지 않는다. 국가 미입력 상태를 위한 `INACTIVE` 계정이나 별도
+온보딩 세션은 만들지 않는다.
+
+`USER` 계정에는 국가가 필수지만 `OPERATOR` 계정은 예외다. 운영자는 기존 시드와
+세션 로그인 경로를 유지하며 국가 없이 생성될 수 있다. 상세 불변식과 기존 사용자
+이관 정책은 ADR-0007을 따른다.
 
 `deviceSecret`은 이 응답에서만 평문으로 존재한다. 로그, APM, 에러 응답에 절대
 포함하지 않는다. 기존 `RawPassword`/`PasswordHash`와 동일하게 `toString()`을

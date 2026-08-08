@@ -20,7 +20,7 @@ import org.springframework.core.io.support.PropertiesLoaderUtils;
 /**
  * Created at: 2026-08-03T17:45:39+09:00
  * Source scenario: TEST-PLAN-GH-36-FLYWAY-BASELINE-UNIT-001, TEST-PLAN-GH-36-FLYWAY-BASELINE-UNIT-002,
- * TEST-PLAN-GH-78-SCHEMA-REVISION-V7-UNIT-001
+ * TEST-PLAN-GH-78-SCHEMA-REVISION-V7-UNIT-001, TEST-PLAN-GH-88-COUNTRY-ONBOARDING-UNIT-004
  */
 class FlywayMigrationContractTest {
 
@@ -54,7 +54,8 @@ class FlywayMigrationContractTest {
 			"V5__add_operator_credential.sql",
 			"V6__add_spring_session_tables.sql",
 			"V7__add_device_credential.sql",
-			"V8__widen_answer_visibility_to_recipients.sql");
+			"V8__widen_answer_visibility_to_recipients.sql",
+			"V9__require_country_before_user_account_creation.sql");
 	}
 
 	@Test

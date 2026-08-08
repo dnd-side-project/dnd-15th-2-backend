@@ -20,7 +20,8 @@ import org.springframework.test.context.ActiveProfiles;
 /**
  * Created at: 2026-08-03T17:45:39+09:00
  * Source scenario: TEST-PLAN-GH-36-FLYWAY-BASELINE-INT-001 through INT-004,
- * TEST-PLAN-GH-78-SCHEMA-REVISION-V7-INT-001
+ * TEST-PLAN-GH-78-SCHEMA-REVISION-V7-INT-001, TEST-PLAN-GH-88-COUNTRY-ONBOARDING-INT-003,
+ * TEST-PLAN-GH-88-COUNTRY-ONBOARDING-INT-004
  */
 @SpringBootTest
 @ActiveProfiles({"test", "flyway-migration"})
@@ -119,7 +120,9 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 		"spring_session_ix3",
 		"uq_device_credential_secret",
 		"uq_active_device_installation",
-		"device_credential_user_idx"
+		"device_credential_user_idx",
+		"uq_region_code_code_level",
+		"user_account_country_idx"
 	);
 
 	private static final Set<String> EXPECTED_FUNCTIONS = Set.of(
@@ -156,7 +159,7 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 	private JdbcTemplate jdbcTemplate;
 
 	@Test
-	@DisplayName("빈 PostGIS 데이터베이스의 startup에서 V1부터 V8까지 migration을 적용한다")
+	@DisplayName("빈 PostGIS 데이터베이스의 startup에서 V1부터 V9까지 migration을 적용한다")
 	void appliesAllMigrationsOnApplicationStartup() {
 		Integer successfulV1 = jdbcTemplate.queryForObject("""
 			SELECT count(*)
@@ -198,6 +201,11 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 			FROM flyway_schema_history
 			WHERE version = '8' AND success
 			""", Integer.class);
+		Integer successfulV9 = jdbcTemplate.queryForObject("""
+			SELECT count(*)
+			FROM flyway_schema_history
+			WHERE version = '9' AND success
+			""", Integer.class);
 		String postgisVersion = jdbcTemplate.queryForObject(
 			"SELECT PostGIS_Version()", String.class);
 
@@ -209,7 +217,8 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 		assertThat(successfulV6).isEqualTo(1);
 		assertThat(successfulV7).isEqualTo(1);
 		assertThat(successfulV8).isEqualTo(1);
-		assertThat(flyway.info().applied()).hasSize(8);
+		assertThat(successfulV9).isEqualTo(1);
+		assertThat(flyway.info().applied()).hasSize(9);
 		assertThat(postgisVersion).isNotBlank();
 	}
 
@@ -263,14 +272,14 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 			""", (resultSet, rowNumber) -> new ConstraintDescriptor(
 			resultSet.getString(1), resultSet.getString(2)));
 
-		assertThat(countConstraints(constraints, "f")).isEqualTo(51);
-		assertThat(countConstraints(constraints, "u")).isEqualTo(20);
+		assertThat(countConstraints(constraints, "f")).isEqualTo(52);
+		assertThat(countConstraints(constraints, "u")).isEqualTo(21);
 		// V7(#81, device_credential)이 4개, V8(#78)이 ck_post_recipient_inbound_bearing,
 		// ck_post_recipient_distance_m, ck_post_recipient_answers_read_at,
 		// ck_answer_distance_m, ck_answer_edit_count, ck_answer_edit_count_edited_at
-		// 6개를 추가해 101에서 111이 됐다. 실제 DB 실행으로 검증한다.
-		assertThat(countConstraints(constraints, "c")).isEqualTo(111);
-		assertThat(EXPECTED_INDEXES).hasSize(58);
+		// 6개를 추가해 101에서 111이 됐고, V9(#88)이 국가 CHECK 2개를 추가했다.
+		assertThat(countConstraints(constraints, "c")).isEqualTo(113);
+		assertThat(EXPECTED_INDEXES).hasSize(60);
 		assertThat(EXPECTED_FUNCTIONS).hasSize(11);
 		assertThat(EXPECTED_TRIGGERS).hasSize(10);
 

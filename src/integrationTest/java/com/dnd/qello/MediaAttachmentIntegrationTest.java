@@ -65,7 +65,8 @@ class MediaAttachmentIntegrationTest extends PostgisContainerIntegrationTestSupp
 		jdbc.update("DELETE FROM approved_question");
 		jdbc.update("DELETE FROM user_account WHERE coarse_region_code = ?", REGION);
 		jdbc.update("DELETE FROM region_code WHERE code = ?", REGION);
-		jdbc.update("INSERT INTO region_code (code, display_name, level) VALUES (?, 'Media Attach Test', 'COUNTRY')", REGION);
+		jdbc.update("INSERT INTO region_code (code, parent_code, display_name, level) VALUES ('KR', NULL, 'Korea', 'COUNTRY') ON CONFLICT (code, level) DO NOTHING");
+		jdbc.update("INSERT INTO region_code (code, parent_code, display_name, level) VALUES (?, 'KR', 'Media Attach Test', 'REGION')", REGION);
 
 		ownerId = account("attach-owner");
 		strangerId = account("attach-stranger");
@@ -76,8 +77,8 @@ class MediaAttachmentIntegrationTest extends PostgisContainerIntegrationTestSupp
 
 	private long account(String nickname) {
 		return jdbc.queryForObject("""
-			INSERT INTO user_account (role, status, coarse_region_code, locale, timezone, nickname)
-			VALUES ('USER', 'ACTIVE', ?, 'ko-KR', 'Asia/Seoul', ?)
+			INSERT INTO user_account (role, country_code, status, coarse_region_code, locale, timezone, nickname)
+			VALUES ('USER', 'KR', 'ACTIVE', ?, 'ko-KR', 'Asia/Seoul', ?)
 			RETURNING id
 			""", Long.class, REGION, nickname);
 	}

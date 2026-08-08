@@ -89,9 +89,10 @@ class QuestionPersistenceIntegrationTest extends PostgisContainerIntegrationTest
 		jdbcTemplate.update("DELETE FROM question_proposal");
 		jdbcTemplate.update("DELETE FROM user_account WHERE coarse_region_code = ?", REGION_CODE);
 		jdbcTemplate.update("DELETE FROM region_code WHERE code = ?", REGION_CODE);
+		jdbcTemplate.update("DELETE FROM region_code WHERE code = 'KR'");
 		jdbcTemplate.update("""
-			INSERT INTO region_code (code, display_name, level)
-			VALUES (?, 'Question Test Region', 'COUNTRY')
+			INSERT INTO region_code (code, parent_code, display_name, level)
+			VALUES ('KR', NULL, 'Korea', 'COUNTRY'), (?, 'KR', 'Question Test Region', 'REGION')
 			""", REGION_CODE);
 	}
 
@@ -289,7 +290,7 @@ class QuestionPersistenceIntegrationTest extends PostgisContainerIntegrationTest
 	}
 
 	private Account createAccount(String nickname) {
-		return accountRepository.save(Account.createUser(
+		return accountRepository.save(Account.createUser("KR",
 			REGION_CODE, "ko-KR", "Asia/Seoul", nickname));
 	}
 

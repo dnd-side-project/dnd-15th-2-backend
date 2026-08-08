@@ -328,6 +328,8 @@ erDiagram
         bigint id PK
         varchar role "USER or OPERATOR"
         varchar status "ACTIVE BLOCKED DELETED"
+        varchar country_code "ISO alpha-2. USER 필수, OPERATOR NULL 허용"
+        varchar country_level "생성 컬럼. 항상 COUNTRY"
         varchar coarse_region_code FK
         varchar locale
         varchar timezone

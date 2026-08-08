@@ -41,7 +41,8 @@ import com.dnd.qello.account.repository.AccountRepository;
 
 /**
  * Created at: 2026-08-04T12:00:00+09:00
- * Source scenario: TEST-PLAN-GH-48-ACCOUNT-PASSWORD-INT-001 through INT-006
+ * Source scenario: TEST-PLAN-GH-48-ACCOUNT-PASSWORD-INT-001 through INT-006,
+ * TEST-PLAN-GH-88-COUNTRY-ONBOARDING-INT-003
  */
 @SpringBootTest
 @ActiveProfiles({"test", "account-persistence"})
@@ -73,9 +74,10 @@ class AccountPersistenceIntegrationTest extends PostgisContainerIntegrationTestS
 		clock.setInstant(FIRST_AUDIT_TIME);
 		jdbcTemplate.update("DELETE FROM user_account");
 		jdbcTemplate.update("DELETE FROM region_code WHERE code = ?", REGION_CODE);
+		jdbcTemplate.update("DELETE FROM region_code WHERE code = 'KR'");
 		jdbcTemplate.update("""
-			INSERT INTO region_code (code, display_name, level)
-			VALUES (?, 'Test Country', 'COUNTRY')
+			INSERT INTO region_code (code, parent_code, display_name, level)
+			VALUES ('KR', NULL, 'Korea', 'COUNTRY'), (?, 'KR', 'Test Region', 'REGION')
 			""", REGION_CODE);
 	}
 
@@ -103,7 +105,7 @@ class AccountPersistenceIntegrationTest extends PostgisContainerIntegrationTestS
 	@Test
 	@DisplayName("일반 사용자 Account를 저장하고 identity ID와 auditing 시각을 포함해 다시 조회한다")
 	void savesAndFindsUserAccountThroughDomainPort() {
-		Account saved = accountRepository.save(Account.createUser(
+		Account saved = accountRepository.save(Account.createUser("KR",
 			REGION_CODE, "ko-KR", "Asia/Seoul", "qello-user"));
 
 		Account found = accountRepository.findById(saved.getId()).orElseThrow();
@@ -139,6 +141,33 @@ class AccountPersistenceIntegrationTest extends PostgisContainerIntegrationTestS
 		assertThat(storedHash).isEqualTo(OPERATOR_PASSWORD_HASH);
 		assertThat(storedHash).doesNotContain("qello-admin");
 		assertThat(passwordColumnsOnAccount).isZero();
+		assertThat(rawString(saved.getId(), "country_code")).isNull();
+	}
+
+	@Test
+	@DisplayName("USER의 국가 NULL과 COUNTRY가 아닌 국가 참조는 DB 제약으로 거절된다")
+	void rejectsUserWithoutCountryOrCountryLevelReference() {
+		assertThatThrownBy(() -> jdbcTemplate.update("""
+			INSERT INTO user_account
+				(role, country_code, coarse_region_code, locale, timezone, nickname)
+			VALUES ('USER', NULL, ?, 'ko-KR', 'Asia/Seoul', 'missing-country')
+			""", REGION_CODE))
+			.isInstanceOf(DataIntegrityViolationException.class);
+
+		jdbcTemplate.update("""
+			INSERT INTO region_code (code, parent_code, display_name, level)
+			VALUES ('ZZ', 'KR', 'Not a country', 'REGION')
+			""");
+		try {
+			assertThatThrownBy(() -> jdbcTemplate.update("""
+				INSERT INTO user_account
+					(role, country_code, coarse_region_code, locale, timezone, nickname)
+				VALUES ('USER', 'ZZ', ?, 'ko-KR', 'Asia/Seoul', 'wrong-level')
+				""", REGION_CODE))
+				.isInstanceOf(DataIntegrityViolationException.class);
+		} finally {
+			jdbcTemplate.update("DELETE FROM region_code WHERE code = 'ZZ'");
+		}
 	}
 
 	@Test
@@ -175,7 +204,7 @@ class AccountPersistenceIntegrationTest extends PostgisContainerIntegrationTestS
 	@Test
 	@DisplayName("기존 계정 수정은 Dirty Checking으로 반영되고 신규 row를 추가로 만들지 않는다")
 	void updatesExistingAccountThroughDirtyCheckingWithoutExtraInsert() {
-		Account saved = accountRepository.save(Account.createUser(
+		Account saved = accountRepository.save(Account.createUser("KR",
 			REGION_CODE, "ko-KR", "Asia/Seoul", "original"));
 
 		accountRepository.updateProfile(saved.updateProfile(REGION_CODE, "ko-KR", "Asia/Seoul", "renamed"));
@@ -191,7 +220,7 @@ class AccountPersistenceIntegrationTest extends PostgisContainerIntegrationTestS
 	@Test
 	@DisplayName("version은 저장 시 0에서 시작해 수정할 때마다 증가한다")
 	void versionStartsAtZeroAndAdvancesOnEachUpdate() {
-		Account saved = accountRepository.save(Account.createUser(
+		Account saved = accountRepository.save(Account.createUser("KR",
 			REGION_CODE, "ko-KR", "Asia/Seoul", "original"));
 
 		assertThat(rawLong(saved.getId(), "version")).isZero();
@@ -209,7 +238,7 @@ class AccountPersistenceIntegrationTest extends PostgisContainerIntegrationTestS
 	@Test
 	@DisplayName("먼저 커밋한 수정이 있으면 오래된 요청은 낙관적 잠금 충돌로 거절된다")
 	void rejectsStaleUpdateWithOptimisticLockingFailure() {
-		Account saved = accountRepository.save(Account.createUser(
+		Account saved = accountRepository.save(Account.createUser("KR",
 			REGION_CODE, "ko-KR", "Asia/Seoul", "original"));
 
 		// 바깥 트랜잭션이 version 0을 읽어 둔 뒤, 다른 트랜잭션이 먼저 같은 행을 변경한다.
@@ -229,7 +258,7 @@ class AccountPersistenceIntegrationTest extends PostgisContainerIntegrationTestS
 	@Test
 	@DisplayName("존재하지 않는 id를 수정하려 하면 404로 매핑되는 ACCOUNT_NOT_FOUND가 발생한다")
 	void updatingMissingAccountFails() {
-		Account saved = accountRepository.save(Account.createUser(
+		Account saved = accountRepository.save(Account.createUser("KR",
 			REGION_CODE, "ko-KR", "Asia/Seoul", "temp"));
 		jdbcTemplate.update("DELETE FROM user_account WHERE id = ?", saved.getId());
 
@@ -246,14 +275,14 @@ class AccountPersistenceIntegrationTest extends PostgisContainerIntegrationTestS
 	@Test
 	@DisplayName("Account FK와 check constraint 위반은 저장 또는 flush 시점에 거절된다")
 	void rejectsForeignKeyAndCheckConstraintViolations() {
-		Account missingRegion = Account.createUser(
+		Account missingRegion = Account.createUser("KR",
 			"UNKNOWN-REGION", "ko-KR", "Asia/Seoul", "missing-region");
 
 		assertThatThrownBy(() -> accountRepository.save(missingRegion))
 			.isInstanceOf(DataIntegrityViolationException.class);
 		assertThatThrownBy(() -> jdbcTemplate.update("""
-			INSERT INTO user_account (coarse_region_code, locale, timezone, nickname)
-			VALUES (?, 'ko-KR', 'Asia/Seoul', '   ')
+			INSERT INTO user_account (country_code, coarse_region_code, locale, timezone, nickname)
+			VALUES ('KR', ?, 'ko-KR', 'Asia/Seoul', '   ')
 			""", REGION_CODE))
 			.isInstanceOf(DataIntegrityViolationException.class);
 		assertThatThrownBy(() -> jdbcTemplate.update("""
@@ -268,7 +297,7 @@ class AccountPersistenceIntegrationTest extends PostgisContainerIntegrationTestS
 	@Test
 	@DisplayName("USER 계정에 운영자 자격증명을 붙이면 복합 FK가 거절한다")
 	void rejectsCredentialOnUserAccount() {
-		Account user = accountRepository.save(Account.createUser(
+		Account user = accountRepository.save(Account.createUser("KR",
 			REGION_CODE, "ko-KR", "Asia/Seoul", "plain-user"));
 
 		assertThatThrownBy(() -> jdbcTemplate.update("""
@@ -339,9 +368,9 @@ class AccountPersistenceIntegrationTest extends PostgisContainerIntegrationTestS
 	@DisplayName("같은 transaction의 두 Account 중 하나가 실패하면 정상 insert도 rollback된다")
 	void rollsBackWholeTransactionAfterConstraintFailure() {
 		assertThatThrownBy(() -> transactionTemplate.executeWithoutResult(status -> {
-			accountRepository.save(Account.createUser(
+			accountRepository.save(Account.createUser("KR",
 				REGION_CODE, "ko-KR", "Asia/Seoul", "must-rollback"));
-			accountRepository.save(Account.createUser(
+			accountRepository.save(Account.createUser("KR",
 				"UNKNOWN-REGION", "ko-KR", "Asia/Seoul", "invalid"));
 		})).isInstanceOf(DataIntegrityViolationException.class);
 

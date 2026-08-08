@@ -67,7 +67,8 @@ class DirectionPostgisPersistenceIntegrationTest extends PostgisContainerIntegra
 		jdbc.update("DELETE FROM approved_question");
 		jdbc.update("DELETE FROM user_account WHERE coarse_region_code = ?", REGION);
 		jdbc.update("DELETE FROM region_code WHERE code = ?", REGION);
-		jdbc.update("INSERT INTO region_code (code, display_name, level) VALUES (?, 'Direction Test Region', 'COUNTRY')", REGION);
+		jdbc.update("INSERT INTO region_code (code, parent_code, display_name, level) VALUES ('KR', NULL, 'Korea', 'COUNTRY') ON CONFLICT (code, level) DO NOTHING");
+		jdbc.update("INSERT INTO region_code (code, parent_code, display_name, level) VALUES (?, 'KR', 'Direction Test Region', 'REGION')", REGION);
 	}
 
 	@Test
@@ -162,8 +163,8 @@ class DirectionPostgisPersistenceIntegrationTest extends PostgisContainerIntegra
 
 	private long createUser(String nickname) {
 		return jdbc.queryForObject("""
-			INSERT INTO user_account (coarse_region_code, locale, timezone, nickname)
-			VALUES (?, 'ko-KR', 'Asia/Seoul', ?) RETURNING id
+			INSERT INTO user_account (country_code, coarse_region_code, locale, timezone, nickname)
+			VALUES ('KR', ?, 'ko-KR', 'Asia/Seoul', ?) RETURNING id
 			""", Long.class, REGION, nickname);
 	}
 
