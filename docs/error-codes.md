@@ -177,6 +177,7 @@
 | `ANS-VAL-004` | INVALID_BEARING | 400 | VAL | 방위각이 올바르지 않습니다. |
 | `ANS-VAL-005` | INVALID_MEDIA_TARGET | 400 | VAL | 미디어 첨부 대상이 올바르지 않습니다. |
 | `ANS-VAL-006` | INVALID_MEDIA_METADATA | 400 | VAL | 미디어 값이 올바르지 않습니다. |
+| `ANS-VAL-007` | INVALID_VALUE_RANGE | 400 | VAL | 값의 범위가 올바르지 않습니다. |
 | `ANS-DOM-001` | INVALID_ANSWER_STATE | 400 | DOM | 답변 상태와 값이 맞지 않습니다. |
 | `ANS-DOM-002` | INVALID_ANSWER_STATUS | 409 | DOM | 현재 답변 상태로는 요청을 처리할 수 없습니다. |
 | `ANS-DOM-003` | SAFETY_CHECK_NOT_PASSED | 409 | DOM | 안전 검사를 통과한 답변만 공개할 수 있습니다. |
@@ -186,6 +187,7 @@
 | `ANS-DOM-007` | MEDIA_NOT_FOUND | 404 | DOM | 미디어를 찾을 수 없습니다. |
 | `ANS-DOM-008` | MEDIA_OWNER_MISMATCH | 403 | DOM | 본인 소유의 미디어만 사용할 수 있습니다. |
 | `ANS-DOM-009` | MEDIA_CONTENT_REQUIRED | 409 | DOM | 공개된 콘텐츠는 본문 또는 미디어가 있어야 합니다. |
+| `ANS-DOM-010` | INVALID_EDIT_STATE | 400 | DOM | 수정 횟수와 수정 시각이 맞지 않습니다. |
 | `ANS-INFRA-001` | DUPLICATED_ANSWER | 409 | INFRA | 이미 등록된 답변입니다. |
 | `ANS-EXT-001` | STORAGE_UNAVAILABLE | 503 | EXT | 미디어 저장소에 연결할 수 없습니다. |
 

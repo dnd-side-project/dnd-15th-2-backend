@@ -3,17 +3,19 @@
 ## 0. 문서 상태와 기준
 
 - 상태: 구현 전 논리·물리 데이터 모델 초안.
-- 작성일: 2026-08-02. 최종 갱신: **2026-08-04**.
+- 작성일: 2026-08-02. 최종 갱신: **2026-08-07**.
 - DB 기준: PostgreSQL 16+ / PostGIS 3+.
 - 제품 정본: `.omx/plans/prd-direction-connected-communication.md`.
-- 기능 정본: **`docs/2. 기능-명세서.md` (2026-08-04 개정)**.
+- 기능 정본: **`docs/2. 기능-명세서.md` (2026-08-07 개정)**.
 - 용어 정본: **`CONTEXT.md`**.
 - 정책 정본: `.omx/plans/policy-decision-register-direction-connected-communication.md`.
 - 매칭 설계: `docs/설계/1. 방향-기반-수신자-매칭-백엔드-설계.md`.
 - 이 문서는 현재 MVP인 `질문 추천 → 질문글 발송 → 수신자 확정 → 답변/공감/만료 → 신고·차단·알림`을 모델링한다.
 - 현재 저장소에는 실제 Spring/PostgreSQL 백엔드가 없다. 아래 내용은 구현 완료 상태가 아니라 구현 계약 제안이다.
 
-> **2026-08-04 개정의 핵심**: 답변은 **질문글 작성자 한 명에게만** 도달한다. 답변자는 같은 질문글의 다른 답변도, 답변 개수도 볼 수 없다. 근거는 `docs/adr/0001-답변은-질문자에게만-도달한다.md`다. 이 규칙은 DB 제약이 아니라 **조회 계층에서 강제**하므로, 스키마만 보고 "여러 수신자가 답변을 공유한다"고 해석하면 안 된다.
+> **2026-08-07 개정의 핵심**: 답변은 **그 질문글의 수신 자격자와 질문자 전원**에게 보인다. 근거는 `docs/adr/0002-답변은-질문글을-받은-사람-모두에게-공개된다.md`다. 열람 범위는 DB 제약이 아니라 **조회 계층에서 강제**하므로, 스키마만 보고 열람 범위를 추론하면 안 된다.
+>
+> ~~**2026-08-04 개정의 핵심**: 답변은 질문글 작성자 한 명에게만 도달한다.~~ (`docs/adr/0001` — superseded)
 
 ### 스키마 기준 파일
 
@@ -70,6 +72,108 @@
 **`SKIP_PENDING`이 용량 해제 트리거를 건드리지 않는 이유**: `ct_post_recipient_capacity_release`는 `ANSWERED`·`SKIPPED`·`EXPIRED`·`BLOCKED`만 해제 대상으로 본다. `SKIP_PENDING`은 그 목록에 없으므로 트리거를 고치지 않고도 되돌릴 수 있는 동안 용량을 자연히 붙잡는다.
 
 **댓글 테이블은 여전히 만들지 않는다.** 이전에는 Non-goal이라 제외했지만, 이제는 답변을 볼 수 있는 사람이 질문자 한 명뿐이라 **댓글이 놓일 자리 자체가 없다.**
+
+> **2026-08-07 주의**: 위 문단의 근거는 폐기됐다. 답변을 볼 수 있는 사람이 수신 자격자 전원으로 늘어났으므로 "자리가 없다"는 논리는 더 이상 성립하지 않는다. **그럼에도 댓글 테이블은 만들지 않는다.** 이유가 구조적 불가능에서 **제품 결정**으로 바뀌었을 뿐이다. 아래 절 참고.
+
+### 2026-08-07 스키마 영향 (답변 격리 폐기)
+
+기능 명세서 2026-08-07 개정으로 **답변이 질문자 전용에서 수신 자격자 전원 공개로 바뀌었다.** 근거는 `docs/adr/0002-답변은-질문글을-받은-사람-모두에게-공개된다.md`.
+
+스키마의 단일 기준은 `dbml/direction_communication.dbml`이므로, 적용할 때는 DBML을 먼저 고치고 DDL과 이 문서를 맞춘다.
+
+#### 반드시 고쳐야 하는 것
+
+| # | 상태 | 대상 | 현재 | 바뀌어야 하는 것 | 왜 |
+|---|---|---|---|---|---|
+| 1 | **반영됨** | **`answer_reaction`** | ~~`answer_id`가 PK~~ → **`(answer_id, reactor_id)` 복합 PK** | — | 공감할 수 있는 사람이 질문자 한 명뿐이라 "답변당 1건"이 키로 성립했다. 이제 **볼 수 있는 사람 전원**이 누르므로 그대로 두면 두 번째 사람의 공감이 PK 충돌로 실패한다. **이번 개정에서 가장 확실히 깨지는 지점이었다** |
+| 2 | **반영됨** | ~~`ct_answer_reaction_reactor_is_sender`~~ → **`ct_answer_reaction_reactor_can_view`** | — | — | 누를 수 있는 사람이 질문자 + 수신 자격자로 넓어졌고, 자기 답변 공감 금지가 새로 생겼다. 넘김·만료로 인한 자격 상실은 시간에 따라 변하므로 트리거가 아니라 조회 계층이 강제한다 |
+| 3 | **반영됨** | **`post_recipient.inbound_bearing_deg`** (신설) | — | — | 목록·카드의 방향은 **보는 사람 기준**이다. 구면에서 역방위는 `+180°`가 아니라 별도 계산이므로 매칭 시점에 스냅샷으로 박는다. **구간 키는 저장하지 않는다** — 라벨은 조회 시점에 현재 ACTIVE 스킴으로 파생시켜야 스킴이 8→16으로 바뀔 때 마이그레이션 없이 재분류된다 |
+| 4 | **반영됨** | **`post_recipient.answers_read_at`** (신설) | — | — | `direction_post.answers_read_at`은 **질문자용**이다. `답변한` 카테고리의 `새 답변 n개` 배지는 수신자마다 마지막으로 본 시점이 달라 별도 기준선이 필요하다 |
+| 5 | **반영됨** | **`post_recipient.distance_m`, `answer.distance_m`** (신설) | ~~`distance_band`만 존재~~ | — | **정확 거리를 표시하기로 했는데 스키마에 정확 거리가 없었다.** 수신자 좌표는 `active_user_presence`에 TTL로만 남아 나중에 재계산할 수 없으므로 방위와 똑같이 스냅샷이 필요하다. `distance_band`는 근거리 하한(10km) 미만 표시용으로 남는다 |
+| 6 | **반영됨** | **`answer.edited_at`** (신설) | — | — | 재검토 큐 투입과, 신고 시점의 내용 특정에 필요하다. `수정됨` 표시의 근거이기도 하다 |
+| 7 | **반영됨** | **`uq_answer_one_per_recipient`** | ~~`status NOT IN ('REJECTED','DELETED')`~~ → **`status <> 'REJECTED'`** | — | "삭제 후 재작성 불가"가 확정됐다. 열어두면 삭제→재작성이 사실상 무제한 수정이 되어 수정 정책이 무의미해진다. `REJECTED`만 자리를 비켜주는 이유는 운영이 거절한 것은 사용자 잘못이 아니기 때문이다 |
+| 8 | **스키마 변경 불필요** | **답변 수정 중 처리** | — | 기존 `status`·`moderation_status`로 충분 | 아래 "답변 수정" 절 참고 |
+| 8-1 | **반영됨** | **`answer.edit_count`** (신설) | — | — | 공감이 수정에도 승계되므로 무제한이면 "공감을 모은 뒤 반복 교체"가 기능이 된다. 수정마다 재검토가 돌아가 모더레이션 큐 비용도 늘어난다. **실효 상한 3은 DB에 고정하지 않고** 운영 설정값으로 두며 DB에는 안전 상한 10만 건다 — `recipient_receive_state`의 수신 상한 5를 하드코딩에서 뺀 것과 같은 방식이다 |
+| 9 | 미반영 | **`post_recipient` 조회 경로** | 상태 기준 단일 목록 | **`답변 안 한` / `답변한` 두 카테고리 + 방향 집계** | 목록 API가 방향별 개수를 함께 내려줘야 한다. 페이지네이션 때문에 클라이언트가 칩을 만들 수 없다. 스키마 변경은 필요 없다 — 카테고리는 `answer` 존재 여부로 유도되고 방향 집계는 `inbound_bearing_deg`로 계산한다 |
+
+#### 검증
+
+`docs/sql/direction_communication_ddl.sql`을 PostgreSQL 16 + PostGIS 3.4에서 실행하고(테이블 31개 생성) 아래 동작을 확인했다.
+
+| 검증 | 결과 |
+|---|---|
+| 질문자와 다른 수신자가 같은 답변에 공감 | 둘 다 성공 (구 스키마에서는 PK 충돌) |
+| 답변자가 자기 답변에 공감 | 거부 |
+| 수신 자격 없는 사용자가 공감 | 거부 |
+| 같은 사람이 같은 답변에 두 번 공감 | 거부 (`pk_answer_reaction`) |
+| `inbound_bearing_deg = 360` | 거부 |
+| `distance_m` 음수 | 거부 |
+| `answers_read_at < matched_at` | 거부 |
+| 공개되지 않은 답변에 `edited_at` | 거부 |
+| 공개 후 수정 → 공감 승계 | 2건 그대로 유지 |
+| 삭제 후 같은 수신 권한으로 재작성 | 거부 (`uq_answer_one_per_recipient`) |
+| `PUBLISHED → SAFETY_CHECKING` 전이 + 같은 트랜잭션에서 첨부 교체 | 커밋 성공. `published_at` 유지, 공감 2건 유지 |
+| 수정 검토 중 같은 수신 권한으로 새 답변 삽입 | 거부 |
+| `SAFETY_CHECKING → PUBLISHED` 복귀 | 성공. 본문·첨부 모두 교체된 상태로, 공감 2건 그대로 |
+| 질문글 `EXPIRED` 상태에서 답변 수정 → 검토 → 반영 | 성공 (만료는 새 `answer` 행 생성만 막는다) |
+| `edit_count`와 `edited_at`이 어긋난 조합 (한쪽만 채움) | 양방향 모두 거부 |
+| `edit_count = 11` (안전 상한 초과) | 거부 |
+| `edit_count = 10` | 성공 — 실효 상한 3은 DB가 아니라 애플리케이션이 막는다 |
+
+> 만료 후 **새 공감**이 가능한지는 픽스처 중복 때문에 재실행하지 못했다. 다만 `ct_answer_reaction_reactor_can_view`는 작성자 여부와 수신 자격만 판정하고 만료를 보지 않으므로 **DB 레벨에서 막는 제약은 없다.** 실제 차단 여부는 조회·쓰기 계층의 책임이다.
+
+#### 답변 수정 — 새 컬럼 없이 기존 상태로 표현한다
+
+**검토 중인 답변은 다른 사람에게 감춘다.** 따라서 대기 중인 본문을 따로 보관할 필요가 없고, 기존 컬럼만으로 표현된다.
+
+```
+수정 제출 → status = 'SAFETY_CHECKING', moderation_status = 'PENDING'
+           body_text와 media_attachment를 즉시 교체
+           조회 계층은 status = 'PUBLISHED'만 노출 → 다른 사람 화면에서 빠짐
+           (작성자 본인에게는 노출하고 `검토 중` 배지를 붙인다)
+검토 통과 → status = 'PUBLISHED', edited_at = now()
+```
+
+**`pending_body_text`도 `answer_edit` 테이블도 두지 않는다.** 검토 중에 기존 내용을 계속 보여주려면 공개본과 대기본을 동시에 보관해야 하는데, `media_attachment`는 `(answer_id, display_order)` unique이고 대상 컬럼이 `post_id`/`answer_id` 둘 중 하나(`num_nonnulls = 1`)라 **대기 중인 미디어를 붙일 세 번째 대상이 없다.** 그 길로 가면 텍스트만 수정 가능으로 축소되거나 `ck_media_attachment_exactly_one_target`을 손대야 한다.
+
+답변 전체를 감추면 그 동안 `media_attachment`를 떼고 붙여도 중간 상태가 아무에게도 노출되지 않는다. `ct_media_attachment_preserves_content`도 `PUBLISHED` 답변만 검사하므로 `SAFETY_CHECKING` 중에는 걸리지 않는다. **사진 수정이 텍스트 수정과 같은 규칙으로 처리된다.**
+
+기존 제약과의 관계도 확인했다.
+
+| 제약 | 수정 중 상태에서 |
+|---|---|
+| `ck_answer_published_at` | `status <> 'PUBLISHED'`일 때는 `published_at`을 요구하지 않으므로 값이 남아 있어도 통과 |
+| `ck_answer_edited_at` | `published_at`이 남아 있고 `edited_at >= published_at`이면 통과 |
+| `ct_answer_has_content` | `PUBLISHED`만 검사하므로 교체 중간에 첨부가 비어도 통과 |
+| `uq_answer_one_per_recipient` | `status <> 'REJECTED'`이므로 `SAFETY_CHECKING`도 자리를 점유한다. 수정 중에 새 답변을 끼워 넣을 수 없다 |
+| `answer_reaction` | 행이 그대로 남아 있다가 복귀할 때 함께 돌아온다 |
+
+**만료 후에 검토가 끝나도 반영한다.** 만료는 새 `answer` 행 생성만 막지 기존 행의 상태 전이를 막지 않는다.
+
+#### 확인만 하면 되는 것 (구조 변경 불필요)
+
+| 대상 | 판단 |
+|---|---|
+| `post_recipient.status` 전이 | **그대로 쓴다.** `ANSWERED`·`SKIPPED`·`EXPIRED`는 유지되고, 바뀐 것은 **그 상태를 어느 목록에 태우느냐**뿐이다. 상태 기계를 건드리지 않는다 |
+| `ct_post_recipient_capacity_release` | **그대로 쓴다.** 슬롯 해제 조건(답변·넘김·만료)이 바뀌지 않았다. `ANSWERED`가 여전히 해제 대상이고, 다만 해제 후에도 행이 화면에 남을 뿐이다 |
+| `direction_scheme` / `direction_segment` | **그대로 쓴다.** `segment_count`와 `start_offset_deg`가 이미 N방향을 수용한다. 8은 구조가 아니라 데이터다 |
+| `post_audience.selected_segment_key` | **스냅샷 유지.** 발신자가 고른 구간은 사용자의 의사 표시이자 매칭 판정의 근거라 스킴이 바뀌어도 변하지 않는다. 수신 측만 파생값을 쓴다(의도된 비대칭) |
+| `post_reaction` | **그대로 쓴다.** `(post_id, reactor_id)`가 `post_recipient`를 참조하는 구조가 "수신 자격자만 질문글에 공감" + "작성자는 자기 글에 공감 불가"를 이미 키로 강제한다 |
+| `answer.bearing_from_sender_deg`, `answer.distance_band` | **컬럼은 유지, 노출 규칙만 바뀐다.** 질문자 기준 고정값이며 보는 사람마다 재계산하지 않는다. 재계산하면 여러 관측을 모아 답변자 위치를 삼각측량할 수 있다 |
+| 댓글 테이블 | **만들지 않는다.** 근거가 "자리가 없다"에서 "제품 결정"으로 바뀌었다 |
+
+#### 불변식 13이 약해진다
+
+> 정확 좌표는 API 응답, 로그, 분석 이벤트, Outbox payload에 넣지 않는다. 외부에는 `distance_band`와 `coarse_region_code`만 나간다.
+
+**기능 명세서 2026-08-07 개정으로 카드와 답변에 `distance_band`가 아닌 정확 거리를 노출하기로 했다.** 좌표 자체를 내보내는 것은 아니므로 불변식의 문자는 지켜지지만, 취지는 약해진다.
+
+이 결정이 성립하는 근거는 **방향 구간이 45°라서 방향 ∩ 거리의 교집합이 점이 아니라 긴 호가 되기 때문**이다. 그리고 이 안전 마진은 두 조건에 의존한다.
+
+1. **구간 폭 45°** — 16방향(22.5°)이 되면 호가 절반, 32방향(11.25°)이면 4분의 1로 짧아진다
+2. **근거리 하한 10km** — 호 길이는 거리에 비례하므로 가까울수록 좁아진다. 지역 라벨이 광역권으로 확정되면서 광역권 내부에 하한 위 구간(예: 15km)이 남지만, 그 반경에 실제로 사용자가 들어올 빈도가 낮다고 보아 감수한 값이다. 실사용 데이터에서 근거리 매칭 빈도가 예상보다 높으면 재검토 대상이다
+
+**따라서 불변식 13에 조건을 덧붙여야 한다**: *외부에 정확 거리를 내보내는 것은 방향 구간이 45° 이상이고 근거리 하한이 적용될 때만 허용한다.* `distance_band` 컬럼은 하한 구간 표시에 계속 사용하므로 폐기하지 않는다.
 
 ### P06 위치 정책 (2026-08-03 확정: 1안)
 
@@ -133,8 +237,8 @@
 | 질문 풀  | `approved_question`                         | 승인 질문 문구, 활성 기간            | 배정은 승인 질문 ID를 참조              |
 | 질문 추천 | `question_assignment_cycle`                 | 사용자·주기별 고정 질문 목록                    | 승인 질문을 읽어 추천 스냅샷 생성              |
 | 질문글  | `direction_post`                            | 본문, 방향·거리 스냅샷, 만료 시각, 미디어, 답변 읽음 기준선           | 수신자 확정은 별도 트랜잭션                |
-| 수신·답변 | `post_recipient`                            | 수신 상태, 발견·열람·넘김 유예 상태, 답변                 | 답변은 유효 수신자만 작성. **답변 열람은 질문자 한정** |
-| 공감 | `post_reaction`, `answer_reaction` | 질문글 공감과 답변 공감 | 질문글 공감은 수신자만, 답변 공감은 질문자만 |
+| 수신·답변 | `post_recipient`                            | 수신 상태, 발견·열람·넘김 유예 상태, 답변                 | 답변은 유효 수신자만 작성. **답변 열람은 질문자 + 그 질문글의 수신 자격자 전원**(ADR 0002, 조회 계층에서 강제) |
+| 공감 | `post_reaction`, `answer_reaction` | 질문글 공감과 답변 공감 | 질문글 공감은 수신자만, **답변 공감은 그 답변을 볼 수 있는 사람(질문자+수신 자격자, 자기 답변 제외)** |
 | 안전    | `user_block`, `report`, `moderation_review` | 차단 관계, 신고 사건, 운영 판정                 | 조회·매칭·알림에서 현재 상태 재확인           |
 | 알림    | `notification`, `outbox_event`              | 앱 내 알림과 외부 전달 작업                    | 푸시는 접근 권한의 진실의 원천이 아님          |
 
@@ -195,7 +299,7 @@ erDiagram
 - `media_attachment`는 소유권 검증을 위해 복합 FK 세 개를 갖는다. `(media_id, owner_id) → media_asset(id, owner_id)`, `(post_id, owner_id) → direction_post(id, sender_id)`, `(answer_id, owner_id) → answer(id, author_id)`.
 - `answer`는 `(post_recipient_id, author_id) → post_recipient(id, recipient_id)` 복합 FK로 "답변 작성자 = 수신자"를 강제한다. 한 수신 권한당 답변은 `uq_answer_one_per_recipient` partial unique로 1건이다.
 - `post_reaction`은 `(post_id, reactor_id) → post_recipient(post_id, recipient_id)` 복합 FK로 "질문글 공감은 수신자만"을 강제한다. 별도 트리거가 없다.
-- `answer_reaction`은 `answer_id`가 PK이자 FK다. "답변당 공감 1건"은 키가 보장하고, "누른 사람 = 질문글 작성자"는 `ct_answer_reaction_reactor_is_sender` 트리거가 판정한다. `answer`가 `post_id`를 직접 갖지 않아 복합 FK로 표현할 수 없기 때문이다.
+- `answer_reaction`은 `(answer_id, reactor_id)` 복합 PK다. "한 사람이 한 답변에 한 번만"은 키가 보장하고, "누른 사람이 그 답변을 볼 수 있는가(질문자 또는 수신 자격자) + 자기 답변이 아닌가"는 `ct_answer_reaction_reactor_can_view` 트리거가 판정한다. `answer`가 `post_id`를 직접 갖지 않아 복합 FK로 표현할 수 없기 때문이다.
 - `report`는 `direction_post`, `answer`, `user_account` 중 정확히 하나를 신고 대상으로 갖는다. 질문 제안은 현재 신고 대상이 아니다.
 - `moderation_review`는 신고 사건과 연결되며 조치 대상의 현재 상태를 갱신한다.
 - `notification`은 대상 종류에 따라 질문글 또는 답변을 가리킬 수 있고, 둘 다 없을 수도 있다.
@@ -400,12 +504,16 @@ erDiagram
         bigint post_id FK
         bigint recipient_id FK
         varchar status
+        bigint distance_m "2026-08-07 추가. 정확 거리 스냅샷"
         varchar distance_band
         numeric matched_bearing_deg
+        numeric inbound_bearing_deg "2026-08-07 추가. 수신자 기준 역방위 스냅샷. 목록·카드 표시는 이 값을 쓴다"
         varchar matched_region_code
         timestamptz matched_at
         timestamptz discovered_at
         timestamptz opened_at
+        timestamptz answers_read_at "2026-08-07 추가. 이 수신자의 답변 목록 마지막 확인 시각. 답변한 카테고리의 새 답변 n개 배지 기준선"
+        timestamptz skip_requested_at
         timestamptz skipped_at
         timestamptz capacity_released_at
         timestamptz expired_at
@@ -421,10 +529,13 @@ erDiagram
         text body_text
         varchar coarse_region_code
         numeric bearing_from_sender_deg
+        bigint distance_m "2026-08-07 추가. 정확 거리 스냅샷"
         varchar distance_band
         varchar moderation_status
         timestamptz submitted_at
         timestamptz published_at
+        timestamptz edited_at "2026-08-07 추가. 수정이 검토를 통과해 반영된 시각. 값이 있으면 수정됨 표시"
+        int edit_count "2026-08-07 추가. 반영된 수정 횟수. 안전 상한 10, 실효 상한은 운영 설정값(초기값 3)"
         timestamptz deleted_at
     }
 
@@ -652,9 +763,9 @@ erDiagram
 | `QUESTION_PROPOSAL_REVIEWED` | 제안자 | 없음 |
 | `REPORT_RESOLVED` | 신고자 | 없음 |
 
-`ANSWER_REACTED`는 답변자가 받는 **유일한 반응 신호**다. 이것이 없으면 답변자는 자기 답변이 읽혔는지조차 알 수 없다. 그리고 질문자가 만료 뒤에 처음 열어볼 수 있으므로 **답변한 지 하루가 지나 도착할 수 있다.** 이는 지연이 아니라 정상 동작이므로 "오래된 이벤트는 버린다" 같은 TTL을 이 종류에 적용하면 안 된다.
+`ANSWER_REACTED`는 답변자가 받는 **유일한 반응 신호**다. 이것이 없으면 답변자는 자기 답변이 읽혔는지조차 알 수 없다. 이제 공감을 줄 수 있는 사람이 질문자와 수신 자격자 전원으로 늘었고, 그중 누구든 만료 뒤에 처음 열어볼 수 있으므로 **답변한 지 하루가 지나 도착할 수 있다.** 이는 지연이 아니라 정상 동작이므로 "오래된 이벤트는 버린다" 같은 TTL을 이 종류에 적용하면 안 된다.
 
-`ANSWER_RECEIVED`의 수신자는 질문글 작성자 한 명뿐이다. 같은 질문글의 다른 수신자에게 "새 답변이 달렸어요"를 보내면 ADR 0001을 어긴다.
+`ANSWER_RECEIVED`의 수신자는 질문글 작성자 한 명뿐이다. 답변을 **볼 수 있는** 사람은 2026-08-07 개정으로 수신 자격자 전원까지 늘었지만, 그들 모두에게 푸시를 보내지는 않는다 — 수신자 M명 × 답변 N개만큼 알림이 불어나기 때문이다(ADR 0002). 다른 수신자는 대신 `post_recipient.answers_read_at` 기준의 인앱 `새 답변 n개` 배지로만 새 답변을 안다.
 - Outbox payload에는 정확 좌표, 푸시 토큰 원문, 신고 상세 같은 민감 정보를 넣지 않는다.
 - `notification`은 앱 내 알림의 진실의 원천이다. 푸시 실패가 수신 권한이나 알림 행을 지우지 않는다.
 - 푸시 토큰은 복호화 가능한 암호문으로 제한 저장하고, 중복 확인에는 비가역 fingerprint를 사용한다. 단순 해시만 저장하면 실제 푸시 발송에 사용할 수 없다.
@@ -797,8 +908,13 @@ ALTER TABLE post_reaction
     FOREIGN KEY (post_id, reactor_id)
     REFERENCES post_recipient (post_id, recipient_id) ON DELETE CASCADE;
 
--- 답변 공감: answer_id가 PK라 "답변당 1건"이 키로 성립한다.
+-- 답변 공감: (answer_id, reactor_id) 복합 PK라 "사용자당 답변 하나에 1건"이 키로 성립한다.
+-- 2026-08-07: answer_id 단독 PK였다. 공감할 수 있는 사람이 질문자 한 명뿐이라는 전제로
+-- 걸었던 키인데, ADR 0002로 답변이 수신 자격자 전원에게 공개되면서 두 번째 사람의
+-- 공감이 PK 충돌로 실패하게 되어 복합 키로 바꿨다.
 ALTER TABLE answer_reaction
+    ADD CONSTRAINT pk_answer_reaction
+    PRIMARY KEY (answer_id, reactor_id),
     ADD CONSTRAINT fk_answer_reaction_answer
     FOREIGN KEY (answer_id) REFERENCES answer (id) ON DELETE CASCADE,
     ADD CONSTRAINT fk_answer_reaction_user
@@ -812,14 +928,14 @@ ALTER TABLE answer_reaction
 | 질문글 공감은 수신자만 | `fk_post_reaction_recipient` 복합 FK |
 | 질문자는 자기 질문글에 공감 불가 | 위 FK + `ct_post_recipient_not_sender` (발신자는 수신자가 될 수 없으므로 참조할 행이 없다) |
 | 같은 사람이 같은 질문글에 두 번 공감 불가 | `pk_post_reaction` |
-| 답변당 공감 1건 | `answer_reaction_pkey` |
-| 답변 공감은 질문자만 | `ct_answer_reaction_reactor_is_sender` **트리거** |
+| 한 사람은 한 답변에 한 번만 공감 | `pk_answer_reaction` (복합 PK) |
+| **답변 공감은 그 답변을 볼 수 있는 사람(질문자 또는 그 질문글의 수신 자격자)만, 자기 답변은 불가** | `ct_answer_reaction_reactor_can_view` **트리거** |
 | **질문글 공감 수를 질문자에게만 노출** | **아무것도 강제하지 않는다. 조회 계층의 책임이다** |
-| **답변을 질문자와 답변자에게만 노출** | **아무것도 강제하지 않는다. 조회 계층의 책임이다** |
+| **답변을 질문자와 수신 자격자 전원에게 노출**(ADR 0002) | **아무것도 강제하지 않는다. 조회 계층의 책임이다** |
 
 마지막 두 줄이 중요하다. 이 제품에서 가장 중요한 규칙 두 개가 DB 제약으로 표현되지 않는다. 스키마만 보고 구현하면 어긴다.
 
-답변 공감만 트리거를 쓰는 이유는 `answer`가 `post_id`를 직접 갖지 않고 `post_recipient`를 거쳐 도달하기 때문이다. 복합 FK로 표현하려면 `answer`에 `post_id`를 비정규화해야 하는데, 그 대가가 트리거 하나보다 크다.
+답변 공감만 트리거를 쓰는 이유는 `answer`가 `post_id`를 직접 갖지 않고 `post_recipient`를 거쳐 도달하기 때문이다. 복합 FK로 표현하려면 `answer`에 `post_id`를 비정규화해야 하는데, 그 대가가 트리거 하나보다 크다. 게다가 넘김·만료로 인한 열람 자격 상실은 시간에 따라 변하므로, 이 트리거는 "수신자 집합에 속하는가"까지만 판정하고 현재 열람 가능 여부는 조회 계층이 강제한다.
 
 ### 미디어 단일 첨부를 트리거가 아니라 키로 강제하는 이유
 
@@ -974,7 +1090,7 @@ PostgreSQL은 FK에 인덱스를 자동 생성하지 않는다. 아래는 기존
 | `user_account`, `active_user_presence`, `post_recipient`, `answer` | 각 지역 코드 컬럼 | `region_code` 삭제 시 `RESTRICT` 검사용 |
 
 | `post_reaction` | `reactor_id` | PK 선두가 `post_id`. 사용자 삭제 시 `CASCADE` 검사와 "내가 공감한 것" 조회에 필요 |
-| `answer_reaction` | `reactor_id` | PK가 `answer_id` 단독 |
+| `answer_reaction` | `reactor_id` | 복합 PK `(answer_id, reactor_id)`의 두 번째 컬럼이라 선두로 커버되지 않음 |
 
 `media_attachment`의 `post_id`·`answer_id`는 `uq_media_attachment_post_order`와 `uq_media_attachment_answer_order`가 선두 컬럼으로 커버하므로 별도 인덱스를 만들지 않는다. `post_reaction.post_id`와 `answer_reaction.answer_id`도 각각 PK 선두라 별도 인덱스가 필요 없다 — 질문자가 공감 수를 세는 조회(`WHERE post_id = ?`)가 PK를 그대로 탄다.
 
@@ -1147,7 +1263,8 @@ FOR UPDATE OF pr, p;
               → 취소는 DELETE
 
 답변 공감:    INSERT INTO answer_reaction (answer_id, reactor_id)
-              → PK가 "답변당 1건", 트리거가 "누른 사람 = 질문자"를 검사한다
+              → 복합 PK가 "사용자당 답변 하나에 1건",
+                트리거가 "누른 사람이 볼 수 있는 사람인가(질문자·수신 자격자) + 자기 답변 아닌가"를 검사한다
               → ANSWER_REACTED outbox_event
               → 취소는 DELETE. 이때 예약된 알림도 함께 취소한다
 ```
@@ -1200,9 +1317,9 @@ user_block upsert
 8. 수신자가 적어도 인접 방향 구간을 자동 확장하지 않는다.
 9. 답변 작성자는 반드시 해당 `post_recipient.recipient_id`와 같아야 한다. 한 수신 권한당 답변은 1건이다(`uq_answer_one_per_recipient`).
 10. 서버 시각의 `expires_at` 이후에는 새 답변을 만들 수 없다. **공감은 만료 후에도 가능하다.**
-10-1. **답변을 조회할 수 있는 주체는 질문글 작성자와 답변 작성자 본인뿐이다.** 같은 질문글의 다른 수신자에게는 답변 내용도, 답변 개수도 노출하지 않는다. DB 제약이 아니라 조회 계층에서 강제한다(ADR 0001).
+10-1. **답변을 조회할 수 있는 주체는 질문글 작성자와 그 질문글의 수신 자격자 전원이다.** 수신 자격이 없는 사용자에게는 답변 내용도, 답변 개수도 노출하지 않으며, 넘겼거나(SKIPPED) 답변 없이 만료된 수신자는 열람 자격을 잃는다. DB 제약이 아니라 조회 계층에서 강제한다(ADR 0002, 2026-08-07 개정 — 이전에는 질문자와 답변 작성자 본인뿐이었다, ADR 0001 superseded).
 10-2. **질문글 공감 수는 질문글 작성자에게만 노출한다.** 수신자 응답에는 총합 대신 "내가 눌렀는지" 여부만 담는다.
-10-3. **답변 공감을 남길 수 있는 사람은 그 답변이 달린 질문글의 작성자 한 명뿐이며, 답변당 최대 1건이다.**
+10-3. **답변 공감을 남길 수 있는 사람은 그 답변을 볼 수 있는 사람(질문글 작성자 또는 그 질문글의 수신 자격자)이며, 자기 답변에는 남길 수 없다. 사용자당 같은 답변에 최대 1건이다.**
 11. 차단 관계가 어느 방향으로든 활성 상태면 매칭·수신함·알림·재회에서 제외한다.
 12. 푸시 성공 여부는 수신 자격이나 앱 내 알림의 진실의 원천이 아니다.
 13. 정확 좌표는 API 응답, 로그, 분석 이벤트, Outbox payload에 포함하지 않는다.
@@ -1238,8 +1355,8 @@ P06은 확정됐다. P07, P10, P11, P12가 승인되기 전에는 실제 사용�
 
 정본 PRD의 Non-goal과 충돌하므로 다음 테이블은 현재 ERD에 넣지 않는다.
 
-- ~~`like`~~: **2026-08-04에 이 제외를 철회했다.** 공감은 확정 MVP 기능이며 `post_reaction`, `answer_reaction`으로 모델링했다. 다만 "공개 좋아요"는 아니다 — 질문글 공감 수는 질문자만 보고, 답변 공감은 질문자가 답변자 한 명에게 주는 것이다. 공개 인기 점수와 순위는 여전히 만들지 않는다.
-- `comment`: **만들지 않는다.** 이전에는 정본 PRD의 Non-goal이라 제외했지만, 이제는 답변을 볼 수 있는 사람이 질문자 한 명뿐이라 **댓글이 놓일 자리 자체가 없다**(ADR 0001). 질문자가 답변자에게 텍스트를 되보내는 통로는 자유 DM과 구별할 수 없어 열지 않는다.
+- ~~`like`~~: **2026-08-04에 이 제외를 철회했다.** 공감은 확정 MVP 기능이며 `post_reaction`, `answer_reaction`으로 모델링했다. 다만 "공개 좋아요"는 아니다 — 질문글 공감 수는 질문자만 보고, 답변 공감은 그 답변을 볼 수 있는 사람(질문자·수신 자격자)이 답변자에게 주는 것이다. 공개 인기 점수와 순위는 여전히 만들지 않는다.
+- `comment`: **만들지 않는다.** 이전에는 정본 PRD의 Non-goal이라 제외했고, 답변을 볼 수 있는 사람이 질문자 한 명뿐이던 시절에는 애초에 댓글이 놓일 자리 자체가 없었다(ADR 0001). 2026-08-07 개정으로 답변이 수신 자격자 전원에게 공개되면서 "자리가 없다"는 논리는 성립하지 않게 됐지만, 여전히 만들지 않는다 — 이제는 구조적 불가능이 아니라 **제품 결정**이다(ADR 0002: "답변에 답변할 수 없다", 대화가 두 겹의 스레드가 되는 것을 막는다). 질문자가 답변자에게 텍스트를 되보내는 통로는 자유 DM과 구별할 수 없어 열지 않는다.
 - 공개 인기 점수: 제외한다. 공감 수를 노출 순위나 사용자 등급에 사용하지 않는다.
 - `follow`, `direct_message`, `user_search_index`: 팔로우·DM·사용자 검색은 제품 Non-goal이다.
 - `public_profile_feed`: 공개 프로필 피드를 만들지 않는다.

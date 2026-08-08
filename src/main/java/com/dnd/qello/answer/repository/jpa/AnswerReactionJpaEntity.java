@@ -7,16 +7,19 @@ import com.dnd.qello.answer.domain.AnswerReaction;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
+import jakarta.persistence.IdClass;
 import jakarta.persistence.Table;
 
 @Entity
 @Table(name = "answer_reaction")
+@IdClass(AnswerReactionId.class)
 public class AnswerReactionJpaEntity {
 
 	@Id
 	@Column(name = "answer_id", nullable = false)
 	private Long answerId;
 
+	@Id
 	@Column(name = "reactor_id", nullable = false)
 	private Long reactorId;
 

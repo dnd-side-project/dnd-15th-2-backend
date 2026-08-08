@@ -19,7 +19,7 @@ public class JpaAnswerReactionRepository implements AnswerReactionRepository {
 	}
 
 	/**
-	 * 작성자 검증은 ct_answer_reaction_reactor_is_sender가 맡는다. 지연 트리거이므로
+	 * 열람 자격 검증은 ct_answer_reaction_reactor_can_view가 맡는다. 지연 트리거이므로
 	 * 위반은 이 메서드가 아니라 transaction commit 시점에 드러난다.
 	 */
 	@Override
@@ -30,12 +30,12 @@ public class JpaAnswerReactionRepository implements AnswerReactionRepository {
 
 	@Override
 	@Transactional
-	public void cancel(long answerId) {
-		reactions.deleteById(answerId);
+	public void cancel(long answerId, long reactorId) {
+		reactions.deleteById(new AnswerReactionId(answerId, reactorId));
 	}
 
 	@Override
-	public Optional<AnswerReaction> findByAnswerId(long answerId) {
-		return reactions.findById(answerId).map(AnswerReactionJpaEntity::toDomain);
+	public Optional<AnswerReaction> findByAnswerIdAndReactorId(long answerId, long reactorId) {
+		return reactions.findById(new AnswerReactionId(answerId, reactorId)).map(AnswerReactionJpaEntity::toDomain);
 	}
 }

@@ -1,6 +1,7 @@
 /**
  * Created at: 2026-08-03T21:20:00+09:00
- * Source scenario: TEST-PLAN-GH-40-ANSWER-SAFETY-NOTIFICATION-INT-001 through INT-010
+ * Source scenario: TEST-PLAN-GH-40-ANSWER-SAFETY-NOTIFICATION-INT-001 through INT-010,
+ * TEST-PLAN-GH-78-SCHEMA-REVISION-V7-INT-007 through INT-010
  */
 package com.dnd.qello;
 
@@ -96,8 +97,9 @@ class AnswerSafetyNotificationPersistenceIntegrationTest extends PostgisContaine
 		long postId = post(questionId);
 		postRecipientId = jdbc.queryForObject("""
 			INSERT INTO post_recipient
-				(post_id, recipient_id, status, distance_band, matched_bearing_deg, matched_region_code, matched_at)
-			VALUES (?, ?, 'AVAILABLE', 'NEAR', 10, ?, ?)
+				(post_id, recipient_id, status, distance_band, matched_bearing_deg, matched_region_code, matched_at,
+				 inbound_bearing_deg, distance_m)
+			VALUES (?, ?, 'AVAILABLE', 'NEAR', 10, ?, ?, 190, 5000)
 			RETURNING id
 			""", Long.class, postId, authorId, REGION, Timestamp.from(NOW));
 	}
@@ -240,6 +242,59 @@ class AnswerSafetyNotificationPersistenceIntegrationTest extends PostgisContaine
 			Integer.class, postRecipientId)).isEqualTo(1);
 	}
 
+	@Test
+	@DisplayName("삭제된 답변은 더 이상 자리를 비켜주지 않는다 — 삭제 후 재작성은 불가하다")
+	void deletedAnswerNoLongerFreesTheSlot() {
+		Answer first = answerRepository.save(answer("deleted-frees-slot-1", authorId));
+		answerRepository.save(first.delete(NOW.plusSeconds(10)));
+
+		assertThatThrownBy(() -> answerRepository.save(answer("deleted-frees-slot-2", authorId)))
+			.isInstanceOf(DataIntegrityViolationException.class);
+	}
+
+	@Test
+	@DisplayName("edit_count와 edited_at의 동치 위반, edit_count 안전 상한(10) 초과는 DB CHECK가 즉시 거절한다")
+	void rejectsEditCountEditedAtViolationsAtTheDatabaseLevel() {
+		assertThatThrownBy(() -> jdbc.update("""
+			INSERT INTO answer
+				(post_recipient_id, author_id, status, idempotency_key, body_text, coarse_region_code,
+				 bearing_from_sender_deg, distance_band, distance_m, moderation_status, submitted_at,
+				 published_at, edited_at, edit_count)
+			VALUES (?, ?, 'PUBLISHED', 'edit-check-equivalence', '답변', ?, 45, 'NEAR', 5000, 'PASSED', ?, ?, ?, 0)
+			""", postRecipientId, authorId, REGION, Timestamp.from(NOW), Timestamp.from(NOW),
+			Timestamp.from(NOW.plusSeconds(60))))
+			.isInstanceOf(DataIntegrityViolationException.class);
+
+		assertThatThrownBy(() -> jdbc.update("""
+			INSERT INTO answer
+				(post_recipient_id, author_id, status, idempotency_key, body_text, coarse_region_code,
+				 bearing_from_sender_deg, distance_band, distance_m, moderation_status, submitted_at,
+				 published_at, edited_at, edit_count)
+			VALUES (?, ?, 'PUBLISHED', 'edit-check-equivalence-reverse', '답변', ?, 45, 'NEAR', 5000, 'PASSED', ?, ?, NULL, 1)
+			""", postRecipientId, authorId, REGION, Timestamp.from(NOW), Timestamp.from(NOW)))
+			.isInstanceOf(DataIntegrityViolationException.class);
+
+		assertThatThrownBy(() -> jdbc.update("""
+			INSERT INTO answer
+				(post_recipient_id, author_id, status, idempotency_key, body_text, coarse_region_code,
+				 bearing_from_sender_deg, distance_band, distance_m, moderation_status, submitted_at,
+				 published_at, edited_at, edit_count)
+			VALUES (?, ?, 'PUBLISHED', 'edit-check-ceiling', '답변', ?, 45, 'NEAR', 5000, 'PASSED', ?, ?, ?, 11)
+			""", postRecipientId, authorId, REGION, Timestamp.from(NOW), Timestamp.from(NOW),
+			Timestamp.from(NOW.plusSeconds(60))))
+			.isInstanceOf(DataIntegrityViolationException.class);
+
+		int insertedRows = jdbc.update("""
+			INSERT INTO answer
+				(post_recipient_id, author_id, status, idempotency_key, body_text, coarse_region_code,
+				 bearing_from_sender_deg, distance_band, distance_m, moderation_status, submitted_at,
+				 published_at, edited_at, edit_count)
+			VALUES (?, ?, 'PUBLISHED', 'edit-check-valid-control', '답변', ?, 45, 'NEAR', 5000, 'PASSED', ?, ?, NULL, 0)
+			""", postRecipientId, authorId, REGION, Timestamp.from(NOW), Timestamp.from(NOW));
+
+		assertThat(insertedRows).isEqualTo(1);
+	}
+
 	private boolean claimInTransaction(long eventId, CountDownLatch ready, CountDownLatch start) throws Exception {
 		ready.countDown();
 		start.await(5, TimeUnit.SECONDS);
@@ -247,7 +302,7 @@ class AnswerSafetyNotificationPersistenceIntegrationTest extends PostgisContaine
 	}
 
 	private Answer answer(String key, long author) {
-		return Answer.submit(postRecipientId, author, key, "답변", REGION, BigDecimal.valueOf(90), "NEAR", NOW);
+		return Answer.submit(postRecipientId, author, key, "답변", REGION, BigDecimal.valueOf(90), "NEAR", NOW, 5000L);
 	}
 
 	private long account(String nickname) {

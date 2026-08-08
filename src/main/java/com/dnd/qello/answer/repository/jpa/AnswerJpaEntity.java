@@ -53,6 +53,12 @@ public class AnswerJpaEntity {
 	private Instant publishedAt;
 	@Column(name = "deleted_at")
 	private Instant deletedAt;
+	@Column(name = "distance_m", nullable = false)
+	private long distanceM;
+	@Column(name = "edited_at")
+	private Instant editedAt;
+	@Column(name = "edit_count", nullable = false)
+	private int editCount;
 
 	protected AnswerJpaEntity() { }
 
@@ -70,6 +76,9 @@ public class AnswerJpaEntity {
 		this.submittedAt = answer.getSubmittedAt();
 		this.publishedAt = answer.getPublishedAt();
 		this.deletedAt = answer.getDeletedAt();
+		this.distanceM = answer.getDistanceM();
+		this.editedAt = answer.getEditedAt();
+		this.editCount = answer.getEditCount();
 	}
 
 	Long getId() { return id; }
@@ -85,4 +94,7 @@ public class AnswerJpaEntity {
 	Instant getSubmittedAt() { return submittedAt; }
 	Instant getPublishedAt() { return publishedAt; }
 	Instant getDeletedAt() { return deletedAt; }
+	long getDistanceM() { return distanceM; }
+	Instant getEditedAt() { return editedAt; }
+	int getEditCount() { return editCount; }
 }

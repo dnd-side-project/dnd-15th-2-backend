@@ -2,9 +2,23 @@
 
 > GitHub Issue: #53
 >
-> Snapshot date: 2026-08-05
+> Snapshot date: 2026-08-08
 >
-> Status: proposed — 2026-08-04 스키마 개정 반영. V2 적용 검증은 Issue #54에서 한다.
+> Status: applied — V1~V8까지 적용 완료. `V7`(Issue #73, PR #81)이 `device_credential`을
+> 먼저 `main`에 merge해 번호를 점유했고, 2026-08-07 스키마 개정(답변 격리 폐기,
+> ADR-0002)은 `V8`로 반영했다(Issue #78, 원래 `V7`로 작성했으나 재번호). `V8` 적용
+> 검증은 Issue #78에서 한다.
+>
+> **§5~§12 인벤토리는 2026-08-08(V1~V8) 기준으로 갱신했다.** 2026-08-05(V1+V2 상태)
+> 이후 `V3`~`V7`(user_account 비밀번호·낙관적 잠금, operator_credential, Spring
+> Session, device_credential)에서 소급 반영하지 않고 남아 있던 공백을 이번에 함께
+> 메웠다. 각 항목의 유래(어느 migration이 추가했는지)는 표·목록에 `(V5)`, `(V7)`,
+> `(V8)` 식으로 표시했다.
+> 근거는 `src/integrationTest/java/com/dnd/qello/FlywayMigrationIntegrationTest.java`의
+> `EXPECTED_TABLES`/`EXPECTED_INDEXES`/`EXPECTED_FUNCTIONS`/`EXPECTED_TRIGGERS`와
+> `catalogMatchesApprovedManifest()`의 제약 개수 assertion이다 — 이 테스트가 매
+> 마이그레이션마다 실제 DB catalog와 대조하므로, 이후에도 이 절들이 뒤처지면 그
+> 테스트를 1차 대조군으로 다시 맞춘다.
 
 ## 1. 목적
 
@@ -25,15 +39,18 @@
 
 | Artifact | Repository path or source | SHA-256 | Role |
 | --- | --- | --- | --- |
-| DBML | `docs/product/data-model/direction_communication.dbml` | `4637f956f9703a8bdc38590957c2e48d60633e6d633beb3f193151b5c4c928f5` | logical schema source |
-| ERD | `docs/product/data-model/DIRECTION_COMMUNICATION_ERD.md` | `181604080ecffd58752e2b40bc3008fbdcdfb7736caff00820535ed6ba128886` | explanatory contract |
-| target DDL (2026-08-04) | source workspace `docs/sql/direction_communication_ddl.sql` | `be8aaee3b4671aa218c78c15bf33d6ade3ad1cfce902dc10d2cbd45b9fe5805f` | V2 authoring reference only |
+| DBML (2026-08-07, 현행) | `docs/product/data-model/direction_communication.dbml` | `3b443c4bea41a92d4f803e78d004fbe1ca6e1475f7ed6ae8f94fa8cc3121acc1` | logical schema source. vault 원본에는 없는 `operator_credential`(V5)을 백엔드 전용 부록으로 복원해 반영함 — 근거는 §6 |
+| ERD (2026-08-08, 현행) | `docs/product/data-model/DIRECTION_COMMUNICATION_ERD.md` | `05b0a7e3f93ce0b89b2a8cfde7d7cead41dc5655b414e135bb3297b68c4ecf85` | explanatory contract. 이전 판은 §2 이후 본문이 2026-08-04 기준으로 남아 있었고 그 사실을 상단 안내문으로 알렸을 뿐이었다. vault 원본이 §1·§2·mermaid·알림·불변식 전체를 2026-08-07 개정으로 완전히 갱신해, byte-for-byte로 다시 동기화했다 |
+| target DDL (2026-08-07) | source workspace `docs/sql/direction_communication_ddl.sql` | `d873908c802b4c3ff73637e3ef4c1ec84862146055f3ff7672e6908947fb2d31` | V8 authoring reference only (원래 V7로 작성, `#81`과의 번호 충돌로 재번호) |
+| DBML (2026-08-04, 이력) | 위 파일의 2026-08-04 판 | `4637f956f9703a8bdc38590957c2e48d60633e6d633beb3f193151b5c4c928f5` | 답변 격리 폐기(ADR-0002) 이전 판 |
+| ERD (2026-08-04, 이력) | 위 파일의 2026-08-04 판 | `181604080ecffd58752e2b40bc3008fbdcdfb7736caff00820535ed6ba128886` | 답변 격리 폐기(ADR-0002) 이전 판 |
+| target DDL (2026-08-04, 이력) | source workspace `docs/sql/direction_communication_ddl.sql`의 2026-08-04 판 | `be8aaee3b4671aa218c78c15bf33d6ade3ad1cfce902dc10d2cbd45b9fe5805f` | V2 authoring reference only |
 | V1 원본 DDL (2026-08-03, 이력) | 위 파일의 2026-08-03 판 | `cc93ba87aa5999bdd48589b63fa4da4e383270626fb36ecb7adac482ed3d95a7` | `V1__…sql`이 파생된 원본 |
 
 원본 DBML과 ERD는 byte-for-byte로 복사되어 위 checksum과 일치한다. target DDL은
-전체 상태 스크립트이므로 migration 경로에 복사하지 않는다. `V2__…sql`은 V1과
-target DDL의 차이만 담은 delta로 손으로 작성한다. V1 원본 DDL 행은 이력 보존용이며,
-`FlywayMigrationContractTest`가 `V1__…sql`의 sha256을 이 값으로 잠근다.
+전체 상태 스크립트이므로 migration 경로에 복사하지 않는다. `V8__…sql`은 V7과
+target DDL의 차이만 담은 delta로 손으로 작성한다. 이력 행은 보존용이며,
+`FlywayMigrationContractTest`가 `V1__…sql`의 sha256을 그 값으로 잠근다.
 
 vault DBML과 target DDL 사이에는 알려진 불일치가 하나 있다. vault의 DBML은
 `ck_direction_post_answers_read_at`을 선언하지 않지만, 같은 vault의 target DDL
@@ -41,6 +58,8 @@ vault DBML과 target DDL 사이에는 알려진 불일치가 하나 있다. vaul
 내부 일관성 결함이며 V2나 이 저장소가 보관한 DBML 사본의 오류가 아니다 — 이
 저장소의 DBML은 불완전한 원본을 byte-for-byte로 정확히 복사한 것이다. 대조적으로
 `ck_post_recipient_skip_pending`은 vault DBML에도 선언되어 있어 이런 불일치가 없다.
+2026-08-07 판에서 이 불일치는 다시 확인하지 않았다 — `V8`이 이 제약을 건드리지
+않으므로 범위 밖이다.
 
 ## 4. 폐기된 계보
 
@@ -55,19 +74,34 @@ vault DBML과 target DDL 사이에는 알려진 불일치가 하나 있다. vaul
 
 ## 5. Baseline summary
 
+V1~V8(2026-08-08) 전체를 반영한다. `V7`(#81, `device_credential`)과 `V8`(#78, 답변
+열람 범위 확대)은 서로 다른 테이블을 다뤄 내용은 겹치지 않지만, `V8`이 원래 `V7`로
+작성됐다가 `V7` 번호 충돌로 재번호된 이력이 있다 — Flyway 카탈로그 카운트에는 영향이
+없다. 표는 `FlywayMigrationIntegrationTest`의
+`EXPECTED_TABLES`/`EXPECTED_INDEXES`/`EXPECTED_FUNCTIONS`/`EXPECTED_TRIGGERS`와
+`catalogMatchesApprovedManifest()`의 `countConstraints` assertion으로 검증된 값과
+일치한다.
+
 | Object | Count | Notes |
 | --- | ---: | --- |
-| DBML enums | 28 | SQL에서는 `VARCHAR + CHECK`로 표현 |
-| Tables | 28 | 모든 테이블에 논리 PK 존재 |
-| Primary keys | 28 | 25개는 inline, 3개는 named/composite PK |
-| Foreign keys | 48 | named `fk_*` constraints |
-| Unique constraints | 18 | named `uq_*` constraints |
-| Unique indexes | 8 | partial/conditional uniqueness 포함 |
-| Check constraints | 97 | named `ck_*` constraints |
-| Non-unique indexes | 42 | GiST, partial, sort-order index 포함 |
-| Functions | 11 | trigger support functions |
-| Triggers | 10 | 2 regular + 8 constraint triggers |
+| DBML enums | 28 | SQL에서는 `VARCHAR + CHECK`로 표현. `V3`~`V7`(운영자 인증, Spring Session, 기기 자격증명)은 vault DBML이 다루는 범위 밖이라 이 수치에 영향이 없다 |
+| Tables | 32 | 모든 테이블에 논리 PK 존재. `V5`가 `operator_credential`, `V6`이 `spring_session`/`spring_session_attributes`, `V7`이 `device_credential`을 추가 |
+| Primary keys | 32 | 28개는 단일 컬럼 inline, 4개는 명시적으로 이름 붙인 복합 PK(`pk_user_block`, `pk_notification_preference`, `pk_post_reaction`, `pk_answer_reaction`) |
+| Foreign keys | 51 | named `fk_*` constraints. `V5`가 `fk_operator_credential_user`, `V6`이 `spring_session_attributes_fk`, `V7`이 `fk_device_credential_user`를 추가 |
+| Unique constraints | 20 | named `uq_*` constraints. `V5`가 `uq_user_account_id_role`, `uq_operator_credential_login_id`를 추가. `V7`은 named unique 제약이 아니라 `CREATE UNIQUE INDEX` 2개를 추가해 이 수치에 영향이 없다 |
+| Unique indexes | 11 | `CREATE UNIQUE INDEX`로 만든 것만 센다(named unique 테이블 제약이 만드는 인덱스는 위 "Unique constraints"에서 센다). `V6`이 `spring_session_ix1`, `V7`이 `uq_device_credential_secret`/`uq_active_device_installation`을 추가 |
+| Check constraints | 111 | named `ck_*` constraints. `V3`이 추가한 `ck_user_account_password_hash`는 `V5`가 제거해 순증감 없음. `V5`가 operator_credential 관련 4개, `V7`이 device_credential 관련 4개, `V8`이 6개(방향·거리·수정 이력 컬럼) 추가 |
+| Non-unique indexes | 45 | GiST, partial, sort-order index 포함. `V6`이 `spring_session_ix2`, `spring_session_ix3`, `V7`이 `device_credential_user_idx`를 추가 |
+| Functions | 11 | trigger support functions. `V8`이 `enforce_answer_reaction_reactor_is_sender`를 `enforce_answer_reaction_reactor_can_view`로 교체(개수 불변) |
+| Triggers | 10 | 2 regular + 8 constraint triggers. `V8`이 `ct_answer_reaction_reactor_is_sender`를 `ct_answer_reaction_reactor_can_view`로 교체(개수 불변) |
 | Extensions | 1 | `postgis` |
+
+"Unique indexes"(11) + "Non-unique indexes"(45) = 56이며, `uq_user_account_id_role`/
+`uq_operator_credential_login_id`가 만드는 인덱스 2개는 "Unique constraints"에서만
+센다. `FlywayMigrationIntegrationTest`의 `EXPECTED_INDEXES.hasSize(58)`는 이 2개를
+포함해 세므로(pg_indexes catalog는 제약이 만든 인덱스와 `CREATE INDEX`로 만든 인덱스를
+구분하지 않는다) 58 = 56 + 2다. 두 표가 다른 숫자를 보여주는 것은 오류가 아니라
+분류 기준의 차이다.
 
 ## 6. Table inventory
 
@@ -99,6 +133,10 @@ vault DBML과 target DDL 사이에는 알려진 불일치가 하나 있다. vaul
 - `outbox_event`
 - `notification`
 - `notification_delivery`
+- `operator_credential` (`V5`)
+- `spring_session` (`V6`)
+- `spring_session_attributes` (`V6`)
+- `device_credential` (`V7`, `#81`)
 
 ## 7. Function inventory
 
@@ -112,7 +150,7 @@ vault DBML과 target DDL 사이에는 알려진 불일치가 하나 있다. vaul
 - `enforce_answer_has_content`
 - `enforce_media_attachment_preserves_content`
 - `enforce_media_status_preserves_content`
-- `enforce_answer_reaction_reactor_is_sender`
+- `enforce_answer_reaction_reactor_can_view` (`V8`, `enforce_answer_reaction_reactor_is_sender`에서 교체)
 
 ## 8. Trigger inventory
 
@@ -125,7 +163,7 @@ vault DBML과 target DDL 사이에는 알려진 불일치가 하나 있다. vaul
 - `ct_answer_has_content`
 - `ct_media_attachment_preserves_content`
 - `ct_media_status_preserves_content`
-- `ct_answer_reaction_reactor_is_sender`
+- `ct_answer_reaction_reactor_can_view` (`V8`, `ct_answer_reaction_reactor_is_sender`에서 교체)
 
 ## 9. Index inventory
 
@@ -176,9 +214,15 @@ vault DBML과 target DDL 사이에는 알려진 불일치가 하나 있다. vaul
 - `outbox_event_dispatch_idx`
 - `notification_inbox_idx`
 - `notification_delivery_dispatch_idx`
-- `uq_answer_one_per_recipient`
+- `uq_answer_one_per_recipient` (`V8`에서 조건 축소, `status <> 'REJECTED'`)
 - `post_reaction_reactor_idx`
 - `answer_reaction_reactor_idx`
+- `spring_session_ix1` (`V6`)
+- `spring_session_ix2` (`V6`)
+- `spring_session_ix3` (`V6`)
+- `uq_device_credential_secret` (`V7`, `#81`)
+- `uq_active_device_installation` (`V7`, `#81`, partial unique — `credential_status = 'ACTIVE'`)
+- `device_credential_user_idx` (`V7`, `#81`, partial index 동일 조건)
 
 ## 10. Foreign-key constraint inventory
 
@@ -230,6 +274,9 @@ vault DBML과 target DDL 사이에는 알려진 불일치가 하나 있다. vaul
 - `fk_post_reaction_recipient`
 - `fk_answer_reaction_answer`
 - `fk_answer_reaction_user`
+- `fk_operator_credential_user` (`V5`)
+- `spring_session_attributes_fk` (`V6`)
+- `fk_device_credential_user` (`V7`, `#81`, `ON DELETE CASCADE`)
 
 ## 11. Unique-constraint inventory
 
@@ -251,8 +298,12 @@ vault DBML과 target DDL 사이에는 알려진 불일치가 하나 있다. vaul
 - `uq_outbox_event_dedup`
 - `uq_notification_recipient_dedup`
 - `uq_notification_delivery_device`
+- `uq_user_account_id_role` (`V5`)
+- `uq_operator_credential_login_id` (`V5`)
 
-partial unique object는 위 Index inventory에 포함된다.
+partial unique object는 위 Index inventory에 포함된다. 반대로 이 절의 named unique
+테이블 제약이 만드는 인덱스는 Index inventory에 다시 넣지 않는다 — §5 표 아래 설명
+참고.
 
 ## 12. Check-constraint inventory
 
@@ -353,6 +404,23 @@ partial unique object는 위 Index inventory에 포함된다.
 - `ck_notification_delivery_status`
 - `ck_notification_delivery_attempt_count`
 - `ck_notification_delivery_sent_at`
+- `ck_operator_credential_role` (`V5`)
+- `ck_operator_credential_login_id` (`V5`)
+- `ck_operator_credential_failed_attempt` (`V5`)
+- `ck_operator_credential_locked_until` (`V5`)
+- `ck_device_credential_platform` (`V7`, `#81`)
+- `ck_device_credential_status` (`V7`, `#81`)
+- `ck_device_credential_revoked_at` (`V7`, `#81`)
+- `ck_device_credential_installation_id` (`V7`, `#81`)
+- `ck_post_recipient_inbound_bearing` (`V8`)
+- `ck_post_recipient_distance_m` (`V8`)
+- `ck_post_recipient_answers_read_at` (`V8`)
+- `ck_answer_distance_m` (`V8`)
+- `ck_answer_edit_count` (`V8`)
+- `ck_answer_edit_count_edited_at` (`V8`)
+
+`V3`이 추가한 `ck_user_account_password_hash`는 `V5`가 운영자 자격증명을
+`operator_credential`로 분리하며 제거했다 — 이 목록에는 없다.
 
 ## 13. 구현 전 결정과 명시적 제외
 
@@ -374,3 +442,9 @@ partial unique object는 위 Index inventory에 포함된다.
 - Issue #38: Question persistence
 - Issue #39: Direction/PostGIS persistence
 - Issue #40: Answer/Safety/Notification persistence
+- Issue #73 (PR #81): `V7` — `device_credential` 테이블, 앱 사용자 기기 자격증명과
+  액세스 토큰 발급. `main`에 먼저 merge되어 `V7` 번호를 점유했다
+- Issue #78: `V8` — 2026-08-07 스키마 개정(답변 격리 폐기, ADR-0002) 반영. `answer_reaction`
+  복합 PK 전환과 `ct_answer_reaction_reactor_can_view` 자격 트리거, `post_recipient`/
+  `answer`의 방향·거리·수정 이력 컬럼과 백필, `uq_answer_one_per_recipient` 조건 축소.
+  원래 `V7`로 작성했으나 #81과의 번호 충돌로 `V8`로 재번호했다

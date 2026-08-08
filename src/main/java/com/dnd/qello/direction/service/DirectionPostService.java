@@ -77,7 +77,8 @@ public class DirectionPostService {
 		List<PostRecipient> recipients = candidates(candidateCommand, sender, segment).stream()
 			.filter(candidate -> reserve(candidate.userId(), command.submittedAt()))
 			.map(candidate -> recipientRepository.save(PostRecipient.available(post.getId(), candidate.userId(), command.distanceBand(),
-				candidate.bearingDegrees(), candidate.matchedRegionCode(), command.submittedAt())))
+				candidate.bearingDegrees(), candidate.matchedRegionCode(), command.submittedAt(),
+				candidate.inboundBearingDegrees(), candidate.distanceMeters().longValue())))
 			.toList();
 		return new SendResult(post, audience, recipients);
 	}

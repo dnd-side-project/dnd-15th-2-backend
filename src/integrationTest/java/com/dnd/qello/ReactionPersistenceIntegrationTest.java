@@ -1,6 +1,7 @@
 /**
  * Created at: 2026-08-05T11:48:27+09:00
- * Source scenario: TEST-PLAN-GH-55-REACTION-PERSISTENCE-INT-001 through INT-006
+ * Source scenario: TEST-PLAN-GH-55-REACTION-PERSISTENCE-INT-001 through INT-006,
+ * TEST-PLAN-GH-78-SCHEMA-REVISION-V7-INT-003 through INT-006
  */
 package com.dnd.qello;
 
@@ -44,6 +45,7 @@ class ReactionPersistenceIntegrationTest extends PostgisContainerIntegrationTest
 
 	private long senderId;
 	private long recipientId;
+	private long secondRecipientId;
 	private long outsiderId;
 	private long postId;
 
@@ -62,6 +64,7 @@ class ReactionPersistenceIntegrationTest extends PostgisContainerIntegrationTest
 
 		senderId = account("react-sender");
 		recipientId = account("react-recipient");
+		secondRecipientId = account("react-second-recipient");
 		outsiderId = account("react-outsider");
 		long questionId = jdbc.queryForObject("""
 			INSERT INTO approved_question
@@ -77,11 +80,22 @@ class ReactionPersistenceIntegrationTest extends PostgisContainerIntegrationTest
 			RETURNING id
 			""", Long.class, senderId, questionId, REGION, Timestamp.from(NOW), Timestamp.from(NOW),
 			Timestamp.from(NOW.plus(1, ChronoUnit.HOURS)));
+		// recipientId는 답변을 쓰는 수신자다(insertAnswer가 author로 쓴다). secondRecipientId는
+		// 같은 질문글의 또 다른 수신 자격자이지만 이 답변의 작성자는 아니다 — "볼 수 있는
+		// 사람 전원이 공감할 수 있다"를 검증하려면 답변 작성자가 아닌 열람 자격자가 최소
+		// 하나 더 필요하다.
 		jdbc.update("""
 			INSERT INTO post_recipient
-				(post_id, recipient_id, status, distance_band, matched_bearing_deg, matched_region_code, matched_at, opened_at)
-			VALUES (?, ?, 'OPENED', 'NEAR', 10, ?, ?, ?)
+				(post_id, recipient_id, status, distance_band, matched_bearing_deg, matched_region_code,
+				 matched_at, opened_at, inbound_bearing_deg, distance_m)
+			VALUES (?, ?, 'OPENED', 'NEAR', 10, ?, ?, ?, 190, 5000)
 			""", postId, recipientId, REGION, Timestamp.from(NOW), Timestamp.from(NOW));
+		jdbc.update("""
+			INSERT INTO post_recipient
+				(post_id, recipient_id, status, distance_band, matched_bearing_deg, matched_region_code,
+				 matched_at, opened_at, inbound_bearing_deg, distance_m)
+			VALUES (?, ?, 'OPENED', 'NEAR', 20, ?, ?, ?, 200, 6000)
+			""", postId, secondRecipientId, REGION, Timestamp.from(NOW), Timestamp.from(NOW));
 	}
 
 	@Test
@@ -120,34 +134,39 @@ class ReactionPersistenceIntegrationTest extends PostgisContainerIntegrationTest
 	}
 
 	@Test
-	@DisplayName("질문자만 답변에 공감할 수 있고 답변당 한 건이다")
-	void onlyTheQuestionAuthorCanReactToAnAnswer() {
+	@DisplayName("질문자와 수신 자격자가 같은 답변에 각각 공감하면 둘 다 성공하고 서로 다른 행으로 저장된다")
+	void senderAndEligibleRecipientCanBothReactToTheSameAnswer() {
 		long answerId = insertAnswer();
 
-		AnswerReaction saved = transactionTemplate.execute(status ->
+		AnswerReaction bySender = transactionTemplate.execute(status ->
 			answerReactionRepository.react(
 				AnswerReaction.create(answerId, senderId, NOW.plusSeconds(60))));
-
-		assertThat(saved.getAnswerId()).isEqualTo(answerId);
-		assertThat(answerReactionRepository.findByAnswerId(answerId)).isPresent();
-
-		assertThatThrownBy(() -> transactionTemplate.executeWithoutResult(status ->
+		AnswerReaction bySecondRecipient = transactionTemplate.execute(status ->
 			answerReactionRepository.react(
-				AnswerReaction.create(answerId, recipientId, NOW.plusSeconds(70)))))
-			.isInstanceOf(DataIntegrityViolationException.class);
+				AnswerReaction.create(answerId, secondRecipientId, NOW.plusSeconds(70))));
 
-		transactionTemplate.executeWithoutResult(status ->
-			answerReactionRepository.react(
-				AnswerReaction.create(answerId, senderId, NOW.plusSeconds(80))));
-
-		assertThat(answerReactionRepository.findByAnswerId(answerId)).isPresent();
+		assertThat(bySender.getReactorId()).isEqualTo(senderId);
+		assertThat(bySecondRecipient.getReactorId()).isEqualTo(secondRecipientId);
+		assertThat(answerReactionRepository.findByAnswerIdAndReactorId(answerId, senderId)).isPresent();
+		assertThat(answerReactionRepository.findByAnswerIdAndReactorId(answerId, secondRecipientId)).isPresent();
 		Integer reactionCount = jdbc.queryForObject(
 			"SELECT count(*) FROM answer_reaction WHERE answer_id = ?", Integer.class, answerId);
-		assertThat(reactionCount).isEqualTo(1);
+		assertThat(reactionCount).isEqualTo(2);
 	}
 
 	@Test
-	@DisplayName("답변자 본인은 자기 답변에 공감할 수 없다")
+	@DisplayName("그 질문글과 무관한 사용자는 답변에 공감할 수 없다")
+	void outsiderCannotReactToAnAnswer() {
+		long answerId = insertAnswer();
+
+		assertThatThrownBy(() -> transactionTemplate.executeWithoutResult(status ->
+			answerReactionRepository.react(
+				AnswerReaction.create(answerId, outsiderId, NOW.plusSeconds(60)))))
+			.isInstanceOf(DataIntegrityViolationException.class);
+	}
+
+	@Test
+	@DisplayName("답변자 본인은 열람 자격이 있어도 자기 답변에 공감할 수 없다")
 	void theAnswerAuthorCannotReactToTheirOwnAnswer() {
 		long answerId = insertAnswer();
 
@@ -165,15 +184,15 @@ class ReactionPersistenceIntegrationTest extends PostgisContainerIntegrationTest
 			answerReactionRepository.react(
 				AnswerReaction.create(answerId, senderId, NOW.plusSeconds(60))));
 
-		answerReactionRepository.cancel(answerId);
+		answerReactionRepository.cancel(answerId, senderId);
 
-		assertThat(answerReactionRepository.findByAnswerId(answerId)).isEmpty();
+		assertThat(answerReactionRepository.findByAnswerIdAndReactorId(answerId, senderId)).isEmpty();
 
 		transactionTemplate.executeWithoutResult(status ->
 			answerReactionRepository.react(
 				AnswerReaction.create(answerId, senderId, NOW.plusSeconds(90))));
 
-		assertThat(answerReactionRepository.findByAnswerId(answerId)).isPresent();
+		assertThat(answerReactionRepository.findByAnswerIdAndReactorId(answerId, senderId)).isPresent();
 	}
 
 	private long insertAnswer() {
@@ -183,8 +202,8 @@ class ReactionPersistenceIntegrationTest extends PostgisContainerIntegrationTest
 		return jdbc.queryForObject("""
 			INSERT INTO answer
 				(post_recipient_id, author_id, status, idempotency_key, body_text, coarse_region_code,
-				 bearing_from_sender_deg, distance_band, moderation_status, submitted_at, published_at)
-			VALUES (?, ?, 'PUBLISHED', 'react-answer', '답변', ?, 90, 'NEAR', 'PASSED', ?, ?)
+				 bearing_from_sender_deg, distance_band, distance_m, moderation_status, submitted_at, published_at)
+			VALUES (?, ?, 'PUBLISHED', 'react-answer', '답변', ?, 90, 'NEAR', 5000, 'PASSED', ?, ?)
 			RETURNING id
 			""", Long.class, postRecipientId, recipientId, REGION,
 			Timestamp.from(NOW), Timestamp.from(NOW));

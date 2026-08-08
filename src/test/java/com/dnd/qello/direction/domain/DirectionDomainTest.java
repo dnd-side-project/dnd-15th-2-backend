@@ -15,11 +15,14 @@ import com.dnd.qello.direction.error.DirectionException;
 
 /**
  * Created at: 2026-08-03T20:30:00+09:00
- * Source scenario: TEST-PLAN-GH-39-DIRECTION-POSTGIS-PERSISTENCE-UNIT-001 through UNIT-006
+ * Source scenario: TEST-PLAN-GH-39-DIRECTION-POSTGIS-PERSISTENCE-UNIT-001 through UNIT-006,
+ * TEST-PLAN-GH-78-SCHEMA-REVISION-V7-UNIT-002 through UNIT-004
  */
 class DirectionDomainTest {
 
 	private static final Instant LOCATION_AT = Instant.parse("2026-08-03T10:00:00Z");
+	private static final BigDecimal INBOUND_BEARING = BigDecimal.valueOf(190);
+	private static final long DISTANCE_M = 5_000L;
 
 	@Test
 	@DisplayName("8개 sector는 0도와 360도를 정규화하고 half-open 경계를 지킨다")
@@ -73,17 +76,62 @@ class DirectionDomainTest {
 	@Test
 	@DisplayName("post recipient은 matchedAt 이전 시각과 capacity 해제를 허용하지 않는다")
 	void validatesRecipientTimestampsAndCapacity() {
-		PostRecipient available = PostRecipient.available(1L, 2L, "NEAR", BigDecimal.valueOf(10), "KR-SEOUL", LOCATION_AT);
+		PostRecipient available = PostRecipient.available(1L, 2L, "NEAR", BigDecimal.valueOf(10), "KR-SEOUL", LOCATION_AT,
+			INBOUND_BEARING, DISTANCE_M);
 		assertThat(available.getStatus()).isEqualTo(PostRecipientStatus.AVAILABLE);
 		assertThatThrownBy(() -> PostRecipient.restore(1L, 1L, 2L, PostRecipientStatus.SKIPPED,
-			"NEAR", BigDecimal.TEN, "KR-SEOUL", LOCATION_AT, null, null, null, null, null, null, null))
+			"NEAR", BigDecimal.TEN, "KR-SEOUL", LOCATION_AT, null, null, null, null, null, null, null,
+			INBOUND_BEARING, DISTANCE_M, null))
 			.isInstanceOf(DirectionException.class);
+	}
+
+	@Test
+	@DisplayName("inboundBearingDegrees는 [0, 360) 범위를 벗어나면 거절된다")
+	void rejectsInboundBearingOutOfRange() {
+		assertThatThrownBy(() -> PostRecipient.available(1L, 2L, "NEAR", BigDecimal.valueOf(10), "KR-SEOUL", LOCATION_AT,
+			BigDecimal.valueOf(-1), DISTANCE_M))
+			.isInstanceOf(DirectionException.class)
+			.hasFieldOrPropertyWithValue("errorCode", DirectionErrorCode.INVALID_BEARING);
+		assertThatThrownBy(() -> PostRecipient.available(1L, 2L, "NEAR", BigDecimal.valueOf(10), "KR-SEOUL", LOCATION_AT,
+			BigDecimal.valueOf(360), DISTANCE_M))
+			.isInstanceOf(DirectionException.class)
+			.hasFieldOrPropertyWithValue("errorCode", DirectionErrorCode.INVALID_BEARING);
+
+		PostRecipient boundary = PostRecipient.available(1L, 2L, "NEAR", BigDecimal.valueOf(10), "KR-SEOUL", LOCATION_AT,
+			BigDecimal.valueOf(359.999), DISTANCE_M);
+		assertThat(boundary.getInboundBearingDegrees()).isEqualByComparingTo(BigDecimal.valueOf(359.999));
+	}
+
+	@Test
+	@DisplayName("distanceM은 음수면 거절된다")
+	void rejectsNegativeDistanceM() {
+		assertThatThrownBy(() -> PostRecipient.available(1L, 2L, "NEAR", BigDecimal.valueOf(10), "KR-SEOUL", LOCATION_AT,
+			INBOUND_BEARING, -1L))
+			.isInstanceOf(DirectionException.class)
+			.hasFieldOrPropertyWithValue("errorCode", DirectionErrorCode.INVALID_VALUE_RANGE);
+	}
+
+	@Test
+	@DisplayName("answersReadAt은 matchedAt보다 이르면 거절된다")
+	void rejectsAnswersReadAtBeforeMatchedAt() {
+		assertThatThrownBy(() -> PostRecipient.restore(1L, 1L, 2L, PostRecipientStatus.AVAILABLE,
+			"NEAR", BigDecimal.TEN, "KR-SEOUL", LOCATION_AT, null, null, null, null, null, null, null,
+			INBOUND_BEARING, DISTANCE_M, LOCATION_AT.minusSeconds(1)))
+			.isInstanceOf(DirectionException.class)
+			.hasFieldOrPropertyWithValue("errorCode", DirectionErrorCode.INVALID_TIME_ORDER)
+			.hasFieldOrPropertyWithValue("field", "answersReadAt");
+
+		PostRecipient withAnswersRead = PostRecipient.restore(1L, 1L, 2L, PostRecipientStatus.AVAILABLE,
+			"NEAR", BigDecimal.TEN, "KR-SEOUL", LOCATION_AT, null, null, null, null, null, null, null,
+			INBOUND_BEARING, DISTANCE_M, LOCATION_AT.plusSeconds(60));
+		assertThat(withAnswersRead.getAnswersReadAt()).isEqualTo(LOCATION_AT.plusSeconds(60));
 	}
 
 	@Test
 	@DisplayName("넘김은 SKIP_PENDING을 거치며 유예 중에는 용량을 붙잡는다")
 	void holdsCapacityWhileSkipIsPending() {
-		PostRecipient available = PostRecipient.available(1L, 2L, "NEAR", BigDecimal.valueOf(10), "KR-SEOUL", LOCATION_AT);
+		PostRecipient available = PostRecipient.available(1L, 2L, "NEAR", BigDecimal.valueOf(10), "KR-SEOUL", LOCATION_AT,
+			INBOUND_BEARING, DISTANCE_M);
 		PostRecipient pending = available.requestSkip(LOCATION_AT.plusSeconds(10));
 
 		assertThat(pending.getStatus()).isEqualTo(PostRecipientStatus.SKIP_PENDING);
@@ -101,17 +149,20 @@ class DirectionDomainTest {
 	@Test
 	@DisplayName("되돌린 넘김은 timestamp 유무로 이전 상태를 도출한다")
 	void revertsSkipToTheDerivedPreviousStatus() {
-		PostRecipient available = PostRecipient.available(1L, 2L, "NEAR", BigDecimal.valueOf(10), "KR-SEOUL", LOCATION_AT);
+		PostRecipient available = PostRecipient.available(1L, 2L, "NEAR", BigDecimal.valueOf(10), "KR-SEOUL", LOCATION_AT,
+			INBOUND_BEARING, DISTANCE_M);
 		assertThat(available.requestSkip(LOCATION_AT).revertSkip().getStatus())
 			.isEqualTo(PostRecipientStatus.AVAILABLE);
 
 		PostRecipient discovered = PostRecipient.restore(1L, 1L, 2L, PostRecipientStatus.DISCOVERED,
-			"NEAR", BigDecimal.TEN, "KR-SEOUL", LOCATION_AT, LOCATION_AT, null, null, null, null, null, null);
+			"NEAR", BigDecimal.TEN, "KR-SEOUL", LOCATION_AT, LOCATION_AT, null, null, null, null, null, null,
+			INBOUND_BEARING, DISTANCE_M, null);
 		assertThat(discovered.requestSkip(LOCATION_AT).revertSkip().getStatus())
 			.isEqualTo(PostRecipientStatus.DISCOVERED);
 
 		PostRecipient opened = PostRecipient.restore(1L, 1L, 2L, PostRecipientStatus.OPENED,
-			"NEAR", BigDecimal.TEN, "KR-SEOUL", LOCATION_AT, LOCATION_AT, LOCATION_AT, null, null, null, null, null);
+			"NEAR", BigDecimal.TEN, "KR-SEOUL", LOCATION_AT, LOCATION_AT, LOCATION_AT, null, null, null, null, null,
+			INBOUND_BEARING, DISTANCE_M, null);
 		PostRecipient reverted = opened.requestSkip(LOCATION_AT).revertSkip();
 
 		assertThat(reverted.getStatus()).isEqualTo(PostRecipientStatus.OPENED);
@@ -122,11 +173,12 @@ class DirectionDomainTest {
 	@DisplayName("SKIP_PENDING은 넘김 요청만 있고 확정이 없는 상태와 동치다")
 	void skipPendingRequiresRequestWithoutConfirmation() {
 		assertThatThrownBy(() -> PostRecipient.restore(1L, 1L, 2L, PostRecipientStatus.SKIP_PENDING,
-			"NEAR", BigDecimal.TEN, "KR-SEOUL", LOCATION_AT, null, null, null, null, null, null, null))
+			"NEAR", BigDecimal.TEN, "KR-SEOUL", LOCATION_AT, null, null, null, null, null, null, null,
+			INBOUND_BEARING, DISTANCE_M, null))
 			.isInstanceOf(DirectionException.class);
 		assertThatThrownBy(() -> PostRecipient.restore(1L, 1L, 2L, PostRecipientStatus.SKIPPED,
 			"NEAR", BigDecimal.TEN, "KR-SEOUL", LOCATION_AT, null, null, null,
-			LOCATION_AT, LOCATION_AT, null, null))
+			LOCATION_AT, LOCATION_AT, null, null, INBOUND_BEARING, DISTANCE_M, null))
 			.isInstanceOf(DirectionException.class);
 	}
 
@@ -163,7 +215,8 @@ class DirectionDomainTest {
 	private static final Instant MATCHED = Instant.parse("2026-08-06T12:00:00Z");
 
 	private PostRecipient availableRecipient() {
-		return PostRecipient.available(1L, 2L, "NEAR", BigDecimal.valueOf(45), "TEST-REGION", MATCHED);
+		return PostRecipient.available(1L, 2L, "NEAR", BigDecimal.valueOf(45), "TEST-REGION", MATCHED,
+			BigDecimal.valueOf(225), DISTANCE_M);
 	}
 
 	@Test

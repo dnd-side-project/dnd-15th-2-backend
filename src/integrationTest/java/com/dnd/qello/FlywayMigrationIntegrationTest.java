@@ -19,7 +19,8 @@ import org.springframework.test.context.ActiveProfiles;
 
 /**
  * Created at: 2026-08-03T17:45:39+09:00
- * Source scenario: TEST-PLAN-GH-36-FLYWAY-BASELINE-INT-001 through INT-004
+ * Source scenario: TEST-PLAN-GH-36-FLYWAY-BASELINE-INT-001 through INT-004,
+ * TEST-PLAN-GH-78-SCHEMA-REVISION-V7-INT-001
  */
 @SpringBootTest
 @ActiveProfiles({"test", "flyway-migration"})
@@ -132,7 +133,7 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 		"enforce_answer_has_content",
 		"enforce_media_attachment_preserves_content",
 		"enforce_media_status_preserves_content",
-		"enforce_answer_reaction_reactor_is_sender"
+		"enforce_answer_reaction_reactor_can_view"
 	);
 
 	private static final Set<String> EXPECTED_TRIGGERS = Set.of(
@@ -145,7 +146,7 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 		"ct_answer_has_content",
 		"ct_media_attachment_preserves_content",
 		"ct_media_status_preserves_content",
-		"ct_answer_reaction_reactor_is_sender"
+		"ct_answer_reaction_reactor_can_view"
 	);
 
 	@Autowired
@@ -155,7 +156,7 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 	private JdbcTemplate jdbcTemplate;
 
 	@Test
-	@DisplayName("빈 PostGIS 데이터베이스의 startup에서 V1부터 V7까지 migration을 적용한다")
+	@DisplayName("빈 PostGIS 데이터베이스의 startup에서 V1부터 V8까지 migration을 적용한다")
 	void appliesAllMigrationsOnApplicationStartup() {
 		Integer successfulV1 = jdbcTemplate.queryForObject("""
 			SELECT count(*)
@@ -192,6 +193,11 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 			FROM flyway_schema_history
 			WHERE version = '7' AND success
 			""", Integer.class);
+		Integer successfulV8 = jdbcTemplate.queryForObject("""
+			SELECT count(*)
+			FROM flyway_schema_history
+			WHERE version = '8' AND success
+			""", Integer.class);
 		String postgisVersion = jdbcTemplate.queryForObject(
 			"SELECT PostGIS_Version()", String.class);
 
@@ -202,7 +208,8 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 		assertThat(successfulV5).isEqualTo(1);
 		assertThat(successfulV6).isEqualTo(1);
 		assertThat(successfulV7).isEqualTo(1);
-		assertThat(flyway.info().applied()).hasSize(7);
+		assertThat(successfulV8).isEqualTo(1);
+		assertThat(flyway.info().applied()).hasSize(8);
 		assertThat(postgisVersion).isNotBlank();
 	}
 
@@ -258,10 +265,26 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 
 		assertThat(countConstraints(constraints, "f")).isEqualTo(51);
 		assertThat(countConstraints(constraints, "u")).isEqualTo(20);
-		assertThat(countConstraints(constraints, "c")).isEqualTo(105);
+		// V7(#81, device_credential)이 4개, V8(#78)이 ck_post_recipient_inbound_bearing,
+		// ck_post_recipient_distance_m, ck_post_recipient_answers_read_at,
+		// ck_answer_distance_m, ck_answer_edit_count, ck_answer_edit_count_edited_at
+		// 6개를 추가해 101에서 111이 됐다. 실제 DB 실행으로 검증한다.
+		assertThat(countConstraints(constraints, "c")).isEqualTo(111);
 		assertThat(EXPECTED_INDEXES).hasSize(58);
 		assertThat(EXPECTED_FUNCTIONS).hasSize(11);
 		assertThat(EXPECTED_TRIGGERS).hasSize(10);
+
+		List<String> answerReactionPkColumns = jdbcTemplate.queryForList("""
+			SELECT a.attname
+			FROM pg_constraint pc
+			JOIN pg_class c ON c.oid = pc.conrelid
+			JOIN unnest(pc.conkey) WITH ORDINALITY AS key_column(attnum, position) ON true
+			JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum = key_column.attnum
+			WHERE c.relname = 'answer_reaction' AND pc.contype = 'p'
+			ORDER BY key_column.position
+			""", String.class);
+
+		assertThat(answerReactionPkColumns).containsExactly("answer_id", "reactor_id");
 
 		Integer activeScheme = jdbcTemplate.queryForObject("""
 			SELECT count(*)

@@ -1,6 +1,7 @@
 /**
  * Created at: 2026-08-06T15:00:00+09:00
- * Source scenario: TEST-PLAN-GH-67-INBOX-QUERY-INT-001 through INT-005
+ * Source scenario: TEST-PLAN-GH-67-INBOX-QUERY-INT-001 through INT-005,
+ * TEST-PLAN-GH-78-SCHEMA-REVISION-V7-INT-010
  */
 package com.dnd.qello;
 
@@ -101,8 +102,9 @@ class InboxQueryIntegrationTest extends PostgisContainerIntegrationTestSupport {
 		if (columns.length == 0) {
 			return jdbc.queryForObject("""
 				INSERT INTO post_recipient
-					(post_id, recipient_id, status, distance_band, matched_bearing_deg, matched_region_code, matched_at)
-				VALUES (?, ?, ?, 'NEAR', 45, ?, ?)
+					(post_id, recipient_id, status, distance_band, matched_bearing_deg, matched_region_code, matched_at,
+					 inbound_bearing_deg, distance_m)
+				VALUES (?, ?, ?, 'NEAR', 45, ?, ?, 225, 5000)
 				RETURNING id
 				""", Long.class, targetPostId, recipientId, status, REGION, Timestamp.from(matchedAt));
 		}
@@ -118,8 +120,8 @@ class InboxQueryIntegrationTest extends PostgisContainerIntegrationTestSupport {
 		return jdbc.queryForObject("""
 			INSERT INTO post_recipient
 				(post_id, recipient_id, status, distance_band, matched_bearing_deg, matched_region_code,
-				 matched_at, %s)
-			VALUES (?, ?, ?, 'NEAR', 45, ?, ?, %s)
+				 matched_at, inbound_bearing_deg, distance_m, %s)
+			VALUES (?, ?, ?, 'NEAR', 45, ?, ?, 225, 5000, %s)
 			RETURNING id
 			""".formatted(columnList, placeholderList), Long.class, params);
 	}

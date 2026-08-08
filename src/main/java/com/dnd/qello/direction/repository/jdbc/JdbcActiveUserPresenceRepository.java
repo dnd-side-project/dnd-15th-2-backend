@@ -58,13 +58,18 @@ public class JdbcActiveUserPresenceRepository implements ActiveUserPresenceRepos
 	public List<DirectionCandidate> findCandidates(long excludedUserId, double originLatitude, double originLongitude,
 		long minDistanceMeters, long maxDistanceMeters, double sectorStartDegrees, double sectorEndDegrees,
 		Instant at, String regionCode) {
+		// inbound_bearing_deg는 후보(수신자) 위치를 원점으로 계산한 역방위다. ST_Azimuth의
+		// 두 인자 순서를 뒤집으면(origin, p.position 대신 p.position, origin) 구면 역방위를
+		// 얻는다 — bearing_deg에 +180을 더하는 평면 근사와 다르다. post_recipient가 표시하는
+		// 방향은 언제나 보는 사람 기준이라 이 값을 매칭 시점 스냅샷으로 함께 가져온다.
 		String sql = """
 			WITH origin AS (
 				SELECT ST_SetSRID(ST_MakePoint(:originLongitude, :originLatitude), 4326)::geography AS point
 			), candidates AS (
 				SELECT p.user_id, p.coarse_region_code,
 				       ST_Distance(p.position, origin.point) AS distance_m,
-				       DEGREES(ST_Azimuth(origin.point, p.position)) AS bearing_deg
+				       DEGREES(ST_Azimuth(origin.point, p.position)) AS bearing_deg,
+				       DEGREES(ST_Azimuth(p.position, origin.point)) AS inbound_bearing_deg
 				FROM active_user_presence p CROSS JOIN origin
 				WHERE p.user_id <> :excludedUserId
 				  AND p.position IS NOT NULL
@@ -73,7 +78,7 @@ public class JdbcActiveUserPresenceRepository implements ActiveUserPresenceRepos
 				  AND (:regionCode IS NULL OR p.coarse_region_code = :regionCode)
 				  AND ST_DWithin(p.position, origin.point, :maxDistanceMeters)
 			)
-			SELECT user_id, distance_m, bearing_deg, coarse_region_code
+			SELECT user_id, distance_m, bearing_deg, inbound_bearing_deg, coarse_region_code
 			FROM candidates
 			WHERE distance_m >= :minDistanceMeters
 			  AND ((:sectorStartDegrees < :sectorEndDegrees AND bearing_deg >= :sectorStartDegrees AND bearing_deg < :sectorEndDegrees)
@@ -86,7 +91,8 @@ public class JdbcActiveUserPresenceRepository implements ActiveUserPresenceRepos
 			.addValue("maxDistanceMeters", maxDistanceMeters).addValue("sectorStartDegrees", sectorStartDegrees)
 			.addValue("sectorEndDegrees", sectorEndDegrees).addValue("at", Timestamp.from(at)).addValue("regionCode", regionCode);
 		return jdbc.query(sql, p, (rs, rowNum) -> new DirectionCandidate(rs.getLong("user_id"),
-			rs.getBigDecimal("distance_m"), rs.getBigDecimal("bearing_deg"), rs.getString("coarse_region_code")));
+			rs.getBigDecimal("distance_m"), rs.getBigDecimal("bearing_deg"), rs.getString("coarse_region_code"),
+			rs.getBigDecimal("inbound_bearing_deg")));
 	}
 
 	private static MapSqlParameterSource parameters(ActiveUserPresence p) {
