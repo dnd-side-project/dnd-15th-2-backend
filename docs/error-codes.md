@@ -181,7 +181,7 @@
 | `ANS-DOM-001` | INVALID_ANSWER_STATE | 400 | DOM | 답변 상태와 값이 맞지 않습니다. |
 | `ANS-DOM-002` | INVALID_ANSWER_STATUS | 409 | DOM | 현재 답변 상태로는 요청을 처리할 수 없습니다. |
 | `ANS-DOM-003` | SAFETY_CHECK_NOT_PASSED | 409 | DOM | 안전 검사를 통과한 답변만 공개할 수 있습니다. |
-| `ANS-DOM-004` | INELIGIBLE_REACTOR | 403 | DOM | 답변에 공감할 수 있는 질문 작성자가 아닙니다. |
+| `ANS-DOM-004` | INELIGIBLE_REACTOR | 403 | DOM | 그 질문글을 볼 수 있는 사람만 답변에 공감할 수 있습니다. |
 | `ANS-DOM-005` | INVALID_MEDIA_STATE | 400 | DOM | 미디어 상태와 값이 맞지 않습니다. |
 | `ANS-DOM-006` | INVALID_MEDIA_STATUS | 409 | DOM | 현재 미디어 상태로는 요청을 처리할 수 없습니다. |
 | `ANS-DOM-007` | MEDIA_NOT_FOUND | 404 | DOM | 미디어를 찾을 수 없습니다. |
