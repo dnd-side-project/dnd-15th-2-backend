@@ -162,9 +162,54 @@ springdoc은 반환 타입만 보고 성공 응답을 추론한다. 어느 엔�
 | 모든 operation에 `400`, `500`을 넣는다 | `GlobalExceptionHandler`가 어떤 요청에서든 낼 수 있다 |
 | `ApiErrorResponse` 스키마를 등록한다 | 어떤 컨트롤러도 반환 타입으로 쓰지 않아 springdoc이 찾지 못한다 |
 
+### 문서 애노테이션의 위치
+
+**문서 애노테이션은 컨트롤러가 아니라 `*ApiSpec` 인터페이스에 둔다.** 컨트롤러
+`Xxx`의 문서 계약은 같은 패키지의 `XxxApiSpec`이다.
+
+```java
+@Tag(name = "백오피스 인증", description = "운영자 세션 로그인과 로그아웃")
+public interface OperatorLoginApiSpec {
+
+	@Operation(summary = "운영자 로그인", description = "...")
+	@ApiResponses({ ... })
+	@PostMapping("/login")
+	ResponseEntity<ApiResponse<OperatorSessionResponse>> login(
+		@RequestBody @Valid OperatorLoginRequest request, ...);
+}
+
+@RestController
+@RequestMapping("/admin")
+public class OperatorLoginController implements OperatorLoginApiSpec {
+
+	@Override
+	public ResponseEntity<ApiResponse<OperatorSessionResponse>> login(...) { ... }
+}
+```
+
+문서 애노테이션은 본문보다 길다. 한 파일에 두면 로직이 애노테이션 사이에 파묻힌다.
+분리하면 컨트롤러를 읽을 때 동작만 보이고, 문서를 고칠 때 로직을 건드릴 위험이 없다.
+
+경계는 이렇게 나눈다.
+
+| 위치 | 두는 것 |
+| --- | --- |
+| `XxxApiSpec` | `@Tag`, `@Operation`, `@ApiResponses`, `@SecurityRequirement`, `@Parameter`, 메서드 매핑(`@GetMapping` 등), `@RequestBody`, `@Valid`, `@PathVariable` |
+| `XxxController` | `@RestController`, 클래스 수준 `@RequestMapping`, `@Override` 구현 |
+
+`@RestController`는 빈 정의라 인터페이스로 옮길 수 없다. 클래스 수준
+`@RequestMapping`도 라우팅 뿌리가 빈에서 보이는 편이 나아 구현에 남긴다.
+
+DTO의 `@Schema`는 DTO 자신에 남는다. 옮길 대상이 아니다.
+
+확인한 것: Spring과 springdoc 모두 인터페이스에 선언한 매핑·파라미터·문서
+애노테이션을 찾아낸다. 이 저장소에서는 분리 전후의 `docs/api/openapi.json`이 바이트
+단위로 같았고, `OperatorLoginIntegrationTest`가 인터페이스에 선언한 `@Valid`가
+실제로 400을 내는지 검사한다.
+
 ### 엔드포인트별 보강
 
-엔드포인트마다 다른 정보는 커스터마이저가 추측하면 안 된다. 다음은 각 컨트롤러의
+엔드포인트마다 다른 정보는 커스터마이저가 추측하면 안 된다. 다음은 각 `*ApiSpec`의
 애노테이션으로 적는다.
 
 | 항목 | 애노테이션 | 근거를 찾을 곳 |

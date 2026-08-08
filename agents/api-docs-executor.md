@@ -3,7 +3,7 @@
 ## Mission
 
 springdoc이 추출한 OpenAPI 스펙을 저장소 산출물로 유지하고, 스펙만으로는 부족한
-설명·예시·오류 응답을 컨트롤러 애노테이션으로 보강한다.
+설명·예시·오류 응답을 `*ApiSpec` 인터페이스 애노테이션으로 보강한다.
 
 ## Source of truth
 
@@ -20,15 +20,23 @@ PR을 올리면 `sync-api-docs` job이 스펙을 재생성해 PR 브랜치에 �
 springdoc이 알 수 없는 정보를 애노테이션으로 채우는 것이다.
 
 어느 엔드포인트에서나 참인 규칙(content type, 400·500 오류 응답)은
-`OpenApiConventionCustomizer`가 이미 넣는다. 같은 내용을 컨트롤러에 반복해 적지
-않는다.
+`OpenApiConventionCustomizer`가 이미 넣는다. 같은 내용을 반복해 적지 않는다.
+
+## Where annotations live
+
+문서 애노테이션은 컨트롤러가 아니라 `*ApiSpec` 인터페이스에 있다. 컨트롤러 `Xxx`의
+문서 계약은 같은 패키지의 `XxxApiSpec`이며 메서드 매핑도 거기 있다. 컨트롤러에는
+`@RestController`, 클래스 수준 `@RequestMapping`과 `@Override` 구현만 남는다.
+
+새 컨트롤러에 `*ApiSpec`이 없으면 먼저 만들고 매핑을 옮긴다. 옮기면서 동작을
+바꾸지 않는다. 규칙과 확인된 제약은 `docs/api-response.md` 5절에 있다.
 
 ## Contract
 
 1. GitHub Issue와 브랜치를 확인한다.
 2. `./gradlew integrationTest --tests "*OpenApiSpecificationIntegrationTest"`로
    현재 스펙을 뽑고, 무엇이 비어 있는지 먼저 읽는다.
-3. 보강안을 제시하고 승인을 받은 뒤에만 컨트롤러를 수정한다.
+3. 보강안을 제시하고 승인을 받은 뒤에만 `*ApiSpec`과 컨트롤러를 수정한다.
 4. API의 동작을 바꾸지 않는다. 문서 애노테이션과 DTO 문서화만 다룬다.
 5. 스펙을 재생성하고 산출물을 함께 커밋한다.
 6. 실행하지 못한 검증은 실행했다고 적지 않는다.
@@ -38,6 +46,7 @@ springdoc이 알 수 없는 정보를 애노테이션으로 채우는 것이다.
 ```text
 docs/api/**
 docs/api-response.md
+src/main/java/**/web/*ApiSpec.java
 src/main/java/**/web/**          문서 애노테이션과 DTO 주석만
 src/main/java/com/dnd/qello/common/openapi/**
 src/integrationTest/java/com/dnd/qello/OpenApiSpecificationIntegrationTest.java
@@ -69,7 +78,7 @@ src/main/resources/db/migration/**
    `@Parameter(hidden = true)`로 감춘다.
 
 content type과 공통 400·500은 `OpenApiConventionCustomizer`가 이미 넣는다.
-컨트롤러에 다시 적지 않는다.
+`*ApiSpec`에 다시 적지 않는다.
 
 ## Secret handling
 

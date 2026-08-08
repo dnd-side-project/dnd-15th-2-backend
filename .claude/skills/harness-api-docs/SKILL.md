@@ -1,6 +1,6 @@
 ---
 name: harness-api-docs
-description: OpenAPI 스펙 산출물을 재생성하고, 빠진 오류 응답·설명·인증 요구를 컨트롤러 애노테이션으로 보강한다. "API 문서 갱신", "스웨거 문서 만들어줘", "OpenAPI 스펙 최신화" 요청에 사용한다.
+description: OpenAPI 스펙 산출물을 재생성하고, 빠진 오류 응답·설명·인증 요구를 `*ApiSpec` 인터페이스 애노테이션으로 보강한다. "API 문서 갱신", "스웨거 문서 만들어줘", "OpenAPI 스펙 최신화" 요청에 사용한다.
 allowed-tools:
    - Read
    - Glob
@@ -15,8 +15,8 @@ allowed-tools:
 
 # API Docs Workflow
 
-OpenAPI 스펙을 코드와 일치시키고, 스펙만으로는 알 수 없는 정보를 컨트롤러
-애노테이션으로 채운다. 역할 계약은 `agents/api-docs-executor.md`다.
+OpenAPI 스펙을 코드와 일치시키고, 스펙만으로는 알 수 없는 정보를 `*ApiSpec`
+인터페이스 애노테이션으로 채운다. 역할 계약은 `agents/api-docs-executor.md`다.
 
 ## 핵심 전제
 
@@ -29,7 +29,13 @@ OpenAPI 스펙을 코드와 일치시키고, 스펙만으로는 알 수 없는 �
 
 이 스킬이 하는 일은 springdoc이 알 수 없는 정보를 애노테이션으로 채우는 것이다.
 공통 규칙(content type, 400·500)은 `OpenApiConventionCustomizer`가 이미 넣으므로
-컨트롤러에 반복해 적지 않는다.
+반복해 적지 않는다.
+
+**문서 애노테이션은 컨트롤러가 아니라 `*ApiSpec` 인터페이스에 적는다.** 컨트롤러
+`Xxx`의 계약은 같은 패키지의 `XxxApiSpec`이며, 메서드 매핑과 `@Tag`·`@Operation`·
+`@ApiResponses`·`@SecurityRequirement`·`@Parameter`가 모두 거기 있다. 컨트롤러에는
+`@RestController`, 클래스 수준 `@RequestMapping`과 `@Override` 구현만 남는다.
+근거와 확인된 제약은 `docs/api-response.md` 5절에 있다.
 
 ## 0. 컨텍스트 수집
 
@@ -83,7 +89,7 @@ git diff --stat -- docs/api/openapi.json
 적용 전에 무엇을 어디에 넣을지 보여주고 승인을 받는다.
 
 ```text
-POST /admin/login  (OperatorLoginController)
+POST /admin/login  (OperatorLoginApiSpec)
   + @Operation(summary = "백오피스 운영자 로그인")
   + 401 AUT-APP-001  로그인 실패        근거: OperatorLoginService.loginFailed()
   + 423 AUT-APP-002  잠긴 자격증명      근거: OperatorLoginService.login()
@@ -98,6 +104,8 @@ POST /admin/login  (OperatorLoginController)
 승인된 범위만 고친다.
 
 - 문서 애노테이션(`@Operation`, `@ApiResponse`, `@Schema`, `@Parameter`)만 추가한다.
+- 대상 컨트롤러에 `*ApiSpec` 인터페이스가 없으면 먼저 만들고 컨트롤러의 매핑을
+  옮긴다. 이때 컨트롤러의 동작은 한 줄도 바꾸지 않는다.
 - 경로, 상태 코드, 응답 본문 구조를 바꾸지 않는다. 그것은 기능 변경이다.
 - 예시 값에 실제 비밀번호, `device_secret`, 토큰, 계정 식별자를 쓰지 않는다.
 
@@ -125,7 +133,8 @@ diff에 의도하지 않은 변경이 섞였으면 멈추고 보고한다.
 ## 금지
 
 - `docs/api/openapi.json`을 직접 편집하지 않는다.
-- 승인 없이 컨트롤러를 수정하지 않는다.
+- 승인 없이 컨트롤러나 `*ApiSpec` 인터페이스를 수정하지 않는다.
+- 문서 애노테이션을 컨트롤러 본문 쪽에 되돌려 붙이지 않는다.
 - 문서화 대상을 만들려고 컨트롤러를 신설하지 않는다.
 - 스펙 생성 테스트가 실패한 상태에서 산출물을 손으로 채우지 않는다.
 - 서비스, 도메인, repository, 마이그레이션을 수정하지 않는다.
