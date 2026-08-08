@@ -40,7 +40,7 @@
 | Artifact | Repository path or source | SHA-256 | Role |
 | --- | --- | --- | --- |
 | DBML (2026-08-07, 현행) | `docs/product/data-model/direction_communication.dbml` | `3b443c4bea41a92d4f803e78d004fbe1ca6e1475f7ed6ae8f94fa8cc3121acc1` | logical schema source. vault 원본에는 없는 `operator_credential`(V5)을 백엔드 전용 부록으로 복원해 반영함 — 근거는 §6 |
-| ERD (2026-08-07, 현행) | `docs/product/data-model/DIRECTION_COMMUNICATION_ERD.md` | `452686b16c2ccce1fc9f8780c589ab26d8a49da570f55e5bf5eec5a03ba146b0` | explanatory contract |
+| ERD (2026-08-08, 현행) | `docs/product/data-model/DIRECTION_COMMUNICATION_ERD.md` | `05b0a7e3f93ce0b89b2a8cfde7d7cead41dc5655b414e135bb3297b68c4ecf85` | explanatory contract. 이전 판은 §2 이후 본문이 2026-08-04 기준으로 남아 있었고 그 사실을 상단 안내문으로 알렸을 뿐이었다. vault 원본이 §1·§2·mermaid·알림·불변식 전체를 2026-08-07 개정으로 완전히 갱신해, byte-for-byte로 다시 동기화했다 |
 | target DDL (2026-08-07) | source workspace `docs/sql/direction_communication_ddl.sql` | `d873908c802b4c3ff73637e3ef4c1ec84862146055f3ff7672e6908947fb2d31` | V8 authoring reference only (원래 V7로 작성, `#81`과의 번호 충돌로 재번호) |
 | DBML (2026-08-04, 이력) | 위 파일의 2026-08-04 판 | `4637f956f9703a8bdc38590957c2e48d60633e6d633beb3f193151b5c4c928f5` | 답변 격리 폐기(ADR-0002) 이전 판 |
 | ERD (2026-08-04, 이력) | 위 파일의 2026-08-04 판 | `181604080ecffd58752e2b40bc3008fbdcdfb7736caff00820535ed6ba128886` | 답변 격리 폐기(ADR-0002) 이전 판 |
