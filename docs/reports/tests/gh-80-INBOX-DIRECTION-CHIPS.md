@@ -1,0 +1,265 @@
+# Test Report: INBOX-DIRECTION-CHIPS
+
+> Created at: `2026-08-08T21:37:10+09:00`
+> GitHub Issue: `#80`
+> Branch: `feat/gh-80-inbox-direction-chips`
+> Commit: `ae3e956` (구현·테스트는 커밋 전 작업 트리에서 실행 후 이 커밋 위에 반영)
+
+## 1. Executive summary
+
+- Result: `PASS`
+- Tested scope: 방향 칩 집계(`DirectionChip`, `InboxListing`), `InboxQueryRepository`의
+  `countByDirection` 신설과 `findInbox`의 방향 필터 인자 추가, 원형 구간 파생 SQL
+  (`InboxQuerySql.SEGMENT_JOIN`)과 도메인 `DirectionSegment.contains`의 일치, 카테고리별
+  칩 스코프 한정, 칩 count와 필터 목록 건수 일치, 만료·차단·`SKIPPED`의 목록/칩 동일
+  제외, 미지 `segmentKey` 처리, ACTIVE 스킴 선택(`qello.direction.scheme-code`)과 복수
+  ACTIVE 스킴에서의 중복 집계 방어, 기존 `InboxQueryIntegrationTest`·
+  `InboxSentPostWriteIntegrationTest` 회귀
+- Unverified scope: 없음. 계획된 모든 P0/P1/P2 시나리오를 구현하고 실행했다.
+  `docs/product/data-model/*` 문서 동기화는 이번 이슈 범위에 없다(DB 변경 없음).
+- Release recommendation: 단위·통합 테스트 전부 통과, `./harness check`·
+  `./harness pr-ready --project-tests`·`git diff --check` 모두 통과. 완료 조건
+  전 항목 충족. PR 진행 가능.
+
+## 2. Environment
+
+런타임과 도구 버전만 기록한다. `.env` 값, 토큰, 서버 주소, 계정/IAM 식별자는
+기록하지 않는다.
+
+| Item | Version / safe description |
+| --- | --- |
+| Java | 21 (Gradle toolchain, `JavaLanguageVersion.of(21)`) |
+| Spring Boot | 3.5.16 |
+| Database | Testcontainers `postgis/postgis` (통합 테스트 전용, 로컬 Docker) |
+| Test runner | JUnit 5 |
+
+## 3. Execution results
+
+| Command / suite | Result | Tests | Duration | Evidence |
+| --- | --- | --- | --- | --- |
+| Unit (`./gradlew test`) | PASS | 160 tests, 0 failed (기존 156 + 신규 4) | 2.4s | `build/test-results/test/*.xml` |
+| Integration (`./gradlew integrationTest`) | PASS | 154 tests, 0 failed (기존 138 + `#89` 회귀분 5 + 신규 10 + 코드 리뷰 반영분 1, §7a) | 5.3s(테스트 실행) / 약 1m 20s(컨테이너 기동 포함 전체) | `build/test-results/integrationTest/*.xml` |
+| `./harness check` | PASS | Secret preflight 525 파일, JUnit 정책 54 파일 | — | 명령 출력 |
+| `./harness pr-ready --project-tests` | PASS | 위 unit/integration 재확인 포함 | — | 명령 출력 |
+| `npm run hooks:validate` | PASS | `Husky validation passed` | — | 명령 출력. `scripts/validate-husky.py`를 직접 호출하며 `./harness check`가 내부에서 실행하는 것과 동일한 스크립트다(§7b) |
+| `git diff --check` | PASS | 공백 오류 없음 | — | exit code 0 |
+
+첫 실행부터 신규 시나리오 14개(단위 4 + 통합 10) 전부 통과했다. 계획 대비 재현·수정
+사이클은 없었다 — §5에 그 이유를 기록한다.
+
+## 4. Scenario results
+
+| Scenario ID | Result | Test class / method | Notes |
+| --- | --- | --- | --- |
+| UNIT-001 | PASS | `DirectionChipTest.rejectsBlankSegmentKey` | `IllegalArgumentException`(도메인 에러코드 아님 — 조회 계층 내부 값이라 사용자 입력 검증과 다른 경로) |
+| UNIT-002 | PASS | `DirectionChipTest.rejectsBlankDisplayName`, `.rejectsNegativeCountAndSortOrder` | `count == 0`은 허용됨을 함께 확인 |
+| UNIT-003 | PASS | `DirectionChipTest.inboxListingDefensivelyCopiesAndReturnsImmutableLists` | 원본 리스트 변경이 반영 안 됨 + 반환 리스트 `add` 시 `UnsupportedOperationException` |
+| UNIT-004 | PASS | `FeedPersistenceBoundaryTest.viewsAndPortsRemainIndependent` | 별도 assertion 추가 없이 디렉터리 순회로 신규 view 2종이 자동 포함되어 통과 |
+| INT-001 | PASS | `InboxDirectionChipIntegrationTest.northSegmentWrapsAroundZeroDegrees` | 350°·10°·0° 모두 `N` 칩 하나에 count 3 |
+| INT-002 | PASS | `.boundaryAnglesBelongToExactlyOneSegment` | 8개 경계각 각각과 `경계각 - 0.001`을 삽입, 칩 count 합이 정확히 16(경계 중복·누락 없음) |
+| INT-003 | PASS | `.sqlDerivedSegmentMatchesDomainContainsAcrossSweep` | 대표각 8 + 경계각 8 + 경계 직전각 8 + 원형 케이스 4 = 28개 방위각 전부에서 SQL 필터 결과가 도메인 `DirectionSegment.contains` 판정과 일치 |
+| INT-004 | PASS | `.excludesZeroCountDirectionsFromChips` | 0건 방향(6개)이 칩 목록에 없음 |
+| INT-005 | PASS | `.chipAggregationIsScopedToCategory` | `UNANSWERED`는 `N`만, `ANSWERED`는 `S`만 — 카테고리 간 섞임 없음 |
+| INT-006 | PASS | `.chipCountMatchesFilteredListSizeForEveryChip` | 반환된 모든 칩을 순회해 count == 필터 목록 크기 확인, 칩 count 합 == 필터 없는 목록 크기 확인 |
+| INT-007 | PASS | `.expiredBlockedAndSkippedAreExcludedFromBothListAndChips` | 정상 1건 + `SKIPPED`/만료/차단 3건 중, 목록과 `N` 칩 모두 1건만 반영 |
+| INT-008 | PASS | `.unknownSegmentKeyYieldsEmptyListButChipsRemain` | 미지 키에서 예외 없이 빈 목록, 칩은 `N`·`E` 그대로 |
+| INT-009 | PASS | `.unfilteredListIsUnaffectedByMissingActiveScheme` | 시드 스킴을 `INACTIVE`로 바꿔도 필터 없는 목록은 그대로, 칩만 빈 리스트. `finally`에서 스킴 상태 원상 복구 확인 |
+| INT-010 | PASS | `.otherActiveSchemeDoesNotCauseDuplicateAggregation` | 다른 code의 ACTIVE 스킴을 추가해도 `N` 칩 count가 2로 중복되지 않고 1 유지 — `qello.direction.scheme-code` 설정이 실제로 스킴을 고정함을 확인. `finally`에서 추가 스킴·세그먼트 삭제 확인 |
+| INT-011 | PASS | `InboxQueryIntegrationTest`(11개 재실행), `InboxSentPostWriteIntegrationTest`(28개 재실행) | 방향 필터를 `null`로 넘기는 `cards(...)` 헬퍼로 시그니처 교체를 흡수, 기존 assertion 전부 무수정 통과 |
+| (계획 외, 코드 리뷰 반영) | PASS | `InboxDirectionChipIntegrationTest.blankSegmentKeyIsTreatedAsNoFilter` | §7a. 공백 `directionSegmentKey`가 `null`과 동일하게 필터 없음으로 처리됨을 확인 |
+
+## 5. Failures and diagnostics
+
+계획 단계에서 예상했던 세 가지 실패 모드(§4 Risk inventory) 중 실제로 재현된 것은
+없었다. 구현 순서를 다음과 같이 잡은 것이 원인으로 보인다.
+
+1. `InboxQuerySql.SEGMENT_JOIN`을 `findInbox`(필터 있을 때)와
+   `SELECT_CHIP_AGGREGATE`(칩 집계)가 **같은 상수를 그대로 재사용**하도록 먼저
+   설계했다 — 원형 판정 SQL을 두 번 작성하지 않았으므로 INT-006류의 count 불일치가
+   애초에 발생할 여지가 없었다.
+2. `MOD(... + 720, 360) < width` 공식을 코드 작성 전에 손으로 8개 구간에 대해
+   검산(§`TASK.md` Scope)한 뒤 구현했다 — INT-001·INT-002·INT-003이 첫 실행에
+   통과한 것이 그 검산이 맞았음을 확인해준다.
+
+재현·수정이 필요했던 오류는 없다. 컴파일 오류나 assertion 실패로 재시도한 이력이
+없다(첫 `./gradlew compileJava compileTestJava compileIntegrationTestJava`부터
+성공, 첫 테스트 실행부터 전부 PASS).
+
+## 6. Potential issues
+
+### Application code
+
+- `SELECT_CHIP_AGGREGATE`의 세그먼트 조인은 인덱스를 타지 않는 `MOD` 표현식이다.
+  다만 이미 `recipient_id`·`status`로 좁혀진 행(수신 상한 또는 `ANSWERED` 만료 창
+  이내 건수)에만 평가되므로 8배 정도의 산술 비용이며, 같은 요청에서 함께 도는
+  `SELECT_CARD`의 카드당 상관 서브쿼리 4개보다 가볍다. 별도 인덱스 없이도 현재
+  규모에서는 문제가 없다고 판단했다 — 측정 근거는 코드 리뷰 시점의 정성 분석이며
+  부하 테스트는 이번 범위 밖이다.
+- `#80` 범위상 controller/DTO가 없어 `InboxQueryService.list(...)`의 새 인자
+  (`directionSegmentKey`)를 실제로 채워 보내는 호출 경로는 아직 없다. API 계층이
+  붙을 때 `recipientId`를 인증 토큰에서만 얻고 `at`을 서버 `Clock`에서만 얻어야
+  한다는 제약(과거 논의에서 확인)을 그 작업의 완료 조건에 반드시 포함해야 한다.
+
+### Infrastructure and resource limits
+
+- 해당 없음. 인프라 변경 없음.
+
+### Database and migrations
+
+- 신규 마이그레이션 없음. `#78`의 V8 컬럼과 `#39` 시점 V1 시드(`OCTANT`)를 그대로
+  썼다. INT-009·INT-010이 시드 `direction_scheme`을 일시적으로 변경하지만 각각
+  `finally` 블록에서 원상 복구하며, 실행 후 확인 결과 잔여 변경이 남지 않았다
+  (전체 스위트 재실행 시 다른 테스트에 영향 없음을 §4 INT-011 재실행으로 간접
+  확인).
+
+### Concurrency and idempotency
+
+- `findInbox`와 `countByDirection`은 같은 트랜잭션 안에서 실행된다. 최초 구현은
+  `@Transactional(readOnly = true)`만 지정해 PostgreSQL 기본 격리 수준(READ
+  COMMITTED)을 그대로 썼는데, 이 경우 두 SELECT가 서로 다른 statement 스냅샷을
+  볼 수 있어 조회 도중 답변이 공개되거나 만료 시각이 지나면 칩 count와 목록
+  건수가 순간적으로 어긋날 수 있었다. 2차 코드 리뷰(§7b)에서 이 부분을 지적받아
+  `InboxQueryService.list`에 `isolation = Isolation.REPEATABLE_READ`를 지정해
+  트랜잭션 시작 시점의 스냅샷을 고정했다 — 이제 두 쿼리는 항상 같은 데이터에서
+  계산된다. 읽기 전용 트랜잭션이므로 PostgreSQL에서 `REPEATABLE READ`가 흔히
+  동반하는 serialization 실패(동시 쓰기 충돌) 위험이 없다. 테스트는 고정
+  `Instant`와 단일 스레드라 원래도 이 경합을 재현하지 않았으므로, 이 변경 전후
+  테스트 결과에는 차이가 없다(160/154 그대로) — 격리 수준 자체는 단일 스레드
+  테스트로 직접 검증할 수 없고, Spring/JDBC의 표준 동작에 의존한다.
+
+### Transactions and event ordering
+
+- 두 쿼리 모두 읽기 전용이며 이벤트를 발행하지 않는다. 트랜잭션 순서 문제 없음.
+
+### External APIs
+
+- 해당 없음. 외부 호출 없음.
+
+### Failure recovery and reconciliation
+
+- ACTIVE 스킴이 전혀 없거나(`INACTIVE`로 바뀜) 설정된 `schemeCode`에 해당하는
+  스킴이 없으면 칩은 예외 없이 빈 리스트가 된다(INT-009로 확인). 목록은 스킴과
+  무관하게 온전하다 — 칩 하나의 데이터 결손이 수신함 전체를 막지 않는다.
+- 스킴이 360도를 완전히 덮지 못하도록 잘못 구성되면(구간 사이 간격), 그 간격에
+  속한 `inbound_bearing_deg`를 가진 행은 방향 필터를 걸었을 때만 결과에서
+  빠진다. 필터 없는 목록에는 영향이 없다(INT-009와 같은 원리). 이 상태 자체를
+  막는 `validateCoverage` 검증은 스킴 저장 경로(`direction` 패키지)의 책임이며
+  이번 이슈 범위 밖이다.
+
+## 7. Regression and residual risk
+
+- 기존 `InboxQueryIntegrationTest`(11개)와 `InboxSentPostWriteIntegrationTest`
+  (28개)가 시그니처 변경(`findInbox`에 `directionSegmentKey` 추가,
+  `InboxQueryService.list`가 `InboxListing` 반환) 이후에도 무수정 assertion으로
+  전부 통과했다 — 회귀 없음.
+- 잔여 위험: `ANSWERED` 카테고리는 수신 상한의 통제를 받지 않고 만료 창 안에서
+  계속 누적된다(`#79` 이후의 기존 특성이며 이번 이슈가 만들지 않았다). 이 카테고리가
+  커지면 `SELECT_CARD`의 카드당 서브쿼리 4개가 먼저 비용 문제를 일으킬 곳이고,
+  `SELECT_CHIP_AGGREGATE`의 `MOD` 연산은 그보다 가볍다. 후속 이슈로 관찰이 필요하다.
+- 스냅샷 불일치 위험은 §6·§7b에 기록한 대로 `REPEATABLE_READ` 지정으로 해소했다.
+  잔여 위험 목록에서 제외한다.
+
+## 7a. Code review addendum (2026-08-08T21:55:00+09:00)
+
+`superpowers:requesting-code-review`로 독립 subagent 리뷰를 받았다
+(base `ae3e956`, head `e27c88d` — 이 보고서 최초 작성 시점까지의 6개 커밋).
+리뷰어가 조립된 SQL 문자열 3경로(필터 있는/없는 목록, 칩 집계)를 직접
+대조해 `SCOPE_FILTER`/`SEGMENT_JOIN` 공유가 실제로 지켜지는지 확인했고,
+전체 테스트를 독립 재실행해 **그 시점 기준** 수치(단위 160, 통합 153 — 아래
+조치로 154가 되기 전)와 일치함을 검증했다. Critical/Important 0건, Minor 3건,
+**Ready to merge: Yes** 판정. 이 절 이후 §3·§4의 통합 테스트 수는 조치 반영 후
+최종값인 154로 통일한다.
+
+Minor 3건 중 조치한 것:
+
+- **`directionSegmentKey`가 빈 문자열("")일 때 "필터 없음"으로 취급되지
+  않던 문제.** `JdbcInboxQueryRepository.findInbox`가 `!= null`만 검사해,
+  컨트롤러가 아직 없는 지금은 무해하지만 향후 빈 요청 파라미터가 `""`로
+  들어오는 경로에서 "필터는 있는데 아무 구간도 안 걸림"으로 조용히 빈
+  목록이 나갈 수 있었다. `directionSegmentKey != null && !isBlank()`로
+  정규화하고 `blankSegmentKeyIsTreatedAsNoFilter` 통합 테스트를 추가했다
+  (통합 테스트 153 → 154). 단위 테스트는 변화 없음(160).
+
+조치하지 않은 것(리뷰어도 비차단으로 판단):
+
+- 기존 `InboxQueryIntegrationTest`·`InboxSentPostWriteIntegrationTest`의
+  클래스 헤더 `Source scenario`에 `#80`을 추가하지 않았다 — 두 파일은 이번
+  변경으로 호출 문법만 바뀌었을 뿐 assertion이 바뀌지 않아, `FeedPersistenceBoundaryTest`처럼
+  실제 검증 내용이 바뀐 경우와 다르다고 판단했다.
+
+`boundaryAnglesBelongToExactlyOneSegment`의 배타성 검증 부족은 이 시점에는
+"중복 보강 불필요"로 판단해 조치하지 않았으나, §7b(2차 코드 리뷰)에서 같은
+지적을 CodeRabbit이 별도로 제기했고 재검토 결과 실제 결함 은폐 가능성이
+있다고 판단해 조치했다. 최초 판단을 뒤집은 사례로 §7b에 근거를 남긴다.
+
+## 7b. Second code review pass — CodeRabbit on PR #92 (2026-08-08T22:15:00+09:00)
+
+PR #92 생성 후 CodeRabbit이 자동 리뷰를 남겼다(commit `cbef26b` 기준,
+actionable comments 8건). 각 항목을 검토해 실제 결함인지 판단했다.
+
+### 조치한 것
+
+1. **`findInbox`/`countByDirection`의 스냅샷 불일치를 구조적으로 제거.**
+   §7a 시점에는 "이득 대비 비용이 커 보류"로 판단했으나, 재검토 결과 비용
+   추정이 잘못됐다 — `InboxQueryService.list`에
+   `isolation = Isolation.REPEATABLE_READ` 한 줄만 추가하면 되고, 읽기 전용
+   트랜잭션이라 `REPEATABLE READ`의 일반적 비용(동시 쓰기 serialization
+   실패)도 발생하지 않는다. "구현 비용이 크다"는 최초 판단 자체가 틀렸다고
+   결론 내리고 반영했다(§6).
+2. **`boundaryAnglesBelongToExactlyOneSegment`와
+   `sqlDerivedSegmentMatchesDomainContainsAcrossSweep`이 배타적 소속을
+   검증하지 않던 공백.** 기존 테스트는 "기대 구간에 속하는지"만 확인하고
+   "다른 7개 구간에는 속하지 않는지"를 확인하지 않아, 한 방위각이 두 구간에
+   동시에 걸리는 결함이 있어도 통과할 수 있었다. 두 테스트 모두
+   `assertBelongsToExactlyOneSegment` 헬퍼로 8개 구간 전체를 대조하도록
+   강화했다. §7a에서 "중복 보강 불필요"로 판단했던 것을 뒤집었다 — 첫 판단은
+   "다른 테스트가 이미 강하게 검증한다"고 봤지만, 그 다른 테스트(스윕
+   테스트) 역시 같은 종류의 공백(배타성 미검증)을 갖고 있어서 상호 보완이
+   되지 않았다.
+3. **`InboxQueryRepository.findInbox`의 Javadoc이 공백 문자열 처리를
+   명시하지 않던 문제.** 구현은 이미 `!= null && !isBlank()`로 처리하지만
+   포트 계약 문서에는 `null`만 적혀 있었다. 다른 구현체가 공백을 실제 구간
+   키로 오인해 바인딩하지 않도록 명시했다.
+4. **`npm run hooks:validate` 미기록.** AGENTS.md 10절이 요구하는 4개 기본
+   검증 명령(`./harness check`, `./harness pr-ready --project-tests`,
+   `npm run hooks:validate`, `git diff --check`) 중 이 명령을 실행·기록하지
+   않았다. 실행한 결과 `Husky validation passed`로 통과했다 — 이 스크립트는
+   `./harness check`가 내부적으로 이미 실행하는 `scripts/validate-husky.py`와
+   동일하므로 새로운 위험이 드러난 것은 아니지만, 계약에 명시된 명령을
+   누락한 것은 사실이라 기록을 보완했다.
+5. **통합 테스트 수 표기 불일치(153 vs 154).** §7a 서술이 시점에 따라
+   153과 154를 섞어 써서 최종 수치가 불분명했다. §7a에 "그 시점 기준"이라고
+   명시하고, 이후 절은 전부 최종값 154로 통일했다(`docs/test-plans/gh-80-INBOX-DIRECTION-CHIPS.md`의
+   완료 기준도 동일하게 보완).
+
+### 유효하지 않다고 판단해 조치하지 않은 것
+
+- **"최종 보고서에 `task_id`·`design_id`가 없으면 `PASS`가 아니라 `BLOCKED`로
+  보고하라"는 지적.** 이 요구는 AGENTS.md 11절(에이전트 세션의 최종 상태
+  보고 계약)을 이 markdown 파일에 그대로 적용한 것으로 보이는데, 그 절은
+  대화 세션의 최종 응답 형식을 규정하지 대상이지 `docs/reports/tests/*.md`
+  산출물의 스키마가 아니다. 실제로 저장소의 선행 사례(`gh-79`, `gh-89`
+  보고서)도 이 필드들을 포함하지 않으며, 이 이슈는 인프라 설계가 아니라서
+  `design_id` 자체가 존재하지 않는다(TASK.md에 `DESIGN-ID` 필드가 없다).
+  빈 필드를 채우는 대신 상태를 `BLOCKED`로 낮추면 실제로는 통과한 검증
+  결과를 감추게 되므로, `PASS` 상태를 유지하고 이 판단 근거만 남긴다.
+
+## 8. Artifacts
+
+- Test plan: `docs/test-plans/gh-80-INBOX-DIRECTION-CHIPS.md`
+- CI run: PR #92의 GitHub Actions 체크 참고 (`gh pr checks 92`)
+- Related ADR: `docs/reports/private/direction/gh-80-inbox-direction-chip.local.md`
+  (설계 결정 근거, gitignore 대상 로컬 문서)
+- PR: https://github.com/dnd-side-project/dnd-15th-2-backend/pull/92
+
+## 9. Reviewer checklist
+
+- [x] 보고서에 `.env` 값이나 비밀정보가 없음
+- [x] 미실행 테스트가 명시됨 — 없음(전 시나리오 실행)
+- [x] 잠재 문제에 후속 GitHub Issue가 연결됨 — 신규 후속 Issue 없음. `ANSWERED`
+      누적에 따른 카드 서브쿼리 비용은 §7에 관찰 필요 항목으로만 기록(신규 Issue
+      생성은 PR 리뷰 후 필요시 진행)
+- [x] 실행 결과와 PR 설명이 일치함 — PR #92 본문의 테스트 절(단위 160개, 통합
+      154개, `./harness pr-ready --project-tests` 통과)이 본 보고서 §3과
+      일치함을 확인. §7b 조치 후에도 테스트 수 자체는 바뀌지 않아 PR 본문
+      수정은 필요 없었다
