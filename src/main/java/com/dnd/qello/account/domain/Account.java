@@ -3,6 +3,8 @@ package com.dnd.qello.account.domain;
 import java.time.DateTimeException;
 import java.time.Instant;
 import java.time.ZoneId;
+import java.util.Locale;
+import java.util.regex.Pattern;
 
 import com.dnd.qello.account.error.AccountErrorCode;
 import com.dnd.qello.account.error.AccountException;
@@ -10,6 +12,7 @@ import com.dnd.qello.account.error.AccountException;
 public final class Account {
 
 	private static final int REGION_CODE_MAX_LENGTH = 100;
+	private static final Pattern COUNTRY_CODE_PATTERN = Pattern.compile("^[A-Z]{2}$");
 	private static final int LOCALE_MAX_LENGTH = 35;
 	private static final int TIMEZONE_MAX_LENGTH = 64;
 	private static final int NICKNAME_MAX_LENGTH = 50;
@@ -17,6 +20,7 @@ public final class Account {
 	private final Long id;
 	private final AccountRole role;
 	private final AccountStatus status;
+	private final String countryCode;
 	private final String coarseRegionCode;
 	private final String locale;
 	private final String timezone;
@@ -27,6 +31,7 @@ public final class Account {
 		Long id,
 		AccountRole role,
 		AccountStatus status,
+		String countryCode,
 		String coarseRegionCode,
 		String locale,
 		String timezone,
@@ -36,6 +41,7 @@ public final class Account {
 		this.id = validateId(id);
 		this.role = requireValue(role, "role");
 		this.status = requireValue(status, "status");
+		this.countryCode = validateCountryCode(role, countryCode);
 		this.coarseRegionCode = requireText(
 			coarseRegionCode, "coarseRegionCode", REGION_CODE_MAX_LENGTH);
 		this.locale = requireText(locale, "locale", LOCALE_MAX_LENGTH);
@@ -49,6 +55,7 @@ public final class Account {
 	 * 일반 사용자 생성. 비밀번호를 사용하지 않으며 role을 외부에서 지정할 수 없다.
 	 */
 	public static Account createUser(
+		String countryCode,
 		String coarseRegionCode,
 		String locale,
 		String timezone,
@@ -58,6 +65,7 @@ public final class Account {
 			null,
 			AccountRole.USER,
 			AccountStatus.ACTIVE,
+			countryCode,
 			coarseRegionCode,
 			locale,
 			timezone,
@@ -83,6 +91,7 @@ public final class Account {
 			null,
 			AccountRole.OPERATOR,
 			AccountStatus.ACTIVE,
+			null,
 			coarseRegionCode,
 			locale,
 			timezone,
@@ -98,6 +107,7 @@ public final class Account {
 		Long id,
 		AccountRole role,
 		AccountStatus status,
+		String countryCode,
 		String coarseRegionCode,
 		String locale,
 		String timezone,
@@ -112,6 +122,7 @@ public final class Account {
 			id,
 			role,
 			status,
+			countryCode,
 			coarseRegionCode,
 			locale,
 			timezone,
@@ -130,6 +141,7 @@ public final class Account {
 			id,
 			role,
 			status,
+			countryCode,
 			coarseRegionCode,
 			locale,
 			timezone,
@@ -144,7 +156,7 @@ public final class Account {
 				AccountErrorCode.INVALID_STATUS_TRANSITION, "status", "삭제된 계정은 차단할 수 없습니다");
 		}
 		return new Account(
-			id, role, AccountStatus.BLOCKED, coarseRegionCode, locale, timezone, nickname, deletedAt);
+			id, role, AccountStatus.BLOCKED, countryCode, coarseRegionCode, locale, timezone, nickname, deletedAt);
 	}
 
 	public Account unblock() {
@@ -153,7 +165,7 @@ public final class Account {
 				AccountErrorCode.INVALID_STATUS_TRANSITION, "status", "차단 상태인 계정만 차단 해제할 수 있습니다");
 		}
 		return new Account(
-			id, role, AccountStatus.ACTIVE, coarseRegionCode, locale, timezone, nickname, deletedAt);
+			id, role, AccountStatus.ACTIVE, countryCode, coarseRegionCode, locale, timezone, nickname, deletedAt);
 	}
 
 	public Account delete(Instant deletedAt) {
@@ -163,7 +175,7 @@ public final class Account {
 				AccountErrorCode.INVALID_STATUS_TRANSITION, "status", "이미 삭제된 계정입니다");
 		}
 		return new Account(
-			id, role, AccountStatus.DELETED, coarseRegionCode, locale, timezone, nickname, deletedAt);
+			id, role, AccountStatus.DELETED, countryCode, coarseRegionCode, locale, timezone, nickname, deletedAt);
 	}
 
 	public Long getId() {
@@ -176,6 +188,10 @@ public final class Account {
 
 	public AccountStatus getStatus() {
 		return status;
+	}
+
+	public String getCountryCode() {
+		return countryCode;
 	}
 
 	public String getCoarseRegionCode() {
@@ -203,6 +219,22 @@ public final class Account {
 			throw new AccountException(AccountErrorCode.INVALID_ID, "id", "id는 양수여야 합니다");
 		}
 		return id;
+	}
+
+	private static String validateCountryCode(AccountRole role, String countryCode) {
+		if (role == AccountRole.USER && countryCode == null) {
+			throw new AccountException(
+				AccountErrorCode.REQUIRED_VALUE_MISSING, "countryCode", "countryCode는 필수입니다");
+		}
+		if (countryCode == null) {
+			return null;
+		}
+		String normalized = countryCode.trim().toUpperCase(Locale.ROOT);
+		if (!COUNTRY_CODE_PATTERN.matcher(normalized).matches()) {
+			throw new AccountException(
+				AccountErrorCode.INVALID_COUNTRY_CODE, "countryCode", "countryCode 형식이 올바르지 않습니다");
+		}
+		return normalized;
 	}
 
 	private static <T> T requireValue(T value, String field) {

@@ -164,7 +164,7 @@ class OperatorLoginServiceTest {
 
 	private void givenOperator(AccountStatus status) {
 		accountRepository.store(Account.restore(
-			OPERATOR_ID, AccountRole.OPERATOR, status, "KR-TEST", "ko-KR", "Asia/Seoul", "admin", null));
+			OPERATOR_ID, AccountRole.OPERATOR, status, null, "KR-TEST", "ko-KR", "Asia/Seoul", "admin", null));
 	}
 
 	private OperatorCredential storedCredential() {

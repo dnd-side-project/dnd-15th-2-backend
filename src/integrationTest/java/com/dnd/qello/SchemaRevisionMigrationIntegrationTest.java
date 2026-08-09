@@ -93,8 +93,10 @@ class SchemaRevisionMigrationIntegrationTest extends PostgisContainerIntegration
 			JdbcTemplate scoped = new JdbcTemplate(new SingleConnectionDataSource(connection, true));
 			scoped.execute("SET search_path TO " + SCHEMA);
 
-			scoped.update("INSERT INTO region_code (code, display_name, level) "
-				+ "VALUES ('TEST-V2', 'V2 Test', 'COUNTRY')");
+			scoped.update("INSERT INTO region_code (code, parent_code, display_name, level) "
+				+ "VALUES ('KR', NULL, 'Korea', 'COUNTRY')");
+			scoped.update("INSERT INTO region_code (code, parent_code, display_name, level) "
+				+ "VALUES ('TEST-V2', 'KR', 'V2 Test', 'REGION')");
 			Long senderId = insertAccount(scoped, "v2-sender");
 			Long recipientId = insertAccount(scoped, "v2-recipient");
 			Long questionId = scoped.queryForObject("""
@@ -200,8 +202,10 @@ class SchemaRevisionMigrationIntegrationTest extends PostgisContainerIntegration
 			JdbcTemplate scoped = new JdbcTemplate(new SingleConnectionDataSource(connection, true));
 			scoped.execute("SET search_path TO " + CONFLICT_SCHEMA);
 
-			scoped.update("INSERT INTO region_code (code, display_name, level) "
-				+ "VALUES ('TEST-V2', 'V2 Test', 'COUNTRY')");
+			scoped.update("INSERT INTO region_code (code, parent_code, display_name, level) "
+				+ "VALUES ('KR', NULL, 'Korea', 'COUNTRY')");
+			scoped.update("INSERT INTO region_code (code, parent_code, display_name, level) "
+				+ "VALUES ('TEST-V2', 'KR', 'V2 Test', 'REGION')");
 			Long senderId = insertAccount(scoped, "v2-conflict-sender");
 			Long recipientId = insertAccount(scoped, "v2-conflict-recipient");
 			Long questionId = scoped.queryForObject("""
@@ -268,8 +272,10 @@ class SchemaRevisionMigrationIntegrationTest extends PostgisContainerIntegration
 			JdbcTemplate scoped = new JdbcTemplate(new SingleConnectionDataSource(connection, true));
 			scoped.execute("SET search_path TO " + V8_SCHEMA);
 
-			scoped.update("INSERT INTO region_code (code, display_name, level) "
-				+ "VALUES ('TEST-V7', 'V7 Test', 'COUNTRY')");
+			scoped.update("INSERT INTO region_code (code, parent_code, display_name, level) "
+				+ "VALUES ('KR', NULL, 'Korea', 'COUNTRY')");
+			scoped.update("INSERT INTO region_code (code, parent_code, display_name, level) "
+				+ "VALUES ('TEST-V7', 'KR', 'V7 Test', 'REGION')");
 			Long senderId = insertV7Account(scoped, "v7-sender");
 			Long recipientId = insertV7Account(scoped, "v7-recipient");
 			Long questionId = scoped.queryForObject("""
@@ -340,8 +346,10 @@ class SchemaRevisionMigrationIntegrationTest extends PostgisContainerIntegration
 			JdbcTemplate scoped = new JdbcTemplate(new SingleConnectionDataSource(connection, true));
 			scoped.execute("SET search_path TO " + V8_CONFLICT_SCHEMA);
 
-			scoped.update("INSERT INTO region_code (code, display_name, level) "
-				+ "VALUES ('TEST-V7', 'V7 Test', 'COUNTRY')");
+			scoped.update("INSERT INTO region_code (code, parent_code, display_name, level) "
+				+ "VALUES ('KR', NULL, 'Korea', 'COUNTRY')");
+			scoped.update("INSERT INTO region_code (code, parent_code, display_name, level) "
+				+ "VALUES ('TEST-V7', 'KR', 'V7 Test', 'REGION')");
 			Long senderId = insertV7Account(scoped, "v7-conflict-sender");
 			Long recipientId = insertV7Account(scoped, "v7-conflict-recipient");
 			Long questionId = scoped.queryForObject("""

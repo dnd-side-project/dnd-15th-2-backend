@@ -105,7 +105,7 @@ NULL)`)은 동일하고 이름만 다르다. 앞의 `ck_direction_post_answers_r
 
 ## 5. Baseline summary
 
-V1~V8(2026-08-08) 전체를 반영한다. `V7`(#81, `device_credential`)과 `V8`(#78, 답변
+V1~V9(2026-08-08) 전체를 반영한다. `V7`(#81, `device_credential`)과 `V8`(#78, 답변
 열람 범위 확대)은 서로 다른 테이블을 다뤄 내용은 겹치지 않지만, `V8`이 원래 `V7`로
 작성됐다가 `V7` 번호 충돌로 재번호된 이력이 있다 — Flyway 카탈로그 카운트에는 영향이
 없다. 표는 `FlywayMigrationIntegrationTest`의
@@ -118,20 +118,20 @@ V1~V8(2026-08-08) 전체를 반영한다. `V7`(#81, `device_credential`)과 `V8`
 | DBML enums | 28 | SQL에서는 `VARCHAR + CHECK`로 표현. `V3`~`V7`(운영자 인증, Spring Session, 기기 자격증명)은 vault DBML이 다루는 범위 밖이라 이 수치에 영향이 없다 |
 | Tables | 32 | 모든 테이블에 논리 PK 존재. `V5`가 `operator_credential`, `V6`이 `spring_session`/`spring_session_attributes`, `V7`이 `device_credential`을 추가 |
 | Primary keys | 32 | 28개는 단일 컬럼 inline, 4개는 명시적으로 이름 붙인 복합 PK(`pk_user_block`, `pk_notification_preference`, `pk_post_reaction`, `pk_answer_reaction`) |
-| Foreign keys | 51 | named `fk_*` constraints. `V5`가 `fk_operator_credential_user`, `V6`이 `spring_session_attributes_fk`, `V7`이 `fk_device_credential_user`를 추가 |
-| Unique constraints | 20 | named `uq_*` constraints. `V5`가 `uq_user_account_id_role`, `uq_operator_credential_login_id`를 추가. `V7`은 named unique 제약이 아니라 `CREATE UNIQUE INDEX` 2개를 추가해 이 수치에 영향이 없다 |
+| Foreign keys | 52 | named `fk_*` constraints. `V5`가 `fk_operator_credential_user`, `V6`이 `spring_session_attributes_fk`, `V7`이 `fk_device_credential_user`, `V9`가 `fk_user_account_country`를 추가 |
+| Unique constraints | 21 | named `uq_*` constraints. `V5`가 `uq_user_account_id_role`, `uq_operator_credential_login_id`, `V9`가 `uq_region_code_code_level`을 추가. `V7`은 named unique 제약이 아니라 `CREATE UNIQUE INDEX` 2개를 추가해 이 수치에 영향이 없다 |
 | Unique indexes | 11 | `CREATE UNIQUE INDEX`로 만든 것만 센다(named unique 테이블 제약이 만드는 인덱스는 위 "Unique constraints"에서 센다). `V6`이 `spring_session_ix1`, `V7`이 `uq_device_credential_secret`/`uq_active_device_installation`을 추가 |
-| Check constraints | 111 | named `ck_*` constraints. `V3`이 추가한 `ck_user_account_password_hash`는 `V5`가 제거해 순증감 없음. `V5`가 operator_credential 관련 4개, `V7`이 device_credential 관련 4개, `V8`이 6개(방향·거리·수정 이력 컬럼) 추가 |
-| Non-unique indexes | 45 | GiST, partial, sort-order index 포함. `V6`이 `spring_session_ix2`, `spring_session_ix3`, `V7`이 `device_credential_user_idx`를 추가 |
+| Check constraints | 113 | named `ck_*` constraints. `V3`이 추가한 `ck_user_account_password_hash`는 `V5`가 제거해 순증감 없음. `V5`가 operator_credential 관련 4개, `V7`이 device_credential 관련 4개, `V8`이 6개(방향·거리·수정 이력 컬럼), `V9`가 USER 국가 필수·국가 코드 형식 2개를 추가 |
+| Non-unique indexes | 46 | GiST, partial, sort-order index 포함. `V6`이 `spring_session_ix2`, `spring_session_ix3`, `V7`이 `device_credential_user_idx`, `V9`가 `user_account_country_idx`를 추가 |
 | Functions | 11 | trigger support functions. `V8`이 `enforce_answer_reaction_reactor_is_sender`를 `enforce_answer_reaction_reactor_can_view`로 교체(개수 불변) |
 | Triggers | 10 | 2 regular + 8 constraint triggers. `V8`이 `ct_answer_reaction_reactor_is_sender`를 `ct_answer_reaction_reactor_can_view`로 교체(개수 불변) |
 | Extensions | 1 | `postgis` |
 
-"Unique indexes"(11) + "Non-unique indexes"(45) = 56이며, `uq_user_account_id_role`/
+"Unique indexes"(11) + "Non-unique indexes"(46) = 57이며, `uq_user_account_id_role`/
 `uq_operator_credential_login_id`가 만드는 인덱스 2개는 "Unique constraints"에서만
 센다. `FlywayMigrationIntegrationTest`의 `EXPECTED_INDEXES.hasSize(58)`는 이 2개를
 포함해 세므로(pg_indexes catalog는 제약이 만든 인덱스와 `CREATE INDEX`로 만든 인덱스를
-구분하지 않는다) 58 = 56 + 2다. 두 표가 다른 숫자를 보여주는 것은 오류가 아니라
+구분하지 않는다) 60 = 57 + 3다. 두 표가 다른 숫자를 보여주는 것은 오류가 아니라
 분류 기준의 차이다.
 
 ## 6. Table inventory
@@ -206,6 +206,7 @@ V1~V8(2026-08-08) 전체를 반영한다. `V7`(#81, `device_credential`)과 `V8`
 - `approved_question_active_idx`
 - `uq_direction_scheme_active`
 - `user_account_region_idx`
+- `user_account_country_idx` (`V9`)
 - `active_user_presence_region_idx`
 - `question_proposal_proposer_idx`
 - `question_proposal_review_reviewer_idx`
@@ -308,6 +309,7 @@ V1~V8(2026-08-08) 전체를 반영한다. `V7`(#81, `device_credential`)과 `V8`
 - `fk_operator_credential_user` (`V5`)
 - `spring_session_attributes_fk` (`V6`)
 - `fk_device_credential_user` (`V7`, `#81`, `ON DELETE CASCADE`)
+- `fk_user_account_country` (`V9`, `country_code`와 생성 `country_level`의 복합 FK)
 
 ## 11. Unique-constraint inventory
 
@@ -331,6 +333,7 @@ V1~V8(2026-08-08) 전체를 반영한다. `V7`(#81, `device_credential`)과 `V8`
 - `uq_notification_delivery_device`
 - `uq_user_account_id_role` (`V5`)
 - `uq_operator_credential_login_id` (`V5`)
+- `uq_region_code_code_level` (`V9`)
 
 partial unique object는 위 Index inventory에 포함된다. 반대로 이 절의 named unique
 테이블 제약이 만드는 인덱스는 Index inventory에 다시 넣지 않는다 — §5 표 아래 설명
@@ -346,6 +349,8 @@ partial unique object는 위 Index inventory에 포함된다. 반대로 이 절�
 - `ck_user_account_status`
 - `ck_user_account_nickname`
 - `ck_user_account_deleted_at`
+- `ck_user_account_country_code` (`V9`)
+- `ck_user_account_user_country` (`V9`)
 - `ck_user_private_attribute_gender`
 - `ck_user_private_attribute_age_band`
 - `ck_active_user_presence_location`

@@ -37,6 +37,9 @@ public class AccountJpaEntity extends JpaAuditableEntity {
 	@Column(name = "status", nullable = false, length = 20)
 	private AccountStatus status;
 
+	@Column(name = "country_code", length = 2)
+	private String countryCode;
+
 	@Column(name = "coarse_region_code", nullable = false, length = 100)
 	private String coarseRegionCode;
 
@@ -62,6 +65,7 @@ public class AccountJpaEntity extends JpaAuditableEntity {
 	AccountJpaEntity(
 		AccountRole role,
 		AccountStatus status,
+		String countryCode,
 		String coarseRegionCode,
 		String locale,
 		String timezone,
@@ -69,6 +73,7 @@ public class AccountJpaEntity extends JpaAuditableEntity {
 	) {
 		this.role = role;
 		this.status = status;
+		this.countryCode = countryCode;
 		this.coarseRegionCode = coarseRegionCode;
 		this.locale = locale;
 		this.timezone = timezone;

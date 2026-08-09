@@ -21,6 +21,9 @@ public enum AccountErrorCode implements ErrorCode {
 	// 지역 코드, locale, timezone, 닉네임의 허용 길이 초과
 	TEXT_TOO_LONG(HttpStatus.BAD_REQUEST, "ACC-VAL-003", ErrorCategory.VAL, "계정 값이 허용 길이를 초과했습니다."),
 
+	// 국가 코드가 ISO alpha-2 대문자 형식이 아님
+	INVALID_COUNTRY_CODE(HttpStatus.BAD_REQUEST, "ACC-VAL-005", ErrorCategory.VAL, "국가 코드가 올바르지 않습니다."),
+
 	// timezone이 IANA 지역 ID가 아님
 	INVALID_TIMEZONE(HttpStatus.BAD_REQUEST, "ACC-VAL-004", ErrorCategory.VAL, "timezone은 유효한 IANA 지역 ID여야 합니다."),
 

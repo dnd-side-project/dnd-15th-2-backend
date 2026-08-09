@@ -16,7 +16,7 @@ import com.dnd.qello.account.error.AccountException;
 
 /**
  * Created at: 2026-08-04T12:00:00+09:00
- * Source scenario: TEST-PLAN-GH-48-ACCOUNT-PASSWORD-UNIT-004
+ * Source scenario: TEST-PLAN-GH-48-ACCOUNT-PASSWORD-UNIT-004, TEST-PLAN-GH-88-COUNTRY-ONBOARDING-UNIT-001
  */
 class AccountJpaMapperTest {
 
@@ -24,7 +24,7 @@ class AccountJpaMapperTest {
 	@DisplayName("toNewEntity는 id가 없는 Account만 허용하고 id/audit 필드를 직접 설정하지 않는다")
 	void toNewEntityRejectsAccountWithId() {
 		Account existing = Account.restore(
-			7L, AccountRole.USER, AccountStatus.ACTIVE, "KR-TEST", "ko-KR", "Asia/Seoul",
+			7L, AccountRole.USER, AccountStatus.ACTIVE, "KR", "KR-TEST", "ko-KR", "Asia/Seoul",
 			null, null);
 
 		assertThatThrownBy(() -> AccountJpaMapper.toNewEntity(existing))
@@ -40,9 +40,20 @@ class AccountJpaMapperTest {
 		AccountJpaEntity entity = AccountJpaMapper.toNewEntity(source);
 
 		assertThat(entity.getRole()).isEqualTo(AccountRole.OPERATOR);
+		assertThat(entity.getCountryCode()).isNull();
 		assertThat(entity.getCoarseRegionCode()).isEqualTo("KR-TEST");
 		assertThat(entity.getNickname()).isEqualTo("qello-admin");
 		assertThat(entity.getId()).isNull();
+	}
+
+	@Test
+	@DisplayName("USER 매핑은 countryCode를 보존한다")
+	void mapsUserCountryCode() {
+		Account source = Account.createUser("KR", "KR-TEST", "ko-KR", "Asia/Seoul", "qello-user");
+
+		AccountJpaEntity entity = AccountJpaMapper.toNewEntity(source);
+
+		assertThat(entity.getCountryCode()).isEqualTo("KR");
 	}
 
 	@Test
@@ -102,10 +113,10 @@ class AccountJpaMapperTest {
 	) throws Exception {
 		var constructor = AccountJpaEntity.class.getDeclaredConstructor(
 			AccountRole.class, AccountStatus.class, String.class, String.class, String.class,
-			String.class);
+			String.class, String.class);
 		constructor.setAccessible(true);
 		AccountJpaEntity entity = constructor.newInstance(
-			role, status, coarseRegionCode, locale, timezone, nickname);
+			role, status, role == AccountRole.USER ? "KR" : null, coarseRegionCode, locale, timezone, nickname);
 
 		setField(entity, "id", id);
 		if (deletedAt != null) {

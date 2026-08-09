@@ -20,6 +20,9 @@ public enum AuthErrorCode implements ErrorCode {
 	// installation_id 형식 위반. 공백, 64자 초과
 	INVALID_INSTALLATION_ID(HttpStatus.BAD_REQUEST, "AUT-VAL-003", ErrorCategory.VAL, "기기 식별자가 올바르지 않습니다."),
 
+	// 국가 코드 형식·지원 국가·기준 지역 계층이 등록 요청과 일치하지 않음
+	INVALID_COUNTRY_CODE(HttpStatus.BAD_REQUEST, "AUT-VAL-004", ErrorCategory.VAL, "국가 코드가 올바르지 않습니다."),
+
 	// 잠금 상태와 잠금 해제 시각이 맞지 않는 등 자격증명 자체의 불변식 위반
 	INVALID_CREDENTIAL_STATE(HttpStatus.BAD_REQUEST, "AUT-DOM-001", ErrorCategory.DOM, "자격증명 상태가 올바르지 않습니다."),
 
