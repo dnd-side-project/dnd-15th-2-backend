@@ -257,13 +257,15 @@
 
 | 코드 | 이름 | HTTP | 분류 | 메시지 |
 | --- | --- | --- | --- | --- |
-| `FED-VAL-001` | INVALID_TEXT | 400 | VAL | 방향 칩 문자열 값이 올바르지 않습니다. |
-| `FED-VAL-002` | INVALID_VALUE_RANGE | 400 | VAL | 방향 칩 값이 허용 범위를 벗어났습니다. |
+| `FED-INFRA-001` | INVALID_TEXT | 500 | INFRA | 방향 칩 데이터를 생성하지 못했습니다. |
+| `FED-INFRA-002` | INVALID_VALUE_RANGE | 500 | INFRA | 방향 칩 데이터를 생성하지 못했습니다. |
 
-`feed`는 조회 전용 기능이라 대부분의 값이 SQL 조회 결과에서 온다. `DirectionChip`의
-`segmentKey`·`displayName`·`sortOrder`·`count` 불변식 위반은 클라이언트 입력이 아니라
-스킴 데이터나 매핑 결함을 뜻하지만, 같은 성격의 값 검증을 다루는 `DIR-VAL-003`·`DIR-VAL-008`과
-동일하게 VAL로 분류한다.
+`feed`는 조회 전용 기능이라 `DirectionChip`의 `segmentKey`·`displayName`·`sortOrder`·`count`는
+전부 SQL 조회 결과에서 채워지고 클라이언트 입력을 거치지 않는다(`JdbcInboxQueryRepository`).
+그래서 이 값들의 불변식 위반은 요청을 고쳐도 해소되지 않는 `direction_segment` 데이터나 행
+매핑의 결함이며, `QUE-INFRA-001`과 같은 이유로 INFRA/500으로 분류한다. 같은 이름
+`INVALID_TEXT`·`INVALID_VALUE_RANGE`를 쓰는 `DIR-VAL-003`·`DIR-VAL-008`은 실제로 클라이언트
+요청 값을 검증하므로 VAL/400이 맞고, 이 둘과는 분류가 다르다.
 
 ## 14. DB 제약 매핑
 
