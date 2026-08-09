@@ -11,10 +11,12 @@ import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
 
+import com.dnd.qello.direction.config.DirectionSchemeProperties;
 import com.dnd.qello.direction.domain.PostRecipientStatus;
 import com.dnd.qello.feed.config.FeedDistanceProperties;
 import com.dnd.qello.feed.repository.InboxQueryRepository;
 import com.dnd.qello.feed.repository.jdbc.sql.InboxQuerySql;
+import com.dnd.qello.feed.view.DirectionChip;
 import com.dnd.qello.feed.view.InboxCard;
 import com.dnd.qello.feed.view.InboxCategory;
 import com.dnd.qello.feed.view.InboxDetail;
@@ -30,26 +32,45 @@ public class JdbcInboxQueryRepository implements InboxQueryRepository {
 
 	private final NamedParameterJdbcTemplate jdbc;
 	private final FeedDistanceProperties feedDistanceProperties;
+	private final DirectionSchemeProperties directionSchemeProperties;
 
 	@Override
-	public List<InboxCard> findInbox(long recipientId, InboxCategory category, Instant at) {
-		String statusFilter = switch (category) {
-			case UNANSWERED -> "pr.status IN " + UNANSWERED_STATUSES;
-			case ANSWERED -> "pr.status = 'ANSWERED'";
-		};
-		// statusFilter는 텍스트 블록이 아니라 일반 String 연결이다 — 텍스트 블록은 줄 끝
-		// 공백을 잘라내므로 "AND" 뒤에 이어붙이면 "ANDpr.status..."처럼 토큰이 붙는다.
-		return jdbc.query(InboxQuerySql.SELECT_CARD + "WHERE pr.recipient_id = :recipientId AND " + statusFilter + """
+	public List<InboxCard> findInbox(long recipientId, InboxCategory category, String directionSegmentKey, Instant at) {
+		// 공백 문자열도 "필터 없음"으로 다룬다 — 나중에 컨트롤러가 붙어 빈 요청 파라미터를
+		// 그대로 넘기게 되면 null 대신 ""가 들어올 수 있다. 여기서 정규화해 그 경로에서
+		// "필터 있음, 아무 구간도 매칭 안 됨"으로 조용히 빈 목록이 나가는 사고를 막는다.
+		boolean filterByDirection = directionSegmentKey != null && !directionSegmentKey.isBlank();
+		// statusFilter와 방향 필터 조각은 텍스트 블록이 아니라 일반 String 연결이다 —
+		// 텍스트 블록은 줄 끝 공백을 잘라내므로 "AND" 뒤에 이어붙이면
+		// "ANDpr.status..."처럼 토큰이 붙는다.
+		String sql = InboxQuerySql.SELECT_CARD
+			+ (filterByDirection ? InboxQuerySql.SEGMENT_JOIN : "")
+			+ "WHERE pr.recipient_id = :recipientId AND " + statusFilter(category)
+			+ (filterByDirection ? " AND seg.segment_key = :directionSegmentKey" : "")
+			+ InboxQuerySql.SCOPE_FILTER
+			+ "ORDER BY pr.matched_at DESC, pr.id DESC\n";
+		MapSqlParameterSource params = params(recipientId).addValue("at", Timestamp.from(at));
+		if (filterByDirection) {
+			params.addValue("schemeCode", directionSchemeProperties.schemeCode())
+				.addValue("directionSegmentKey", directionSegmentKey);
+		}
+		return jdbc.query(sql, params, (rs, rowNum) -> card(rs));
+	}
 
-			  AND dp.status = 'ACTIVE'
-			  AND dp.deleted_at IS NULL
-			  AND dp.expires_at > :at
-			  AND NOT EXISTS (SELECT 1 FROM user_block ub
-			                  WHERE ub.blocker_id = :recipientId
-			                    AND ub.blocked_id = dp.sender_id
-			                    AND ub.released_at IS NULL)
-			ORDER BY pr.matched_at DESC, pr.id DESC
-			""", params(recipientId).addValue("at", Timestamp.from(at)), (rs, rowNum) -> card(rs));
+	@Override
+	public List<DirectionChip> countByDirection(long recipientId, InboxCategory category, Instant at) {
+		String sql = InboxQuerySql.SELECT_CHIP_AGGREGATE
+			+ "WHERE pr.recipient_id = :recipientId AND " + statusFilter(category)
+			+ InboxQuerySql.SCOPE_FILTER
+			+ """
+				GROUP BY seg.segment_key, seg.display_name, seg.sort_order
+				ORDER BY seg.sort_order
+				""";
+		MapSqlParameterSource params = params(recipientId).addValue("at", Timestamp.from(at))
+			.addValue("schemeCode", directionSchemeProperties.schemeCode());
+		return jdbc.query(sql, params, (rs, rowNum) -> new DirectionChip(
+			rs.getString("segment_key"), rs.getString("display_name"),
+			rs.getInt("sort_order"), rs.getLong("chip_count")));
 	}
 
 	@Override
@@ -63,6 +84,13 @@ public class JdbcInboxQueryRepository implements InboxQueryRepository {
 				? Optional.of(new InboxDetail(card(rs), FeedRowMappers.instant(rs, "opened_at"),
 					FeedRowMappers.instant(rs, "skip_requested_at")))
 				: Optional.empty());
+	}
+
+	private static String statusFilter(InboxCategory category) {
+		return switch (category) {
+			case UNANSWERED -> "pr.status IN " + UNANSWERED_STATUSES;
+			case ANSWERED -> "pr.status = 'ANSWERED'";
+		};
 	}
 
 	private MapSqlParameterSource params(long recipientId) {

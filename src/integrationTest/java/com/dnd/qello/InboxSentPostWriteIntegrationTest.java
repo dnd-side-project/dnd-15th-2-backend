@@ -471,13 +471,13 @@ class InboxSentPostWriteIntegrationTest extends PostgisContainerIntegrationTestS
 	void answeredPostMovesFromUnansweredToAnsweredCategory() {
 		receiveStateRepository.save(RecipientReceiveState.restore(recipientId, 1, 1, NOW, NOW, NOW));
 		postRecipientService.open(recipientId, postRecipientId, NOW.plusSeconds(10));
-		assertThat(inboxQueryService.list(recipientId, InboxCategory.UNANSWERED, NOW.plusSeconds(15))).hasSize(1);
+		assertThat(inboxQueryService.list(recipientId, InboxCategory.UNANSWERED, null, NOW.plusSeconds(15)).cards()).hasSize(1);
 
 		long answerId = submittedAnswer(postRecipientId, recipientId, "answer-vanish");
 		answerNotificationService.publish(answerId, NOW.plusSeconds(30));
 
-		assertThat(inboxQueryService.list(recipientId, InboxCategory.UNANSWERED, NOW.plusSeconds(35))).isEmpty();
-		assertThat(inboxQueryService.list(recipientId, InboxCategory.ANSWERED, NOW.plusSeconds(35))).hasSize(1);
+		assertThat(inboxQueryService.list(recipientId, InboxCategory.UNANSWERED, null, NOW.plusSeconds(35)).cards()).isEmpty();
+		assertThat(inboxQueryService.list(recipientId, InboxCategory.ANSWERED, null, NOW.plusSeconds(35)).cards()).hasSize(1);
 	}
 
 	@Test
@@ -485,6 +485,6 @@ class InboxSentPostWriteIntegrationTest extends PostgisContainerIntegrationTestS
 	void skipPendingStaysVisibleUntilConfirmed() {
 		postRecipientService.requestSkip(recipientId, postRecipientId, NOW.plusSeconds(10));
 
-		assertThat(inboxQueryService.list(recipientId, InboxCategory.UNANSWERED, NOW.plusSeconds(15))).hasSize(1);
+		assertThat(inboxQueryService.list(recipientId, InboxCategory.UNANSWERED, null, NOW.plusSeconds(15)).cards()).hasSize(1);
 	}
 }

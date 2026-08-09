@@ -52,6 +52,7 @@
 | `ANS` | `answer` |
 | `SAF` | `safety` |
 | `NOT` | `notification` |
+| `FED` | `feed` |
 
 | 카테고리 | 의미 | 운영 대응 |
 | --- | --- | --- |
@@ -254,7 +255,21 @@
 거치지 않는다. `AuthEntryPoints`가 같은 형식으로 `CMN-VAL-003`(401)과 `CMN-DOM-001`(403)을
 내보낸다.
 
-## 13. DB 제약 매핑
+## 13. feed (FED)
+
+| 코드 | 이름 | HTTP | 분류 | 메시지 |
+| --- | --- | --- | --- | --- |
+| `FED-INFRA-001` | INVALID_TEXT | 500 | INFRA | 방향 칩 데이터를 생성하지 못했습니다. |
+| `FED-INFRA-002` | INVALID_VALUE_RANGE | 500 | INFRA | 방향 칩 데이터를 생성하지 못했습니다. |
+
+`feed`는 조회 전용 기능이라 `DirectionChip`의 `segmentKey`·`displayName`·`sortOrder`·`count`는
+전부 SQL 조회 결과에서 채워지고 클라이언트 입력을 거치지 않는다(`JdbcInboxQueryRepository`).
+그래서 이 값들의 불변식 위반은 요청을 고쳐도 해소되지 않는 `direction_segment` 데이터나 행
+매핑의 결함이며, `QUE-INFRA-001`과 같은 이유로 INFRA/500으로 분류한다. 같은 이름
+`INVALID_TEXT`·`INVALID_VALUE_RANGE`를 쓰는 `DIR-VAL-003`·`DIR-VAL-008`은 실제로 클라이언트
+요청 값을 검증하므로 VAL/400이 맞고, 이 둘과는 분류가 다르다.
+
+## 14. DB 제약 매핑
 
 `DataIntegrityViolationException`의 원인 메시지에서 제약 이름을 찾아 기능 오류 코드로 옮긴다.
 매핑은 `common/error/ConstraintExceptionMapper`에 있고, 목록에 없는 제약은
