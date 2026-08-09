@@ -34,13 +34,17 @@ class FeedPersistenceBoundaryTest {
 		}
 	}
 
+	/** feed 자신의 repository.jdbc 서브패키지(예: sql/)는 경계 위반이 아니므로 feature 이름까지 포함해 매칭한다. */
+	private static final List<String> OTHER_FEATURES =
+		List.of("account", "answer", "auth", "direction", "notification", "question", "safety");
+
 	@Test
 	@DisplayName("feed는 다른 feature의 JPA Entity와 JDBC 구현을 직접 참조하지 않는다")
 	void feedDoesNotReachIntoOtherFeatureImplementations() throws IOException {
 		try (Stream<Path> paths = Files.walk(Path.of("src/main/java/com/dnd/qello/feed"))) {
 			assertThat(paths.filter(path -> path.toString().endsWith(".java")).map(this::read))
-				.allMatch(source -> !source.contains(".repository.jdbc.")
-					&& !source.contains(".repository.jpa.")
+				.allMatch(source -> OTHER_FEATURES.stream().noneMatch(feature ->
+					source.contains(feature + ".repository.jdbc.") || source.contains(feature + ".repository.jpa."))
 					&& !source.contains("JpaEntity"));
 		}
 	}

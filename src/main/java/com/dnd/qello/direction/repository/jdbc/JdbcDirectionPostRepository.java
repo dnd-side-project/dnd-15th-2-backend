@@ -14,6 +14,7 @@ import com.dnd.qello.direction.domain.DirectionPost;
 import com.dnd.qello.direction.domain.DirectionPostModerationStatus;
 import com.dnd.qello.direction.domain.DirectionPostStatus;
 import com.dnd.qello.direction.repository.DirectionPostRepository;
+import com.dnd.qello.direction.repository.jdbc.sql.DirectionPostSql;
 
 import lombok.RequiredArgsConstructor;
 
@@ -25,23 +26,7 @@ public class JdbcDirectionPostRepository implements DirectionPostRepository {
 
 	@Override
 	public DirectionPost save(DirectionPost post) {
-		String sql = post.getId() == null ? """
-			INSERT INTO direction_post
-				(sender_id, approved_question_id, status, idempotency_key, body_text, coarse_region_code,
-				 moderation_status, submitted_at, published_at, expires_at, answers_read_at, deleted_at)
-			VALUES (:senderId, :questionId, :status, :idempotencyKey, :bodyText, :regionCode,
-				:moderationStatus, :submittedAt, :publishedAt, :expiresAt, :answersReadAt, :deletedAt)
-			RETURNING id
-			""" : """
-			UPDATE direction_post
-			SET sender_id = :senderId, approved_question_id = :questionId, status = :status,
-			    idempotency_key = :idempotencyKey, body_text = :bodyText, coarse_region_code = :regionCode,
-			    moderation_status = :moderationStatus, submitted_at = :submittedAt,
-			    published_at = :publishedAt, expires_at = :expiresAt, answers_read_at = :answersReadAt,
-			    deleted_at = :deletedAt
-			WHERE id = :id
-			RETURNING id
-			""";
+		String sql = post.getId() == null ? DirectionPostSql.INSERT : DirectionPostSql.UPDATE;
 		Long id = jdbc.queryForObject(sql, params(post), Long.class);
 		return DirectionPost.restore(id, post.getSenderId(), post.getApprovedQuestionId(), post.getStatus(),
 			post.getIdempotencyKey(), post.getBodyText(), post.getCoarseRegionCode(), post.getModerationStatus(),

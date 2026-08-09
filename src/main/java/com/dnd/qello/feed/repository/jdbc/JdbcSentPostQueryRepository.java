@@ -12,6 +12,7 @@ import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 import com.dnd.qello.feed.repository.SentPostQueryRepository;
+import com.dnd.qello.feed.repository.jdbc.sql.SentPostQuerySql;
 import com.dnd.qello.feed.view.SentPostCard;
 import com.dnd.qello.feed.view.SentPostDetail;
 import com.dnd.qello.feed.view.SentPostFilter;
@@ -22,36 +23,6 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class JdbcSentPostQueryRepository implements SentPostQueryRepository {
 
-	private static final String SELECT_CARD = """
-		SELECT dp.id AS post_id,
-		       aq.question_text,
-		       dp.body_text,
-		       dp.coarse_region_code,
-		       dp.submitted_at,
-		       dp.expires_at,
-		       dp.answers_read_at,
-		       COALESCE((SELECT array_agg(ma.media_id ORDER BY ma.display_order)
-		                 FROM media_attachment ma WHERE ma.post_id = dp.id), '{}'::bigint[]) AS media_ids,
-		       (SELECT count(*) FROM answer a
-		          JOIN post_recipient pra ON pra.id = a.post_recipient_id
-		         WHERE pra.post_id = dp.id AND a.status = 'PUBLISHED' AND a.deleted_at IS NULL
-		           AND NOT EXISTS (SELECT 1 FROM user_block ub
-		                           WHERE ub.blocker_id = dp.sender_id
-		                             AND ub.blocked_id = a.author_id
-		                             AND ub.released_at IS NULL)) AS answer_count,
-		       (SELECT count(*) FROM post_reaction prx WHERE prx.post_id = dp.id) AS reaction_count,
-		       (SELECT count(*) FROM answer a
-		          JOIN post_recipient pru ON pru.id = a.post_recipient_id
-		         WHERE pru.post_id = dp.id AND a.status = 'PUBLISHED' AND a.deleted_at IS NULL
-		           AND a.published_at > COALESCE(dp.answers_read_at, '-infinity'::timestamptz)
-		           AND NOT EXISTS (SELECT 1 FROM user_block ub
-		                           WHERE ub.blocker_id = dp.sender_id
-		                             AND ub.blocked_id = a.author_id
-		                             AND ub.released_at IS NULL)) AS unread_answer_count
-		FROM direction_post dp
-		JOIN approved_question aq ON aq.id = dp.approved_question_id
-		""";
-
 	private final NamedParameterJdbcTemplate jdbc;
 
 	@Override
@@ -59,7 +30,7 @@ public class JdbcSentPostQueryRepository implements SentPostQueryRepository {
 		int limit, Instant at) {
 		MapSqlParameterSource params = new MapSqlParameterSource()
 			.addValue("senderId", senderId).addValue("at", Timestamp.from(at)).addValue("limit", limit);
-		StringBuilder sql = new StringBuilder(SELECT_CARD)
+		StringBuilder sql = new StringBuilder(SentPostQuerySql.SELECT_CARD)
 			.append(" WHERE dp.sender_id = :senderId AND dp.deleted_at IS NULL");
 		sql.append(switch (filter) {
 			case ALL -> "";
@@ -78,7 +49,7 @@ public class JdbcSentPostQueryRepository implements SentPostQueryRepository {
 
 	@Override
 	public Optional<SentPostDetail> findSentPostDetail(long senderId, long postId) {
-		return jdbc.query(SELECT_CARD + """
+		return jdbc.query(SentPostQuerySql.SELECT_CARD + """
 			WHERE dp.id = :postId AND dp.sender_id = :senderId AND dp.deleted_at IS NULL
 			""", new MapSqlParameterSource().addValue("postId", postId).addValue("senderId", senderId),
 			rs -> rs.next()

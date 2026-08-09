@@ -11,6 +11,7 @@ import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 import com.dnd.qello.feed.repository.PostAnswerQueryRepository;
+import com.dnd.qello.feed.repository.jdbc.sql.PostAnswerQuerySql;
 import com.dnd.qello.feed.view.AnswerCard;
 
 import lombok.RequiredArgsConstructor;
@@ -19,41 +20,13 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class JdbcPostAnswerQueryRepository implements PostAnswerQueryRepository {
 
-	/**
-	 * 넘김 되돌리기가 가능한 SKIP_PENDING은 아직 자격을 유지한다. ANSWERED는 만료
-	 * 시각과 무관하게 항상 자격을 유지하므로 이 목록과 별도로 취급한다.
-	 */
-	private static final String TIME_BOUND_RECIPIENT_STATUSES = "('AVAILABLE','DISCOVERED','OPENED','SKIP_PENDING')";
-
-	private static final String CAN_VIEW_ANSWERS_SQL = """
-		SELECT EXISTS (
-		    SELECT 1
-		    FROM direction_post dp
-		    WHERE dp.id = :postId
-		      AND dp.deleted_at IS NULL
-		      AND (
-		        dp.sender_id = :viewerId
-		        OR EXISTS (
-		            SELECT 1 FROM post_recipient pr
-		            WHERE pr.post_id = dp.id
-		              AND pr.recipient_id = :viewerId
-		              AND (
-		                pr.status = 'ANSWERED'
-		                OR (pr.status IN """ + TIME_BOUND_RECIPIENT_STATUSES + """
-		 AND dp.expires_at > :at)
-		              )
-		        )
-		      )
-		)
-		""";
-
 	private static final String ANSWER_ORDER = " ORDER BY a.published_at DESC, a.id DESC";
 
 	private final NamedParameterJdbcTemplate jdbc;
 
 	@Override
 	public boolean canViewAnswers(long viewerId, long postId, Instant at) {
-		Boolean result = jdbc.queryForObject(CAN_VIEW_ANSWERS_SQL,
+		Boolean result = jdbc.queryForObject(PostAnswerQuerySql.CAN_VIEW_ANSWERS_SQL,
 			new MapSqlParameterSource().addValue("viewerId", viewerId).addValue("postId", postId)
 				.addValue("at", Timestamp.from(at)),
 			Boolean.class);
