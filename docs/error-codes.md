@@ -52,6 +52,7 @@
 | `ANS` | `answer` |
 | `SAF` | `safety` |
 | `NOT` | `notification` |
+| `FED` | `feed` |
 
 | 카테고리 | 의미 | 운영 대응 |
 | --- | --- | --- |
@@ -252,7 +253,19 @@
 거치지 않는다. `AuthEntryPoints`가 같은 형식으로 `CMN-VAL-003`(401)과 `CMN-DOM-001`(403)을
 내보낸다.
 
-## 13. DB 제약 매핑
+## 13. feed (FED)
+
+| 코드 | 이름 | HTTP | 분류 | 메시지 |
+| --- | --- | --- | --- | --- |
+| `FED-VAL-001` | INVALID_TEXT | 400 | VAL | 방향 칩 문자열 값이 올바르지 않습니다. |
+| `FED-VAL-002` | INVALID_VALUE_RANGE | 400 | VAL | 방향 칩 값이 허용 범위를 벗어났습니다. |
+
+`feed`는 조회 전용 기능이라 대부분의 값이 SQL 조회 결과에서 온다. `DirectionChip`의
+`segmentKey`·`displayName`·`sortOrder`·`count` 불변식 위반은 클라이언트 입력이 아니라
+스킴 데이터나 매핑 결함을 뜻하지만, 같은 성격의 값 검증을 다루는 `DIR-VAL-003`·`DIR-VAL-008`과
+동일하게 VAL로 분류한다.
+
+## 14. DB 제약 매핑
 
 `DataIntegrityViolationException`의 원인 메시지에서 제약 이름을 찾아 기능 오류 코드로 옮긴다.
 매핑은 `common/error/ConstraintExceptionMapper`에 있고, 목록에 없는 제약은

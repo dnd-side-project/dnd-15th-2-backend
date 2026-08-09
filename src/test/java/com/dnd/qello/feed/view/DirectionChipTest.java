@@ -13,33 +13,42 @@ import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import com.dnd.qello.feed.error.FeedErrorCode;
+import com.dnd.qello.feed.error.FeedException;
+
 class DirectionChipTest {
 
 	@Test
 	@DisplayName("segmentKey가 null이거나 공백이면 생성이 거부된다")
 	void rejectsBlankSegmentKey() {
 		assertThatThrownBy(() -> new DirectionChip(null, "북", 0, 1L))
-			.isInstanceOf(IllegalArgumentException.class);
+			.isInstanceOf(FeedException.class)
+			.hasFieldOrPropertyWithValue("errorCode", FeedErrorCode.INVALID_TEXT);
 		assertThatThrownBy(() -> new DirectionChip("  ", "북", 0, 1L))
-			.isInstanceOf(IllegalArgumentException.class);
+			.isInstanceOf(FeedException.class)
+			.hasFieldOrPropertyWithValue("errorCode", FeedErrorCode.INVALID_TEXT);
 	}
 
 	@Test
 	@DisplayName("displayName이 null이거나 공백이면 생성이 거부된다")
 	void rejectsBlankDisplayName() {
 		assertThatThrownBy(() -> new DirectionChip("N", null, 0, 1L))
-			.isInstanceOf(IllegalArgumentException.class);
+			.isInstanceOf(FeedException.class)
+			.hasFieldOrPropertyWithValue("errorCode", FeedErrorCode.INVALID_TEXT);
 		assertThatThrownBy(() -> new DirectionChip("N", " ", 0, 1L))
-			.isInstanceOf(IllegalArgumentException.class);
+			.isInstanceOf(FeedException.class)
+			.hasFieldOrPropertyWithValue("errorCode", FeedErrorCode.INVALID_TEXT);
 	}
 
 	@Test
 	@DisplayName("count와 sortOrder가 음수이면 생성이 거부되고, count 0은 허용된다")
 	void rejectsNegativeCountAndSortOrder() {
 		assertThatThrownBy(() -> new DirectionChip("N", "북", 0, -1L))
-			.isInstanceOf(IllegalArgumentException.class);
+			.isInstanceOf(FeedException.class)
+			.hasFieldOrPropertyWithValue("errorCode", FeedErrorCode.INVALID_VALUE_RANGE);
 		assertThatThrownBy(() -> new DirectionChip("N", "북", -1, 1L))
-			.isInstanceOf(IllegalArgumentException.class);
+			.isInstanceOf(FeedException.class)
+			.hasFieldOrPropertyWithValue("errorCode", FeedErrorCode.INVALID_VALUE_RANGE);
 
 		assertThat(new DirectionChip("N", "북", 0, 0L).count()).isZero();
 	}
