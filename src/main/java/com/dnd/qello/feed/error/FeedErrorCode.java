@@ -17,7 +17,10 @@ public enum FeedErrorCode implements ErrorCode {
 	INVALID_TEXT(HttpStatus.INTERNAL_SERVER_ERROR, "FED-INFRA-001", ErrorCategory.INFRA, "방향 칩 데이터를 생성하지 못했습니다."),
 
 	// 방향 칩 sortOrder, count의 음수. INVALID_TEXT와 같은 이유로 서버 측 결함이다.
-	INVALID_VALUE_RANGE(HttpStatus.INTERNAL_SERVER_ERROR, "FED-INFRA-002", ErrorCategory.INFRA, "방향 칩 데이터를 생성하지 못했습니다.");
+	INVALID_VALUE_RANGE(HttpStatus.INTERNAL_SERVER_ERROR, "FED-INFRA-002", ErrorCategory.INFRA, "방향 칩 데이터를 생성하지 못했습니다."),
+
+	// 거리 스냅샷이 내부 불변식인 음수 범위를 벗어났다.
+	INVALID_DISTANCE(HttpStatus.INTERNAL_SERVER_ERROR, "FED-INFRA-003", ErrorCategory.INFRA, "거리 표시 정책을 적용하지 못했습니다.");
 
 	private final HttpStatus httpStatus;
 	private final String code;

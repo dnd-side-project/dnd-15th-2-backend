@@ -261,6 +261,7 @@
 | --- | --- | --- | --- | --- |
 | `FED-INFRA-001` | INVALID_TEXT | 500 | INFRA | 방향 칩 데이터를 생성하지 못했습니다. |
 | `FED-INFRA-002` | INVALID_VALUE_RANGE | 500 | INFRA | 방향 칩 데이터를 생성하지 못했습니다. |
+| `FED-INFRA-003` | INVALID_DISTANCE | 500 | INFRA | 거리 표시 정책을 적용하지 못했습니다. |
 
 `feed`는 조회 전용 기능이라 `DirectionChip`의 `segmentKey`·`displayName`·`sortOrder`·`count`는
 전부 SQL 조회 결과에서 채워지고 클라이언트 입력을 거치지 않는다(`JdbcInboxQueryRepository`).
