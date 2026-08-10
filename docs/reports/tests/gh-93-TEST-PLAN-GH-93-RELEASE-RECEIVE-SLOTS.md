@@ -3,7 +3,8 @@
 > Created at: `2026-08-10T15:23:20+09:00`
 > GitHub Issue: `#93`
 > Branch: `fix/gh-93-release-receive-slot-transitions`
-> Commit: `19e2a85` (구현 커밋은 이 보고서 이후 목적별로 분리해 커밋한다)
+> Commit: `19e2a85` (원 구현 완료 시점 최종 커밋은 `b5827e7`)
+> PR #98 code review follow-up commits: `e6183a5`, `ac3bdf6`, `a107d49`, `951fb1a` (§10 참고, 이 문서 자체를 커밋하는 마지막 커밋은 이 문서 특성상 자기 자신의 SHA를 미리 기록할 수 없다)
 
 ## 1. Executive summary
 
@@ -35,6 +36,9 @@
 | `./gradlew integrationTest --tests ReceiveSlotReleaseIntegrationTest` (5회 반복) | PASS | 매회 15 / 0 failures | 매회 ~7s | 동시성 시나리오(INT-006, INT-015) flakiness 확인 목적, 5회 연속 안정 |
 | `./harness check` | PASS | secret preflight, JUnit policy, convention, workflow, label, husky 전부 통과 | ~수 초 | 이 보고서 |
 | `./harness test-run --id TEST-PLAN-GH-93-RELEASE-RECEIVE-SLOTS` | PASS | 위 unit/integration 재확인(up-to-date) | 1s | 이 보고서 생성 |
+| `./harness pr-ready --project-tests` | PASS | `test`/`integrationTest`/`check` 전부 up-to-date, BUILD SUCCESSFUL | ~1s | 2회차 검증(아래 §10 참고) |
+| `npm run hooks:validate` | PASS | Husky validation passed | ~1s | 2회차 검증 |
+| `git diff --check` | PASS | 공백 오류 없음(종료 코드 0) | 즉시 | 2회차 검증 |
 
 ## 4. Scenario results
 
@@ -63,6 +67,7 @@
 | INT-013 | PASS | `ReceiveSlotReleaseIntegrationTest#expireSweepExcludesAnsweredItems` | |
 | INT-014 | PASS | `ReceiveSlotReleaseIntegrationTest#allThreeTransitionsLeaveAlreadyTerminalRowsUntouched` | SKIPPED/EXPIRED/BLOCKED 3행 × 세 전이(expire/confirmSkip/block) 9개 조합 전부 no-op 확인 |
 | INT-015 | PASS | `ReceiveSlotReleaseIntegrationTest#expireAndPublishRaceExclusivelyOnTheSameRecipient` | `AnswerNotificationService.publish()`의 순서 재배치(§5) 없이는 실패했을 시나리오 |
+| INT-016 | PASS | `ReceiveSlotReleaseIntegrationTest#blockingClearsSkipRequestedAtForSkipPendingItems` | PR #98 CodeRabbit 리뷰(§10)로 추가. `SKIP_PENDING → BLOCKED` 전이에서 `skip_requested_at`이 DB에 실제로 NULL로 반영되는지 확인 |
 
 ## 5. Failures and diagnostics
 
@@ -192,3 +197,24 @@ Answer 저장보다 먼저 시도하고 실패 시 `AnswerException(INVALID_ANSW
 - [x] 잠재 문제에 후속 GitHub Issue가 연결됨 (`#94`, `#97` 참조. 스케줄러 진입점은 별도
       후속 이슈 필요 — 아직 미생성, PR 설명에 명시 예정)
 - [x] 실행 결과와 PR 설명이 일치함 (PR 생성 시 이 보고서를 링크)
+
+## 10. PR #98 code review follow-up (2026-08-10)
+
+CodeRabbit이 PR #98에 남긴 코멘트 중 실제 결함·회귀 위험으로 판단한 항목만 수정했다.
+반영 시점의 브랜치는 `origin/main`(`19e2a85`)의 최신 상태에서 분기된 상태를 유지했다
+(`git merge-base --is-ancestor origin/main HEAD` 확인).
+
+| CodeRabbit 코멘트 | 판단 | 조치 |
+| --- | --- | --- |
+| `PostRecipient.block()`에 `answered`/`expire`와 동일한 시간 역전 검증(`requireAtNotBeforeDiscoveryOrOpen`)이 없음 | 정당 — 세 전이의 시간 계약을 통일해 이후 호출자 추가 시 회귀를 방지 | `block()`에 검증 호출 추가, 관련 Javadoc 갱신 |
+| `DirectionDomainTest`가 `SKIP_PENDING → BLOCKED`에서 `skipRequestedAt`/`skippedAt`이 비워지는지 단언하지 않음 | 정당 — 생성자 불변식 회귀를 검출하지 못함 | `blockReleasesCapacityFromEachEligibleSource`에 단언 2건 추가 |
+| `JdbcPostRecipientRepository`가 `SKIP_PENDING → BLOCKED`에서 `skip_requested_at`을 NULL로 비우는지 확인 필요 | SQL(`TRANSITION_TO_BLOCKED`)은 이미 비우고 있었으나, 이를 DB 계층에서 검증하는 통합 테스트가 없었음 | `ReceiveSlotReleaseIntegrationTest#blockingClearsSkipRequestedAtForSkipPendingItems`(INT-016) 추가 |
+| `ReceiveSlotReleaseService`의 클래스 주석("각 전이는 자체 트랜잭션")이 `blockAllPendingFor`의 자기 호출로 인한 단일 트랜잭션 결합과 불일치 | 정당 — 동작은 의도대로였으나 문서가 오해를 유발 | 클래스 Javadoc에 `blockAllPendingFor` 예외 명시 |
+| `docs/test-plans/...md` 위험 목록 표에서 한 행에 선행 `|`가 빠짐 | 정당 — 표 렌더링 깨짐(MD055) | 선행 `|` 추가 |
+| 이 보고서의 `Commit` 필드(`19e2a85`)가 실제 구현 커밋을 가리키지 않고, `./harness pr-ready --project-tests`/`npm run hooks:validate`/`git diff --check` 실행 결과가 없음 | 정당 | 위 §3에 세 명령의 재실행 결과를 추가. 헤더에 원 구현 최종 커밋(`b5827e7`)과 이번 리뷰 대응 커밋 목록을 함께 기록했다 |
+| `TASK.md`에 브랜치가 최신 `origin/main`에서 분기됐다는 증거가 없음 | 이미 충족 — `git merge-base origin/main HEAD`가 `origin/main` 자체와 일치함을 확인(별도 코드 변경 불필요) | 조치 없음(위 근거를 이 보고서에 기록) |
+| `PostRecipientRepository.findExpirableAsOf`/`findConfirmableSkips`에 배치 상한(limit)이 없음 | 시기상조 — sweep을 실제로 반복 구동하는 진입점이 이번 이슈 범위 밖(§7 잔여 위험)이라 무제한 조회가 아직 프로덕션에서 트리거되지 않음. 진입점을 추가하는 후속 이슈에서 함께 설계 | 조치 없음(후속 이슈 메모로 남김) |
+
+재실행 결과: `./gradlew test`(172/0 실패), `./gradlew integrationTest`(174/0 실패,
+INT-016 포함), `./harness check`, `./harness pr-ready --project-tests`,
+`npm run hooks:validate`, `git diff --check` 전부 PASS.
