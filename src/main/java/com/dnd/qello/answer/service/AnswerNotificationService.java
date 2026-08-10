@@ -79,8 +79,12 @@ public class AnswerNotificationService {
 	 * commit 시점에 거부하므로 같은 transaction 안에서 함께 수행한다.
 	 *
 	 * transitionToAnswered는 status가 여전히 recipient.getStatus()일 때만 성공하는
-	 * 조건부 UPDATE다 — 같은 답변에 대해 publish()가 동시에 재시도되어도, 먼저 전이에
-	 * 성공한 트랜잭션만 release()를 호출하도록 이 조건부 성공 여부로 게이트를 건다.
+	 * 조건부 UPDATE다. 같은 답변에 대해 publish()가 동시에 재시도되면, 두 트랜잭션
+	 * 모두 전이 전 상태(OPENED 등)를 읽은 뒤 조건부 UPDATE를 시도할 수 있다 — 먼저
+	 * 커밋한 쪽만 성공하고, 나중 트랜잭션의 UPDATE는 행이 이미 ANSWERED로 바뀐 뒤
+	 * 재평가되어 0행을 매치한다. 이 0행 결과만으로는 "이미 같은 전이로 선점됨(멱등,
+	 * 성공 취급)"과 "다른 전이(만료·넘김확정·차단)로 선점됨(진짜 충돌, 거절)"을 구분할
+	 * 수 없으므로 재조회해서 판별한다.
 	 */
 	private boolean releaseSlot(long postRecipientId, Instant at) {
 		PostRecipient recipient = recipientRepository.findById(postRecipientId)
@@ -97,6 +101,13 @@ public class AnswerNotificationService {
 				receiveStateRepository.release(recipient.getRecipientId(), at);
 				return true;
 			})
-			.orElse(false);
+			.orElseGet(() -> alreadyAnswered(postRecipientId));
+	}
+
+	private boolean alreadyAnswered(long postRecipientId) {
+		return recipientRepository.findById(postRecipientId)
+			.map(PostRecipient::getStatus)
+			.filter(PostRecipientStatus.ANSWERED::equals)
+			.isPresent();
 	}
 }
