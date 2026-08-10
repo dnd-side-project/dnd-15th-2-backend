@@ -1,0 +1,121 @@
+package com.dnd.qello.direction.service;
+
+import java.time.Instant;
+import java.util.List;
+import java.util.Optional;
+
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import com.dnd.qello.direction.config.SkipConfirmationProperties;
+import com.dnd.qello.direction.domain.PostRecipient;
+import com.dnd.qello.direction.domain.PostRecipientStatus;
+import com.dnd.qello.direction.error.DirectionErrorCode;
+import com.dnd.qello.direction.error.DirectionException;
+import com.dnd.qello.direction.repository.PostRecipientRepository;
+import com.dnd.qello.direction.repository.RecipientReceiveStateRepository;
+
+import lombok.RequiredArgsConstructor;
+
+/**
+ * 만료·넘김확정·차단 세 경로의 수신 슬롯 해제를 소유한다. 셋 다 사용자 요청이
+ * 아니라 내부 sweep 또는 다른 기능(SafetyService.block)의 이벤트로 트리거되므로
+ * postRecipientId만으로 동작하고 소유권 검증을 하지 않는다 — 이미 다른 경로로
+ * 대상이 확정된 뒤 호출된다는 전제다({@link PostRecipientRepository#findById}와
+ * 같은 전제).
+ *
+ * 각 전이 메서드는 한 행을 대상으로 하며 그 자체로 하나의 트랜잭션이다. 여러 행을
+ * 훑는 sweep(만료·넘김확정)은 이 메서드를 행마다 반복 호출하는 형태로 구성한다 —
+ * 한 행의 실패가 이미 처리된 다른 행의 커밋을 되돌리지 않게 하기 위함이다. sweep을
+ * 실제로 구동하는 진입점(스케줄러 등)은 이 이슈의 범위 밖이다.
+ */
+@Service
+@RequiredArgsConstructor
+public class ReceiveSlotReleaseService {
+
+	private final PostRecipientRepository recipientRepository;
+	private final RecipientReceiveStateRepository receiveStateRepository;
+	private final SkipConfirmationProperties skipConfirmationProperties;
+
+	/** 만료 sweep 후보. AVAILABLE/DISCOVERED/OPENED이고 소속 질문글이 at 이전에 만료된 항목이다. */
+	public List<PostRecipient> findExpirable(Instant at) {
+		return recipientRepository.findExpirableAsOf(at);
+	}
+
+	/** 넘김확정 sweep 후보. 되돌리기 유예(설정값)가 지난 SKIP_PENDING 항목이다. */
+	public List<PostRecipient> findConfirmableSkips(Instant at) {
+		return recipientRepository.findConfirmableSkips(at.minusSeconds(skipConfirmationProperties.skipConfirmationGraceSeconds()));
+	}
+
+	/** blockerId 자신의 수신 항목 중 blockedSenderId가 보낸 질문글에 대한 미종결 항목. */
+	public List<PostRecipient> findBlockable(long blockerId, long blockedSenderId) {
+		return recipientRepository.findBlockableFor(blockerId, blockedSenderId);
+	}
+
+	/**
+	 * 만료 전이. 재조회 시점에 이미 다른 전이(답변 등)로 소스 상태를 벗어났으면
+	 * 예외 대신 빈 Optional을 반환한다 — 동시 실행 경쟁의 정상적인 결과다
+	 * (AnswerNotificationService.publish()가 이미 PUBLISHED인 답변을 조기 반환하는
+	 * 것과 같은 판단이다).
+	 */
+	@Transactional
+	public Optional<PostRecipient> expire(long postRecipientId, Instant at) {
+		PostRecipient candidate = recipientRepository.findById(postRecipientId).orElseThrow(this::recipientNotFound);
+		if (!isExpirableSource(candidate.getStatus())) {
+			return Optional.empty();
+		}
+		PostRecipient expired = candidate.expire(at);
+		Optional<PostRecipient> saved = recipientRepository.transitionToExpired(expired, candidate.getStatus());
+		saved.ifPresent(ignored -> receiveStateRepository.release(candidate.getRecipientId(), at));
+		return saved;
+	}
+
+	/**
+	 * 넘김 확정. 유예 시간을 이 메서드가 직접 재확인한다 — findConfirmableSkips는
+	 * sweep의 후보 선별(효율)을 위한 것이고, 이 메서드가 호출자와 무관하게 그 자체로
+	 * 옳아야 한다. PostRecipient.confirmSkip() 도메인 메서드는 유예 시간을 모르므로
+	 * (direction.domain.PostRecipient 참고) 그 판단은 여기서 한다.
+	 */
+	@Transactional
+	public Optional<PostRecipient> confirmSkip(long postRecipientId, Instant at) {
+		PostRecipient candidate = recipientRepository.findById(postRecipientId).orElseThrow(this::recipientNotFound);
+		if (candidate.getStatus() != PostRecipientStatus.SKIP_PENDING) {
+			return Optional.empty();
+		}
+		Instant deadline = at.minusSeconds(skipConfirmationProperties.skipConfirmationGraceSeconds());
+		if (candidate.getSkipRequestedAt().isAfter(deadline)) {
+			return Optional.empty();
+		}
+		PostRecipient confirmed = candidate.confirmSkip(at);
+		Optional<PostRecipient> saved = recipientRepository.transitionToSkipped(confirmed, candidate.getStatus());
+		saved.ifPresent(ignored -> receiveStateRepository.release(candidate.getRecipientId(), at));
+		return saved;
+	}
+
+	/** 차단 전이. 이미 ANSWERED이거나 다른 terminal 상태인 행은 손대지 않는다. */
+	@Transactional
+	public Optional<PostRecipient> block(long postRecipientId, Instant at) {
+		PostRecipient candidate = recipientRepository.findById(postRecipientId).orElseThrow(this::recipientNotFound);
+		if (!isBlockableSource(candidate.getStatus())) {
+			return Optional.empty();
+		}
+		PostRecipient blocked = candidate.block(at);
+		Optional<PostRecipient> saved = recipientRepository.transitionToBlocked(blocked, candidate.getStatus());
+		saved.ifPresent(ignored -> receiveStateRepository.release(candidate.getRecipientId(), at));
+		return saved;
+	}
+
+	private static boolean isExpirableSource(PostRecipientStatus status) {
+		return status == PostRecipientStatus.AVAILABLE || status == PostRecipientStatus.DISCOVERED
+			|| status == PostRecipientStatus.OPENED;
+	}
+
+	private static boolean isBlockableSource(PostRecipientStatus status) {
+		return isExpirableSource(status) || status == PostRecipientStatus.SKIP_PENDING;
+	}
+
+	private DirectionException recipientNotFound() {
+		return new DirectionException(
+			DirectionErrorCode.RECIPIENT_NOT_FOUND, "postRecipientId", "수신 항목을 찾을 수 없습니다");
+	}
+}
