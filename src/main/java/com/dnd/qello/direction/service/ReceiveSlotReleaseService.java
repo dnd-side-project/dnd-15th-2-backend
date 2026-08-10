@@ -28,6 +28,11 @@ import lombok.RequiredArgsConstructor;
  * 훑는 sweep(만료·넘김확정)은 이 메서드를 행마다 반복 호출하는 형태로 구성한다 —
  * 한 행의 실패가 이미 처리된 다른 행의 커밋을 되돌리지 않게 하기 위함이다. sweep을
  * 실제로 구동하는 진입점(스케줄러 등)은 이 이슈의 범위 밖이다.
+ *
+ * 예외: {@link #blockAllPendingFor}는 SafetyService.block()과 같은 트랜잭션에서
+ * 차단자의 미종결 항목 전부를 원자적으로 전이해야 하므로, 같은 빈 안에서
+ * {@link #block(PostRecipient, Instant)}를 자기 호출해 프록시의 트랜잭션 전파를
+ * 우회한다 — 여러 행이 하나의 트랜잭션으로 묶인다.
  */
 @Service
 @RequiredArgsConstructor
