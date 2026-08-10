@@ -21,7 +21,7 @@ public final class InboxQuerySql {
 		       pr.status,
 		       pr.inbound_bearing_deg,
 		       CASE WHEN pr.distance_m < :nearFloor THEN NULL ELSE pr.distance_m END AS distance_m,
-		       CASE WHEN pr.distance_m < :nearFloor THEN pr.distance_band ELSE NULL END AS distance_band,
+		       CASE WHEN pr.distance_m < :nearFloor THEN '10km 이내' ELSE NULL END AS distance_band,
 		       pr.matched_at,
 		       pr.opened_at,
 		       pr.skip_requested_at,

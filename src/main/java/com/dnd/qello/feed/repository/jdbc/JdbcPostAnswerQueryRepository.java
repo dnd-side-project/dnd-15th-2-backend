@@ -11,6 +11,7 @@ import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 import com.dnd.qello.feed.repository.PostAnswerQueryRepository;
+import com.dnd.qello.feed.config.FeedDistanceProperties;
 import com.dnd.qello.feed.repository.jdbc.sql.PostAnswerQuerySql;
 import com.dnd.qello.feed.view.AnswerCard;
 
@@ -23,6 +24,7 @@ public class JdbcPostAnswerQueryRepository implements PostAnswerQueryRepository 
 	private static final String ANSWER_ORDER = " ORDER BY a.published_at DESC, a.id DESC";
 
 	private final NamedParameterJdbcTemplate jdbc;
+	private final FeedDistanceProperties feedDistanceProperties;
 
 	@Override
 	public boolean canViewAnswers(long viewerId, long postId, Instant at) {
@@ -39,14 +41,22 @@ public class JdbcPostAnswerQueryRepository implements PostAnswerQueryRepository 
 			return List.of();
 		}
 		MapSqlParameterSource params = new MapSqlParameterSource()
-			.addValue("viewerId", viewerId).addValue("postId", postId).addValue("limit", limit);
+			.addValue("viewerId", viewerId).addValue("postId", postId).addValue("limit", limit)
+			.addValue("nearFloor", feedDistanceProperties.nearDistanceFloorM());
 		StringBuilder sql = new StringBuilder("""
 			SELECT a.id AS answer_id,
 			       ua.nickname AS author_nickname,
 			       a.coarse_region_code AS author_region_code,
 			       a.body_text,
 			       a.bearing_from_sender_deg,
-			       a.distance_band,
+			       CASE WHEN (CASE WHEN dp.sender_id = :viewerId THEN 0 ELSE viewer_pr.distance_m END) < :nearFloor
+			            THEN NULL
+			            ELSE (CASE WHEN dp.sender_id = :viewerId THEN 0 ELSE viewer_pr.distance_m END)
+			       END AS distance_m,
+			       CASE WHEN (CASE WHEN dp.sender_id = :viewerId THEN 0 ELSE viewer_pr.distance_m END) < :nearFloor
+			            THEN '10km 이내'
+			            ELSE NULL
+			       END AS distance_band,
 			       a.published_at,
 			       a.edited_at,
 			       COALESCE((SELECT array_agg(ma.media_id ORDER BY ma.display_order)
@@ -55,8 +65,9 @@ public class JdbcPostAnswerQueryRepository implements PostAnswerQueryRepository 
 			               WHERE ar.answer_id = a.id AND ar.reactor_id = :viewerId) AS reacted_by_me,
 			       (SELECT count(*) FROM answer_reaction ar2 WHERE ar2.answer_id = a.id) AS reaction_count
 			FROM answer a
-			JOIN post_recipient pr ON pr.id = a.post_recipient_id
-			JOIN direction_post dp ON dp.id = pr.post_id
+			JOIN post_recipient answer_pr ON answer_pr.id = a.post_recipient_id
+			JOIN direction_post dp ON dp.id = answer_pr.post_id
+			LEFT JOIN post_recipient viewer_pr ON viewer_pr.post_id = dp.id AND viewer_pr.recipient_id = :viewerId
 			JOIN user_account ua ON ua.id = a.author_id
 			WHERE dp.id = :postId
 			  AND dp.deleted_at IS NULL
@@ -84,6 +95,7 @@ public class JdbcPostAnswerQueryRepository implements PostAnswerQueryRepository 
 			rs.getString("body_text"),
 			FeedRowMappers.mediaIds(rs),
 			rs.getBigDecimal("bearing_from_sender_deg"),
+			rs.getObject("distance_m", Long.class),
 			rs.getString("distance_band"),
 			rs.getTimestamp("published_at").toInstant(),
 			FeedRowMappers.instant(rs, "edited_at"),

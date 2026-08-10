@@ -10,6 +10,10 @@ import java.util.List;
  * reactedByMe는 조회하는 뷰어 본인의 공감 여부다 — V8이 answer_reaction의 PK를
  * (answer_id, reactor_id) 복합으로 바꾸면서 볼 수 있는 사람 전원이 각자 공감할 수
  * 있게 됐다. reactionCount는 그 답변이 받은 공감 총수다.
+ * distanceM과 distanceBand는 현재 조회자와 질문 원점 사이의 거리 표시다.
+ * 근거리 하한 미만이면 distanceM이 null이고 distanceBand만 채워지며, 하한 이상이면
+ * 반대다. 답변 작성자의 answer.distance_m과 answer.distance_band는 이 표시의 근거로
+ * 사용하지 않는다.
  */
 public record AnswerCard(
 	long answerId,
@@ -18,6 +22,7 @@ public record AnswerCard(
 	String bodyText,
 	List<Long> mediaIds,
 	BigDecimal bearingFromSenderDegrees,
+	Long distanceM,
 	String distanceBand,
 	Instant publishedAt,
 	Instant editedAt,

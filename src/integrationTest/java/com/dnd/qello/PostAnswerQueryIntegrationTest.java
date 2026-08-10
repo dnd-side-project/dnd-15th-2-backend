@@ -94,6 +94,10 @@ class PostAnswerQueryIntegrationTest extends PostgisContainerIntegrationTestSupp
 	 * InboxQueryIntegrationTest.recipient()와 동일한 패턴이다.
 	 */
 	private long recipient(long postId, long userId, String status) {
+		return recipient(postId, userId, status, 5000L);
+	}
+
+	private long recipient(long postId, long userId, String status, long distanceM) {
 		String[] columns = switch (status) {
 			case "OPENED" -> new String[] {"discovered_at", "opened_at"};
 			case "ANSWERED" -> new String[] {"discovered_at", "opened_at", "capacity_released_at"};
@@ -103,7 +107,7 @@ class PostAnswerQueryIntegrationTest extends PostgisContainerIntegrationTestSupp
 		String columnList = columns.length == 0 ? "" : ", " + String.join(", ", columns);
 		String placeholderList = columns.length == 0 ? "" : ", "
 			+ Arrays.stream(columns).map(column -> "?").collect(Collectors.joining(", "));
-		Object[] baseParams = {postId, userId, status, REGION, Timestamp.from(NOW)};
+		Object[] baseParams = {postId, userId, status, REGION, Timestamp.from(NOW), distanceM};
 		Object[] params = new Object[baseParams.length + columns.length];
 		System.arraycopy(baseParams, 0, params, 0, baseParams.length);
 		Arrays.fill(params, baseParams.length, params.length, Timestamp.from(NOW));
@@ -111,19 +115,24 @@ class PostAnswerQueryIntegrationTest extends PostgisContainerIntegrationTestSupp
 			INSERT INTO post_recipient
 				(post_id, recipient_id, status, distance_band, matched_bearing_deg, matched_region_code,
 				 matched_at, inbound_bearing_deg, distance_m%s)
-			VALUES (?, ?, ?, 'NEAR', 45, ?, ?, 225, 5000%s)
+			VALUES (?, ?, ?, 'NEAR', 45, ?, ?, 225, ?%s)
 			RETURNING id
 			""".formatted(columnList, placeholderList), Long.class, params);
 	}
 
 	private long answer(long postRecipientId, long authorId, String key, Instant publishedAt) {
+		return answer(postRecipientId, authorId, key, publishedAt, 5000L);
+	}
+
+	private long answer(long postRecipientId, long authorId, String key, Instant publishedAt, long distanceM) {
 		return jdbc.queryForObject("""
 			INSERT INTO answer
 				(post_recipient_id, author_id, status, idempotency_key, body_text, coarse_region_code,
 				 bearing_from_sender_deg, distance_band, distance_m, moderation_status, submitted_at, published_at)
-			VALUES (?, ?, 'PUBLISHED', ?, '답변 본문', ?, 45, 'NEAR', 5000, 'PASSED', ?, ?)
+			VALUES (?, ?, 'PUBLISHED', ?, '답변 본문', ?, 45, 'NEAR', ?, 'PASSED', ?, ?)
 			RETURNING id
-			""", Long.class, postRecipientId, authorId, key, REGION, Timestamp.from(NOW), Timestamp.from(publishedAt));
+			""", Long.class, postRecipientId, authorId, key, REGION, distanceM,
+			Timestamp.from(NOW), Timestamp.from(publishedAt));
 	}
 
 	@Test
@@ -198,6 +207,24 @@ class PostAnswerQueryIntegrationTest extends PostgisContainerIntegrationTestSupp
 		assertThat(answers.getFirst().reactionCount()).isEqualTo(1L);
 		assertThat(answers.getLast().reactedByMe()).isFalse();
 		assertThat(answers.getLast().reactionCount()).isZero();
+	}
+
+	@Test
+	@DisplayName("답변의 거리는 답변 작성자가 아니라 현재 뷰어의 질문 원점까지 거리로 표시한다")
+	void usesViewerDistanceToQuestionOriginForAnswerDisplay() {
+		long postId = post("p-viewer-distance", NOW, NOW.plus(2, ChronoUnit.HOURS));
+		long authorRecipientId = recipient(postId, recipientId, "OPENED", 5_000L);
+		recipient(postId, outsiderId, "OPENED", 15_000L);
+		answer(authorRecipientId, recipientId, "a-viewer-distance", NOW.plusSeconds(60), 1_000_000L);
+		Instant at = NOW.plusSeconds(120);
+
+		AnswerCard farViewerCard = postAnswerQueryService.answers(outsiderId, postId, null, 10, at).getFirst();
+		assertThat(farViewerCard.distanceM()).isEqualTo(15_000L);
+		assertThat(farViewerCard.distanceBand()).isNull();
+
+		AnswerCard nearViewerCard = postAnswerQueryService.answers(recipientId, postId, null, 10, at).getFirst();
+		assertThat(nearViewerCard.distanceM()).isNull();
+		assertThat(nearViewerCard.distanceBand()).isEqualTo("10km 이내");
 	}
 
 	@Test

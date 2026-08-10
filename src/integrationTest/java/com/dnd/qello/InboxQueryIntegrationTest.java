@@ -280,7 +280,7 @@ class InboxQueryIntegrationTest extends PostgisContainerIntegrationTestSupport {
 		InboxCard above = cards.stream().filter(card -> card.postId() == aboveFloor).findFirst().orElseThrow();
 
 		assertThat(below.distanceM()).isNull();
-		assertThat(below.distanceBand()).isEqualTo("NEAR");
+		assertThat(below.distanceBand()).isEqualTo("10km 이내");
 
 		assertThat(at.distanceM()).isEqualTo(NEAR_FLOOR_M);
 		assertThat(at.distanceBand()).isNull();

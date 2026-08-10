@@ -387,7 +387,7 @@ class ReceiveStateReservationIntegrationTest extends PostgisContainerIntegration
 	private record Fixture(long senderOneId, long senderTwoId, long recipientId, long questionId, long schemeId) {
 		DirectionPostService.SendCommand sendCommand(long senderId, String segmentKey, String idempotencyKey) {
 			return new DirectionPostService.SendCommand(senderId, questionId, schemeId, segmentKey,
-				0, 500, REGION, idempotencyKey, "테스트 방향 글", "NEAR", AT, AT.plusSeconds(3600));
+				0, 500, REGION, idempotencyKey, "테스트 방향 글", AT, AT.plusSeconds(3600));
 		}
 	}
 
