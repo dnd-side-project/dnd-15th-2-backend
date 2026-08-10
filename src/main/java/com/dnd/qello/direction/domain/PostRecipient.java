@@ -259,6 +259,58 @@ public final class PostRecipient {
 	}
 
 	/**
+	 * 질문글이 만료됐는데 이 수신자가 응답하지 않은 경우의 전이. `SKIP_PENDING`은
+	 * 유효 소스 상태가 아니다 — 되돌리기 유예 동안은 수신 용량을 계속 붙잡는다는
+	 * 기존 설계(`confirmSkip`/`revertSkip` 전용 레인)를 그대로 지킨다. 만료 sweep의
+	 * 대상 조회가 `SKIP_PENDING`을 애초에 후보에서 제외하므로, 이 메서드가 그 상태를
+	 * 받으면 항상 호출자 버그다.
+	 * `confirmSkip()`과 같은 일회성 전이 계약을 따른다 — 이미 `EXPIRED`이거나 다른
+	 * terminal 상태인 행에 재호출하면 예외를 던진다. 재실행에서 카운터를 중복
+	 * 감소시키지 않을 책임은 호출자(대상 조회 시점에 이미 terminal인 행을 제외)에
+	 * 있다.
+	 */
+	public PostRecipient expire(Instant at) {
+		requireValue(at, "at");
+		if (status != PostRecipientStatus.AVAILABLE && status != PostRecipientStatus.DISCOVERED
+			&& status != PostRecipientStatus.OPENED) {
+			throw new DirectionException(
+				DirectionErrorCode.INVALID_RECIPIENT_STATE, "status", "만료 처리를 할 수 없는 상태입니다");
+		}
+		if (discoveredAt != null && at.isBefore(discoveredAt)) {
+			throw new DirectionException(
+				DirectionErrorCode.INVALID_TIME_ORDER, "at", "at은 discoveredAt보다 빠를 수 없습니다");
+		}
+		if (openedAt != null && at.isBefore(openedAt)) {
+			throw new DirectionException(
+				DirectionErrorCode.INVALID_TIME_ORDER, "at", "at은 openedAt보다 빠를 수 없습니다");
+		}
+		return new PostRecipient(id, postId, recipientId, PostRecipientStatus.EXPIRED, distanceBand,
+			matchedBearingDegrees, matchedRegionCode, matchedAt, discoveredAt, openedAt, null, null,
+			at, at, null, inboundBearingDegrees, distanceM, answersReadAt);
+	}
+
+	/**
+	 * 차단 성립에 따른 전이. 차단한 사람 자신의 수신 항목에만 적용한다 — 호출자가
+	 * 차단대상이 아니라 차단자 관점에서 대상을 고른다(feed 조회의
+	 * `ub.blocker_id = 뷰어` 필터 방향과 동일). `SKIP_PENDING`도 유효 소스다 —
+	 * 넘김 여부를 더 이상 판정할 이유가 없어졌기 때문이다. 전이하면서
+	 * `skipRequestedAt`을 비운다 — `SKIP_PENDING`이 아닌 상태로 그 값이 남아 있으면
+	 * 생성자 불변식(`(status == SKIP_PENDING) == (skipRequestedAt != null && skippedAt == null)`)을
+	 * 위반한다.
+	 */
+	public PostRecipient block(Instant at) {
+		requireValue(at, "at");
+		if (status != PostRecipientStatus.AVAILABLE && status != PostRecipientStatus.DISCOVERED
+			&& status != PostRecipientStatus.OPENED && status != PostRecipientStatus.SKIP_PENDING) {
+			throw new DirectionException(
+				DirectionErrorCode.INVALID_RECIPIENT_STATE, "status", "차단 처리를 할 수 없는 상태입니다");
+		}
+		return new PostRecipient(id, postId, recipientId, PostRecipientStatus.BLOCKED, distanceBand,
+			matchedBearingDegrees, matchedRegionCode, matchedAt, discoveredAt, openedAt, null, null,
+			at, null, at, inboundBearingDegrees, distanceM, answersReadAt);
+	}
+
+	/**
 	 * 이 수신자가 그 질문글의 답변 목록을 읽은 시각을 기록한다. `새로운 답변 n개` 배지는
 	 * 이 시각 이후 공개된 답변만 센다. direction_post.answers_read_at(질문자 전용)과
 	 * 별도로 수신자마다 기준선이 필요하다 — 답변이 전원에게 공개되면서 사람마다 마지막으로
