@@ -28,6 +28,9 @@ public interface InboxQueryRepository {
 	 */
 	List<DirectionChip> countByDirection(long recipientId, InboxCategory category, Instant at);
 
-	/** 소유권을 쿼리 조건에 포함한다. 남의 항목이면 빈 결과다. */
-	Optional<InboxDetail> findDetail(long recipientId, long postRecipientId);
+	/**
+	 * 소유권과 시점 기준 열람 스코프를 쿼리 조건에 포함한다. 남의 항목이나 자격 없는
+	 * 항목이면 빈 결과다.
+	 */
+	Optional<InboxDetail> findDetail(long recipientId, long postRecipientId, Instant at);
 }

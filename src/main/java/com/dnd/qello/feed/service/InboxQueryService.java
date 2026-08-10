@@ -43,7 +43,7 @@ public class InboxQueryService {
 			inboxQueryRepository.countByDirection(recipientId, category, at));
 	}
 
-	public Optional<InboxDetail> detail(long recipientId, long postRecipientId) {
-		return inboxQueryRepository.findDetail(recipientId, postRecipientId);
+	public Optional<InboxDetail> detail(long recipientId, long postRecipientId, Instant at) {
+		return inboxQueryRepository.findDetail(recipientId, postRecipientId, at);
 	}
 }

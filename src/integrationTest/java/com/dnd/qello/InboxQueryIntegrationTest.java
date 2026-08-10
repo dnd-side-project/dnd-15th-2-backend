@@ -2,7 +2,8 @@
  * Created at: 2026-08-06T15:00:00+09:00
  * Source scenario: TEST-PLAN-GH-67-INBOX-QUERY-INT-001 through INT-005,
  * TEST-PLAN-GH-78-SCHEMA-REVISION-V7-INT-010,
- * TEST-PLAN-GH-79-ANSWER-VISIBILITY-RECIPIENTS-INT-005, INT-007, INT-008, INT-009
+ * TEST-PLAN-GH-79-ANSWER-VISIBILITY-RECIPIENTS-INT-005, INT-007, INT-008, INT-009,
+ * TEST-PLAN-GH-96-INBOX-DETAIL-SCOPE-INT-006
  */
 package com.dnd.qello;
 
@@ -331,7 +332,7 @@ class InboxQueryIntegrationTest extends PostgisContainerIntegrationTestSupport {
 		long postRecipientId = recipient(post, "OPENED", NOW);
 		long outsiderId = account("iq-outsider");
 
-		assertThat(inboxQueryService.detail(recipientId, postRecipientId)).isPresent();
-		assertThat(inboxQueryService.detail(outsiderId, postRecipientId)).isEmpty();
+		assertThat(inboxQueryService.detail(recipientId, postRecipientId, NOW.plusSeconds(1))).isPresent();
+		assertThat(inboxQueryService.detail(outsiderId, postRecipientId, NOW.plusSeconds(1))).isEmpty();
 	}
 }
