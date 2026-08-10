@@ -1,59 +1,57 @@
-# GitHub Issue #88 Task Contract
+# GitHub Issue #94 Task Contract
 
-> Generated at: `2026-08-08T17:30:56+09:00`
+> Generated at: `2026-08-10T15:12:48+09:00`
 >
 > 이 파일은 현재 작업 브랜치의 계약이다. 저장소 전역 정책은 `AGENTS.md`를
 > 따른다.
 
 ## Work gate
 
-- Title: `앱 사용자 온보딩 국가 필수값과 기기 자격증명 선행 조건 구현`
-- GitHub Issue: `#88`
-- Branch: `feat/gh-88-onboarding-country-required`
+- Title: `신규 수신자 상태 초기화 경쟁으로 활성 슬롯 카운터가 0으로 리셋된다`
+- GitHub Issue: `#94`
+- Branch: `fix/gh-94-receive-state-init-race`
 - Base branch: `main`
 
 ## Objective
 
-앱 사용자 온보딩에서 국가 정보를 필수로 입력받아 검증하고 계정에 저장한다. 유효한
-국가 정보가 없으면 일반 사용자 계정, 기기 자격증명과 첫 access token을 모두 생성하지
-않는다. 운영자 계정은 국가 필수 조건에서 제외한다.
+`DirectionPostService.reserve()`는 `recipient_receive_state` 행이 없을 때만
+`save()`로 초기 행을 만든다. 이 SELECT-then-INSERT는 원자적이지 않고, `save()`의
+UPSERT가 충돌 시 `active_unhandled_count`를 제안값 0으로 **덮어쓴다**. 두 발송이
+같은 신규 사용자를 동시에 대상으로 잡으면 먼저 예약된 슬롯이 사라지고,
+`recent_received_count`와 `last_received_at`도 함께 초기화된다. 결과적으로 수신
+상한이 실제 배달 건수를 세지 못해 사용자가 상한을 초과해 받을 수 있다.
 
-## Design contract
-
-- Design ID: `ADR-0007`
-- Design document: `docs/adr/0007-require-country-before-user-account-creation.md`
-- Detailed design: `docs/product/ONBOARDING_COUNTRY_DESIGN.md`
-- Design status: `APPROVED_FOR_IMPLEMENTATION`
-- 국가 미입력 상태를 표현하기 위한 일반 사용자 계정이나 `INACTIVE` 상태를 만들지 않는다.
-- 앱에는 국가명을 표시하되 API와 DB는 자유 입력 문자열 대신 정규화된 `countryCode`를
-  계약으로 사용한다.
-- `countryCode`는 ISO 3166-1 alpha-2 대문자 코드이며, `region_code` 마스터에서
-  지원 국가로 확인되어야 한다.
-- `POST /api/v1/auth/devices`는 국가 검증을 통과한 뒤에만 계정·기기 자격증명·첫
-  access token을 단일 트랜잭션으로 생성한다.
-- `USER` 계정은 유효한 국가 코드 없이 생성할 수 없고, `OPERATOR`는 이 불변식의
-  예외다.
+이 작업은 초기 행 생성이 기존 값을 덮어쓰지 않게 만들고, `reserve()`가 제공하던
+조건부 UPDATE의 원자성이 초기화 경로에서도 깨지지 않게 한다.
 
 ## Scope
 
-- 온보딩 과정에 국가명 입력과 필수 검증을 추가한다.
-- 선택한 국가를 정규화된 국가 코드로 사용자 계정에 저장한다.
-- 국가명 누락·공백·유효하지 않은 값의 처리 규칙을 정의한다.
-- 국가 정보가 없는 요청에서는 일반 사용자 계정 자체를 생성하지 않는다.
-- 국가 검증을 통과한 사용자의 계정 생성과 기기 자격증명 발급 흐름을 연결한다.
-- 운영자 계정 생성은 국가 필수 조건에서 제외한다.
-- 기존 일반 사용자의 국가는 저장된 `coarseRegionCode`의 최상위 COUNTRY에서
-  결정적으로 이관하며, 확인할 수 없는 데이터가 있으면 migration을 실패시킨다.
-- 국가 정보 형식과 저장 방식에 대한 단위·통합 테스트를 추가한다.
+- 초기 행 생성이 기존 카운터를 덮어쓰지 않게 만든다. 이슈가 제시한 두 방향 중
+  `reserve()` 자체를 단일 UPSERT로 합쳐 SELECT-then-INSERT 패턴을 제거하는 쪽을
+  기본안으로 둔다.
+- `reserve()`의 조건부 성립(`active_unhandled_count < :activeLimit`)이 INSERT
+  경로와 CONFLICT 경로 양쪽에서 동일하게 판정되는지 보장한다. 반환값(`boolean`)의
+  의미 — "이 호출이 슬롯을 실제로 점유했는가" — 를 그대로 유지한다.
+- `DirectionPostService.reserve()`의 2단계 호출을 제거한다.
+- 동시 예약 상황의 통합 테스트를 추가한다.
 
 ## Explicit exclusions
 
-- 국가별 서비스 정책·콘텐츠 정책
-- 국가별 기능 차등 제공
-- 국가 정보 기반 추천 또는 통계
-- 기존 사용자의 국가 정보를 외부 데이터로 자동 추정
-- 국가 미입력 일반 사용자를 저장하기 위한 사전 계정 또는 온보딩 세션
-- 국가 변경 API와 국가별 서비스 이용 정책
+- **슬롯 해제 경로 복구(만료·넘김확정·차단) — `#93`.** `#93`은
+  `RecipientReceiveStateRepository.release()`만 호출하고 `save()`/`reserve()`는
+  건드리지 않는다. 이 작업은 `release()`의 시그니처와 동작을 변경하지 않는다.
+- **`save()`의 덮어쓰기 의미 자체를 제거하는 것.** `save()`는
+  `InboxSentPostWriteIntegrationTest` 7개 지점에서 카운터를 정확한 값으로
+  세팅하는 테스트 시더로 쓰이고 있다. 프로덕션 초기화 경로를 `save()`에서
+  분리하되 시더로서의 덮어쓰기 계약은 유지한다.
+- 수신 상한 초기값(D05) 조정.
+- 수신자 선정 규칙(차단·계정 상태 필터, 인원 상한, 분산 정렬) — `#97`.
+- 수신 상한값(`receive-capacity`) 자체의 조정. DB 안전 상한과 애플리케이션
+  검증 범위는 이미 50으로 일치한다(`V2__add_reactions_and_skip_pending.sql`이
+  V1의 `BETWEEN 0 AND 5`를 `BETWEEN 0 AND 50`으로 교체했고
+  `RecipientReceiveState.SAFETY_CEILING`이 같은 값이다). 이 작업은 상한 판정
+  로직만 다루고 값은 건드리지 않는다.
+- 스키마 변경. DDL은 건드리지 않고 UPSERT 구문만 바꾼다.
 - 인프라 apply, 배포, 프로덕션 변경은 별도 승인 없이는 실행하지 않는다.
 - Secret, 계정 식별자, 토큰, `.env` 값은 기록하지 않는다.
 
@@ -61,23 +59,28 @@
 
 | Area | Owner | Required review |
 | --- | --- | --- |
-| 온보딩·계정·기기 인증 | Feature executor | 국가 필수 조건과 자격증명 발급 경계 검토 |
+| `RecipientReceiveState` 리포지토리 UPSERT, `DirectionPostService.reserve()` | Feature executor | 동시성·원자성, `release()` 계약 불변 확인, 기존 통합 테스트 시더 회귀 |
 
-## Approved implementation targets after design approval
+## Concurrent work
 
-- `account` 도메인과 JPA 매핑의 `countryCode` 불변식
-- 국가 마스터와 지역 계층을 조회하는 repository port 및 JDBC adapter
-- `auth` 기기 등록 request, controller, service와 오류 코드
-- 다음 사용 가능한 Flyway migration, DBML, ERD와 schema manifest
-- OpenAPI와 오류 코드 문서
-- 관련 단위 테스트, web 테스트, migration·등록 통합 테스트와 테스트 보고서
+`#93`(`fix/gh-93-release-receive-slot-transitions`)이 동시에 진행 중이다.
+`../dnd-15th-2-backend`에서 작업하며 이 브랜치는 별도 git worktree
+(`../dnd-15th-2-backend-gh94`)에서 `origin/main` 기준으로 분기했다.
 
-ADR-0007이 승인되기 전에는 위 구현 파일을 수정하지 않는다.
+- 코드 파일 충돌 없음. `#93`은 `PostRecipient*`·`SafetyService`·
+  `SkipConfirmationProperties`를, 이 작업은 `RecipientReceiveState*`·
+  `DirectionPostService`를 소유한다.
+- `TASK.md`는 두 브랜치가 모두 재작성하므로 병합 시 충돌한다. 각 브랜치의
+  버전을 유지하는 방향으로 해결한다.
+- 공유 인터페이스 `RecipientReceiveStateRepository`의 `release()`는 이 작업에서
+  변경하지 않는다.
+- `PostgisContainerIntegrationTestSupport`의 공유 컨테이너를 두 워크트리에서
+  동시에 구동하지 않는다.
 
 ## Existing user-owned changes
 
-- 설계 시작 시 `git status --short`에서 Issue #88 초기화 과정에서 작성된
-  `TASK.md` 변경을 확인했으며, 해당 내용을 기반으로 설계 계약을 보강했다.
+- worktree 생성 시점의 `git status --short`는 clean이었다. `#93`의 미커밋 변경은
+  `../dnd-15th-2-backend`에 그대로 남아 있으며 이 브랜치로 넘어오지 않았다.
 
 ## Validation
 
@@ -87,29 +90,16 @@ ADR-0007이 승인되기 전에는 위 구현 파일을 수정하지 않는다.
 git diff --check
 ```
 
-## Risks and rollout
-
-- `POST /api/v1/auth/devices` 요청에 필수 필드가 추가되므로 이전 앱 버전의 신규 등록은
-  400으로 실패한다. 백엔드 강제 전에 국가를 보내는 앱 버전을 배포하고 최소 지원
-  버전 정책을 확인한다.
-- DB migration은 기존 일반 사용자의 국가를 이관한 뒤 USER 국가 필수 CHECK와 FK를
-  활성화한다. 국가를 확정할 수 없는 행이 하나라도 있으면 전체 migration을 실패시킨다.
-- 새 DB 제약이 적용된 뒤 국가를 모르는 이전 백엔드로 단독 롤백하면 신규 USER insert가
-  실패한다. migration 파일을 수정하지 않으며, roll-forward를 우선하고 필요하면 별도
-  승인 migration으로 호환성을 복구한다.
-- ADR-0007은 사용자 지시에 따라 구현 대상으로 승인되었으며, 구현 후 검증 승인을
-  별도로 수행한다.
-
 ## Completion criteria
 
-- [x] 온보딩 요청에 국가 정보가 필수로 검증된다.
-- [x] 유효한 국가 정보가 사용자 계정에 저장된다.
-- [x] 국가 정보가 없거나 공백이거나 국가 마스터에 없으면 일반 사용자 계정이 생성되지 않는다.
-- [x] 국가 정보가 국가가 아닌 하위 지역이거나 `coarseRegionCode`와 다른 국가에 속하면
-      일반 사용자 계정이 생성되지 않는다.
-- [x] 국가 검증 실패 시 기기 자격증명과 access token도 발급되지 않는다.
-- [x] 국가 정보가 있는 사용자의 기기 자격증명 발급이 기존 흐름과 함께 동작한다.
-- [x] 운영자 계정은 국가 정보 없이도 기존 시드·로그인 흐름을 유지한다.
-- [x] 기존 일반 사용자의 국가는 외부 추정 없이 기존 지역 계층의 최상위 COUNTRY로 이관된다.
-- [x] 단위 테스트와 통합 테스트가 추가된다.
-- [x] 국가 정보가 토큰, 로그, 오류 응답에 불필요하게 노출되지 않는다.
+- [ ] 신규 사용자를 대상으로 한 동시 예약에서 `active_unhandled_count`가 실제
+      배달 건수와 일치한다.
+- [ ] 기존 행의 `active_unhandled_count`, `recent_received_count`,
+      `last_received_at`이 초기화 경로에서 덮어써지지 않는다.
+- [ ] 수신 상한을 초과해 예약되지 않는다(동시 예약 포함).
+- [ ] `reserve()`의 반환값이 "이 호출이 슬롯을 점유했는가"를 계속 정확히
+      표현한다 — 상한 도달 시 `false`.
+- [ ] `release()`의 동작과 시그니처가 변경되지 않는다.
+- [ ] 기존 `InboxSentPostWriteIntegrationTest`의 `save()` 시더 시나리오가
+      회귀하지 않는다.
+- [ ] 동시성 시나리오 통합 테스트가 추가된다.
