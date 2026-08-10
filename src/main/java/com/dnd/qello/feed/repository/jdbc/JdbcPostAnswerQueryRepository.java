@@ -21,8 +21,6 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class JdbcPostAnswerQueryRepository implements PostAnswerQueryRepository {
 
-	private static final String ANSWER_ORDER = " ORDER BY a.published_at DESC, a.id DESC";
-
 	private final NamedParameterJdbcTemplate jdbc;
 	private final FeedDistanceProperties feedDistanceProperties;
 
@@ -42,48 +40,15 @@ public class JdbcPostAnswerQueryRepository implements PostAnswerQueryRepository 
 		}
 		MapSqlParameterSource params = new MapSqlParameterSource()
 			.addValue("viewerId", viewerId).addValue("postId", postId).addValue("limit", limit)
-			.addValue("nearFloor", feedDistanceProperties.nearDistanceFloorM());
-		StringBuilder sql = new StringBuilder("""
-			SELECT a.id AS answer_id,
-			       ua.nickname AS author_nickname,
-			       a.coarse_region_code AS author_region_code,
-			       a.body_text,
-			       a.bearing_from_sender_deg,
-			       CASE WHEN (CASE WHEN dp.sender_id = :viewerId THEN 0 ELSE viewer_pr.distance_m END) < :nearFloor
-			            THEN NULL
-			            ELSE (CASE WHEN dp.sender_id = :viewerId THEN 0 ELSE viewer_pr.distance_m END)
-			       END AS distance_m,
-			       CASE WHEN (CASE WHEN dp.sender_id = :viewerId THEN 0 ELSE viewer_pr.distance_m END) < :nearFloor
-			            THEN '10km 이내'
-			            ELSE NULL
-			       END AS distance_band,
-			       a.published_at,
-			       a.edited_at,
-			       COALESCE((SELECT array_agg(ma.media_id ORDER BY ma.display_order)
-			                 FROM media_attachment ma WHERE ma.answer_id = a.id), '{}'::bigint[]) AS media_ids,
-			       EXISTS (SELECT 1 FROM answer_reaction ar
-			               WHERE ar.answer_id = a.id AND ar.reactor_id = :viewerId) AS reacted_by_me,
-			       (SELECT count(*) FROM answer_reaction ar2 WHERE ar2.answer_id = a.id) AS reaction_count
-			FROM answer a
-			JOIN post_recipient answer_pr ON answer_pr.id = a.post_recipient_id
-			JOIN direction_post dp ON dp.id = answer_pr.post_id
-			LEFT JOIN post_recipient viewer_pr ON viewer_pr.post_id = dp.id AND viewer_pr.recipient_id = :viewerId
-			JOIN user_account ua ON ua.id = a.author_id
-			WHERE dp.id = :postId
-			  AND dp.deleted_at IS NULL
-			  AND a.status = 'PUBLISHED'
-			  AND a.deleted_at IS NULL
-			  AND NOT EXISTS (SELECT 1 FROM user_block ub
-			                  WHERE ub.blocker_id = :viewerId
-			                    AND ub.blocked_id = a.author_id
-			                    AND ub.released_at IS NULL)
-			""");
+			.addValue("nearFloor", feedDistanceProperties.nearDistanceFloorM())
+			.addValue("nearDistanceLabel", feedDistanceProperties.nearDistanceLabel());
+		StringBuilder sql = new StringBuilder(PostAnswerQuerySql.SELECT_ANSWERS);
 		if (cursor != null) {
-			sql.append(" AND (a.published_at, a.id) < (:cursorPublishedAt, :cursorId)");
+			sql.append(PostAnswerQuerySql.CURSOR_FILTER);
 			params.addValue("cursorPublishedAt", Timestamp.from(cursor.publishedAt()))
 				.addValue("cursorId", cursor.answerId());
 		}
-		sql.append(ANSWER_ORDER).append(" LIMIT :limit");
+		sql.append(PostAnswerQuerySql.ANSWER_ORDER).append(" LIMIT :limit");
 		return jdbc.query(sql.toString(), params, (rs, rowNum) -> answerCard(rs));
 	}
 
