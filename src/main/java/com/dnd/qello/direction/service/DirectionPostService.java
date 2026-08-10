@@ -15,7 +15,6 @@ import com.dnd.qello.direction.domain.DirectionScheme;
 import com.dnd.qello.direction.domain.DirectionSegment;
 import com.dnd.qello.direction.domain.PostAudience;
 import com.dnd.qello.direction.domain.PostRecipient;
-import com.dnd.qello.direction.domain.RecipientReceiveState;
 import com.dnd.qello.direction.error.DirectionErrorCode;
 import com.dnd.qello.direction.error.DirectionException;
 import com.dnd.qello.direction.repository.ActiveUserPresenceRepository;
@@ -144,10 +143,12 @@ public class DirectionPostService {
 		return value;
 	}
 
+	/**
+	 * 초기 행 생성은 reserve()가 한 문장으로 함께 처리한다. 조회해서 없으면 만들고
+	 * 다시 예약하는 방식은 두 발송이 같은 신규 수신자를 동시에 잡을 때 서로의
+	 * 예약을 덮어썼다.
+	 */
 	private boolean reserve(long userId, Instant at) {
-		if (receiveStateRepository.findByUserId(userId).isEmpty()) {
-			receiveStateRepository.save(RecipientReceiveState.restore(userId, 0, 0, at, null, at));
-		}
 		return receiveStateRepository.reserve(userId, at, receiveProperties.receiveCapacity());
 	}
 
