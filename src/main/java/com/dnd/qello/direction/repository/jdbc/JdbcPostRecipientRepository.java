@@ -91,6 +91,54 @@ public class JdbcPostRecipientRepository implements PostRecipientRepository {
 			rs -> { rs.next(); return map(rs); });
 	}
 
+	@Override
+	public List<PostRecipient> findExpirableAsOf(Instant at) {
+		return jdbc.query(PostRecipientSql.FIND_EXPIRABLE,
+			new MapSqlParameterSource().addValue("at", timestamp(at)), (rs, rowNum) -> map(rs));
+	}
+
+	@Override
+	public List<PostRecipient> findConfirmableSkips(Instant deadline) {
+		return jdbc.query(PostRecipientSql.FIND_CONFIRMABLE_SKIPS,
+			new MapSqlParameterSource().addValue("deadline", timestamp(deadline)), (rs, rowNum) -> map(rs));
+	}
+
+	@Override
+	public List<PostRecipient> findBlockableFor(long blockerId, long blockedSenderId) {
+		return jdbc.query(PostRecipientSql.FIND_BLOCKABLE, new MapSqlParameterSource()
+			.addValue("blockerId", blockerId).addValue("blockedSenderId", blockedSenderId), (rs, rowNum) -> map(rs));
+	}
+
+	@Override
+	public Optional<PostRecipient> transitionToExpired(PostRecipient expired, PostRecipientStatus previousStatus) {
+		return jdbc.query(PostRecipientSql.TRANSITION_TO_EXPIRED, new MapSqlParameterSource()
+			.addValue("id", expired.getId()).addValue("status", expired.getStatus().name())
+			.addValue("expiredAt", timestamp(expired.getExpiredAt()))
+			.addValue("capacityReleasedAt", timestamp(expired.getCapacityReleasedAt()))
+			.addValue("previousStatus", previousStatus.name()),
+			rs -> rs.next() ? Optional.of(map(rs)) : Optional.empty());
+	}
+
+	@Override
+	public Optional<PostRecipient> transitionToSkipped(PostRecipient skipped, PostRecipientStatus previousStatus) {
+		return jdbc.query(PostRecipientSql.TRANSITION_TO_SKIPPED, new MapSqlParameterSource()
+			.addValue("id", skipped.getId()).addValue("status", skipped.getStatus().name())
+			.addValue("skippedAt", timestamp(skipped.getSkippedAt()))
+			.addValue("capacityReleasedAt", timestamp(skipped.getCapacityReleasedAt()))
+			.addValue("previousStatus", previousStatus.name()),
+			rs -> rs.next() ? Optional.of(map(rs)) : Optional.empty());
+	}
+
+	@Override
+	public Optional<PostRecipient> transitionToBlocked(PostRecipient blocked, PostRecipientStatus previousStatus) {
+		return jdbc.query(PostRecipientSql.TRANSITION_TO_BLOCKED, new MapSqlParameterSource()
+			.addValue("id", blocked.getId()).addValue("status", blocked.getStatus().name())
+			.addValue("blockedAt", timestamp(blocked.getBlockedAt()))
+			.addValue("capacityReleasedAt", timestamp(blocked.getCapacityReleasedAt()))
+			.addValue("previousStatus", previousStatus.name()),
+			rs -> rs.next() ? Optional.of(map(rs)) : Optional.empty());
+	}
+
 	private Optional<PostRecipient> one(String sql, MapSqlParameterSource params) {
 		return jdbc.query(sql, params, rs -> rs.next() ? Optional.of(map(rs)) : Optional.empty());
 	}

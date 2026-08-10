@@ -14,7 +14,9 @@ import lombok.RequiredArgsConstructor;
 
 /**
  * 수신함 항목의 열람과 넘김 요청을 소유한다.
- * 넘김 확정(SKIPPED)과 만료(EXPIRED)는 후속 워커의 몫이며 이 service의 범위가 아니다.
+ * 넘김 확정(SKIPPED)·만료(EXPIRED)·차단(BLOCKED) 전이는 ReceiveSlotReleaseService가
+ * 소유한다 — 사용자 요청이 아니라 내부 sweep/차단 이벤트로 트리거되는 전이라
+ * 소유권 검증(load)이 필요 없는 이 service와 성격이 다르다.
  */
 @Service
 @RequiredArgsConstructor
