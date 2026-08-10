@@ -1,16 +1,17 @@
 package com.dnd.qello.direction.service;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.dnd.qello.direction.config.DirectionReceiveProperties;
+import com.dnd.qello.direction.config.DirectionRecipientSelectionProperties;
 import com.dnd.qello.direction.domain.ActiveUserPresence;
 import com.dnd.qello.direction.domain.DirectionCandidate;
 import com.dnd.qello.direction.domain.DirectionPost;
-import com.dnd.qello.direction.domain.DirectionPostStatus;
 import com.dnd.qello.direction.domain.DirectionScheme;
 import com.dnd.qello.direction.domain.DirectionSegment;
 import com.dnd.qello.direction.domain.PostAudience;
@@ -39,6 +40,7 @@ public class DirectionPostService {
 	private final DirectionSchemeRepository schemeRepository;
 	private final ActiveUserPresenceRepository presenceRepository;
 	private final RecipientReceiveStateRepository receiveStateRepository;
+	private final DirectionRecipientSelectionProperties recipientSelectionProperties;
 	private final DirectionPostRepository postRepository;
 	private final PostAudienceRepository audienceRepository;
 	private final PostRecipientRepository recipientRepository;
@@ -75,14 +77,21 @@ public class DirectionPostService {
 
 		PreviewCommand candidateCommand = new PreviewCommand(command.senderId(), command.schemeId(), command.segmentKey(),
 			command.minDistanceMeters(), command.maxDistanceMeters(), command.coarseRegionCode(), command.submittedAt());
-		List<PostRecipient> recipients = candidates(candidateCommand, sender, segment).stream()
-			.filter(candidate -> reserve(candidate.userId(), command.submittedAt()))
-			.map(candidate -> recipientRepository.save(PostRecipient.available(post.getId(), candidate.userId(),
-				distanceBandPolicy.forDistance(candidate.distanceMeters().longValue()),
-				candidate.bearingDegrees(), candidate.matchedRegionCode(), command.submittedAt(),
-				candidate.inboundBearingDegrees(), candidate.distanceMeters().longValue())))
-			.toList();
+		List<PostRecipient> recipients = selectRecipients(post.getId(), candidates(candidateCommand, sender, segment), command.submittedAt());
 		return new SendResult(post, audience, recipients);
+	}
+
+	private List<PostRecipient> selectRecipients(long postId, List<DirectionCandidate> candidates, Instant matchedAt) {
+		List<PostRecipient> recipients = new ArrayList<>();
+		for (DirectionCandidate candidate : candidates) {
+			if (recipients.size() >= recipientSelectionProperties.maxRecipientsPerPost()) break;
+			if (!reserve(candidate.userId(), matchedAt)) continue;
+			recipients.add(recipientRepository.save(PostRecipient.available(postId, candidate.userId(),
+				distanceBandPolicy.forDistance(candidate.distanceMeters().longValue()),
+				candidate.bearingDegrees(), candidate.matchedRegionCode(), matchedAt,
+				candidate.inboundBearingDegrees(), candidate.distanceMeters().longValue())));
+		}
+		return List.copyOf(recipients);
 	}
 
 	/**
