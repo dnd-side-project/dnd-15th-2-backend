@@ -287,6 +287,7 @@ public final class PostRecipient {
 			throw new DirectionException(
 				DirectionErrorCode.INVALID_RECIPIENT_STATE, "status", "차단 처리를 할 수 없는 상태입니다");
 		}
+		requireAtNotBeforeDiscoveryOrOpen(at);
 		return new PostRecipient(id, postId, recipientId, PostRecipientStatus.BLOCKED, distanceBand,
 			matchedBearingDegrees, matchedRegionCode, matchedAt, discoveredAt, openedAt, null, null,
 			at, null, at, inboundBearingDegrees, distanceM, answersReadAt);
@@ -321,7 +322,7 @@ public final class PostRecipient {
 		return isOpenForTransition() || status == PostRecipientStatus.SKIP_PENDING;
 	}
 
-	/** answered()와 expire()가 공유하는 시간 역전 방어. 둘 다 discoveredAt·openedAt 이후에만 전이할 수 있다. */
+	/** answered()·expire()·block()이 공유하는 시간 역전 방어. 셋 다 discoveredAt·openedAt 이후에만 전이할 수 있다. */
 	private void requireAtNotBeforeDiscoveryOrOpen(Instant at) {
 		if (discoveredAt != null && at.isBefore(discoveredAt)) {
 			throw new DirectionException(
