@@ -1,5 +1,8 @@
 package com.dnd.qello.feed.config;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /**
@@ -12,9 +15,17 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public record FeedDistanceProperties(long nearDistanceFloorM) {
 
 	public FeedDistanceProperties {
-		if (nearDistanceFloorM < 0) {
+		if (nearDistanceFloorM <= 0) {
 			throw new IllegalArgumentException(
-				"qello.feed.near-distance-floor-m은 음수일 수 없습니다: " + nearDistanceFloorM);
+				"qello.feed.near-distance-floor-m은 양수여야 합니다: " + nearDistanceFloorM);
 		}
+	}
+
+	/** 하한 설정과 저장 정책·조회 projection이 함께 사용하는 사용자 표시 문구다. */
+	public String nearDistanceLabel() {
+		BigDecimal kilometers = BigDecimal.valueOf(nearDistanceFloorM)
+			.divide(BigDecimal.valueOf(1_000L), 3, RoundingMode.HALF_UP)
+			.stripTrailingZeros();
+		return kilometers.toPlainString() + "km 이내";
 	}
 }

@@ -1,7 +1,7 @@
 # Test Report: TEST-PLAN-GH-95-DISTANCE-BAND-PER-RECIPIENT
 
 > Created at: 2026-08-10T20:08:00+09:00
-> Updated at: 2026-08-10T20:35:00+09:00
+> Updated at: 2026-08-10T21:10:00+09:00
 > GitHub Issue: #95
 > Branch: fix/gh-95-distance-band-per-recipient
 > Commit: uncommitted
@@ -22,6 +22,10 @@
 - 수신함 카드는 `distance_m`으로 `10km 이내`/정확 거리를 projection한다.
 - 답변 목록은 답변 작성자의 `answer.distance_m`·`distance_band`를 사용하지 않고,
   현재 조회자의 `post_recipient.distance_m`을 사용한다.
+- 하한 설정은 양수만 허용하며, 저장 band와 수신함·답변 조회의 표시 문구가 같은
+  `FeedDistanceProperties` 정책을 사용한다.
+- 거리 정책 내부 오류는 `FeedException`으로 전환해 `GlobalExceptionHandler`의
+  공통 도메인 오류 응답 경로를 사용한다.
 
 ## 3. Execution results
 
@@ -34,6 +38,10 @@
 | `./harness pr-ready --project-tests` | PASS | local PR readiness checks passed |
 | `npm run hooks:validate` | PASS | Husky validation passed |
 | `git diff --check` | PASS | whitespace 검사 오류 없음 |
+
+추가 검증으로 `DistanceBandPolicyTest`, `GlobalExceptionHandlerTest`,
+`InboxQueryIntegrationTest`, `PostAnswerQueryIntegrationTest`,
+`DirectionPostDistanceBandIntegrationTest`를 실행했고 모두 통과했습니다.
 
 최초 Gradle 실행은 저장소 밖 Gradle wrapper cache 잠금 파일 권한으로 실패했으나,
 권한 승인 후 동일 명령을 재실행해 컴파일과 테스트를 완료했다. 이는 코드 실패가
@@ -91,4 +99,5 @@
 - [x] 테스트 클래스에 `@DisplayName`과 ISO 8601 생성 시각/source scenario가 있음
 - [x] 단위·통합 테스트 결과와 미실행 범위를 구분함
 - [x] 조회자 기준 답변 거리와 10km 경계를 검증함
+- [x] 하한 설정 변경과 전역 feed 오류 경로를 검증함
 - [ ] 커밋·push·PR 및 사람 리뷰

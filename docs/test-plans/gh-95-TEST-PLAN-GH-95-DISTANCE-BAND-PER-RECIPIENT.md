@@ -70,7 +70,7 @@ post_recipient.distance_band를 서버가 독립적으로 파생하는지 검증
 | Scenario ID | Given | When | Then | Priority | Owner |
 | --- | --- | --- | --- | --- | --- |
 | TEST-PLAN-GH-95-DISTANCE-BAND-PER-RECIPIENT-UNIT-001 | near-distance-floor-m=10,000과 대표 경계 거리 | canonical policy를 호출 | 9,999m는 `10km 이내`, 10,000m·10,001m는 `EXACT_DISTANCE`로 매핑된다 | P0 | Distance-policy executor |
-| TEST-PLAN-GH-95-DISTANCE-BAND-PER-RECIPIENT-UNIT-002 | 음수 거리와 동일 입력 반복 | 매핑 정책 호출 | 음수는 거절되고 동일 거리는 항상 같은 결과를 반환한다 | P1 | Distance-policy executor |
+| TEST-PLAN-GH-95-DISTANCE-BAND-PER-RECIPIENT-UNIT-002 | 하한 설정값 9,000m와 음수 거리 | 매핑 정책 호출 | 8,000m는 `9km 이내`, 9,000m는 `EXACT_DISTANCE`가 되며 음수는 전역 feed 오류로 변환된다 | P0 | Distance-policy executor |
 | TEST-PLAN-GH-95-DISTANCE-BAND-PER-RECIPIENT-UNIT-003 | SendCommand의 새 계약 | command 생성 및 send 호출 | 호출자 band 필드가 없어 임의 문자열을 전달할 수 없고, 저장 결과는 후보 거리로 결정된다 | P0 | Direction-service executor |
 | TEST-PLAN-GH-95-DISTANCE-BAND-PER-RECIPIENT-UNIT-004 | 동일한 거리와 동일한 정책 버전 | 순서·반복 호출 | 항상 같은 band를 반환하고 전역 mutable 상태나 발송 순서에 의존하지 않는다 | P1 | Distance-policy executor |
 
@@ -169,6 +169,7 @@ post_recipient.distance_band를 서버가 독립적으로 파생하는지 검증
 - [x] 3km/900km 후보의 distance_band가 개별 파생됨
 - [x] 9,999m/10,000m/10,001m 카드 노출이 정확히 상호 배타적임
 - [x] 답변 목록이 현재 조회자의 질문 원점 거리를 표시함
+- [x] 하한 설정과 저장 band·조회 표시 문구가 같은 정책을 사용함
 - [ ] send 실패·재시도에서 partial write와 band snapshot 변경이 없음
 - [ ] 잠재 문제 분석
 - [ ] 테스트 보고서 생성
