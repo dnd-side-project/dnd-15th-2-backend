@@ -236,6 +236,21 @@ class ReceiveSlotReleaseIntegrationTest extends PostgisContainerIntegrationTestS
 	}
 
 	@Test
+	@DisplayName("차단은 SKIP_PENDING 수신 항목을 BLOCKED로 전이하며 skip_requested_at을 비운다")
+	void blockingClearsSkipRequestedAtForSkipPendingItems() {
+		long questionId = question();
+		long postId = post(blockedSenderId, questionId, "int016-post", NOW.plusSeconds(3600));
+		long prId = skipPending(postId, recipientId, NOW.minusSeconds(2));
+		receiveState(recipientId, 1);
+
+		safetyService.block(recipientId, blockedSenderId, NOW);
+
+		assertThat(status(prId)).isEqualTo("BLOCKED");
+		assertThat(skipRequestedAt(prId)).isNull();
+		assertThat(activeCount(recipientId)).isZero();
+	}
+
+	@Test
 	@DisplayName("차단은 이미 ANSWERED인 수신 항목을 재전이하지 않는다")
 	void blockingDoesNotRetransitionAnAlreadyAnsweredItem() {
 		long questionId = question();
@@ -410,6 +425,12 @@ class ReceiveSlotReleaseIntegrationTest extends PostgisContainerIntegrationTestS
 
 	private String status(long postRecipientId) {
 		return jdbc.queryForObject("SELECT status FROM post_recipient WHERE id = ?", String.class, postRecipientId);
+	}
+
+	private Instant skipRequestedAt(long postRecipientId) {
+		Timestamp value = jdbc.queryForObject("SELECT skip_requested_at FROM post_recipient WHERE id = ?",
+			(rs, rowNum) -> rs.getTimestamp("skip_requested_at"), postRecipientId);
+		return value == null ? null : value.toInstant();
 	}
 
 	private int activeCount(long userId) {

@@ -387,6 +387,8 @@ class DirectionDomainTest {
 		PostRecipient blockedFromPending = skipPending.block(MATCHED.plusSeconds(30));
 		assertThat(blockedFromPending.getStatus()).isEqualTo(PostRecipientStatus.BLOCKED);
 		assertThat(blockedFromPending.getCapacityReleasedAt()).isEqualTo(MATCHED.plusSeconds(30));
+		assertThat(blockedFromPending.getSkipRequestedAt()).isNull();
+		assertThat(blockedFromPending.getSkippedAt()).isNull();
 	}
 
 	@Test
