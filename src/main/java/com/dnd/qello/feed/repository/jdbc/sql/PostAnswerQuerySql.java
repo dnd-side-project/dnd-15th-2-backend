@@ -29,6 +29,10 @@ public final class PostAnswerQuerySql {
 		              AND\s""" + FeedScopeSql.RECIPIENT_VIEW_ELIGIBILITY + """
 		        )
 		      )
+		      AND NOT EXISTS (SELECT 1 FROM user_block ub
+		                      WHERE ub.released_at IS NULL
+		                        AND ((ub.blocker_id = :viewerId AND ub.blocked_id = dp.sender_id)
+		                          OR (ub.blocker_id = dp.sender_id AND ub.blocked_id = :viewerId)))
 		)
 		""";
 

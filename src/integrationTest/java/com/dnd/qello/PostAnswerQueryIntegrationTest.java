@@ -240,4 +240,29 @@ class PostAnswerQueryIntegrationTest extends PostgisContainerIntegrationTestSupp
 		assertThat(postAnswerQueryService.answers(senderId, postId, null, 10, at)).isEmpty();
 		assertThat(postAnswerQueryService.answers(outsiderId, postId, null, 10, at)).hasSize(1);
 	}
+
+	@Test
+	@DisplayName("질문자와 viewer 사이 어느 방향의 활성 차단도 답변 열람을 막는다")
+	void blocksAnswerVisibilityInEitherBlockDirection() {
+		long postId = post("p-blocked-viewer", NOW, NOW.plus(2, ChronoUnit.HOURS));
+		long recipientRowId = recipient(postId, recipientId, "OPENED");
+		answer(recipientRowId, recipientId, "a-blocked-viewer", NOW.plusSeconds(60));
+		Instant at = NOW.plusSeconds(120);
+
+		jdbc.update("INSERT INTO user_block (blocker_id, blocked_id, created_at) VALUES (?, ?, ?)",
+			senderId, recipientId, Timestamp.from(NOW));
+		assertThat(postAnswerQueryService.canView(recipientId, postId, at)).isFalse();
+		assertThat(postAnswerQueryService.answers(recipientId, postId, null, 10, at)).isEmpty();
+
+		jdbc.update("DELETE FROM user_block WHERE blocker_id = ? AND blocked_id = ?", senderId, recipientId);
+		jdbc.update("INSERT INTO user_block (blocker_id, blocked_id, created_at) VALUES (?, ?, ?)",
+			recipientId, senderId, Timestamp.from(NOW));
+		assertThat(postAnswerQueryService.canView(recipientId, postId, at)).isFalse();
+		assertThat(postAnswerQueryService.answers(recipientId, postId, null, 10, at)).isEmpty();
+
+		jdbc.update("UPDATE user_block SET released_at = ? WHERE blocker_id = ? AND blocked_id = ?",
+			Timestamp.from(at), recipientId, senderId);
+		assertThat(postAnswerQueryService.canView(recipientId, postId, at)).isTrue();
+		assertThat(postAnswerQueryService.answers(recipientId, postId, null, 10, at)).hasSize(1);
+	}
 }
