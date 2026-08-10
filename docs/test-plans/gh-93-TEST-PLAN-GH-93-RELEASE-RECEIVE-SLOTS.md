@@ -121,7 +121,7 @@
 | 유예 시간이 지나기 전에 조기 확정되어 사용자가 되돌리기 기회를 잃음 | Medium | Medium | P0 | INT-004, INT-005 |
 | 차단 전이가 방향을 반대로 잡아 차단당한 사람의 정상 슬롯을 함부로 해제하거나, 무관한 콘텐츠까지 건드림 | High | Medium | P0 | INT-008, INT-009 |
 | 만료 sweep이 이미 `ANSWERED`인 행을 잘못 재전이시켜 이미 해제된 슬롯을 데이터상 훼손함 | High | Low | P1 | INT-013 |
-같은 sweep이 재시도·중복 스케줄링으로 동시에 두 번 실행돼 `ct_post_recipient_capacity_release`가 커밋 시점에 거부하거나 카운터가 두 번 감소함 | High | Medium | P0 | INT-006 |
+| 같은 sweep이 재시도·중복 스케줄링으로 동시에 두 번 실행돼 `ct_post_recipient_capacity_release`가 커밋 시점에 거부하거나 카운터가 두 번 감소함 | High | Medium | P0 | INT-006 |
 | 스케줄러/워커 재시도로 같은 sweep이 중복 실행돼 이미 terminal인 행이 다시 처리되어 카운터가 실제보다 낮아짐(음수 방지 가드는 있으나 잘못된 최종값은 못 막음) | High | Medium | P0 | INT-011, INT-014 |
 | 세 경로 중 하나가 `PostRecipientRepository.transitionToAnswered`와 다른 방식(무조건 UPDATE)으로 구현돼 동시성 가드가 빠짐 | Medium | Medium | P1 | INT-006, INT-007 |
 | 도메인 신규 메서드가 `capacityReleasedAt`을 상태와 별개로 잘못 설정해 생성자 불변식을 우회함 | Medium | Low | P1 | UNIT-001, UNIT-002, UNIT-006 |
