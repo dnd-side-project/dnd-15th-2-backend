@@ -39,4 +39,22 @@ public interface PostRecipientRepository {
 	 * 덮어쓰지 않게 한다.
 	 */
 	PostRecipient advanceAnswersReadAt(long id, Instant at);
+
+	/** 만료 sweep 후보(AVAILABLE/DISCOVERED/OPENED이고 소속 질문글이 at 이전에 만료됨). */
+	List<PostRecipient> findExpirableAsOf(Instant at);
+
+	/** 되돌리기 유예가 지난 SKIP_PENDING 후보. deadline은 호출자가 유예 시간을 뺀 값을 넘긴다. */
+	List<PostRecipient> findConfirmableSkips(Instant deadline);
+
+	/** blockerId 자신의 수신 항목 중 blockedSenderId가 보낸 질문글에 대한 미종결 항목. */
+	List<PostRecipient> findBlockableFor(long blockerId, long blockedSenderId);
+
+	/** status가 여전히 previousStatus일 때만 EXPIRED로 전이한다. transitionToAnswered와 같은 낙관적 패턴이다. */
+	Optional<PostRecipient> transitionToExpired(PostRecipient expired, PostRecipientStatus previousStatus);
+
+	/** status가 여전히 previousStatus(SKIP_PENDING)일 때만 SKIPPED로 확정한다. */
+	Optional<PostRecipient> transitionToSkipped(PostRecipient skipped, PostRecipientStatus previousStatus);
+
+	/** status가 여전히 previousStatus일 때만 BLOCKED로 전이한다. */
+	Optional<PostRecipient> transitionToBlocked(PostRecipient blocked, PostRecipientStatus previousStatus);
 }

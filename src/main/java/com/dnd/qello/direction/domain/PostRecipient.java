@@ -158,8 +158,7 @@ public final class PostRecipient {
 
 	public PostRecipient requestSkip(Instant at) {
 		requireValue(at, "at");
-		if (status != PostRecipientStatus.AVAILABLE && status != PostRecipientStatus.DISCOVERED
-			&& status != PostRecipientStatus.OPENED) {
+		if (!isOpenForTransition()) {
 			throw new DirectionException(
 				DirectionErrorCode.INVALID_RECIPIENT_STATE, "status", "넘김을 요청할 수 없는 상태입니다");
 		}
@@ -239,23 +238,59 @@ public final class PostRecipient {
 	public PostRecipient answered(Instant at) {
 		requireValue(at, "at");
 		if (status == PostRecipientStatus.ANSWERED) return this;
-		if (status != PostRecipientStatus.AVAILABLE && status != PostRecipientStatus.DISCOVERED
-			&& status != PostRecipientStatus.OPENED) {
+		if (!isOpenForTransition()) {
 			throw new DirectionException(
 				DirectionErrorCode.INVALID_RECIPIENT_STATE, "status", "답변 처리를 할 수 없는 상태입니다");
 		}
-		if (discoveredAt != null && at.isBefore(discoveredAt)) {
-			throw new DirectionException(
-				DirectionErrorCode.INVALID_TIME_ORDER, "at", "at은 discoveredAt보다 빠를 수 없습니다");
-		}
-		if (openedAt != null && at.isBefore(openedAt)) {
-			throw new DirectionException(
-				DirectionErrorCode.INVALID_TIME_ORDER, "at", "at은 openedAt보다 빠를 수 없습니다");
-		}
+		requireAtNotBeforeDiscoveryOrOpen(at);
 		return new PostRecipient(id, postId, recipientId, PostRecipientStatus.ANSWERED, distanceBand,
 			matchedBearingDegrees, matchedRegionCode, matchedAt, discoveredAt == null ? at : discoveredAt,
 			openedAt == null ? at : openedAt, null, null, at, null, null,
 			inboundBearingDegrees, distanceM, answersReadAt);
+	}
+
+	/**
+	 * 질문글이 만료됐는데 이 수신자가 응답하지 않은 경우의 전이. `SKIP_PENDING`은
+	 * 유효 소스 상태가 아니다 — 되돌리기 유예 동안은 수신 용량을 계속 붙잡는다는
+	 * 기존 설계(`confirmSkip`/`revertSkip` 전용 레인)를 그대로 지킨다. 만료 sweep의
+	 * 대상 조회가 `SKIP_PENDING`을 애초에 후보에서 제외하므로, 이 메서드가 그 상태를
+	 * 받으면 항상 호출자 버그다.
+	 * `confirmSkip()`과 같은 일회성 전이 계약을 따른다 — 이미 `EXPIRED`이거나 다른
+	 * terminal 상태인 행에 재호출하면 예외를 던진다. 재실행에서 카운터를 중복
+	 * 감소시키지 않을 책임은 호출자(대상 조회 시점에 이미 terminal인 행을 제외)에
+	 * 있다.
+	 */
+	public PostRecipient expire(Instant at) {
+		requireValue(at, "at");
+		if (!isOpenForTransition()) {
+			throw new DirectionException(
+				DirectionErrorCode.INVALID_RECIPIENT_STATE, "status", "만료 처리를 할 수 없는 상태입니다");
+		}
+		requireAtNotBeforeDiscoveryOrOpen(at);
+		return new PostRecipient(id, postId, recipientId, PostRecipientStatus.EXPIRED, distanceBand,
+			matchedBearingDegrees, matchedRegionCode, matchedAt, discoveredAt, openedAt, null, null,
+			at, at, null, inboundBearingDegrees, distanceM, answersReadAt);
+	}
+
+	/**
+	 * 차단 성립에 따른 전이. 차단한 사람 자신의 수신 항목에만 적용한다 — 호출자가
+	 * 차단대상이 아니라 차단자 관점에서 대상을 고른다(feed 조회의
+	 * `ub.blocker_id = 뷰어` 필터 방향과 동일). `SKIP_PENDING`도 유효 소스다 —
+	 * 넘김 여부를 더 이상 판정할 이유가 없어졌기 때문이다. 전이하면서
+	 * `skipRequestedAt`을 비운다 — `SKIP_PENDING`이 아닌 상태로 그 값이 남아 있으면
+	 * 생성자 불변식(`(status == SKIP_PENDING) == (skipRequestedAt != null && skippedAt == null)`)을
+	 * 위반한다.
+	 */
+	public PostRecipient block(Instant at) {
+		requireValue(at, "at");
+		if (!isBlockable()) {
+			throw new DirectionException(
+				DirectionErrorCode.INVALID_RECIPIENT_STATE, "status", "차단 처리를 할 수 없는 상태입니다");
+		}
+		requireAtNotBeforeDiscoveryOrOpen(at);
+		return new PostRecipient(id, postId, recipientId, PostRecipientStatus.BLOCKED, distanceBand,
+			matchedBearingDegrees, matchedRegionCode, matchedAt, discoveredAt, openedAt, null, null,
+			at, null, at, inboundBearingDegrees, distanceM, answersReadAt);
 	}
 
 	/**
@@ -269,6 +304,34 @@ public final class PostRecipient {
 		return new PostRecipient(id, postId, recipientId, status, distanceBand,
 			matchedBearingDegrees, matchedRegionCode, matchedAt, discoveredAt, openedAt, skipRequestedAt, skippedAt,
 			capacityReleasedAt, expiredAt, blockedAt, inboundBearingDegrees, distanceM, at);
+	}
+
+	/**
+	 * 아직 답변·넘김확정·만료·차단 중 어느 쪽으로도 종결되지 않은 상태다.
+	 * requestSkip/answered/expire의 소스 상태 조건이자, `answer`·`direction` 양쪽에서
+	 * "이 항목이 여전히 열려 있는가"를 판단하는 단일 기준이다 — 호출자마다 상태 목록을
+	 * 다시 나열하지 않고 이 메서드를 참조한다.
+	 */
+	public boolean isOpenForTransition() {
+		return status == PostRecipientStatus.AVAILABLE || status == PostRecipientStatus.DISCOVERED
+			|| status == PostRecipientStatus.OPENED;
+	}
+
+	/** block()의 소스 상태 조건. SKIP_PENDING도 차단 대상이 될 수 있다는 점만 isOpenForTransition과 다르다. */
+	public boolean isBlockable() {
+		return isOpenForTransition() || status == PostRecipientStatus.SKIP_PENDING;
+	}
+
+	/** answered()·expire()·block()이 공유하는 시간 역전 방어. 셋 다 discoveredAt·openedAt 이후에만 전이할 수 있다. */
+	private void requireAtNotBeforeDiscoveryOrOpen(Instant at) {
+		if (discoveredAt != null && at.isBefore(discoveredAt)) {
+			throw new DirectionException(
+				DirectionErrorCode.INVALID_TIME_ORDER, "at", "at은 discoveredAt보다 빠를 수 없습니다");
+		}
+		if (openedAt != null && at.isBefore(openedAt)) {
+			throw new DirectionException(
+				DirectionErrorCode.INVALID_TIME_ORDER, "at", "at은 openedAt보다 빠를 수 없습니다");
+		}
 	}
 
 }

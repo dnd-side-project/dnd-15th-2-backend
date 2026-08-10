@@ -17,7 +17,8 @@ import com.dnd.qello.direction.error.DirectionException;
  * Created at: 2026-08-03T20:30:00+09:00
  * Source scenario: TEST-PLAN-GH-39-DIRECTION-POSTGIS-PERSISTENCE-UNIT-001 through UNIT-006,
  * TEST-PLAN-GH-78-SCHEMA-REVISION-V7-UNIT-002 through UNIT-004,
- * TEST-PLAN-GH-79-ANSWER-VISIBILITY-RECIPIENTS-UNIT-001 through UNIT-003
+ * TEST-PLAN-GH-79-ANSWER-VISIBILITY-RECIPIENTS-UNIT-001 through UNIT-003,
+ * TEST-PLAN-GH-93-RELEASE-RECEIVE-SLOTS-UNIT-001 through UNIT-008 (added 2026-08-10T15:10:00+09:00)
  */
 class DirectionDomainTest {
 
@@ -295,6 +296,123 @@ class DirectionDomainTest {
 		assertThatThrownBy(() -> skipped.answered(MATCHED.plusSeconds(30)))
 			.isInstanceOf(DirectionException.class)
 			.hasFieldOrPropertyWithValue("errorCode", DirectionErrorCode.INVALID_RECIPIENT_STATE);
+	}
+
+	@Test
+	@DisplayName("expire는 AVAILABLE/DISCOVERED/OPENED에서 capacityReleasedAt을 함께 설정한다")
+	void expireReleasesCapacityFromEachNonTerminalSource() {
+		PostRecipient expiredFromAvailable = availableRecipient().expire(MATCHED.plusSeconds(30));
+		assertThat(expiredFromAvailable.getStatus()).isEqualTo(PostRecipientStatus.EXPIRED);
+		assertThat(expiredFromAvailable.getExpiredAt()).isEqualTo(MATCHED.plusSeconds(30));
+		assertThat(expiredFromAvailable.getCapacityReleasedAt()).isEqualTo(MATCHED.plusSeconds(30));
+		assertThat(expiredFromAvailable.getDiscoveredAt()).isNull();
+		assertThat(expiredFromAvailable.getOpenedAt()).isNull();
+
+		PostRecipient discovered = availableRecipient().discover(MATCHED.plusSeconds(5));
+		PostRecipient expiredFromDiscovered = discovered.expire(MATCHED.plusSeconds(30));
+		assertThat(expiredFromDiscovered.getStatus()).isEqualTo(PostRecipientStatus.EXPIRED);
+		assertThat(expiredFromDiscovered.getDiscoveredAt()).isEqualTo(MATCHED.plusSeconds(5));
+
+		PostRecipient opened = availableRecipient().open(MATCHED.plusSeconds(10));
+		PostRecipient expiredFromOpened = opened.expire(MATCHED.plusSeconds(30));
+		assertThat(expiredFromOpened.getStatus()).isEqualTo(PostRecipientStatus.EXPIRED);
+		assertThat(expiredFromOpened.getOpenedAt()).isEqualTo(MATCHED.plusSeconds(10));
+	}
+
+	@Test
+	@DisplayName("expire는 이미 terminal이거나 SKIP_PENDING인 행을 거절한다")
+	void expireRejectsTerminalAndSkipPendingSources() {
+		PostRecipient answered = availableRecipient().open(MATCHED.plusSeconds(10)).answered(MATCHED.plusSeconds(20));
+		PostRecipient skipped = availableRecipient().requestSkip(MATCHED.plusSeconds(10)).confirmSkip(MATCHED.plusSeconds(20));
+		PostRecipient skipPending = availableRecipient().requestSkip(MATCHED.plusSeconds(10));
+		PostRecipient expired = availableRecipient().expire(MATCHED.plusSeconds(10));
+		PostRecipient blocked = availableRecipient().block(MATCHED.plusSeconds(10));
+
+		for (PostRecipient terminal : List.of(answered, skipped, skipPending, expired, blocked)) {
+			assertThatThrownBy(() -> terminal.expire(MATCHED.plusSeconds(30)))
+				.isInstanceOf(DirectionException.class)
+				.hasFieldOrPropertyWithValue("errorCode", DirectionErrorCode.INVALID_RECIPIENT_STATE);
+		}
+	}
+
+	@Test
+	@DisplayName("이미 EXPIRED인 행에 expire를 재실행해도 예외로 재전이를 막는다")
+	void expireRejectsReExpiringAnAlreadyExpiredRecipient() {
+		PostRecipient expired = availableRecipient().expire(MATCHED.plusSeconds(10));
+
+		assertThatThrownBy(() -> expired.expire(MATCHED.plusSeconds(20)))
+			.isInstanceOf(DirectionException.class)
+			.hasFieldOrPropertyWithValue("errorCode", DirectionErrorCode.INVALID_RECIPIENT_STATE);
+	}
+
+	@Test
+	@DisplayName("expire는 discoveredAt·openedAt보다 이른 시각을 거부한다")
+	void expireRejectsTimeBeforeDiscoveredOrOpened() {
+		PostRecipient discovered = availableRecipient().discover(MATCHED.plusSeconds(10));
+		assertThatThrownBy(() -> discovered.expire(MATCHED.plusSeconds(9)))
+			.isInstanceOf(DirectionException.class)
+			.hasFieldOrPropertyWithValue("errorCode", DirectionErrorCode.INVALID_TIME_ORDER);
+
+		PostRecipient opened = availableRecipient().open(MATCHED.plusSeconds(10));
+		assertThatThrownBy(() -> opened.expire(MATCHED.plusSeconds(9)))
+			.isInstanceOf(DirectionException.class)
+			.hasFieldOrPropertyWithValue("errorCode", DirectionErrorCode.INVALID_TIME_ORDER);
+	}
+
+	@Test
+	@DisplayName("confirmSkip 자체는 유예 시간을 모른다 — 강제는 호출자의 책임이다")
+	void confirmSkipDoesNotEnforceGracePeriodItself() {
+		PostRecipient pending = availableRecipient().requestSkip(MATCHED.plusSeconds(10));
+
+		PostRecipient confirmed = pending.confirmSkip(MATCHED.plusSeconds(10).plusNanos(1));
+
+		assertThat(confirmed.getStatus()).isEqualTo(PostRecipientStatus.SKIPPED);
+	}
+
+	@Test
+	@DisplayName("block은 AVAILABLE/DISCOVERED/OPENED/SKIP_PENDING에서 capacityReleasedAt을 함께 설정한다")
+	void blockReleasesCapacityFromEachEligibleSource() {
+		PostRecipient blockedFromAvailable = availableRecipient().block(MATCHED.plusSeconds(30));
+		assertThat(blockedFromAvailable.getStatus()).isEqualTo(PostRecipientStatus.BLOCKED);
+		assertThat(blockedFromAvailable.getBlockedAt()).isEqualTo(MATCHED.plusSeconds(30));
+		assertThat(blockedFromAvailable.getCapacityReleasedAt()).isEqualTo(MATCHED.plusSeconds(30));
+
+		PostRecipient discovered = availableRecipient().discover(MATCHED.plusSeconds(5));
+		assertThat(discovered.block(MATCHED.plusSeconds(30)).getStatus()).isEqualTo(PostRecipientStatus.BLOCKED);
+
+		PostRecipient opened = availableRecipient().open(MATCHED.plusSeconds(10));
+		assertThat(opened.block(MATCHED.plusSeconds(30)).getStatus()).isEqualTo(PostRecipientStatus.BLOCKED);
+
+		PostRecipient skipPending = availableRecipient().requestSkip(MATCHED.plusSeconds(10));
+		PostRecipient blockedFromPending = skipPending.block(MATCHED.plusSeconds(30));
+		assertThat(blockedFromPending.getStatus()).isEqualTo(PostRecipientStatus.BLOCKED);
+		assertThat(blockedFromPending.getCapacityReleasedAt()).isEqualTo(MATCHED.plusSeconds(30));
+		assertThat(blockedFromPending.getSkipRequestedAt()).isNull();
+		assertThat(blockedFromPending.getSkippedAt()).isNull();
+	}
+
+	@Test
+	@DisplayName("block은 이미 슬롯이 해제된 ANSWERED 행을 재전이하지 않는다")
+	void blockRejectsAnsweredSource() {
+		PostRecipient answered = availableRecipient().open(MATCHED.plusSeconds(10)).answered(MATCHED.plusSeconds(20));
+
+		assertThatThrownBy(() -> answered.block(MATCHED.plusSeconds(30)))
+			.isInstanceOf(DirectionException.class)
+			.hasFieldOrPropertyWithValue("errorCode", DirectionErrorCode.INVALID_RECIPIENT_STATE);
+	}
+
+	@Test
+	@DisplayName("block은 이미 terminal인 SKIPPED/EXPIRED/BLOCKED 행을 재전이하지 않는다")
+	void blockRejectsAlreadyTerminalSources() {
+		PostRecipient skipped = availableRecipient().requestSkip(MATCHED.plusSeconds(10)).confirmSkip(MATCHED.plusSeconds(20));
+		PostRecipient expired = availableRecipient().expire(MATCHED.plusSeconds(10));
+		PostRecipient blocked = availableRecipient().block(MATCHED.plusSeconds(10));
+
+		for (PostRecipient terminal : List.of(skipped, expired, blocked)) {
+			assertThatThrownBy(() -> terminal.block(MATCHED.plusSeconds(30)))
+				.isInstanceOf(DirectionException.class)
+				.hasFieldOrPropertyWithValue("errorCode", DirectionErrorCode.INVALID_RECIPIENT_STATE);
+		}
 	}
 
 	@Test
