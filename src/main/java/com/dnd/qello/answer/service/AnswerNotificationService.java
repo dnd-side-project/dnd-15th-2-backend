@@ -88,9 +88,7 @@ public class AnswerNotificationService {
 		if (recipient.getStatus() == PostRecipientStatus.ANSWERED) {
 			return true;
 		}
-		if (recipient.getStatus() != PostRecipientStatus.AVAILABLE
-			&& recipient.getStatus() != PostRecipientStatus.DISCOVERED
-			&& recipient.getStatus() != PostRecipientStatus.OPENED) {
+		if (!recipient.isOpenForTransition()) {
 			return false;
 		}
 		PostRecipient answered = recipient.answered(at);

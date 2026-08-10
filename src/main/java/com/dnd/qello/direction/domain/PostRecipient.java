@@ -158,8 +158,7 @@ public final class PostRecipient {
 
 	public PostRecipient requestSkip(Instant at) {
 		requireValue(at, "at");
-		if (status != PostRecipientStatus.AVAILABLE && status != PostRecipientStatus.DISCOVERED
-			&& status != PostRecipientStatus.OPENED) {
+		if (!isOpenForTransition()) {
 			throw new DirectionException(
 				DirectionErrorCode.INVALID_RECIPIENT_STATE, "status", "넘김을 요청할 수 없는 상태입니다");
 		}
@@ -239,19 +238,11 @@ public final class PostRecipient {
 	public PostRecipient answered(Instant at) {
 		requireValue(at, "at");
 		if (status == PostRecipientStatus.ANSWERED) return this;
-		if (status != PostRecipientStatus.AVAILABLE && status != PostRecipientStatus.DISCOVERED
-			&& status != PostRecipientStatus.OPENED) {
+		if (!isOpenForTransition()) {
 			throw new DirectionException(
 				DirectionErrorCode.INVALID_RECIPIENT_STATE, "status", "답변 처리를 할 수 없는 상태입니다");
 		}
-		if (discoveredAt != null && at.isBefore(discoveredAt)) {
-			throw new DirectionException(
-				DirectionErrorCode.INVALID_TIME_ORDER, "at", "at은 discoveredAt보다 빠를 수 없습니다");
-		}
-		if (openedAt != null && at.isBefore(openedAt)) {
-			throw new DirectionException(
-				DirectionErrorCode.INVALID_TIME_ORDER, "at", "at은 openedAt보다 빠를 수 없습니다");
-		}
+		requireAtNotBeforeDiscoveryOrOpen(at);
 		return new PostRecipient(id, postId, recipientId, PostRecipientStatus.ANSWERED, distanceBand,
 			matchedBearingDegrees, matchedRegionCode, matchedAt, discoveredAt == null ? at : discoveredAt,
 			openedAt == null ? at : openedAt, null, null, at, null, null,
@@ -271,19 +262,11 @@ public final class PostRecipient {
 	 */
 	public PostRecipient expire(Instant at) {
 		requireValue(at, "at");
-		if (status != PostRecipientStatus.AVAILABLE && status != PostRecipientStatus.DISCOVERED
-			&& status != PostRecipientStatus.OPENED) {
+		if (!isOpenForTransition()) {
 			throw new DirectionException(
 				DirectionErrorCode.INVALID_RECIPIENT_STATE, "status", "만료 처리를 할 수 없는 상태입니다");
 		}
-		if (discoveredAt != null && at.isBefore(discoveredAt)) {
-			throw new DirectionException(
-				DirectionErrorCode.INVALID_TIME_ORDER, "at", "at은 discoveredAt보다 빠를 수 없습니다");
-		}
-		if (openedAt != null && at.isBefore(openedAt)) {
-			throw new DirectionException(
-				DirectionErrorCode.INVALID_TIME_ORDER, "at", "at은 openedAt보다 빠를 수 없습니다");
-		}
+		requireAtNotBeforeDiscoveryOrOpen(at);
 		return new PostRecipient(id, postId, recipientId, PostRecipientStatus.EXPIRED, distanceBand,
 			matchedBearingDegrees, matchedRegionCode, matchedAt, discoveredAt, openedAt, null, null,
 			at, at, null, inboundBearingDegrees, distanceM, answersReadAt);
@@ -300,8 +283,7 @@ public final class PostRecipient {
 	 */
 	public PostRecipient block(Instant at) {
 		requireValue(at, "at");
-		if (status != PostRecipientStatus.AVAILABLE && status != PostRecipientStatus.DISCOVERED
-			&& status != PostRecipientStatus.OPENED && status != PostRecipientStatus.SKIP_PENDING) {
+		if (!isBlockable()) {
 			throw new DirectionException(
 				DirectionErrorCode.INVALID_RECIPIENT_STATE, "status", "차단 처리를 할 수 없는 상태입니다");
 		}
@@ -321,6 +303,34 @@ public final class PostRecipient {
 		return new PostRecipient(id, postId, recipientId, status, distanceBand,
 			matchedBearingDegrees, matchedRegionCode, matchedAt, discoveredAt, openedAt, skipRequestedAt, skippedAt,
 			capacityReleasedAt, expiredAt, blockedAt, inboundBearingDegrees, distanceM, at);
+	}
+
+	/**
+	 * 아직 답변·넘김확정·만료·차단 중 어느 쪽으로도 종결되지 않은 상태다.
+	 * requestSkip/answered/expire의 소스 상태 조건이자, `answer`·`direction` 양쪽에서
+	 * "이 항목이 여전히 열려 있는가"를 판단하는 단일 기준이다 — 호출자마다 상태 목록을
+	 * 다시 나열하지 않고 이 메서드를 참조한다.
+	 */
+	public boolean isOpenForTransition() {
+		return status == PostRecipientStatus.AVAILABLE || status == PostRecipientStatus.DISCOVERED
+			|| status == PostRecipientStatus.OPENED;
+	}
+
+	/** block()의 소스 상태 조건. SKIP_PENDING도 차단 대상이 될 수 있다는 점만 isOpenForTransition과 다르다. */
+	public boolean isBlockable() {
+		return isOpenForTransition() || status == PostRecipientStatus.SKIP_PENDING;
+	}
+
+	/** answered()와 expire()가 공유하는 시간 역전 방어. 둘 다 discoveredAt·openedAt 이후에만 전이할 수 있다. */
+	private void requireAtNotBeforeDiscoveryOrOpen(Instant at) {
+		if (discoveredAt != null && at.isBefore(discoveredAt)) {
+			throw new DirectionException(
+				DirectionErrorCode.INVALID_TIME_ORDER, "at", "at은 discoveredAt보다 빠를 수 없습니다");
+		}
+		if (openedAt != null && at.isBefore(openedAt)) {
+			throw new DirectionException(
+				DirectionErrorCode.INVALID_TIME_ORDER, "at", "at은 openedAt보다 빠를 수 없습니다");
+		}
 	}
 
 }

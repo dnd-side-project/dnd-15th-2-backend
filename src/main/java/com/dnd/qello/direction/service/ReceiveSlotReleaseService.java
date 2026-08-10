@@ -44,7 +44,7 @@ public class ReceiveSlotReleaseService {
 
 	/** 넘김확정 sweep 후보. 되돌리기 유예(설정값)가 지난 SKIP_PENDING 항목이다. */
 	public List<PostRecipient> findConfirmableSkips(Instant at) {
-		return recipientRepository.findConfirmableSkips(at.minusSeconds(skipConfirmationProperties.skipConfirmationGraceSeconds()));
+		return recipientRepository.findConfirmableSkips(confirmationDeadline(at));
 	}
 
 	/** blockerId 자신의 수신 항목 중 blockedSenderId가 보낸 질문글에 대한 미종결 항목. */
@@ -61,7 +61,7 @@ public class ReceiveSlotReleaseService {
 	@Transactional
 	public Optional<PostRecipient> expire(long postRecipientId, Instant at) {
 		PostRecipient candidate = recipientRepository.findById(postRecipientId).orElseThrow(this::recipientNotFound);
-		if (!isExpirableSource(candidate.getStatus())) {
+		if (!candidate.isOpenForTransition()) {
 			return Optional.empty();
 		}
 		PostRecipient expired = candidate.expire(at);
@@ -82,8 +82,7 @@ public class ReceiveSlotReleaseService {
 		if (candidate.getStatus() != PostRecipientStatus.SKIP_PENDING) {
 			return Optional.empty();
 		}
-		Instant deadline = at.minusSeconds(skipConfirmationProperties.skipConfirmationGraceSeconds());
-		if (candidate.getSkipRequestedAt().isAfter(deadline)) {
+		if (candidate.getSkipRequestedAt().isAfter(confirmationDeadline(at))) {
 			return Optional.empty();
 		}
 		PostRecipient confirmed = candidate.confirmSkip(at);
@@ -95,8 +94,16 @@ public class ReceiveSlotReleaseService {
 	/** 차단 전이. 이미 ANSWERED이거나 다른 terminal 상태인 행은 손대지 않는다. */
 	@Transactional
 	public Optional<PostRecipient> block(long postRecipientId, Instant at) {
-		PostRecipient candidate = recipientRepository.findById(postRecipientId).orElseThrow(this::recipientNotFound);
-		if (!isBlockableSource(candidate.getStatus())) {
+		return block(recipientRepository.findById(postRecipientId).orElseThrow(this::recipientNotFound), at);
+	}
+
+	/**
+	 * 이미 조회한 PostRecipient로 차단 전이한다. blockAllPendingFor처럼 findBlockable로
+	 * 후보를 이미 읽어온 호출자가 같은 행을 postRecipientId로 다시 조회하지 않게 한다.
+	 */
+	@Transactional
+	public Optional<PostRecipient> block(PostRecipient candidate, Instant at) {
+		if (!candidate.isBlockable()) {
 			return Optional.empty();
 		}
 		PostRecipient blocked = candidate.block(at);
@@ -105,17 +112,28 @@ public class ReceiveSlotReleaseService {
 		return saved;
 	}
 
-	private static boolean isExpirableSource(PostRecipientStatus status) {
-		return status == PostRecipientStatus.AVAILABLE || status == PostRecipientStatus.DISCOVERED
-			|| status == PostRecipientStatus.OPENED;
-	}
-
-	private static boolean isBlockableSource(PostRecipientStatus status) {
-		return isExpirableSource(status) || status == PostRecipientStatus.SKIP_PENDING;
+	/**
+	 * blockerId 자신의 수신 항목 중 blockedSenderId가 보낸 질문글에 대한 미종결 항목을
+	 * 전부 차단 전이한다. SafetyService.block()의 진입점 — 호출자가 findBlockable과
+	 * 반복 호출을 직접 조립하지 않도록 후보 조회와 반복을 이 메서드가 소유한다.
+	 */
+	@Transactional
+	public int blockAllPendingFor(long blockerId, long blockedSenderId, Instant at) {
+		int releasedCount = 0;
+		for (PostRecipient candidate : findBlockable(blockerId, blockedSenderId)) {
+			if (block(candidate, at).isPresent()) {
+				releasedCount++;
+			}
+		}
+		return releasedCount;
 	}
 
 	private DirectionException recipientNotFound() {
 		return new DirectionException(
 			DirectionErrorCode.RECIPIENT_NOT_FOUND, "postRecipientId", "수신 항목을 찾을 수 없습니다");
+	}
+
+	private Instant confirmationDeadline(Instant at) {
+		return at.minusSeconds(skipConfirmationProperties.skipConfirmationGraceSeconds());
 	}
 }

@@ -5,7 +5,6 @@ import java.time.Instant;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.dnd.qello.direction.domain.PostRecipient;
 import com.dnd.qello.direction.service.ReceiveSlotReleaseService;
 import com.dnd.qello.safety.domain.ModerationReview;
 import com.dnd.qello.safety.domain.Report;
@@ -27,16 +26,14 @@ public class SafetyService {
 
 	/**
 	 * 차단 성립과 동시에, 차단한 사람 자신이 보유한 차단당한 발신자의 미종결 수신
-	 * 항목을 같은 트랜잭션에서 BLOCKED로 전이시켜 슬롯을 해제한다(#93). 이 목록을
-	 * 먼저 조회한 뒤 차단 행을 저장하는 순서는 중요하지 않다 — 둘 다 이 트랜잭션
-	 * 커밋 전까지는 서로 보이지 않는다.
+	 * 항목을 같은 트랜잭션에서 BLOCKED로 전이시켜 슬롯을 해제한다(#93). 후보 조회와
+	 * 반복 전이는 ReceiveSlotReleaseService.blockAllPendingFor가 소유한다 — 저장
+	 * 순서는 중요하지 않다. 둘 다 이 트랜잭션 커밋 전까지는 서로 보이지 않는다.
 	 */
 	@Transactional
 	public UserBlock block(long blockerId, long blockedId, Instant at) {
 		UserBlock saved = repository.block(UserBlock.create(blockerId, blockedId, at));
-		for (PostRecipient candidate : receiveSlotReleaseService.findBlockable(blockerId, blockedId)) {
-			receiveSlotReleaseService.block(candidate.getId(), at);
-		}
+		receiveSlotReleaseService.blockAllPendingFor(blockerId, blockedId, at);
 		return saved;
 	}
 
