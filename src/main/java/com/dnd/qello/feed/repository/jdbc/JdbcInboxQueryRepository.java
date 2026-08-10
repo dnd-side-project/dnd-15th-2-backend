@@ -74,12 +74,13 @@ public class JdbcInboxQueryRepository implements InboxQueryRepository {
 	}
 
 	@Override
-	public Optional<InboxDetail> findDetail(long recipientId, long postRecipientId) {
+	public Optional<InboxDetail> findDetail(long recipientId, long postRecipientId, Instant at) {
 		return jdbc.query(InboxQuerySql.SELECT_CARD + """
 			WHERE pr.id = :postRecipientId
 			  AND pr.recipient_id = :recipientId
-			  AND dp.deleted_at IS NULL
-			""", params(recipientId).addValue("postRecipientId", postRecipientId),
+			""" + InboxQuerySql.DETAIL_SCOPE_FILTER,
+			params(recipientId).addValue("postRecipientId", postRecipientId)
+				.addValue("at", Timestamp.from(at)),
 			rs -> rs.next()
 				? Optional.of(new InboxDetail(card(rs), FeedRowMappers.instant(rs, "opened_at"),
 					FeedRowMappers.instant(rs, "skip_requested_at")))

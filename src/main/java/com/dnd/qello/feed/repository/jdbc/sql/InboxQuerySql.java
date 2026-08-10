@@ -78,15 +78,17 @@ public final class InboxQuerySql {
 	 * 두 쿼리가 각자 WHERE절을 들면 한쪽만 고쳐질 때 "칩 count == 그 칩으로 필터한
 	 * 목록 건수" 불변식이 조용히 깨진다 — 그래서 이 조건을 한 상수로 공유한다.
 	 */
-	public static final String SCOPE_FILTER = """
-
-		  AND dp.status = 'ACTIVE'
-		  AND dp.deleted_at IS NULL
+	public static final String SCOPE_FILTER = FeedScopeSql.ACTIVE_POST_VISIBILITY + """
 		  AND dp.expires_at > :at
-		  AND NOT EXISTS (SELECT 1 FROM user_block ub
-		                  WHERE ub.blocker_id = :recipientId
-		                    AND ub.blocked_id = dp.sender_id
-		                    AND ub.released_at IS NULL)
+		""";
+
+	/**
+	 * 상세 조회에서만 사용하는 질문글·수신자 열람 스코프.
+	 * 목록의 만료 전 스코프를 그대로 재사용하지 않고, ANSWERED의 만료 후 열람 예외를
+	 * FeedScopeSql의 공통 상태·시간 정책으로 보존한다.
+	 */
+	public static final String DETAIL_SCOPE_FILTER = FeedScopeSql.ACTIVE_POST_VISIBILITY + """
+		  AND\s""" + FeedScopeSql.RECIPIENT_VIEW_ELIGIBILITY + """
 		""";
 
 	/**
