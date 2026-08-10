@@ -330,7 +330,7 @@ class ReceiveSlotReleaseIntegrationTest extends PostgisContainerIntegrationTestS
 		assertThat(activeCount(recipientId)).isZero();
 
 		var result = directionPostService.send(new DirectionPostService.SendCommand(senderId, questionId, octant.getId(), "N",
-			0, 500, REGION, "int012-new-post", "새 질문글", "NEAR", NOW, NOW.plusSeconds(3600)));
+			0, 500, REGION, "int012-new-post", "새 질문글", NOW, NOW.plusSeconds(3600)));
 
 		assertThat(result.recipients()).extracting(PostRecipient::getRecipientId).containsExactly(recipientId);
 		assertThat(activeCount(recipientId)).isEqualTo(1);

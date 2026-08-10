@@ -23,6 +23,7 @@ import com.dnd.qello.direction.repository.DirectionSchemeRepository;
 import com.dnd.qello.direction.repository.PostAudienceRepository;
 import com.dnd.qello.direction.repository.PostRecipientRepository;
 import com.dnd.qello.direction.repository.RecipientReceiveStateRepository;
+import com.dnd.qello.feed.config.DistanceBandPolicy;
 import com.dnd.qello.question.repository.ApprovedQuestionRepository;
 
 import lombok.RequiredArgsConstructor;
@@ -43,6 +44,7 @@ public class DirectionPostService {
 	private final PostRecipientRepository recipientRepository;
 	private final ApprovedQuestionRepository approvedQuestionRepository;
 	private final DirectionReceiveProperties receiveProperties;
+	private final DistanceBandPolicy distanceBandPolicy;
 
 	@Transactional(readOnly = true)
 	public List<DirectionCandidate> preview(PreviewCommand command) {
@@ -75,7 +77,8 @@ public class DirectionPostService {
 			command.minDistanceMeters(), command.maxDistanceMeters(), command.coarseRegionCode(), command.submittedAt());
 		List<PostRecipient> recipients = candidates(candidateCommand, sender, segment).stream()
 			.filter(candidate -> reserve(candidate.userId(), command.submittedAt()))
-			.map(candidate -> recipientRepository.save(PostRecipient.available(post.getId(), candidate.userId(), command.distanceBand(),
+			.map(candidate -> recipientRepository.save(PostRecipient.available(post.getId(), candidate.userId(),
+				distanceBandPolicy.forDistance(candidate.distanceMeters().longValue()),
 				candidate.bearingDegrees(), candidate.matchedRegionCode(), command.submittedAt(),
 				candidate.inboundBearingDegrees(), candidate.distanceMeters().longValue())))
 			.toList();
@@ -169,7 +172,7 @@ public class DirectionPostService {
 
 	public record SendCommand(Long senderId, Long approvedQuestionId, Long schemeId, String segmentKey,
 		long minDistanceMeters, long maxDistanceMeters, String coarseRegionCode, String idempotencyKey,
-		String bodyText, String distanceBand, Instant submittedAt, Instant expiresAt) {
+		String bodyText, Instant submittedAt, Instant expiresAt) {
 		public SendCommand {
 			if (senderId == null || senderId <= 0 || approvedQuestionId == null || approvedQuestionId <= 0 || schemeId == null || schemeId <= 0) {
 				throw new DirectionException(DirectionErrorCode.INVALID_ID, null, "ID가 유효하지 않습니다");
@@ -178,7 +181,7 @@ public class DirectionPostService {
 				throw new DirectionException(
 					DirectionErrorCode.INVALID_DISTANCE_RANGE, "maxDistanceMeters", "거리 범위가 유효하지 않습니다");
 			}
-			if (segmentKey == null || segmentKey.isBlank() || coarseRegionCode == null || coarseRegionCode.isBlank() || idempotencyKey == null || idempotencyKey.isBlank() || distanceBand == null || distanceBand.isBlank()) {
+			if (segmentKey == null || segmentKey.isBlank() || coarseRegionCode == null || coarseRegionCode.isBlank() || idempotencyKey == null || idempotencyKey.isBlank()) {
 				throw new DirectionException(
 					DirectionErrorCode.REQUIRED_VALUE_MISSING, null, "필수 command 값이 없습니다");
 			}

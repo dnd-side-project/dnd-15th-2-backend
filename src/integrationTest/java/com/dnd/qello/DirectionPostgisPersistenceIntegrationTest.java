@@ -135,9 +135,9 @@ class DirectionPostgisPersistenceIntegrationTest extends PostgisContainerIntegra
 			""", recipientId, Timestamp.from(AT.minusSeconds(3600)));
 
 		var result = postService.send(new DirectionPostService.SendCommand(senderId, questionId, schemeId, "S0",
-			0, 500, REGION, "idempotency-39-1", "테스트 방향 글", "NEAR", AT, AT.plusSeconds(3600)));
+			0, 500, REGION, "idempotency-39-1", "테스트 방향 글", AT, AT.plusSeconds(3600)));
 		var retried = postService.send(new DirectionPostService.SendCommand(senderId, questionId, schemeId, "S0",
-			0, 500, REGION, "idempotency-39-1", "테스트 방향 글", "NEAR", AT, AT.plusSeconds(3600)));
+			0, 500, REGION, "idempotency-39-1", "테스트 방향 글", AT, AT.plusSeconds(3600)));
 
 		assertThat(result.post().getStatus()).isEqualTo(com.dnd.qello.direction.domain.DirectionPostStatus.MATCHING);
 		assertThat(result.audience().getOriginLatitude()).isEqualByComparingTo("37.5000");

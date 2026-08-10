@@ -95,7 +95,8 @@ public class JdbcInboxQueryRepository implements InboxQueryRepository {
 
 	private MapSqlParameterSource params(long recipientId) {
 		return new MapSqlParameterSource().addValue("recipientId", recipientId)
-			.addValue("nearFloor", feedDistanceProperties.nearDistanceFloorM());
+			.addValue("nearFloor", feedDistanceProperties.nearDistanceFloorM())
+			.addValue("nearDistanceLabel", feedDistanceProperties.nearDistanceLabel());
 	}
 
 	private static InboxCard card(ResultSet rs) throws SQLException {
