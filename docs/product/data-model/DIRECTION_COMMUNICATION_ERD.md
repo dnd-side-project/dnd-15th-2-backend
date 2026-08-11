@@ -175,6 +175,17 @@
 
 **따라서 불변식 13에 조건을 덧붙여야 한다**: *외부에 정확 거리를 내보내는 것은 방향 구간이 45° 이상이고 근거리 하한이 적용될 때만 허용한다.* 10km 미만은 `10km 이내`만 노출하고, 10km 이상은 현재 보는 사람의 질문 원점까지 정확 거리를 노출한다. `distance_band` 컬럼은 저장 제약과 근거리 표시에 계속 사용한다.
 
+### 2026-08-11 Issue #115 비동기 매칭 계약
+
+Issue #115는 방향글 제출과 수신자 매칭 사이의 경계를 transactional outbox로 고정한다. 별도 `matching_job` 테이블은 만들지 않고 `outbox_event`의 `aggregate_type = 'DIRECTION_POST'`, `event_type = 'RECIPIENT_MATCH_REQUESTED'` 행 자체를 매칭 작업으로 취급한다.
+
+- `direction_post.request_fingerprint`는 정규화된 사용자 의도 입력의 `v1:SHA-256` 결과를 최대 80자로 저장한다. 기존 행은 nullable로 유지하며, 첫 idempotency 재시도에서 `direction_post`와 `post_audience`로 복원할 수 있는 경우에만 lazy backfill한다. 복원할 수 없는 legacy 행은 기존 결과를 반환하고 reconciliation 대상으로 남긴다.
+- fingerprint 입력은 `approvedQuestionId`, `schemeId`, `segmentKey`, `minDistanceMeters`, `maxDistanceMeters`, `coarseRegionCode`, `bodyText`다. sender, idempotency key, 서버 소유 시각(`submittedAt`, `expiresAt`)은 입력에 포함하지 않는다. 문자열은 NFC 정규화 후 바깥 Unicode whitespace만 trim하고, body 내부 whitespace와 식별자 대소문자는 보존한다.
+- matching event의 `match_round`는 해당 이벤트에만 필수이며 초기 제출은 `1`이다. retry/reclaim은 round를 증가시키지 않는다. `(aggregate_id, match_round, event_type)` partial unique index가 같은 post·round·event의 중복 작업을 막는다. `dedup_key`는 `direction-match:{postId}:{matchRound}:{eventType}`로 서버가 파생한다.
+- `outbox_event`의 `lease_owner`, `lease_expires_at`, `lease_generation`은 한 번의 claim/reclaim에서 함께 갱신한다. `lease_generation`은 성공마다 증가하는 fencing token이다. 완료·실패·dead 갱신은 id, `PROCESSING`, owner, generation, 아직 만료되지 않은 lease를 모두 조건으로 사용해 stale worker의 갱신을 거절한다.
+- 매칭 payload에는 `postId`, `matchRound`, `eventType`, `requestFingerprint`와 재조회에 필요한 coarse 식별자만 저장한다. `post_audience.origin_position`, `active_user_presence.position`과 위도·경도, geography WKB/GeoJSON처럼 정확 좌표를 복원할 수 있는 값은 payload에 넣지 않는다.
+- lease duration과 retry backoff 숫자는 이 데이터 모델에 고정하지 않고 application configuration의 책임으로 남긴다.
+
 ### 2026-08-08 문서 정정
 
 두 가지를 뒤늦게 발견해 DBML·DDL·이 문서 세 파일 모두 고쳤다.
@@ -1198,20 +1209,25 @@ question_assignment_cycle INSERT
 
 ```text
 approved_question.status = 'ACTIVE' 확인
-→ direction_post 생성
+→ 정규화된 발송 입력으로 request_fingerprint 생성
+→ direction_post 생성(request_fingerprint 포함)
 → post_audience 스냅샷 생성
-→ PostMatchRequested outbox_event
+→ RECIPIENT_MATCH_REQUESTED outbox_event(match_round = 1)
 → COMMIT
 ```
 
 - 잠금: 새 행 외 별도 잠금 없음.
 - 멱등 기준: `UNIQUE(sender_id, idempotency_key)`.
+- fingerprint는 동일 `(sender_id, idempotency_key)` 재시도에서 기존 결과와 비교한다. 동일하면 기존 결과를 반환하고 새 outbox를 만들지 않으며, 다르면 `IDEMPOTENCY_KEY_REUSED` 충돌로 거절한다. fingerprint 계산에서 sender, idempotency key와 서버 소유 시각은 제외한다.
+- matching event의 `dedup_key`는 `direction-match:{postId}:{matchRound}:{eventType}`로 서버가 파생한다. 매칭 payload에는 정확 좌표를 복사하지 않는다.
 - 외부 안전 검사, 매칭, 푸시를 요청 트랜잭션 안에서 호출하지 않는다.
 
 ### T5. 수신자 확정
 
 ```text
-PostMatchRequested 작업 FOR UPDATE SKIP LOCKED
+RECIPIENT_MATCH_REQUESTED 작업 claim
+→ lease_owner·lease_expires_at·lease_generation을 원자적으로 갱신
+→ lease가 유효한 PROCESSING 행과 terminal 행은 제외
 → 현재 presence·차단·계정 상태로 후보 계산
 → active_unhandled_count < 5 후보만 남김
 → recent_received_count, last_received_at 기준 공정 정렬
@@ -1223,6 +1239,9 @@ PostMatchRequested 작업 FOR UPDATE SKIP LOCKED
 ```
 
 - 잠금: Outbox 작업 행, 대상 `direction_post` 한 행, 슬롯 예약에 성공한 `recipient_receive_state` 행.
+- claim/reclaim은 due `PENDING`/`FAILED`와 만료된 `PROCESSING`을 대상으로 하며, retry/reclaim에서는 `match_round`를 증가시키지 않는다. claim 성공 때마다 `lease_generation`을 증가시킨다.
+- 완료·실패·dead 전이는 `id + status = PROCESSING + lease_owner + lease_generation + lease_expires_at > now` 조건을 모두 사용한다. stale worker의 갱신이 0행이면 새 소유자의 결과를 덮어쓰지 않고 작업을 다시 읽는다.
+- lease duration과 retry backoff의 숫자값은 application configuration으로 주입하며 이 문서와 DB 스키마에는 고정하지 않는다.
 - 잠그지 않는 대상: `active_user_presence` 전체와 `user_account` 전체.
 - 재실행 안전성: `UNIQUE(post_id, recipient_id)`, `capacity_released_at`, Outbox `dedup_key`.
 - `post_recipient` 유일 제약 충돌로 삽입되지 않으면 같은 트랜잭션에서 해당 슬롯 예약도 되돌린다.
@@ -1374,6 +1393,10 @@ user_block upsert
 20. `ANSWERED`, `SKIPPED`, `EXPIRED`, `BLOCKED`는 `capacity_released_at`을 조건부 설정해 슬롯을 정확히 한 번 해제한다. 이 네 상태와 `capacity_released_at`이 채워진 것은 동치이며 `ct_post_recipient_capacity_release`가 강제한다. 따라서 `active_unhandled_count`는 언제든 `count(post_recipient WHERE capacity_released_at IS NULL)`로 재계산할 수 있다.
 21. 방향·거리 후보 전체를 `post_recipient`로 일괄 삽입하지 않고 최근 수신이 적은 사용자부터 설정된 최대 인원(초기값 10명)을 선정한다.
 22. 푸시 전달·묶음·억제 결과는 `post_recipient` 수신 자격과 활성 슬롯 점유를 변경하지 않는다.
+23. 같은 `(sender_id, idempotency_key)`의 동일 fingerprint 재시도는 기존 결과를 반환하고 post·matching event를 증가시키지 않는다. 다른 fingerprint는 `IDEMPOTENCY_KEY_REUSED`로 거절한다.
+24. `RECIPIENT_MATCH_REQUESTED`는 별도 matching job row 없이 outbox row 자체가 작업이며, 같은 `(aggregate_id, match_round, event_type)`는 partial unique index로 한 번만 생성된다. retry/reclaim은 round를 증가시키지 않는다.
+25. `PROCESSING` outbox row는 `lease_owner`와 `lease_expires_at`을 함께 가지며, 그 외 상태에서는 둘 다 NULL이다. `lease_generation`은 claim/reclaim마다 증가하는 fencing token이다.
+26. outbox payload에는 정확 좌표 또는 좌표를 복원할 수 있는 값이 없다. 매칭에는 post·round·event·fingerprint와 coarse 식별자만 전달하고 정확 좌표는 worker가 보호된 저장소에서 재조회한다.
 
 ## 10. 정책 미정이 스키마에 미치는 영향
 
