@@ -87,7 +87,7 @@ class AccountPersistenceIntegrationTest extends PostgisContainerIntegrationTestS
 		Integer successfulMigrations = jdbcTemplate.queryForObject("""
 			SELECT count(*)
 			FROM flyway_schema_history
-			WHERE version IN ('1', '2', '3', '4', '5', '6', '7', '8', '9', '10') AND success
+			WHERE version IN ('1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11') AND success
 			""", Integer.class);
 		Integer applicationTableCount = jdbcTemplate.queryForObject("""
 			SELECT count(*)
@@ -97,11 +97,12 @@ class AccountPersistenceIntegrationTest extends PostgisContainerIntegrationTestS
 			  AND table_name NOT IN ('flyway_schema_history', 'spatial_ref_sys')
 			""", Integer.class);
 
-		assertThat(successfulMigrations).isEqualTo(10);
+		assertThat(successfulMigrations).isEqualTo(11);
 		// V1~V4의 28개 + operator_credential + spring_session + spring_session_attributes + device_credential(V7).
 		// V8·V9는 기존 테이블만 ALTER한다.
 		// + filter_release/filter_job/filter_job_status_history/filter_decision/manual_review_case/appeal_case(V10)
-		assertThat(applicationTableCount).isEqualTo(38);
+		// + release_promotion_history(V11, filter_release는 V11에서 컬럼만 추가)
+		assertThat(applicationTableCount).isEqualTo(39);
 	}
 
 	@Test

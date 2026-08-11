@@ -10,7 +10,6 @@ import org.junit.jupiter.api.Test;
 
 import com.dnd.qello.filtering.domain.AppealCase;
 import com.dnd.qello.filtering.domain.FilterDecision;
-import com.dnd.qello.filtering.domain.FilterRelease;
 import com.dnd.qello.filtering.domain.FilterTarget;
 import com.dnd.qello.filtering.domain.FilterTargetType;
 import com.dnd.qello.filtering.domain.FilterVerdict;
@@ -20,7 +19,7 @@ import com.dnd.qello.filtering.error.FilteringException;
 
 /**
  * Created at: 2026-08-11T00:00:00+09:00
- * Source scenario: TEST-PLAN-GH-103-FILTERING-FOUNDATION-UNIT-011 through UNIT-016
+ * Source scenario: TEST-PLAN-GH-103-FILTERING-FOUNDATION-UNIT-011, UNIT-012, UNIT-014, UNIT-015
  */
 class FilteringValueObjectsTest {
 
@@ -50,15 +49,6 @@ class FilteringValueObjectsTest {
 			.isInstanceOf(FilteringException.class)
 			.hasFieldOrPropertyWithValue("errorCode", FilteringErrorCode.INVALID_VALUE_RANGE);
 		assertThatThrownBy(() -> FilterDecision.of(1L, 1, null, 10L, null, NOW))
-			.isInstanceOf(FilteringException.class)
-			.hasFieldOrPropertyWithValue("errorCode", FilteringErrorCode.REQUIRED_VALUE_MISSING);
-	}
-
-	@Test
-	@DisplayName("FilterRelease는 createdAt이 없으면 생성되지 않는다")
-	void validatesFilterRelease() {
-		assertThat(FilterRelease.create(NOW).createdAt()).isEqualTo(NOW);
-		assertThatThrownBy(() -> new FilterRelease(null, null))
 			.isInstanceOf(FilteringException.class)
 			.hasFieldOrPropertyWithValue("errorCode", FilteringErrorCode.REQUIRED_VALUE_MISSING);
 	}

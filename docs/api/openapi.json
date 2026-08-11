@@ -94,6 +94,47 @@
         },
         "type" : "object"
       },
+      "ApiResponseFilterReleaseResponse" : {
+        "properties" : {
+          "data" : {
+            "$ref" : "#/components/schemas/FilterReleaseResponse"
+          },
+          "status" : {
+            "enum" : [
+              "success",
+              "error"
+            ],
+            "type" : "string"
+          },
+          "timestamp" : {
+            "format" : "date-time",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "ApiResponseListFilterReleaseResponse" : {
+        "properties" : {
+          "data" : {
+            "items" : {
+              "$ref" : "#/components/schemas/FilterReleaseResponse"
+            },
+            "type" : "array"
+          },
+          "status" : {
+            "enum" : [
+              "success",
+              "error"
+            ],
+            "type" : "string"
+          },
+          "timestamp" : {
+            "format" : "date-time",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
       "ApiResponseOperatorSessionResponse" : {
         "properties" : {
           "data" : {
@@ -128,6 +169,33 @@
             "type" : "string"
           }
         },
+        "type" : "object"
+      },
+      "CreateFilterReleaseRequest" : {
+        "properties" : {
+          "categoryMappingRef" : {
+            "minLength" : 1,
+            "type" : "string"
+          },
+          "localRulesetRef" : {
+            "minLength" : 1,
+            "type" : "string"
+          },
+          "modelSnapshot" : {
+            "minLength" : 1,
+            "type" : "string"
+          },
+          "normalizationRef" : {
+            "minLength" : 1,
+            "type" : "string"
+          }
+        },
+        "required" : [
+          "categoryMappingRef",
+          "localRulesetRef",
+          "modelSnapshot",
+          "normalizationRef"
+        ],
         "type" : "object"
       },
       "CsrfTokenResponse" : {
@@ -235,6 +303,46 @@
         },
         "type" : "object"
       },
+      "FilterReleaseResponse" : {
+        "properties" : {
+          "categoryMappingRef" : {
+            "type" : "string"
+          },
+          "createdAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "id" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "localRulesetRef" : {
+            "type" : "string"
+          },
+          "modelSnapshot" : {
+            "type" : "string"
+          },
+          "normalizationRef" : {
+            "type" : "string"
+          },
+          "promotedAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "status" : {
+            "enum" : [
+              "CANDIDATE",
+              "OFFLINE_EVALUATED",
+              "SHADOW",
+              "CANARY",
+              "PROMOTED",
+              "ROLLED_BACK"
+            ],
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
       "OperatorLoginRequest" : {
         "description" : "운영자 로그인 요청",
         "properties" : {
@@ -328,6 +436,515 @@
         "summary" : "CSRF 토큰 발급",
         "tags" : [
           "백오피스 인증"
+        ]
+      }
+    },
+    "/admin/filtering/releases" : {
+      "get" : {
+        "operationId" : "findAll",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiResponseListFilterReleaseResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          },
+          "400" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "요청 값이 올바르지 않습니다. 오류 코드는 docs/error-codes.md를 따른다."
+          },
+          "500" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "서버 내부 오류가 발생했습니다."
+          }
+        },
+        "security" : [
+          {
+            "operatorSession" : [ ]
+          }
+        ],
+        "summary" : "release 목록 조회",
+        "tags" : [
+          "필터링 release registry"
+        ]
+      },
+      "post" : {
+        "description" : "정규화 규칙·로컬 사전·category mapping·model snapshot 참조를 묶어 새 candidate release를 만든다.\n\n이 시점에는 사용자 상태나 판정에 아무 영향을 주지 않는다. 승격 전까지는 비권위다.",
+        "operationId" : "create",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/CreateFilterReleaseRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "201" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiResponseFilterReleaseResponse"
+                }
+              }
+            },
+            "description" : "candidate release가 생성됐습니다."
+          },
+          "400" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "참조 값이 비어 있거나 \"latest\" alias입니다. (FLT-VAL-001, FLT-VAL-004)"
+          },
+          "500" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "서버 내부 오류가 발생했습니다."
+          }
+        },
+        "security" : [
+          {
+            "operatorSession" : [ ]
+          }
+        ],
+        "summary" : "release candidate 생성",
+        "tags" : [
+          "필터링 release registry"
+        ]
+      }
+    },
+    "/admin/filtering/releases/{releaseId}" : {
+      "get" : {
+        "operationId" : "find",
+        "parameters" : [
+          {
+            "description" : "release id",
+            "in" : "path",
+            "name" : "releaseId",
+            "required" : true,
+            "schema" : {
+              "format" : "int64",
+              "type" : "integer"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiResponseFilterReleaseResponse"
+                }
+              }
+            },
+            "description" : "조회에 성공했습니다."
+          },
+          "400" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "요청 값이 올바르지 않습니다. 오류 코드는 docs/error-codes.md를 따른다."
+          },
+          "404" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "release를 찾을 수 없습니다. (FLT-DOM-005)"
+          },
+          "500" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "서버 내부 오류가 발생했습니다."
+          }
+        },
+        "security" : [
+          {
+            "operatorSession" : [ ]
+          }
+        ],
+        "summary" : "release 단건 조회",
+        "tags" : [
+          "필터링 release registry"
+        ]
+      }
+    },
+    "/admin/filtering/releases/{releaseId}/canary" : {
+      "post" : {
+        "description" : "비권위 canary 단계로 전이한다. 사용자 상태와 닉네임 동기 용량에 영향을 주지 않는다(INV-REL-007).",
+        "operationId" : "designateCanary",
+        "parameters" : [
+          {
+            "in" : "path",
+            "name" : "releaseId",
+            "required" : true,
+            "schema" : {
+              "format" : "int64",
+              "type" : "integer"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiResponseFilterReleaseResponse"
+                }
+              }
+            },
+            "description" : "CANARY로 전이했습니다."
+          },
+          "400" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "요청 값이 올바르지 않습니다. 오류 코드는 docs/error-codes.md를 따른다."
+          },
+          "409" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "SHADOW 상태가 아니어서 전이할 수 없습니다. (FLT-DOM-004)"
+          },
+          "500" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "서버 내부 오류가 발생했습니다."
+          }
+        },
+        "security" : [
+          {
+            "operatorSession" : [ ]
+          }
+        ],
+        "summary" : "canary 지정",
+        "tags" : [
+          "필터링 release registry"
+        ]
+      }
+    },
+    "/admin/filtering/releases/{releaseId}/offline-evaluation" : {
+      "post" : {
+        "description" : "합격 기준 판단은 이 시스템 밖에서 이뤄진다. 이 endpoint는 그 결과를 등록만 한다.",
+        "operationId" : "markOfflineEvaluated",
+        "parameters" : [
+          {
+            "in" : "path",
+            "name" : "releaseId",
+            "required" : true,
+            "schema" : {
+              "format" : "int64",
+              "type" : "integer"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiResponseFilterReleaseResponse"
+                }
+              }
+            },
+            "description" : "OFFLINE_EVALUATED로 전이했습니다."
+          },
+          "400" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "요청 값이 올바르지 않습니다. 오류 코드는 docs/error-codes.md를 따른다."
+          },
+          "409" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "CANDIDATE 상태가 아니어서 전이할 수 없습니다. (FLT-DOM-004)"
+          },
+          "500" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "서버 내부 오류가 발생했습니다."
+          }
+        },
+        "security" : [
+          {
+            "operatorSession" : [ ]
+          }
+        ],
+        "summary" : "offline evaluation 완료 처리",
+        "tags" : [
+          "필터링 release registry"
+        ]
+      }
+    },
+    "/admin/filtering/releases/{releaseId}/promote" : {
+      "post" : {
+        "description" : "CANARY를 통과한 candidate를 명시적으로 승격한다. 기존에 PROMOTED인 release가 있으면\n이 요청과 같은 트랜잭션에서 ROLLED_BACK으로 내린다. 이 endpoint를 호출하지 않으면\n어떤 release도 자동으로 승격되지 않는다(INV-REL-001, INV-REL-008).",
+        "operationId" : "promote",
+        "parameters" : [
+          {
+            "in" : "path",
+            "name" : "releaseId",
+            "required" : true,
+            "schema" : {
+              "format" : "int64",
+              "type" : "integer"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiResponseFilterReleaseResponse"
+                }
+              }
+            },
+            "description" : "PROMOTED로 전이했습니다."
+          },
+          "400" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "요청 값이 올바르지 않습니다. 오류 코드는 docs/error-codes.md를 따른다."
+          },
+          "409" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "CANARY 상태가 아니어서 승격할 수 없습니다. (FLT-DOM-004)"
+          },
+          "500" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "서버 내부 오류가 발생했습니다."
+          }
+        },
+        "security" : [
+          {
+            "operatorSession" : [ ]
+          }
+        ],
+        "summary" : "release 승격",
+        "tags" : [
+          "필터링 release registry"
+        ]
+      }
+    },
+    "/admin/filtering/releases/{releaseId}/rollback" : {
+      "post" : {
+        "description" : "이전에 PROMOTED였다가 ROLLED_BACK으로 내려간 release를 다시 승격한다.",
+        "operationId" : "rollback",
+        "parameters" : [
+          {
+            "in" : "path",
+            "name" : "releaseId",
+            "required" : true,
+            "schema" : {
+              "format" : "int64",
+              "type" : "integer"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiResponseFilterReleaseResponse"
+                }
+              }
+            },
+            "description" : "다시 PROMOTED로 전이했습니다."
+          },
+          "400" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "요청 값이 올바르지 않습니다. 오류 코드는 docs/error-codes.md를 따른다."
+          },
+          "409" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "ROLLED_BACK 상태가 아니어서 rollback 대상이 될 수 없습니다. (FLT-DOM-004)"
+          },
+          "500" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "서버 내부 오류가 발생했습니다."
+          }
+        },
+        "security" : [
+          {
+            "operatorSession" : [ ]
+          }
+        ],
+        "summary" : "release rollback",
+        "tags" : [
+          "필터링 release registry"
+        ]
+      }
+    },
+    "/admin/filtering/releases/{releaseId}/shadow" : {
+      "post" : {
+        "description" : "비권위 shadow 단계로 전이한다. 사용자 상태와 닉네임 동기 용량에 영향을 주지 않는다(INV-REL-007).",
+        "operationId" : "designateShadow",
+        "parameters" : [
+          {
+            "in" : "path",
+            "name" : "releaseId",
+            "required" : true,
+            "schema" : {
+              "format" : "int64",
+              "type" : "integer"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiResponseFilterReleaseResponse"
+                }
+              }
+            },
+            "description" : "SHADOW로 전이했습니다."
+          },
+          "400" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "요청 값이 올바르지 않습니다. 오류 코드는 docs/error-codes.md를 따른다."
+          },
+          "409" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "OFFLINE_EVALUATED 상태가 아니어서 전이할 수 없습니다. (FLT-DOM-004)"
+          },
+          "500" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "서버 내부 오류가 발생했습니다."
+          }
+        },
+        "security" : [
+          {
+            "operatorSession" : [ ]
+          }
+        ],
+        "summary" : "shadow 지정",
+        "tags" : [
+          "필터링 release registry"
         ]
       }
     },
@@ -625,6 +1242,10 @@
     {
       "description" : "앱 기기 등록과 액세스 토큰 재발급",
       "name" : "앱 기기 인증"
+    },
+    {
+      "description" : "moderation release candidate 생성, 평가 단계 전환, 승격과 rollback",
+      "name" : "필터링 release registry"
     },
     {
       "description" : "운영자 세션 로그인과 로그아웃",

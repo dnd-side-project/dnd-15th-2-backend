@@ -29,7 +29,19 @@ public enum FilteringErrorCode implements ErrorCode {
 	DUPLICATE_CASE(HttpStatus.CONFLICT, "FLT-INFRA-001", ErrorCategory.INFRA, "이미 존재하는 case입니다."),
 
 	// 같은 멱등키로 이미 등록된 job 존재. DB 유일성 제약에서 감지
-	DUPLICATED_JOB(HttpStatus.CONFLICT, "FLT-INFRA-002", ErrorCategory.INFRA, "이미 접수된 job입니다.");
+	DUPLICATED_JOB(HttpStatus.CONFLICT, "FLT-INFRA-002", ErrorCategory.INFRA, "이미 접수된 job입니다."),
+
+	// registry 참조 문자열(normalizationRef 등)의 공백 또는 허용 길이 초과
+	INVALID_TEXT(HttpStatus.BAD_REQUEST, "FLT-VAL-003", ErrorCategory.VAL, "필터링 문자열 값이 올바르지 않습니다."),
+
+	// registry 참조 값으로 "latest" alias를 쓰려는 시도(INV-REL-001)
+	LATEST_ALIAS_NOT_ALLOWED(HttpStatus.BAD_REQUEST, "FLT-VAL-004", ErrorCategory.VAL, "\"latest\" alias는 사용할 수 없습니다."),
+
+	// 현재 release 상태에서 허용되지 않는 전이 시도. 재시도로 해결 불가
+	INVALID_RELEASE_STATUS(HttpStatus.CONFLICT, "FLT-DOM-004", ErrorCategory.DOM, "현재 release 상태로는 요청을 처리할 수 없습니다."),
+
+	// 요청한 release를 찾을 수 없음
+	RELEASE_NOT_FOUND(HttpStatus.NOT_FOUND, "FLT-DOM-005", ErrorCategory.DOM, "release를 찾을 수 없습니다.");
 
 	private final HttpStatus httpStatus;
 	private final String code;
