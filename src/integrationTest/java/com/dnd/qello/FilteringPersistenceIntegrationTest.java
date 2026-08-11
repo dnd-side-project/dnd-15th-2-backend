@@ -62,7 +62,8 @@ class FilteringPersistenceIntegrationTest extends PostgisContainerIntegrationTes
 		jdbc.update("DELETE FROM filter_job_status_history");
 		jdbc.update("DELETE FROM filter_job");
 		jdbc.update("DELETE FROM filter_release");
-		releaseId = filterReleaseRepository.save(FilterRelease.create(NOW)).id();
+		releaseId = filterReleaseRepository.save(
+			FilterRelease.candidate("norm-v1", "ruleset-v1", "category-map-v1", "text-moderation-2026-08", NOW)).id();
 	}
 
 	@Test

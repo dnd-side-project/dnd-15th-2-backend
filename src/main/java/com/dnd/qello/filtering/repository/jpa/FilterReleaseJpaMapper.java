@@ -7,6 +7,8 @@ final class FilterReleaseJpaMapper {
 	private FilterReleaseJpaMapper() { }
 
 	static FilterRelease toDomain(FilterReleaseJpaEntity entity) {
-		return FilterRelease.restore(entity.getId(), entity.getCreatedAt());
+		return FilterRelease.restore(entity.getId(), entity.getNormalizationRef(), entity.getLocalRulesetRef(),
+			entity.getCategoryMappingRef(), entity.getModelSnapshot(), entity.getStatus(), entity.getPromotedAt(),
+			entity.getCreatedAt());
 	}
 }
