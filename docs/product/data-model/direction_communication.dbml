@@ -18,7 +18,7 @@ Project direction_connected_communication {
       - partial index / partial unique index: 각 인덱스의 Note
       - 인덱스 컬럼 DESC 정렬: 각 인덱스의 Note
     - `report`, `push_device`와 `device_credential`의 일부 `unique` 인덱스는 다이어그램상 무조건 unique로 보이지만 실제로는 partial unique다. 각 인덱스 Note의 "주의" 항목을 확인해야 한다.
-    - P02 거리, P03 수신자 수, P04 만료 기간, P10 연령 수집, P15 질문 배정량·주기는 정책 미정이다.
+    - P02 거리, P04 만료 기간, P10 연령 수집, P15 질문 배정량·주기는 정책 미정이다. P03 발송별 최대 수신자는 MVP 기본값 10명으로 확정하고 애플리케이션 설정으로 조정한다.
     - 2026-08-07 기준 남은 미결: 신고 누적 자동 숨김 기준, 수정 횟수 상한의 실제 초기값(3으로 시작).
     - Spring Session이 쓰는 `spring_session` / `spring_session_attributes`(V6)는 프레임워크가 소유하는 테이블이라 이 문서에 넣지 않는다. 실제 DB에는 존재하므로 `docs/product/data-model/schema-manifest.md` §6에서 센다.
 

@@ -4,7 +4,7 @@ package com.dnd.qello.direction.repository.jdbc.sql;
  * JdbcActiveUserPresenceRepository가 쓰는 SQL 상수.
  * UPSERT는 사용자별 최신 위치를 user_id 기준 ON CONFLICT로 갱신하고,
  * FIND_CANDIDATES_SQL은 PostGIS로 원점 기준 반경·방위 섹터 안에 있고 수신
- * 가능 상태인 사용자를 거리순으로 조회한다.
+ * 가능 상태인 사용자를 최근 수신 이력·거리 순으로 공정하게 조회한다.
  */
 public final class ActiveUserPresenceSql {
 
@@ -39,20 +39,34 @@ public final class ActiveUserPresenceSql {
 			SELECT p.user_id, p.coarse_region_code,
 			       ST_Distance(p.position, origin.point) AS distance_m,
 			       DEGREES(ST_Azimuth(origin.point, p.position)) AS bearing_deg,
-			       DEGREES(ST_Azimuth(p.position, origin.point)) AS inbound_bearing_deg
-			FROM active_user_presence p CROSS JOIN origin
+			       DEGREES(ST_Azimuth(p.position, origin.point)) AS inbound_bearing_deg,
+			       COALESCE(rrs.recent_received_count, 0) AS recent_received_count,
+			       rrs.last_received_at
+			FROM active_user_presence p
+			JOIN user_account ua ON ua.id = p.user_id
+			LEFT JOIN recipient_receive_state rrs ON rrs.user_id = p.user_id
+			CROSS JOIN origin
 			WHERE p.user_id <> :excludedUserId
+			  AND ua.status = 'ACTIVE'
 			  AND p.position IS NOT NULL
 			  AND p.receive_allowed = TRUE
 			  AND p.expires_at > :at
 			  AND (:regionCode IS NULL OR p.coarse_region_code = :regionCode)
 			  AND ST_DWithin(p.position, origin.point, :maxDistanceMeters)
+			  AND NOT EXISTS (SELECT 1 FROM user_block ub
+			                  WHERE ub.blocker_id = :excludedUserId
+			                    AND ub.blocked_id = p.user_id
+			                    AND ub.released_at IS NULL)
+			  AND NOT EXISTS (SELECT 1 FROM user_block ub
+			                  WHERE ub.blocker_id = p.user_id
+			                    AND ub.blocked_id = :excludedUserId
+			                    AND ub.released_at IS NULL)
 		)
 		SELECT user_id, distance_m, bearing_deg, inbound_bearing_deg, coarse_region_code
 		FROM candidates
 		WHERE distance_m >= :minDistanceMeters
 		  AND ((:sectorStartDegrees < :sectorEndDegrees AND bearing_deg >= :sectorStartDegrees AND bearing_deg < :sectorEndDegrees)
 		    OR (:sectorStartDegrees >= :sectorEndDegrees AND (bearing_deg >= :sectorStartDegrees OR bearing_deg < :sectorEndDegrees)))
-		ORDER BY distance_m, user_id
+		ORDER BY recent_received_count, last_received_at NULLS FIRST, distance_m, user_id
 		""";
 }

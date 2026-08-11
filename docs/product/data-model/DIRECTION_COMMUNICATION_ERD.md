@@ -1226,7 +1226,7 @@ PostMatchRequested 작업 FOR UPDATE SKIP LOCKED
 - 잠그지 않는 대상: `active_user_presence` 전체와 `user_account` 전체.
 - 재실행 안전성: `UNIQUE(post_id, recipient_id)`, `capacity_released_at`, Outbox `dedup_key`.
 - `post_recipient` 유일 제약 충돌로 삽입되지 않으면 같은 트랜잭션에서 해당 슬롯 예약도 되돌린다.
-- 최초·최대 수신자 수는 P03 미정값이지만 후보 전체 일괄 삽입 금지와 활성 미처리 5개 상한은 반드시 적용한다.
+- 발송별 최대 수신자는 MVP 설정 기본값 10명으로 시작하고, 공정성 순으로 예약 성공자를 최대값까지 확정한다. 후보 전체 일괄 삽입 금지와 활성 미처리 5개 상한은 반드시 적용한다.
 
 ### T6. 답변 제출과 만료 경합
 
@@ -1372,7 +1372,7 @@ user_block upsert
 19-1. **공감만 남겨도 슬롯은 해제되지 않는다.** 답변을 한 것이 아니기 때문이다.
 19-2. **`SKIP_PENDING`은 슬롯을 해제하지 않는다.** 되돌릴 수 있는 동안 자리를 비우면 그 사이 새 질문글이 들어와 상한을 넘는다. `SKIP_PENDING`이 종결 상태 목록에 없다는 사실이 이 성질을 만든다.
 20. `ANSWERED`, `SKIPPED`, `EXPIRED`, `BLOCKED`는 `capacity_released_at`을 조건부 설정해 슬롯을 정확히 한 번 해제한다. 이 네 상태와 `capacity_released_at`이 채워진 것은 동치이며 `ct_post_recipient_capacity_release`가 강제한다. 따라서 `active_unhandled_count`는 언제든 `count(post_recipient WHERE capacity_released_at IS NULL)`로 재계산할 수 있다.
-21. 방향·거리 후보 전체를 `post_recipient`로 일괄 삽입하지 않고 최근 수신이 적은 사용자부터 제한된 인원을 선정한다.
+21. 방향·거리 후보 전체를 `post_recipient`로 일괄 삽입하지 않고 최근 수신이 적은 사용자부터 설정된 최대 인원(초기값 10명)을 선정한다.
 22. 푸시 전달·묶음·억제 결과는 `post_recipient` 수신 자격과 활성 슬롯 점유를 변경하지 않는다.
 
 ## 10. 정책 미정이 스키마에 미치는 영향
@@ -1380,7 +1380,7 @@ user_block upsert
 | 정책 | 현재 확정 범위 | ERD 처리 | 결정 후 변경 가능성 |
 |---|---|---|---|
 | P02 거리 | 8×45° 및 인접 구간 미확장만 확정 | `min_distance_m`, `max_distance_m` 스냅샷 필드만 둠 | 기본값·확장 단계 설정 필요 |
-| P03 수신자 수 | 전체 후보 일괄 전달 금지·제한 선정 확정 | `post_recipient` 1:N과 공정 정렬 | 최초·최대 수신자 수·추가 선정 대기 시간 필요 |
+| P03 수신자 수 | 전체 후보 일괄 전달 금지·발송별 최대 10명 제한·공정 선정 확정 | `post_recipient` 1:N과 공정 정렬 | 최대값은 `qello.direction.max-recipients-per-post` 설정으로 운영 조정. 단계적 추가 선정 대기 시간 필요 |
 | P04 만료 | 만료 존재, 만료 후 새 답변 차단, **만료 시각은 서버 지정**, **만료 후에도 공감 가능** 확정 | `direction_post.expires_at` 필수 | 기간·임박 알림 값 필요 |
 | P05 수신 용량·알림 | 상한은 **운영 설정값**(초기값 5), 열람·**공감** 유지, 답변·넘김 확정·만료 해제, 넘김에 **5초 되돌리기**, 수신·푸시 분리 확정 | `recipient_receive_state`(안전 상한 50), `capacity_released_at`, `SKIP_PENDING`/`SKIPPED` | 상한 초기값, 되돌리기 시간, 즉시 푸시 상한·묶음 주기·조용한 시간대 필요 |
 | ~~P06 위치~~ | **확정 (2026-08-03, 1안)** | `position`은 운영 컬럼. §0 참고 | 보존 기간은 P07에 위임 |
