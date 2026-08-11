@@ -159,7 +159,7 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 	private JdbcTemplate jdbcTemplate;
 
 	@Test
-	@DisplayName("빈 PostGIS 데이터베이스의 startup에서 V1부터 V10까지 migration을 적용한다")
+	@DisplayName("빈 PostGIS 데이터베이스의 startup에서 V1부터 V11까지 migration을 적용한다")
 	void appliesAllMigrationsOnApplicationStartup() {
 		Integer successfulV1 = jdbcTemplate.queryForObject("""
 			SELECT count(*)
@@ -211,6 +211,11 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 			FROM flyway_schema_history
 			WHERE version = '10' AND success
 			""", Integer.class);
+		Integer successfulV11 = jdbcTemplate.queryForObject("""
+			SELECT count(*)
+			FROM flyway_schema_history
+			WHERE version = '11' AND success
+			""", Integer.class);
 		String postgisVersion = jdbcTemplate.queryForObject(
 			"SELECT PostGIS_Version()", String.class);
 
@@ -224,7 +229,8 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 		assertThat(successfulV8).isEqualTo(1);
 		assertThat(successfulV9).isEqualTo(1);
 		assertThat(successfulV10).isEqualTo(1);
-		assertThat(flyway.info().applied()).hasSize(10);
+		assertThat(successfulV11).isEqualTo(1);
+		assertThat(flyway.info().applied()).hasSize(11);
 		assertThat(postgisVersion).isNotBlank();
 	}
 
