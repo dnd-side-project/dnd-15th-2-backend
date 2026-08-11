@@ -12,6 +12,23 @@
 - Branch: `feat/gh-115-direction-matching-contract`
 - Base branch: `main`
 
+## Current review status
+
+- Status: `BLOCKED` until PR review, CI, and human merge approval complete.
+- Latest base sync: `./harness sync`로 `origin/main` 재반영 후 V11 migration 충돌을
+  V12 재번호로 해결했다.
+- Human approvals: Decision record A~C는 `2026-08-11T19:16:00+09:00`에 승인되었고,
+  V12 재번호 및 한국어 PR 제목은 이후 사용자 승인으로 확정되었다.
+- Design and test evidence:
+  - `docs/test-plans/gh-115-TEST-PLAN-GH-115-DIRECTION-MATCHING-CONTRACT.md`
+  - `docs/reports/tests/gh-115-TEST-PLAN-GH-115-DIRECTION-MATCHING-CONTRACT.md`
+  - `docs/product/data-model/schema-manifest.md`
+- DB impact: `direction_post.request_fingerprint`, `outbox_event.match_round`,
+  Outbox lease 컬럼·제약·인덱스를 추가한다. 프로덕션 apply·배포는 수행하지 않는다.
+- Rollback/recovery: DB apply 전에는 PR revert로 회수한다. DB apply 후에는 별도
+  rollback migration과 legacy matching outbox reconciliation 절차가 필요하다.
+- Out of scope remains unchanged: matching worker, REST controller, external push provider.
+
 ## Objective
 
 - 비동기 방향 매칭 전환에 필요한 요청 fingerprint, 매칭 라운드 중복 방지,

@@ -29,10 +29,11 @@ public final class NotificationSql {
 			(status IN ('PENDING', 'FAILED') AND next_attempt_at <= :at)
 			OR (status = 'PROCESSING' AND lease_expires_at <= :at)
 		  )
+		RETURNING *
 		""";
 
 	public static final String CLAIM_DUE_OUTBOX_EVENTS = """
-		WITH due AS (
+		WITH due AS MATERIALIZED (
 			SELECT id
 			FROM outbox_event
 			WHERE (
@@ -40,8 +41,8 @@ public final class NotificationSql {
 				OR (status = 'PROCESSING' AND lease_expires_at <= :at)
 			)
 			ORDER BY next_attempt_at, id
-			FOR UPDATE SKIP LOCKED
 			LIMIT :limit
+			FOR UPDATE SKIP LOCKED
 		)
 		UPDATE outbox_event AS oe
 		SET status = 'PROCESSING', attempt_count = oe.attempt_count + 1, next_attempt_at = :at,

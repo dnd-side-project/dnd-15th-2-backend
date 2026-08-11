@@ -1,11 +1,13 @@
 package com.dnd.qello.direction.matching;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import com.dnd.qello.direction.domain.DirectionRequestFingerprint;
+import com.dnd.qello.direction.error.DirectionException;
 
 /**
  * Created at: 2026-08-11T20:05:00+09:00
@@ -37,7 +39,7 @@ class DirectionRequestFingerprintTest {
 	}
 
 	@Test
-	@DisplayName("bodyText null은 빈 문자열과 구분되는 canonical 입력으로 보존된다")
+	@DisplayName("bodyText null은 canonical 입력으로 보존되고 빈 문자열과 구분된다")
 	void distinguishesNullBodyFromEmptyMeaning() {
 		DirectionRequestFingerprint withoutBody = DirectionRequestFingerprint.create(42L, 7L,
 			"SEGMENT-A", 100, 5000, "KR-SEOUL", null);
@@ -46,6 +48,10 @@ class DirectionRequestFingerprintTest {
 		assertThat(withoutBody).isNotEqualTo(withBody);
 		assertThat(DirectionRequestFingerprint.restore(withoutBody.value())).isEqualTo(withoutBody);
 		assertThat(DirectionRequestFingerprint.restore(null)).isNull();
+		assertThatThrownBy(() -> DirectionRequestFingerprint.restore(""))
+			.isInstanceOf(DirectionException.class);
+		assertThatThrownBy(() -> fingerprint("   ", "본문"))
+			.isInstanceOf(DirectionException.class);
 	}
 
 	private DirectionRequestFingerprint fingerprint(String segmentKey, String bodyText) {

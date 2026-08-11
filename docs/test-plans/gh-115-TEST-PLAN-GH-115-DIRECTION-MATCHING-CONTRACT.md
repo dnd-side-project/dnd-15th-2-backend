@@ -137,7 +137,7 @@
 
 | Scenario ID | Components | Setup | Action | Expected result | Cleanup |
 | --- | --- | --- | --- | --- | --- |
-| TEST-PLAN-GH-115-DIRECTION-MATCHING-CONTRACT-INT-001 | Flyway, PostgreSQL/PostGIS catalog, JDBC | 빈 Testcontainers DB에 승인된 신규 migration 적용 | `direction_post.request_fingerprint`, `outbox_event.match_round`, lease columns, matching partial unique index, claim index를 조회 | migration이 성공하고 legacy fingerprint null 허용, 신규 matching event의 round 필수 check, `(aggregate_id, match_round, event_type)` 유일성, due/lease dispatch index가 실제 catalog에 존재한다. 기존 V1~V10 migration은 수정되지 않는다. | container 종료 |
+| TEST-PLAN-GH-115-DIRECTION-MATCHING-CONTRACT-INT-001 | Flyway, PostgreSQL/PostGIS catalog, JDBC | 빈 Testcontainers DB에 승인된 신규 migration 적용 | `direction_post.request_fingerprint`, `outbox_event.match_round`, lease columns, matching partial unique index, claim index를 조회 | migration이 성공하고 legacy fingerprint null 허용, 신규 matching event의 round 필수 check, `(aggregate_id, match_round, event_type)` 유일성, due/lease dispatch index가 실제 catalog에 존재한다. 기존 V1~V11 migration은 수정되지 않는다. | container 종료 |
 | TEST-PLAN-GH-115-DIRECTION-MATCHING-CONTRACT-INT-002 | Direction submit persistence, fingerprint verifier, matching/outbox writer | 같은 sender의 동일 key 요청 1건을 저장하고 동일/상이 fingerprint fixture 준비 | 동일 요청을 재시도한 뒤 상이 요청을 같은 key로 제출 | 동일 요청은 첫 post/result와 동일한 fingerprint를 반환하고 post·matching job·outbox count가 증가하지 않는다. 상이 요청은 `IDEMPOTENCY_KEY_REUSED`로 거절되고 기존 row가 보존된다. | scenario marker 기준 역순 삭제 |
 | TEST-PLAN-GH-115-DIRECTION-MATCHING-CONTRACT-INT-003 | 두 application transaction, direction post unique/fingerprint lookup | 동일 key의 동일 요청 2개와 동일 key의 상이 요청 2개를 barrier로 동시 실행 | 두 경쟁을 각각 commit | 동일 요청 경쟁은 정확히 하나의 logical result와 하나의 matching event만 남기고 두 호출이 같은 결과 계약을 따른다. 상이 요청 경쟁은 한 요청만 최초 결과를 만들며 다른 요청은 conflict이고 partial row가 없다. | executor 종료 및 marker 정리 |
 | TEST-PLAN-GH-115-DIRECTION-MATCHING-CONTRACT-INT-004 | Outbox repository, DB partial unique constraint | 같은 post의 동일 round/event와 다른 round/event fixture | 동일 `RECIPIENT_MATCH_REQUESTED` 조합을 순차·동시 insert하고 다른 round도 insert | 동일 조합은 한 Outbox row만 성공하며 duplicate는 명시된 idempotent result 또는 constraint-mapped conflict가 된다. 다른 round는 각각 저장되고, non-matching event에는 round를 저장할 수 없다. | outbox marker 삭제 |
@@ -154,7 +154,7 @@
 - 실제 PostgreSQL/PostGIS Testcontainers에서 migration을 실행한다. H2나 정적 SQL
   문자열 검사만으로 unique, partial index, JSONB, transaction, lock을 통과시키지
   않는다.
-- 이미 적용된 V1~V10은 수정하지 않고 새 versioned migration으로만 변경한다. 빈 DB
+- 이미 적용된 V1~V11은 수정하지 않고 새 versioned migration으로만 변경한다. 빈 DB
   startup과 기존 schema upgrade 양쪽에서 catalog·constraint·index를 확인한다.
 - 제출 transaction은 post와 fingerprint, matching job/event, Outbox 기록을 하나의
   원자적 경계로 묶는다. unique/check/serialization 실패 후 관련 행이 남지 않는지
@@ -220,8 +220,8 @@
 | Order | Executor | Owned files | Scenario IDs | Verification |
 | --- | --- | --- | --- | --- |
 | 1 | Fingerprint executor | `src/test/java/com/dnd/qello/direction/matching/**` | UNIT-001~003 | canonicalization, fingerprint conflict, same-result contract unit tests |
-| 2 | Matching contract executor | `src/test/java/com/dnd/qello/direction/matching/**` 중 1번이 소유하지 않은 파일 | UNIT-004, UNIT-007 | matching identity와 domain/JDBC mapping unit tests |
-| 3 | Outbox executor | `src/test/java/com/dnd/qello/notification/**` 신규 lease test 파일 | UNIT-005~006 | lease state machine, payload safety unit tests |
+| 2 | Outbox executor | `src/test/java/com/dnd/qello/notification/OutboxEventLeaseTest.java` | UNIT-004~006 | matching identity, lease state machine, payload safety unit tests |
+| 3 | Persistence integration executor | `src/integrationTest/java/com/dnd/qello/DirectionMatchingContractIntegrationTest.java`, `src/integrationTest/java/com/dnd/qello/OutboxLeaseIntegrationTest.java` | UNIT-007 | domain/JDBC row restore and nullable lease mapping round-trip evidence |
 | 4 | Migration executor | `src/test/java/com/dnd/qello/FlywayMigrationContractTest.java`, `src/integrationTest/java/com/dnd/qello/FlywayMigrationIntegrationTest.java` | INT-001 | migration history, catalog column/index/constraint, document manifest contract |
 | 5 | Matching integration executor | `src/integrationTest/java/com/dnd/qello/DirectionMatchingContractIntegrationTest.java` | INT-002~004, INT-007~008 | fingerprint retry/race, round unique, atomic rollback, payload JSONB |
 | 6 | Outbox integration executor | `src/integrationTest/java/com/dnd/qello/OutboxLeaseIntegrationTest.java` | INT-005~006, INT-009 | batch lease/reclaim concurrency and existing notification regression |
@@ -233,10 +233,11 @@
 
 ## 10. Completion criteria
 
-- [ ] 모든 P0 시나리오가 승인된 구현과 대응되고, 각 테스트 파일 소유권이 겹치지 않는다.
-- [ ] 모든 테스트 메서드에 `@DisplayName`
-- [ ] 모든 테스트 클래스 헤더에 정확한 ISO 8601 생성 시각과 해당 `TEST-PLAN-GH-115...` scenario ID 기록
-- [ ] 단위 테스트 통과: `./gradlew test --tests ...`
+- [x] 모든 P0 시나리오가 승인된 구현 또는 명시적 `BLOCKED` 항목과 대응되고,
+      각 테스트 파일 소유권이 겹치지 않는다.
+- [x] 모든 테스트 메서드에 `@DisplayName`
+- [x] 모든 테스트 클래스 헤더에 정확한 ISO 8601 생성 시각과 해당 `TEST-PLAN-GH-115...` scenario ID 기록
+- [x] 단위 테스트 통과: `./gradlew test --tests ...`
 - [x] 통합 테스트 통과: `./gradlew integrationTest --tests ...` (PostgreSQL/PostGIS container 필요)
 - [x] migration catalog, unique/index, same-key race, lease reclaim, stale-owner guard,
       payload coordinate exclusion 증거 확보
@@ -245,7 +246,7 @@
 - [x] 완료 전 저장소 검증: `./harness check`, `./harness pr-ready --project-tests`,
       `npm run hooks:validate`, `git diff --check`
 - [ ] INT-007 transaction rollback failure-injection evidence (safe production seam is absent)
-- [ ] 테스트 구현·실행·push·PR 생성은 사람 승인 이후에만 수행
+- [x] 테스트 구현·실행·push·PR 생성은 사람 승인 이후에만 수행
 
 ## 11. Human approval
 

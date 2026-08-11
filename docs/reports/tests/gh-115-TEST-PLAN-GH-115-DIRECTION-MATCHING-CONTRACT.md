@@ -7,7 +7,7 @@
 
 ## 1. Executive summary
 
-- Result: `PARTIAL`
+- Result: `BLOCKED`
 - Tested scope: fingerprint canonicalization, direction-post persistence, idempotency conflict, matching Outbox round identity/payload, Flyway V12 catalog, lease claim/reclaim/fencing, and existing Outbox API regression.
 - Unverified scope: INT-007 failure-injection rollback scenario, matching worker implementation, REST controller/API contract, external push provider, and production deployment. The latter four are outside Issue #115.
 - Release recommendation: implementation is ready for code review, but the INT-007 rollback evidence remains blocked; do not treat this as worker or production rollout approval.
@@ -29,12 +29,13 @@
 | Command / suite | Result | Tests | Duration | Evidence |
 | --- | --- | --- | --- | --- |
 | `./gradlew test` | PASS | 212 | 4s | Gradle test task |
-| `./gradlew integrationTest --rerun-tasks --no-parallel --max-workers=1` | PASS (earlier tree) / BLOCKED (latest rerun) | 218 earlier | ~2m | Latest rerun hit Gradle XML result-writer errors; generated XML suites reported zero assertion failures |
-| Targeted V12/matching/lease integration tests | PASS | 14 | 18s | `FlywayMigrationIntegrationTest`, `DirectionMatchingContractIntegrationTest`, `OutboxLeaseIntegrationTest` |
+| `./gradlew integrationTest --rerun-tasks --no-parallel --max-workers=1` | PASS | 218 | ~2m | Latest `./harness pr-ready --project-tests` full integration phase passed |
+| Targeted V12/matching/lease integration tests | PASS | 18 | 17s | `FlywayMigrationIntegrationTest`, `DirectionMatchingContractIntegrationTest`, `OutboxLeaseIntegrationTest` |
 | Existing notification + lease regression target | PASS | 17 | 11s | `AnswerSafetyNotificationPersistenceIntegrationTest`, `OutboxLeaseIntegrationTest` |
 | `./harness check` | PASS | policy gate | <1s | harness output |
 | `npm run hooks:validate` | PASS | policy gate | <1s | Husky validation output |
-| `./harness pr-ready --project-tests` | PASS earlier / BLOCKED latest | project checks | <1s / latest immediate | Latest run requires `./harness sync` because `origin/main` advanced |
+| `git diff --check` | PASS | whitespace check | <1s | no output |
+| `./harness pr-ready --project-tests` | PASS | project checks | 2m 6s | policy gates, unit tests, integration tests, and Gradle `check` passed |
 
 ## 4. Scenario results
 
@@ -43,7 +44,7 @@
 | UNIT-001~003 | PASS | `DirectionRequestFingerprintTest` | NFC, outer Unicode trim, fixed canonical field set, SHA-256 format, null/body distinction |
 | UNIT-004 | PASS | `OutboxEventLeaseTest.assignsMatchingRoundOnlyToDirectionMatchingEvent` | matching event only; initial round 1 |
 | UNIT-005~006 | PASS | `OutboxEventLeaseTest` claim/reclaim methods | lease owner/expiry and generation fencing state machine |
-| UNIT-007 | PASS | `OutboxEventLeaseTest` payload/domain methods | JSON object and domain mapping constraints |
+| UNIT-007 | PASS (integration evidence) | `DirectionMatchingContractIntegrationTest.persistsRequestFingerprintAndRestoresIt`, `OutboxLeaseIntegrationTest.preservesExistingOutboxApi` | direction post fingerprint restore and Outbox lease nullable/generation JDBC round-trip |
 | INT-001 | PASS | `FlywayMigrationIntegrationTest` | V12 history, columns, checks, partial unique index, claim index |
 | INT-002 | PASS | `DirectionMatchingContractIntegrationTest` | persistence, same-result retry, `IDEMPOTENCY_KEY_REUSED`, matching event enqueue |
 | INT-003 | PASS | matching contract integration fixture | round/event uniqueness and conflict protection |
@@ -55,11 +56,10 @@
 
 ## 5. Failures and diagnostics
 
-Full-suite invocations reported Gradle XML result-writer errors although the generated
-XML suites contained zero failures and zero errors. One serial run with
-`--no-parallel --max-workers=1` completed successfully before the final legacy
-backfill-only change; the latest serial rerun reproduced the writer error. Current
-code is covered by the targeted integration suites, which pass. The local Docker
+The latest `./harness pr-ready --project-tests` run passed policy gates, unit tests,
+integration tests, and Gradle `check`. A previous full-suite invocation had reported
+Gradle XML result-writer errors despite zero assertion failures in generated XML
+suites; that issue did not reproduce in the latest PR readiness run. The local Docker
 runtime also reported an amd64 image on an arm64 host.
 
 ## 6. Potential issues
@@ -106,10 +106,10 @@ runtime also reported an amd64 image on an arm64 host.
 
 ## 7. Regression and residual risk
 
-- Targeted current-tree integration coverage passed. Residual risk includes the
-  blocked INT-007 rollback evidence, the latest full-suite XML writer environment
-  failure, excluded worker/controller/provider flows, and the local Testcontainers
-  architecture emulation noted above.
+- Targeted current-tree integration coverage and latest PR readiness checks passed.
+  Residual risk includes the blocked INT-007 rollback evidence, excluded
+  worker/controller/provider flows, and the local Testcontainers architecture
+  emulation noted above.
 
 ## 8. Artifacts
 

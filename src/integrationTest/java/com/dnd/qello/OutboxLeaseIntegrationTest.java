@@ -80,7 +80,10 @@ class OutboxLeaseIntegrationTest extends PostgisContainerIntegrationTestSupport 
 		assertThat(restored.attemptCount()).isEqualTo(1);
 		assertThat(outboxRepository.findEventById(future.id()).orElseThrow().status())
 			.isEqualTo(OutboxStatus.PENDING);
-		assertThat(claimedProcessing.leaseOwner()).isEqualTo("worker-existing");
+		OutboxEvent stillLeased = outboxRepository.findEventById(claimedProcessing.id()).orElseThrow();
+		assertThat(stillLeased.leaseOwner()).isEqualTo("worker-existing");
+		assertThat(stillLeased.leaseGeneration()).isEqualTo(claimedProcessing.leaseGeneration());
+		assertThat(stillLeased.leaseExpiresAt()).isEqualTo(claimedProcessing.leaseExpiresAt());
 	}
 
 	@Test
@@ -173,7 +176,7 @@ class OutboxLeaseIntegrationTest extends PostgisContainerIntegrationTestSupport 
 	private boolean claimBatch(long eventId, String owner, CountDownLatch ready, CountDownLatch start)
 		throws Exception {
 		ready.countDown();
-		start.await(5, TimeUnit.SECONDS);
+		assertThat(start.await(5, TimeUnit.SECONDS)).isTrue();
 		return transactionTemplate.execute(status -> !outboxRepository.claimDue(1, owner, NOW.plusSeconds(1),
 			NOW.plusSeconds(61)).isEmpty());
 	}

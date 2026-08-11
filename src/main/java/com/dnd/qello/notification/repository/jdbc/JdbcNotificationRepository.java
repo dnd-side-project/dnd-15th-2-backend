@@ -54,10 +54,10 @@ public class JdbcNotificationRepository implements OutboxEventRepository, Notifi
     @Override
     public Optional<OutboxEvent> claim(long id, String leaseOwner, Instant at, Instant leaseExpiresAt) {
         validateLeaseRequest(leaseOwner, at, leaseExpiresAt);
-        int updated = jdbc.update(NotificationSql.CLAIM_OUTBOX_EVENT,
+        return jdbc.query(NotificationSql.CLAIM_OUTBOX_EVENT,
                 new MapSqlParameterSource().addValue("id", id).addValue("at", timestamp(at))
-                .addValue("leaseOwner", leaseOwner).addValue("leaseExpiresAt", timestamp(leaseExpiresAt)));
-        return updated == 1 ? findEventById(id) : Optional.empty();
+                .addValue("leaseOwner", leaseOwner).addValue("leaseExpiresAt", timestamp(leaseExpiresAt)),
+                (rs, row) -> mapOutbox(rs)).stream().findFirst();
     }
 
     @Override

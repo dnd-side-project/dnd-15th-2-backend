@@ -28,6 +28,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 
+import com.dnd.qello.common.error.ErrorCode;
 import com.dnd.qello.direction.domain.ActiveUserPresence;
 import com.dnd.qello.direction.domain.DirectionPost;
 import com.dnd.qello.direction.domain.DirectionScheme;
@@ -109,14 +110,17 @@ class DirectionMatchingContractIntegrationTest extends PostgisContainerIntegrati
 	void returnsSameResultAndRejectsDifferentFingerprint() {
 		DirectionPostService.SendResult first = send("duplicate-key", "첫 번째 의도");
 		long postCount = jdbc.queryForObject("SELECT count(*) FROM direction_post", Long.class);
+		long outboxCount = matchingOutboxCount();
 		DirectionPostService.SendResult retry = send("duplicate-key", "첫 번째 의도");
 
 		assertThat(retry.post().getId()).isEqualTo(first.post().getId());
 		assertThat(jdbc.queryForObject("SELECT count(*) FROM direction_post", Long.class)).isEqualTo(postCount);
+		assertThat(matchingOutboxCount()).isEqualTo(outboxCount);
 		assertThatThrownBy(() -> send("duplicate-key", "의도가 달라진 재사용"))
 			.isInstanceOf(DirectionException.class)
 			.hasFieldOrPropertyWithValue("errorCode", DirectionErrorCode.IDEMPOTENCY_KEY_REUSED);
 		assertThat(jdbc.queryForObject("SELECT count(*) FROM direction_post", Long.class)).isEqualTo(postCount);
+		assertThat(matchingOutboxCount()).isEqualTo(outboxCount);
 	}
 
 	@Test
@@ -172,6 +176,35 @@ class DirectionMatchingContractIntegrationTest extends PostgisContainerIntegrati
 	}
 
 	@Test
+	@DisplayName("상이 fingerprint의 동시 멱등 요청은 하나만 성공하고 나머지는 충돌한다")
+	void concurrentDifferentFingerprintRequestsRejectSecondLogicalIntent() throws Exception {
+		DirectionPostService.SendCommand firstCommand = command("concurrent-different-key", "동시 의도 A");
+		DirectionPostService.SendCommand secondCommand = command("concurrent-different-key", "동시 의도 B");
+		CountDownLatch ready = new CountDownLatch(2);
+		CountDownLatch start = new CountDownLatch(1);
+		ExecutorService executor = Executors.newFixedThreadPool(2);
+		try {
+			List<Future<ConcurrentSendOutcome>> futures = List.of(
+				executor.submit(() -> sendOutcomeAfterSignal(firstCommand, ready, start)),
+				executor.submit(() -> sendOutcomeAfterSignal(secondCommand, ready, start)));
+			assertThat(ready.await(5, TimeUnit.SECONDS)).isTrue();
+			start.countDown();
+
+			List<ConcurrentSendOutcome> outcomes = List.of(
+				futures.get(0).get(10, TimeUnit.SECONDS),
+				futures.get(1).get(10, TimeUnit.SECONDS));
+
+			assertThat(outcomes).filteredOn(outcome -> outcome.errorCode() == null).hasSize(1);
+			assertThat(outcomes).extracting(ConcurrentSendOutcome::errorCode)
+				.contains(DirectionErrorCode.IDEMPOTENCY_KEY_REUSED);
+			assertThat(jdbc.queryForObject("SELECT count(*) FROM direction_post", Long.class)).isEqualTo(1L);
+			assertThat(matchingOutboxCount()).isEqualTo(1L);
+		} finally {
+			executor.shutdownNow();
+		}
+	}
+
+	@Test
 	@DisplayName("매칭 outbox는 round별로 유일하고 payload에 정확 좌표를 저장하지 않는다")
 	void enforcesMatchingRoundUniquenessAndCoarsePayload() {
 		DirectionPostService.SendResult post = send("outbox-key", "매칭 payload");
@@ -189,6 +222,13 @@ class DirectionMatchingContractIntegrationTest extends PostgisContainerIntegrati
 		String storedPayload = jdbc.queryForObject("SELECT payload::text FROM outbox_event WHERE id = ?",
 			String.class, first.id());
 		assertThat(storedPayload).doesNotContain("latitude", "longitude", "origin_position", "37.5", "127.0");
+		assertThat(jdbc.queryForList("""
+				SELECT jsonb_object_keys(payload)
+			FROM outbox_event
+			WHERE id = ?
+			""", String.class, first.id()))
+			.containsExactlyInAnyOrder("postId", "matchRound", "eventType", "requestFingerprint",
+				"schemeId", "segmentKey", "minDistanceMeters", "maxDistanceMeters", "coarseRegionCode");
 
 		assertThatThrownBy(() -> outboxRepository.save(OutboxEvent.matchingPending(post.post().getId(), 1,
 			"direction-match:duplicate-dedup", payload, NOW)))
@@ -223,6 +263,25 @@ class DirectionMatchingContractIntegrationTest extends PostgisContainerIntegrati
 		ready.countDown();
 		assertThat(start.await(5, TimeUnit.SECONDS)).isTrue();
 		return postService.send(command);
+	}
+
+	private ConcurrentSendOutcome sendOutcomeAfterSignal(DirectionPostService.SendCommand command,
+		CountDownLatch ready, CountDownLatch start) throws Exception {
+		ready.countDown();
+		assertThat(start.await(5, TimeUnit.SECONDS)).isTrue();
+		try {
+			return new ConcurrentSendOutcome(postService.send(command).post().getId(), null);
+		} catch (DirectionException exception) {
+			return new ConcurrentSendOutcome(null, exception.getErrorCode());
+		}
+	}
+
+	private long matchingOutboxCount() {
+		return jdbc.queryForObject("SELECT count(*) FROM outbox_event WHERE event_type = ?",
+			Long.class, OutboxEventType.RECIPIENT_MATCH_REQUESTED.name());
+	}
+
+	private record ConcurrentSendOutcome(Long postId, ErrorCode errorCode) {
 	}
 
 	private long account(String nickname) {
