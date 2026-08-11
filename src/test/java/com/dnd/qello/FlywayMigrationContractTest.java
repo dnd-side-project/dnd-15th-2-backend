@@ -20,7 +20,8 @@ import org.springframework.core.io.support.PropertiesLoaderUtils;
 /**
  * Created at: 2026-08-03T17:45:39+09:00
  * Source scenario: TEST-PLAN-GH-36-FLYWAY-BASELINE-UNIT-001, TEST-PLAN-GH-36-FLYWAY-BASELINE-UNIT-002,
- * TEST-PLAN-GH-78-SCHEMA-REVISION-V7-UNIT-001, TEST-PLAN-GH-88-COUNTRY-ONBOARDING-UNIT-004
+ * TEST-PLAN-GH-78-SCHEMA-REVISION-V7-UNIT-001, TEST-PLAN-GH-88-COUNTRY-ONBOARDING-UNIT-004,
+ * TEST-PLAN-GH-115-DIRECTION-MATCHING-CONTRACT-INT-001
  */
 class FlywayMigrationContractTest {
 
@@ -51,7 +52,7 @@ class FlywayMigrationContractTest {
 		// 일치해야 한다.
 		assertThat(sqlMigrationNames()).containsExactly(
 			"V10__create_filtering_schema.sql",
-			"V11__add_filter_release_registry.sql",
+			"V11__add_direction_matching_outbox_contract.sql",
 			"V1__create_direction_communication_schema.sql",
 			"V2__add_reactions_and_skip_pending.sql",
 			"V3__add_user_account_password_hash.sql",
