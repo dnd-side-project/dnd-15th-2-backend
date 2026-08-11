@@ -4,11 +4,21 @@ import java.time.Instant;
 import java.util.Optional;
 
 import com.dnd.qello.direction.domain.DirectionPost;
+import com.dnd.qello.direction.domain.DirectionRequestFingerprint;
 
 public interface DirectionPostRepository {
 	DirectionPost save(DirectionPost post);
 	Optional<DirectionPost> findById(long id);
 	Optional<DirectionPost> findBySenderAndIdempotencyKey(long senderId, String idempotencyKey);
+
+	/**
+	 * legacy 행의 null fingerprint만 조건부로 채운다. 다른 post 상태나 본문을 덮어쓰지
+	 * 않으며, 이미 다른 요청이 채운 경우에는 빈 결과를 반환한다.
+	 */
+	default Optional<DirectionPost> updateRequestFingerprintIfNull(long id,
+		DirectionRequestFingerprint requestFingerprint) {
+		return Optional.empty();
+	}
 
 	/** 소유권을 쿼리 조건에 포함한다. 남의 질문글이면 빈 결과다. */
 	Optional<DirectionPost> findByIdAndSenderId(long id, long senderId);

@@ -702,6 +702,7 @@ Table direction_post [headercolor: #F28E2B] {
   approved_question_id bigint [not null, note: '글 작성의 출발점이 된 승인 질문']
   status direction_post_status [not null, default: 'SUBMITTED', note: '현재 처리 상태']
   idempotency_key varchar(200) [not null, note: '동일 요청의 중복 처리를 막는 멱등키']
+  request_fingerprint varchar(80) [note: '정규화된 사용자 의도 입력의 v1:SHA-256 fingerprint. 기존 행은 NULL을 허용하고 첫 멱등 재시도 때 복원 가능한 범위에서 lazy backfill한다']
   body_text text [note: '사용자가 작성한 글 본문']
   coarse_region_code varchar(100) [not null, note: '글에 공개할 흐린 발송 지역']
   moderation_status content_moderation_status [not null, default: 'PENDING', note: '콘텐츠 안전 검사 결과']
@@ -1009,25 +1010,34 @@ Table outbox_event [headercolor: #B07AA1] {
   aggregate_type outbox_aggregate_type [not null, note: '이벤트가 발생한 도메인 주체 종류']
   aggregate_id bigint [not null, note: '이벤트가 발생한 도메인 주체 식별자']
   event_type outbox_event_type [not null, note: '워커가 수행할 후속 작업 종류']
+  match_round integer [note: 'DIRECTION_POST의 RECIPIENT_MATCH_REQUESTED에만 필수인 매칭 라운드. 초기 작업은 1이며 retry/reclaim에서는 증가하지 않는다']
   dedup_key varchar(255) [not null, unique, note: '같은 논리 이벤트의 중복을 막는 키. SQL DDL의 제약명은 uq_outbox_event_dedup다']
-  payload jsonb [not null, default: `'{}'::jsonb`, note: '후속 처리에 사용할 JSON 스냅샷']
+  payload jsonb [not null, default: `'{}'::jsonb`, note: '후속 처리에 사용할 JSON 스냅샷. 매칭 payload에는 coarse 식별자만 넣고 정확 좌표·PostGIS point를 복사하지 않는다']
   status outbox_status [not null, default: 'PENDING', note: '현재 처리 상태']
   attempt_count integer [not null, default: 0, note: '처리를 시도한 누적 횟수']
   next_attempt_at timestamptz [not null, default: `clock_timestamp()`, note: '실패 후 다시 처리할 수 있는 시각']
+  lease_owner varchar(100) [note: '현재 PROCESSING 작업을 점유한 worker의 opaque logical id. 사용자·계정·비밀값이 아니다']
+  lease_expires_at timestamptz [note: '현재 lease가 만료되는 시각. PROCESSING이 아니면 lease_owner와 함께 NULL이다']
+  lease_generation bigint [not null, default: 0, note: 'claim/reclaim 성공마다 1씩 증가하는 monotonic fencing token']
   created_at timestamptz [not null, default: `clock_timestamp()`, note: '행이 생성된 시각']
   processed_at timestamptz [note: '후속 처리가 완료된 시각']
 
   indexes {
     (status, next_attempt_at, id) [name: 'outbox_event_dispatch_idx', note: 'SQL DDL은 PENDING, FAILED인 partial index']
+    (aggregate_id, match_round, event_type) [unique, name: 'uq_outbox_event_direction_matching_round', note: 'DIRECTION_POST의 RECIPIENT_MATCH_REQUESTED에만 적용하는 partial unique index. 같은 post·round·event는 한 작업만 허용한다']
+    (status, next_attempt_at, lease_expires_at, id) [name: 'outbox_event_claim_idx', note: 'PENDING·FAILED와 만료된 PROCESSING을 한 claim 경로에서 찾기 위한 index. 실제 due 조건과 row 점유는 한 transaction에서 처리한다']
   }
 
   checks {
+    `((aggregate_type = 'DIRECTION_POST' AND event_type = 'RECIPIENT_MATCH_REQUESTED') = (match_round IS NOT NULL)) AND (match_round IS NULL OR match_round > 0)` [name: 'ck_outbox_event_match_round']
+    `lease_generation >= 0` [name: 'ck_outbox_event_lease_generation']
+    `((status = 'PROCESSING') = (lease_owner IS NOT NULL AND lease_expires_at IS NOT NULL)) AND ((lease_owner IS NULL) = (lease_expires_at IS NULL))` [name: 'ck_outbox_event_lease_state']
     `jsonb_typeof(payload) = 'object'` [name: 'ck_outbox_event_payload']
     `attempt_count >= 0` [name: 'ck_outbox_event_attempt_count']
     `(status = 'PROCESSED') = (processed_at IS NOT NULL) AND (processed_at IS NULL OR processed_at >= created_at)` [name: 'ck_outbox_event_processed_at']
   }
 
-  Note: '테이블 설명: 도메인 트랜잭션에서 발생한 비동기 후속 작업을 안전하게 전달하기 위한 이벤트 테이블이다. 필요 이유: 도메인 변경과 비동기 작업 요청을 같은 트랜잭션에 저장해 커밋 후 매칭·알림 이벤트가 유실되는 문제를 막는다.'
+  Note: '테이블 설명: 도메인 트랜잭션에서 발생한 비동기 후속 작업을 안전하게 전달하기 위한 이벤트 테이블이다. 필요 이유: 도메인 변경과 비동기 작업 요청을 같은 트랜잭션에 저장해 커밋 후 매칭·알림 이벤트가 유실되는 문제를 막는다. Issue #115에서 별도 matching_job 테이블을 만들지 않고 RECIPIENT_MATCH_REQUESTED Outbox row 자체를 matching job으로 취급한다. worker 완료·실패 갱신은 id, PROCESSING 상태, lease_owner, lease_generation, lease 만료 조건을 함께 확인해 stale worker가 새 소유자의 결과를 덮어쓰지 못하게 한다.'
 }
 
 Table notification [headercolor: #B07AA1] {

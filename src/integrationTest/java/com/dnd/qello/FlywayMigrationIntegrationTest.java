@@ -21,7 +21,8 @@ import org.springframework.test.context.ActiveProfiles;
  * Created at: 2026-08-03T17:45:39+09:00
  * Source scenario: TEST-PLAN-GH-36-FLYWAY-BASELINE-INT-001 through INT-004,
  * TEST-PLAN-GH-78-SCHEMA-REVISION-V7-INT-001, TEST-PLAN-GH-88-COUNTRY-ONBOARDING-INT-003,
- * TEST-PLAN-GH-88-COUNTRY-ONBOARDING-INT-004
+ * TEST-PLAN-GH-88-COUNTRY-ONBOARDING-INT-004,
+ * TEST-PLAN-GH-115-DIRECTION-MATCHING-CONTRACT-INT-001
  */
 @SpringBootTest
 @ActiveProfiles({"test", "flyway-migration"})
@@ -108,6 +109,8 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 		"uq_open_report_answer",
 		"uq_active_push_token",
 		"outbox_event_dispatch_idx",
+		"uq_outbox_event_direction_matching_round",
+		"outbox_event_claim_idx",
 		"notification_inbox_idx",
 		"notification_delivery_dispatch_idx",
 		"uq_answer_one_per_recipient",
@@ -159,7 +162,7 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 	private JdbcTemplate jdbcTemplate;
 
 	@Test
-	@DisplayName("빈 PostGIS 데이터베이스의 startup에서 V1부터 V11까지 migration을 적용한다")
+	@DisplayName("빈 PostGIS 데이터베이스의 startup에서 V1부터 V12까지 migration을 적용한다")
 	void appliesAllMigrationsOnApplicationStartup() {
 		Integer successfulV1 = jdbcTemplate.queryForObject("""
 			SELECT count(*)
@@ -216,6 +219,11 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 			FROM flyway_schema_history
 			WHERE version = '11' AND success
 			""", Integer.class);
+		Integer successfulV12 = jdbcTemplate.queryForObject("""
+			SELECT count(*)
+			FROM flyway_schema_history
+			WHERE version = '12' AND success
+			""", Integer.class);
 		String postgisVersion = jdbcTemplate.queryForObject(
 			"SELECT PostGIS_Version()", String.class);
 
@@ -230,7 +238,8 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 		assertThat(successfulV9).isEqualTo(1);
 		assertThat(successfulV10).isEqualTo(1);
 		assertThat(successfulV11).isEqualTo(1);
-		assertThat(flyway.info().applied()).hasSize(11);
+		assertThat(successfulV12).isEqualTo(1);
+		assertThat(flyway.info().applied()).hasSize(12);
 		assertThat(postgisVersion).isNotBlank();
 	}
 
@@ -290,8 +299,8 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 		// ck_post_recipient_distance_m, ck_post_recipient_answers_read_at,
 		// ck_answer_distance_m, ck_answer_edit_count, ck_answer_edit_count_edited_at
 		// 6개를 추가해 101에서 111이 됐고, V9(#88)이 국가 CHECK 2개를 추가했다.
-		assertThat(countConstraints(constraints, "c")).isEqualTo(113);
-		assertThat(EXPECTED_INDEXES).hasSize(60);
+		assertThat(countConstraints(constraints, "c")).isEqualTo(116);
+		assertThat(EXPECTED_INDEXES).hasSize(62);
 		assertThat(EXPECTED_FUNCTIONS).hasSize(11);
 		assertThat(EXPECTED_TRIGGERS).hasSize(10);
 
@@ -321,6 +330,36 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 
 		assertThat(activeScheme).isEqualTo(1);
 		assertThat(segmentCount).isEqualTo(8);
+	}
+
+	@Test
+	@DisplayName("V12는 fingerprint·매칭 round·lease fencing 컬럼과 실제 제약을 생성한다")
+	void v12AddsDirectionMatchingAndLeaseCatalog() {
+		assertThat(columnExists("direction_post", "request_fingerprint")).isTrue();
+		assertThat(columnExists("outbox_event", "match_round")).isTrue();
+		assertThat(columnExists("outbox_event", "lease_owner")).isTrue();
+		assertThat(columnExists("outbox_event", "lease_expires_at")).isTrue();
+		assertThat(columnExists("outbox_event", "lease_generation")).isTrue();
+
+		Set<String> constraintNames = new HashSet<>(jdbcTemplate.queryForList("""
+			SELECT conname
+			FROM pg_constraint
+			WHERE conrelid IN ('direction_post'::regclass, 'outbox_event'::regclass)
+			""", String.class));
+		assertThat(constraintNames).contains(
+			"ck_outbox_event_match_round",
+			"ck_outbox_event_lease_generation",
+			"ck_outbox_event_lease_state");
+
+		String matchingIndex = jdbcTemplate.queryForObject(
+			"SELECT indexdef FROM pg_indexes WHERE indexname = 'uq_outbox_event_direction_matching_round'",
+			String.class);
+		String claimIndex = jdbcTemplate.queryForObject(
+			"SELECT indexdef FROM pg_indexes WHERE indexname = 'outbox_event_claim_idx'",
+			String.class);
+		assertThat(matchingIndex).contains("aggregate_id", "match_round", "event_type", "DIRECTION_POST",
+			"RECIPIENT_MATCH_REQUESTED");
+		assertThat(claimIndex).contains("lease_expires_at", "PROCESSING");
 	}
 
 	@Test
@@ -359,6 +398,14 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 		actualNames.retainAll(expectedNames);
 
 		assertThat(actualNames).containsExactlyInAnyOrderElementsOf(expectedNames);
+	}
+
+	private boolean columnExists(String tableName, String columnName) {
+		return jdbcTemplate.queryForObject("""
+			SELECT count(*)
+			FROM information_schema.columns
+			WHERE table_schema = 'public' AND table_name = ? AND column_name = ?
+			""", Integer.class, tableName, columnName) == 1;
 	}
 
 	private long countConstraints(

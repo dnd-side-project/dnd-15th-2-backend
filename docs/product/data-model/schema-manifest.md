@@ -2,9 +2,11 @@
 
 > GitHub Issue: #53
 >
-> Snapshot date: 2026-08-08
+> Snapshot date: 2026-08-11
 >
-> Status: applied — V1~V8까지 적용 완료. `V7`(Issue #73, PR #81)이 `device_credential`을
+> Status: V1~V8 적용 이력과 V1~V9 baseline inventory를 보존한다. 현재 작업 브랜치에는
+> `V10`, filtering release registry `V11`, Issue #115의 `V12` migration이 존재하며,
+> 아래에 `V12` 계약을 추가로 기록했다. V12의 실제 PostgreSQL catalog 검증은 구현·통합 테스트 executor의 책임이다. `V7`(Issue #73, PR #81)이 `device_credential`을
 > 먼저 `main`에 merge해 번호를 점유했고, 2026-08-07 스키마 개정(답변 격리 폐기,
 > ADR-0002)은 `V8`로 반영했다(Issue #78, 원래 `V7`로 작성했으나 재번호). `V8` 적용
 > 검증은 Issue #78에서 한다.
@@ -57,8 +59,11 @@
 
 | Artifact | Repository path or source | SHA-256 | Role |
 | --- | --- | --- | --- |
-| DBML (2026-08-08b, 현행) | `docs/product/data-model/direction_communication.dbml` | `ef5e9885f9308d1b86946094dfa49f084e2e3ace4094482d8b3e4b3c3dccd13c` | logical schema source. vault를 인증 부록까지 재동기화한 판. `post_reaction` Note 정정(08a)은 그대로 유지하면서 `user_account`의 `uq_user_account_id_role` 인덱스, `operator_credential.login_id`의 `uq_operator_credential_login_id` 인덱스, `device_credential.installation_id`의 `[unique]` 태그를 DBML `indexes{}` 블록에 정식으로 선언했다 — 셋 다 V5/V7이 이미 만든 실제 제약이며, 이번 동기화는 vault DBML의 표현 누락만 고친 것이다. `authentication` TableGroup과 Spring Session(V6) 제외 각주 추가. `ck_answer_edit_count`/`ck_answer_edit_count_matches_edited_at`의 `note:` 속성 제거(무관한 dbml-cli 파서 에러 해소). 스키마·제약 개수 변경은 없다 — §5~§12 갱신 불필요 |
-| ERD (2026-08-08b, 현행) | `docs/product/data-model/DIRECTION_COMMUNICATION_ERD.md` | `6d99297f5bf771a48db98f616c3bbeb7282e44311aadf47080214f276dd8c4ac` | explanatory contract. DBML과 같은 판으로 byte-for-byte 재동기화 |
+| DBML (2026-08-08b, baseline) | `docs/product/data-model/direction_communication.dbml` | `ef5e9885f9308d1b86946094dfa49f084e2e3ace4094482d8b3e4b3c3dccd13c` | Issue #115 이전 logical schema baseline |
+| ERD (2026-08-08b, baseline) | `docs/product/data-model/DIRECTION_COMMUNICATION_ERD.md` | `6d99297f5bf771a48db98f616c3bbeb7282e44311aadf47080214f276dd8c4ac` | Issue #115 이전 explanatory contract baseline |
+| DBML (Issue #115, 2026-08-11) | `docs/product/data-model/direction_communication.dbml` | `3e5c9142eeb415ccfd503413ea73a3de74f3ba472ee4c3803e390af1f326213c` | `direction_post.request_fingerprint`, `outbox_event.match_round`·lease fencing, matching partial unique index와 claim index, exact-coordinate payload exclusion을 반영한 현재 working-tree 판 |
+| ERD (Issue #115, 2026-08-11) | `docs/product/data-model/DIRECTION_COMMUNICATION_ERD.md` | `8ac5080dd0fd0fd8a5c9e3ac6fba75f58f3ab22d8103eb7d77f12c1543be9a77` | Issue #115의 fingerprint·outbox-as-matching-job·lease fencing·payload 보안 계약을 설명하는 현재 working-tree 판 |
+| V12 migration (Issue #115, working branch) | `src/main/resources/db/migration/V12__add_direction_matching_outbox_contract.sql` | `f62f6ad5bfdc88601a3630b10bdc7a48b546d1913152e31ead2fd1bf5a1364be` | 이 문서 변경의 비교 기준. 실제 catalog 적용 검증은 통합 테스트가 소유한다 |
 | target DDL (2026-08-08b) | source workspace `docs/sql/direction_communication_ddl.sql` | `98b611c9d5ca8a912a97fb0be77de4ae9c6d31b3982acac04cfb3a44ac47e5a9` | vault의 최신 상태 스크립트. `uq_operator_credential_login_id` UNIQUE INDEX 추가와 헤더 주석 갱신. 이 저장소는 이 판도 어떤 migration의 authoring reference로 쓰지 않았다 |
 | DBML (2026-08-08a, 이력) | 위 파일의 2026-08-08a 판 | `2386e15ebcf6eb3f89b093fe3904b9402c41b50fcd4cfbc24ca83f09ff9ea4da` | `post_reaction` Note 정정만 반영하고 인증 부록 정합화(위 08-08b) 이전인 판. `#79`가 만든 판 |
 | ERD (2026-08-08a, 이력) | 위 파일의 2026-08-08a 판 | `a8487e35d63d174eb73e3b18fcc26172881e29eefdd74a9dd36329f39070309c` | 위 DBML(08-08a)과 짝을 이루는 판 |
@@ -120,19 +125,43 @@ V1~V9(2026-08-08) 전체를 반영한다. `V7`(#81, `device_credential`)과 `V8`
 | Primary keys | 32 | 28개는 단일 컬럼 inline, 4개는 명시적으로 이름 붙인 복합 PK(`pk_user_block`, `pk_notification_preference`, `pk_post_reaction`, `pk_answer_reaction`) |
 | Foreign keys | 52 | named `fk_*` constraints. `V5`가 `fk_operator_credential_user`, `V6`이 `spring_session_attributes_fk`, `V7`이 `fk_device_credential_user`, `V9`가 `fk_user_account_country`를 추가 |
 | Unique constraints | 21 | named `uq_*` constraints. `V5`가 `uq_user_account_id_role`, `uq_operator_credential_login_id`, `V9`가 `uq_region_code_code_level`을 추가. `V7`은 named unique 제약이 아니라 `CREATE UNIQUE INDEX` 2개를 추가해 이 수치에 영향이 없다 |
-| Unique indexes | 11 | `CREATE UNIQUE INDEX`로 만든 것만 센다(named unique 테이블 제약이 만드는 인덱스는 위 "Unique constraints"에서 센다). `V6`이 `spring_session_ix1`, `V7`이 `uq_device_credential_secret`/`uq_active_device_installation`을 추가 |
+| Unique indexes | 12 | `CREATE UNIQUE INDEX`로 만든 것만 센다(named unique 테이블 제약이 만드는 인덱스는 위 "Unique constraints"에서 센다). `V6`이 `spring_session_ix1`, `V7`이 `uq_device_credential_secret`/`uq_active_device_installation`, `V12`가 `uq_outbox_event_direction_matching_round`를 추가 |
 | Check constraints | 113 | named `ck_*` constraints. `V3`이 추가한 `ck_user_account_password_hash`는 `V5`가 제거해 순증감 없음. `V5`가 operator_credential 관련 4개, `V7`이 device_credential 관련 4개, `V8`이 6개(방향·거리·수정 이력 컬럼), `V9`가 USER 국가 필수·국가 코드 형식 2개를 추가 |
-| Non-unique indexes | 46 | GiST, partial, sort-order index 포함. `V6`이 `spring_session_ix2`, `spring_session_ix3`, `V7`이 `device_credential_user_idx`, `V9`가 `user_account_country_idx`를 추가 |
+| Non-unique indexes | 47 | GiST, partial, sort-order index 포함. `V6`이 `spring_session_ix2`, `spring_session_ix3`, `V7`이 `device_credential_user_idx`, `V9`가 `user_account_country_idx`, `V12`가 `outbox_event_claim_idx`를 추가 |
 | Functions | 11 | trigger support functions. `V8`이 `enforce_answer_reaction_reactor_is_sender`를 `enforce_answer_reaction_reactor_can_view`로 교체(개수 불변) |
 | Triggers | 10 | 2 regular + 8 constraint triggers. `V8`이 `ct_answer_reaction_reactor_is_sender`를 `ct_answer_reaction_reactor_can_view`로 교체(개수 불변) |
 | Extensions | 1 | `postgis` |
 
-"Unique indexes"(11) + "Non-unique indexes"(46) = 57이며, `uq_user_account_id_role`/
+"Unique indexes"(12) + "Non-unique indexes"(47) = 59이며, `uq_user_account_id_role`/
 `uq_operator_credential_login_id`가 만드는 인덱스 2개는 "Unique constraints"에서만
-센다. `FlywayMigrationIntegrationTest`의 `EXPECTED_INDEXES.hasSize(58)`는 이 2개를
+센다. `FlywayMigrationIntegrationTest`의 `EXPECTED_INDEXES.hasSize(62)`는 이 3개를
 포함해 세므로(pg_indexes catalog는 제약이 만든 인덱스와 `CREATE INDEX`로 만든 인덱스를
-구분하지 않는다) 60 = 57 + 3다. 두 표가 다른 숫자를 보여주는 것은 오류가 아니라
+구분하지 않는다) 62 = 59 + 3다. 두 표가 다른 숫자를 보여주는 것은 오류가 아니라
 분류 기준의 차이다.
+
+## 5.1 Issue #115 비동기 매칭 delta (V12)
+
+아래 항목은 V1~V9 baseline 이후 Issue #115에서 추가된 논리·물리 계약이다. 이
+문서는 현재 작업 브랜치의 `V12__add_direction_matching_outbox_contract.sql`과
+DBML/ERD를 대조해 기록하며, 실제 PostgreSQL catalog 적용 여부는 통합 테스트에서
+확정한다. lease duration과 retry backoff의 숫자값은 application configuration의
+책임이므로 manifest에 기록하지 않는다.
+
+| 대상 | 계약 |
+| --- | --- |
+| `direction_post.request_fingerprint` | `VARCHAR(80)`, legacy 행의 `NULL`을 허용한다. 새 제출은 `v1:SHA-256` fingerprint를 저장하고, 기존 행은 첫 idempotency 재시도에서 저장된 의도를 복원할 수 있을 때 lazy backfill한다. 복원할 수 없는 legacy 행은 기존 결과를 반환하고 reconciliation 대상으로 남긴다. |
+| `outbox_event.match_round` | `aggregate_type = 'DIRECTION_POST'`이고 `event_type = 'RECIPIENT_MATCH_REQUESTED'`인 행에만 필수다. 초기 매칭은 `1`이며 retry/reclaim은 round를 증가시키지 않는다. 별도 `matching_job` 테이블 없이 이 Outbox row 자체를 matching job으로 취급한다. |
+| `uq_outbox_event_direction_matching_round` | `(aggregate_id, match_round, event_type)` partial unique index. 방향글의 같은 matching round/event 작업을 한 번만 생성한다. |
+| `outbox_event.lease_owner` / `lease_expires_at` / `lease_generation` | `PROCESSING`일 때 owner와 expiry가 함께 존재하고, 그 외 상태에서는 둘 다 `NULL`이다. generation은 claim/reclaim마다 증가하는 monotonic fencing token이다. stale worker 갱신은 id·PROCESSING·owner·generation·유효 lease 조건이 모두 맞을 때만 허용한다. |
+| `outbox_event_claim_idx` | `(status, next_attempt_at, lease_expires_at, id)` claim index. due PENDING/FAILED와 만료된 PROCESSING을 찾는 경로이며, due 판정과 row 점유는 한 transaction에서 처리한다. |
+| matching payload | `postId`, `matchRound`, `eventType`, `requestFingerprint`와 coarse 식별자만 저장한다. 정확 좌표, `PostGIS point`, WKB/GeoJSON 등 좌표를 복원할 수 있는 값은 저장하지 않는다. |
+
+### V12 constraint/index inventory
+
+- Check: `ck_outbox_event_match_round`, `ck_outbox_event_lease_generation`, `ck_outbox_event_lease_state`
+- Partial unique index: `uq_outbox_event_direction_matching_round`
+- Claim index: `outbox_event_claim_idx`
+- 기존 `outbox_event_dispatch_idx`와 `uq_outbox_event_dedup`는 유지한다.
 
 ## 6. Table inventory
 
@@ -244,6 +273,8 @@ V1~V9(2026-08-08) 전체를 반영한다. `V7`(#81, `device_credential`)과 `V8`
 - `uq_open_report_answer`
 - `uq_active_push_token`
 - `outbox_event_dispatch_idx`
+- `uq_outbox_event_direction_matching_round` (V12, partial unique)
+- `outbox_event_claim_idx` (V12)
 - `notification_inbox_idx`
 - `notification_delivery_dispatch_idx`
 - `uq_answer_one_per_recipient` (`V8`에서 조건 축소, `status <> 'REJECTED'`)
@@ -433,6 +464,9 @@ partial unique object는 위 Index inventory에 포함된다. 반대로 이 절�
 - `ck_outbox_event_status`
 - `ck_outbox_event_attempt_count`
 - `ck_outbox_event_processed_at`
+- `ck_outbox_event_match_round` (V12)
+- `ck_outbox_event_lease_generation` (V12)
+- `ck_outbox_event_lease_state` (V12)
 - `ck_notification_type`
 - `ck_notification_target`
 - `ck_notification_status`

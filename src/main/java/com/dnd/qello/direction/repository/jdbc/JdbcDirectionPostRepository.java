@@ -13,6 +13,7 @@ import org.springframework.stereotype.Repository;
 import com.dnd.qello.direction.domain.DirectionPost;
 import com.dnd.qello.direction.domain.DirectionPostModerationStatus;
 import com.dnd.qello.direction.domain.DirectionPostStatus;
+import com.dnd.qello.direction.domain.DirectionRequestFingerprint;
 import com.dnd.qello.direction.repository.DirectionPostRepository;
 import com.dnd.qello.direction.repository.jdbc.sql.DirectionPostSql;
 
@@ -28,8 +29,8 @@ public class JdbcDirectionPostRepository implements DirectionPostRepository {
 	public DirectionPost save(DirectionPost post) {
 		String sql = post.getId() == null ? DirectionPostSql.INSERT : DirectionPostSql.UPDATE;
 		Long id = jdbc.queryForObject(sql, params(post), Long.class);
-		return DirectionPost.restore(id, post.getSenderId(), post.getApprovedQuestionId(), post.getStatus(),
-			post.getIdempotencyKey(), post.getBodyText(), post.getCoarseRegionCode(), post.getModerationStatus(),
+		return DirectionPost.restore(id, post.getSenderId(), post.getApprovedQuestionId(), post.getRequestFingerprint(),
+			post.getStatus(), post.getIdempotencyKey(), post.getBodyText(), post.getCoarseRegionCode(), post.getModerationStatus(),
 			post.getSubmittedAt(), post.getPublishedAt(), post.getExpiresAt(), post.getAnswersReadAt(),
 			post.getDeletedAt());
 	}
@@ -55,6 +56,14 @@ public class JdbcDirectionPostRepository implements DirectionPostRepository {
 	}
 
 	@Override
+	public Optional<DirectionPost> updateRequestFingerprintIfNull(long id,
+		DirectionRequestFingerprint requestFingerprint) {
+		return jdbc.query(DirectionPostSql.UPDATE_FINGERPRINT_IF_NULL,
+			new MapSqlParameterSource().addValue("id", id).addValue("requestFingerprint", requestFingerprint.value()),
+			rs -> rs.next() ? Optional.of(map(rs)) : Optional.empty());
+	}
+
+	@Override
 	public Optional<DirectionPost> findByIdAndSenderId(long id, long senderId) {
 		return one("SELECT * FROM direction_post WHERE id = :id AND sender_id = :senderId",
 			new MapSqlParameterSource().addValue("id", id).addValue("senderId", senderId));
@@ -67,7 +76,9 @@ public class JdbcDirectionPostRepository implements DirectionPostRepository {
 	private static MapSqlParameterSource params(DirectionPost p) {
 		return new MapSqlParameterSource().addValue("id", p.getId()).addValue("senderId", p.getSenderId())
 			.addValue("questionId", p.getApprovedQuestionId()).addValue("status", p.getStatus().name())
-			.addValue("idempotencyKey", p.getIdempotencyKey()).addValue("bodyText", p.getBodyText())
+			.addValue("idempotencyKey", p.getIdempotencyKey())
+			.addValue("requestFingerprint", p.getRequestFingerprint() == null ? null : p.getRequestFingerprint().value())
+			.addValue("bodyText", p.getBodyText())
 			.addValue("regionCode", p.getCoarseRegionCode()).addValue("moderationStatus", p.getModerationStatus().name())
 			.addValue("submittedAt", timestamp(p.getSubmittedAt())).addValue("publishedAt", timestamp(p.getPublishedAt()))
 			.addValue("expiresAt", timestamp(p.getExpiresAt()))
@@ -79,6 +90,7 @@ public class JdbcDirectionPostRepository implements DirectionPostRepository {
 
 	private static DirectionPost map(ResultSet rs) throws SQLException {
 		return DirectionPost.restore(rs.getLong("id"), rs.getLong("sender_id"), rs.getLong("approved_question_id"),
+			DirectionRequestFingerprint.restore(rs.getString("request_fingerprint")),
 			DirectionPostStatus.valueOf(rs.getString("status")), rs.getString("idempotency_key"), rs.getString("body_text"),
 			rs.getString("coarse_region_code"), DirectionPostModerationStatus.valueOf(rs.getString("moderation_status")),
 			rs.getTimestamp("submitted_at").toInstant(), rs.getTimestamp("published_at") == null ? null : rs.getTimestamp("published_at").toInstant(),

@@ -12,9 +12,9 @@ public final class DirectionPostSql {
 
 	public static final String INSERT = """
 		INSERT INTO direction_post
-			(sender_id, approved_question_id, status, idempotency_key, body_text, coarse_region_code,
+			(sender_id, approved_question_id, status, idempotency_key, request_fingerprint, body_text, coarse_region_code,
 			 moderation_status, submitted_at, published_at, expires_at, answers_read_at, deleted_at)
-		VALUES (:senderId, :questionId, :status, :idempotencyKey, :bodyText, :regionCode,
+		VALUES (:senderId, :questionId, :status, :idempotencyKey, :requestFingerprint, :bodyText, :regionCode,
 			:moderationStatus, :submittedAt, :publishedAt, :expiresAt, :answersReadAt, :deletedAt)
 		RETURNING id
 		""";
@@ -28,5 +28,12 @@ public final class DirectionPostSql {
 		    deleted_at = :deletedAt
 		WHERE id = :id
 		RETURNING id
+		""";
+
+	public static final String UPDATE_FINGERPRINT_IF_NULL = """
+		UPDATE direction_post
+		SET request_fingerprint = :requestFingerprint
+		WHERE id = :id AND request_fingerprint IS NULL
+		RETURNING *
 		""";
 }
