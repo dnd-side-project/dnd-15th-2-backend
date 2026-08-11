@@ -46,7 +46,11 @@ class FlywayMigrationContractTest {
 		assertThat(sha256(v2)).isEqualTo(ACCEPTED_V2_SHA_256);
 		assertThat(scriptConfiguration)
 			.containsEntry("executeInTransaction", "false");
+		// 문자열 정렬이라 "V10"이 "V1_"보다 앞선다('0' < '_'). Flyway 자체는 버전을
+		// 수치로 비교해 순서에 영향이 없지만, 이 목록은 실제 디렉터리 정렬 순서와
+		// 일치해야 한다.
 		assertThat(sqlMigrationNames()).containsExactly(
+			"V10__create_filtering_schema.sql",
 			"V1__create_direction_communication_schema.sql",
 			"V2__add_reactions_and_skip_pending.sql",
 			"V3__add_user_account_password_hash.sql",
