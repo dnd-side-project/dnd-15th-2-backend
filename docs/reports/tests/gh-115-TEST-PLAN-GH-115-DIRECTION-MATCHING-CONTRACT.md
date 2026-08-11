@@ -8,7 +8,7 @@
 ## 1. Executive summary
 
 - Result: `PARTIAL`
-- Tested scope: fingerprint canonicalization, direction-post persistence, idempotency conflict, matching Outbox round identity/payload, Flyway V11 catalog, lease claim/reclaim/fencing, and existing Outbox API regression.
+- Tested scope: fingerprint canonicalization, direction-post persistence, idempotency conflict, matching Outbox round identity/payload, Flyway V12 catalog, lease claim/reclaim/fencing, and existing Outbox API regression.
 - Unverified scope: INT-007 failure-injection rollback scenario, matching worker implementation, REST controller/API contract, external push provider, and production deployment. The latter four are outside Issue #115.
 - Release recommendation: implementation is ready for code review, but the INT-007 rollback evidence remains blocked; do not treat this as worker or production rollout approval.
 
@@ -30,7 +30,7 @@
 | --- | --- | --- | --- | --- |
 | `./gradlew test` | PASS | 212 | 4s | Gradle test task |
 | `./gradlew integrationTest --rerun-tasks --no-parallel --max-workers=1` | PASS (earlier tree) / BLOCKED (latest rerun) | 218 earlier | ~2m | Latest rerun hit Gradle XML result-writer errors; generated XML suites reported zero assertion failures |
-| Targeted V11/matching/lease integration tests | PASS | 14 | 18s | `FlywayMigrationIntegrationTest`, `DirectionMatchingContractIntegrationTest`, `OutboxLeaseIntegrationTest` |
+| Targeted V12/matching/lease integration tests | PASS | 14 | 18s | `FlywayMigrationIntegrationTest`, `DirectionMatchingContractIntegrationTest`, `OutboxLeaseIntegrationTest` |
 | Existing notification + lease regression target | PASS | 17 | 11s | `AnswerSafetyNotificationPersistenceIntegrationTest`, `OutboxLeaseIntegrationTest` |
 | `./harness check` | PASS | policy gate | <1s | harness output |
 | `npm run hooks:validate` | PASS | policy gate | <1s | Husky validation output |
@@ -44,7 +44,7 @@
 | UNIT-004 | PASS | `OutboxEventLeaseTest.assignsMatchingRoundOnlyToDirectionMatchingEvent` | matching event only; initial round 1 |
 | UNIT-005~006 | PASS | `OutboxEventLeaseTest` claim/reclaim methods | lease owner/expiry and generation fencing state machine |
 | UNIT-007 | PASS | `OutboxEventLeaseTest` payload/domain methods | JSON object and domain mapping constraints |
-| INT-001 | PASS | `FlywayMigrationIntegrationTest` | V11 history, columns, checks, partial unique index, claim index |
+| INT-001 | PASS | `FlywayMigrationIntegrationTest` | V12 history, columns, checks, partial unique index, claim index |
 | INT-002 | PASS | `DirectionMatchingContractIntegrationTest` | persistence, same-result retry, `IDEMPOTENCY_KEY_REUSED`, matching event enqueue |
 | INT-003 | PASS | matching contract integration fixture | round/event uniqueness and conflict protection |
 | INT-004 | PASS | `DirectionMatchingContractIntegrationTest` | round 1/2 identity and non-matching round rejection |
@@ -80,7 +80,7 @@ runtime also reported an amd64 image on an arm64 host.
 
 ### Database and migrations
 
-- V11 is applied after V1~V10. Legacy `request_fingerprint` remains nullable for
+- V12 is applied after V1~V11. Legacy `request_fingerprint` remains nullable for
   lazy backfill and existing PROCESSING outbox rows are made immediately reclaimable.
 
 ### Concurrency and idempotency

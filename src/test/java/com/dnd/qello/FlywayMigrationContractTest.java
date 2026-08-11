@@ -52,7 +52,8 @@ class FlywayMigrationContractTest {
 		// 일치해야 한다.
 		assertThat(sqlMigrationNames()).containsExactly(
 			"V10__create_filtering_schema.sql",
-			"V11__add_direction_matching_outbox_contract.sql",
+			"V11__add_filter_release_registry.sql",
+			"V12__add_direction_matching_outbox_contract.sql",
 			"V1__create_direction_communication_schema.sql",
 			"V2__add_reactions_and_skip_pending.sql",
 			"V3__add_user_account_password_hash.sql",

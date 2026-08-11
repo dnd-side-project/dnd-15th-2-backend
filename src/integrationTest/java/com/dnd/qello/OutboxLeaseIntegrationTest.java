@@ -153,7 +153,7 @@ class OutboxLeaseIntegrationTest extends PostgisContainerIntegrationTestSupport 
 	}
 
 	@Test
-	@DisplayName("기존 Outbox save·find·legacy claim API는 V11 lease 컬럼과 함께 동작한다")
+	@DisplayName("기존 Outbox save·find·legacy claim API는 V12 lease 컬럼과 함께 동작한다")
 	void preservesExistingOutboxApi() {
 		OutboxEvent event = outboxRepository.save(event("legacy-outbox-api", NOW));
 

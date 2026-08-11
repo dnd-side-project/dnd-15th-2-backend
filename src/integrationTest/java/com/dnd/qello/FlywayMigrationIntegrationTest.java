@@ -162,7 +162,7 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 	private JdbcTemplate jdbcTemplate;
 
 	@Test
-	@DisplayName("빈 PostGIS 데이터베이스의 startup에서 V1부터 V11까지 migration을 적용한다")
+	@DisplayName("빈 PostGIS 데이터베이스의 startup에서 V1부터 V12까지 migration을 적용한다")
 	void appliesAllMigrationsOnApplicationStartup() {
 		Integer successfulV1 = jdbcTemplate.queryForObject("""
 			SELECT count(*)
@@ -219,6 +219,11 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 			FROM flyway_schema_history
 			WHERE version = '11' AND success
 			""", Integer.class);
+		Integer successfulV12 = jdbcTemplate.queryForObject("""
+			SELECT count(*)
+			FROM flyway_schema_history
+			WHERE version = '12' AND success
+			""", Integer.class);
 		String postgisVersion = jdbcTemplate.queryForObject(
 			"SELECT PostGIS_Version()", String.class);
 
@@ -233,7 +238,8 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 		assertThat(successfulV9).isEqualTo(1);
 		assertThat(successfulV10).isEqualTo(1);
 		assertThat(successfulV11).isEqualTo(1);
-		assertThat(flyway.info().applied()).hasSize(11);
+		assertThat(successfulV12).isEqualTo(1);
+		assertThat(flyway.info().applied()).hasSize(12);
 		assertThat(postgisVersion).isNotBlank();
 	}
 
@@ -327,8 +333,8 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 	}
 
 	@Test
-	@DisplayName("V11은 fingerprint·매칭 round·lease fencing 컬럼과 실제 제약을 생성한다")
-	void v11AddsDirectionMatchingAndLeaseCatalog() {
+	@DisplayName("V12는 fingerprint·매칭 round·lease fencing 컬럼과 실제 제약을 생성한다")
+	void v12AddsDirectionMatchingAndLeaseCatalog() {
 		assertThat(columnExists("direction_post", "request_fingerprint")).isTrue();
 		assertThat(columnExists("outbox_event", "match_round")).isTrue();
 		assertThat(columnExists("outbox_event", "lease_owner")).isTrue();
