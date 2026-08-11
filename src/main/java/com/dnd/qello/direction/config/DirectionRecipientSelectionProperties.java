@@ -8,11 +8,4 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  */
 @ConfigurationProperties(prefix = "qello.direction")
 public record DirectionRecipientSelectionProperties(int maxRecipientsPerPost) {
-
-	public DirectionRecipientSelectionProperties {
-		if (maxRecipientsPerPost < 1) {
-			throw new IllegalArgumentException(
-				"qello.direction.max-recipients-per-post는 1 이상이어야 합니다: " + maxRecipientsPerPost);
-		}
-	}
 }

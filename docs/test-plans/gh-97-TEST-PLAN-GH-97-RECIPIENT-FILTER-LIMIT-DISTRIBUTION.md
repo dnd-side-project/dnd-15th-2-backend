@@ -49,7 +49,7 @@
 
 | ID | Decision | Why it changes the test oracle |
 | --- | --- | --- |
-| DEC-001 | **RESOLVED** — `qello.direction.max-recipients-per-post`, MVP 기본값 10, 1 이상 설정 가능 | 기존 `receive-capacity`는 사용자별 활성 미처리 슬롯 상한이라 재사용하지 않는다. |
+| DEC-001 | **RESOLVED** — `qello.direction.max-recipients-per-post`, MVP 기본값 10, 애플리케이션 계층에서 유효 범위를 검사하지 않음 | 시스템 내부 설정값은 사용자 입력이 아니므로 별도 예외 처리를 두지 않는다. 기존 `receive-capacity`는 사용자별 활성 미처리 슬롯 상한이라 재사용하지 않는다. |
 | DEC-002 | **RESOLVED** — 후보를 공정성 순으로 순회하며 슬롯 예약 성공자를 최대 10명까지 확정한다 | 개인 슬롯이 가득 찬 상위 후보 때문에 발송 상한을 낭비하지 않고 후순위 후보를 확인한다. |
 | DEC-003 | **RESOLVED** — `recent_received_count ASC, last_received_at ASC NULLS FIRST, distance_m ASC, user_id ASC` | 랜덤 정렬 없이 공정성을 우선하고 거리와 ID로 재현성을 보장한다. |
 | DEC-004 | **RESOLVED** — viewer와 `direction_post.sender_id` 사이 어느 방향이든 활성 차단이면 `canView=false` | 후보 선정과 답변 열람의 차단 전파 범위를 일치시킨다. |
@@ -72,11 +72,11 @@
 
 | Scenario ID | Given | When | Then | Priority | Owner |
 | --- | --- | --- | --- | --- | --- |
-| TEST-PLAN-GH-97-RECIPIENT-FILTER-LIMIT-DISTRIBUTION-UNIT-001 | 발송별 상한 설정값과 기존 사용자별 `receive-capacity` 설정값 | 설정 객체를 생성·바인딩한다 | 두 값이 서로 다른 정책으로 검증되고, 0 이하 값은 거절되며 기본값은 10이다 | P0 | Direction config executor |
+| TEST-PLAN-GH-97-RECIPIENT-FILTER-LIMIT-DISTRIBUTION-UNIT-001 | 발송별 상한 설정값과 기존 사용자별 `receive-capacity` 설정값 | 설정 객체를 생성·바인딩한다 | 두 값이 서로 다른 정책으로 유지되고 기본값은 10이다. 시스템 내부 설정값에 대한 애플리케이션 예외 처리는 수행하지 않는다 | P0 | Direction config executor |
 | TEST-PLAN-GH-97-RECIPIENT-FILTER-LIMIT-DISTRIBUTION-UNIT-002 | 후보 선정 SQL과 답변 열람 SQL source | SQL 경계 계약을 검사한다 | 후보 SQL이 `user_account.status`, 양방향 활성 `user_block`, `recipient_receive_state`와 limit/order 계약을 포함하고, 답변 SQL이 같은 양방향 차단 정책을 사용한다. 기존 explicit `:at`·recipient eligibility는 유지한다 | P0 | Boundary-test executor |
 | TEST-PLAN-GH-97-RECIPIENT-FILTER-LIMIT-DISTRIBUTION-UNIT-003 | `recent_received_count`가 같은 후보와 null/동일 시각 `last_received_at` | 승인된 tie-break를 적용한다 | 정렬 결과가 매번 동일하고 최종 `user_id`까지 결정론적이다. 랜덤/현재 시각 기반 정렬은 사용하지 않는다 | P0 | Direction SQL executor |
 | TEST-PLAN-GH-97-RECIPIENT-FILTER-LIMIT-DISTRIBUTION-UNIT-004 | 비활성 계정 status 값 `BLOCKED`, `DELETED`와 `ACTIVE` | 후보 eligibility 계약을 검사한다 | `ACTIVE`만 후보 허용 대상이고 status 문자열을 임의의 presence flag로 대체하지 않는다 | P1 | Direction SQL executor |
-| TEST-PLAN-GH-97-RECIPIENT-FILTER-LIMIT-DISTRIBUTION-UNIT-005 | 상한보다 많은 후보와 상한 이하 후보 | 후보 제한 contract를 검증한다 | 승인된 DEC-002 기준으로 예약 성공자 수가 설정값을 넘지 않으며, 상한 0/음수 입력은 설정 계층에서 거절된다 | P0 | Direction config executor |
+| TEST-PLAN-GH-97-RECIPIENT-FILTER-LIMIT-DISTRIBUTION-UNIT-005 | 상한보다 많은 후보와 상한 이하 후보 | 후보 제한 contract를 검증한다 | 승인된 DEC-002 기준으로 예약 성공자 수가 설정값을 넘지 않는다 | P0 | Direction config executor |
 
 ## 6. Integration scenarios
 

@@ -36,7 +36,7 @@
 
 | Scenario ID | Result | Test class / method | Notes |
 | --- | --- | --- | --- |
-| ...-UNIT-001, UNIT-005 | PASS | `DirectionRecipientSelectionPropertiesTest` | 기본값 10, 1 미만 거절 |
+| ...-UNIT-001, UNIT-005 | PASS | `DirectionRecipientSelectionPropertiesTest` 및 `DirectionRecipientSelectionIntegrationTest` | 기본값 10, 시스템 내부 설정값 예외 없음, 사용자별 수신 상한과 발송별 상한의 분리 |
 | ...-UNIT-002~004 | PASS | `DirectionRecipientSelectionBoundaryTest` | ACTIVE 계정, 양방향 block, fairness order, 설정 key 계약 |
 | ...-INT-001 | PASS | `DirectionRecipientSelectionIntegrationTest.excludesInactiveAndBidirectionallyBlockedCandidates` | 양방향 active block·BLOCKED·DELETED·released block 검증 |
 | ...-INT-002 | PASS | `DirectionRecipientSelectionIntegrationTest.sendStopsAfterTenSuccessfulReservations` | 최대 10명 확정 및 recipient count 검증 |

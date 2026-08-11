@@ -5,7 +5,6 @@
 package com.dnd.qello.direction.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -21,10 +20,10 @@ class DirectionRecipientSelectionPropertiesTest {
 	}
 
 	@Test
-	@DisplayName("발송별 최대 수신자는 1 미만으로 설정할 수 없다")
-	void rejectsNonPositiveRecipientSelectionLimit() {
-		assertThatThrownBy(() -> new DirectionRecipientSelectionProperties(0))
-			.isInstanceOf(IllegalArgumentException.class)
-			.hasMessageContaining("max-recipients-per-post");
+	@DisplayName("시스템 내부 설정값은 애플리케이션 예외 없이 보관한다")
+	void acceptsInternalConfigurationValueWithoutApplicationValidation() {
+		var properties = new DirectionRecipientSelectionProperties(0);
+
+		assertThat(properties.maxRecipientsPerPost()).isZero();
 	}
 }
