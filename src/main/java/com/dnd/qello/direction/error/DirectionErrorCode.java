@@ -79,7 +79,11 @@ public enum DirectionErrorCode implements ErrorCode {
 	DUPLICATED_POST(HttpStatus.CONFLICT, "DIR-INFRA-001", ErrorCategory.INFRA, "이미 전송된 게시글입니다."),
 
 	// 같은 게시글의 동일 수신자 중복. DB 유일성 제약에서 감지
-	DUPLICATED_RECIPIENT(HttpStatus.CONFLICT, "DIR-INFRA-002", ErrorCategory.INFRA, "이미 등록된 수신자입니다.");
+	DUPLICATED_RECIPIENT(HttpStatus.CONFLICT, "DIR-INFRA-002", ErrorCategory.INFRA, "이미 등록된 수신자입니다."),
+
+	// 같은 sender와 멱등키에 다른 사용자 의도 fingerprint를 재사용한 요청
+	IDEMPOTENCY_KEY_REUSED(HttpStatus.CONFLICT, "DIR-APP-005", ErrorCategory.APP,
+		"같은 멱등키로 다른 요청을 재사용할 수 없습니다.");
 
 	private final HttpStatus httpStatus;
 	private final String code;

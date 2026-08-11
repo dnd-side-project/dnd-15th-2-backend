@@ -166,6 +166,7 @@
 | `DIR-APP-002` | PRESENCE_LOCATION_MISSING | 409 | APP | 위치 정보가 없어 수신 후보를 계산할 수 없습니다. |
 | `DIR-APP-003` | PRESENCE_NOT_CURRENT | 409 | APP | 현재 위치 정보가 유효하지 않습니다. |
 | `DIR-APP-004` | PRESENCE_NOT_FOUND | 409 | APP | 발신자의 위치 정보가 없습니다. |
+| `DIR-APP-005` | IDEMPOTENCY_KEY_REUSED | 409 | APP | 같은 멱등키로 다른 요청을 재사용할 수 없습니다. |
 | `DIR-INFRA-001` | DUPLICATED_POST | 409 | INFRA | 이미 전송된 게시글입니다. |
 | `DIR-INFRA-002` | DUPLICATED_RECIPIENT | 409 | INFRA | 이미 등록된 수신자입니다. |
 

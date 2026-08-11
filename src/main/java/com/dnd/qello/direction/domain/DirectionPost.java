@@ -15,6 +15,7 @@ public final class DirectionPost {
 	private final Long approvedQuestionId;
 	private final DirectionPostStatus status;
 	private final String idempotencyKey;
+	private final DirectionRequestFingerprint requestFingerprint;
 	private final String bodyText;
 	private final String coarseRegionCode;
 	private final DirectionPostModerationStatus moderationStatus;
@@ -25,7 +26,7 @@ public final class DirectionPost {
 	private final Instant deletedAt;
 
 	private DirectionPost(Long id, Long senderId, Long approvedQuestionId, DirectionPostStatus status,
-		String idempotencyKey, String bodyText, String coarseRegionCode,
+		String idempotencyKey, DirectionRequestFingerprint requestFingerprint, String bodyText, String coarseRegionCode,
 		DirectionPostModerationStatus moderationStatus, Instant submittedAt, Instant publishedAt,
 		Instant expiresAt, Instant answersReadAt, Instant deletedAt) {
 		this.id = validateId(id, "id");
@@ -33,6 +34,7 @@ public final class DirectionPost {
 		this.approvedQuestionId = requireId(approvedQuestionId, "approvedQuestionId");
 		this.status = requireValue(status, "status");
 		this.idempotencyKey = requireText(idempotencyKey, "idempotencyKey", 200);
+		this.requestFingerprint = requestFingerprint;
 		if (bodyText != null && bodyText.isBlank()) {
 			throw new DirectionException(DirectionErrorCode.INVALID_TEXT, "bodyText", "bodyText는 공백일 수 없습니다");
 		}
@@ -64,8 +66,22 @@ public final class DirectionPost {
 
 	public static DirectionPost submit(Long senderId, Long approvedQuestionId, String idempotencyKey,
 		String bodyText, String coarseRegionCode, Instant submittedAt, Instant expiresAt) {
+		// 기존 호출부와 legacy fixture를 위한 nullable 복원 호환 경로다. 신규 service 제출은
+		// fingerprint를 받는 아래 overload만 사용한다.
 		return new DirectionPost(null, senderId, approvedQuestionId, DirectionPostStatus.MATCHING,
-			idempotencyKey, bodyText, coarseRegionCode, DirectionPostModerationStatus.PENDING,
+			idempotencyKey, null, bodyText, coarseRegionCode, DirectionPostModerationStatus.PENDING,
+			submittedAt, null, expiresAt, null, null);
+	}
+
+	public static DirectionPost submit(Long senderId, Long approvedQuestionId,
+		DirectionRequestFingerprint requestFingerprint, String idempotencyKey, String bodyText,
+		String coarseRegionCode, Instant submittedAt, Instant expiresAt) {
+		if (requestFingerprint == null) {
+			throw new DirectionException(
+				DirectionErrorCode.REQUIRED_VALUE_MISSING, "requestFingerprint", "새 제출에는 requestFingerprint가 필요합니다");
+		}
+		return new DirectionPost(null, senderId, approvedQuestionId, DirectionPostStatus.MATCHING,
+			idempotencyKey, requestFingerprint, bodyText, coarseRegionCode, DirectionPostModerationStatus.PENDING,
 			submittedAt, null, expiresAt, null, null);
 	}
 
@@ -73,14 +89,22 @@ public final class DirectionPost {
 		DirectionPostStatus status, String idempotencyKey, String bodyText, String coarseRegionCode,
 		DirectionPostModerationStatus moderationStatus, Instant submittedAt, Instant publishedAt,
 		Instant expiresAt, Instant answersReadAt, Instant deletedAt) {
-		return new DirectionPost(id, senderId, approvedQuestionId, status, idempotencyKey, bodyText,
+		return restore(id, senderId, approvedQuestionId, null, status, idempotencyKey, bodyText,
+			coarseRegionCode, moderationStatus, submittedAt, publishedAt, expiresAt, answersReadAt, deletedAt);
+	}
+
+	public static DirectionPost restore(Long id, Long senderId, Long approvedQuestionId,
+		DirectionRequestFingerprint requestFingerprint, DirectionPostStatus status, String idempotencyKey,
+		String bodyText, String coarseRegionCode, DirectionPostModerationStatus moderationStatus,
+		Instant submittedAt, Instant publishedAt, Instant expiresAt, Instant answersReadAt, Instant deletedAt) {
+		return new DirectionPost(id, senderId, approvedQuestionId, status, idempotencyKey, requestFingerprint, bodyText,
 			coarseRegionCode, moderationStatus, submittedAt, publishedAt, expiresAt, answersReadAt, deletedAt);
 	}
 
 	/** 질문자가 답변 목록을 읽은 시각을 기록한다. `새로운 답변 n개` 배지는 이 시각 이후 공개된 답변만 센다. */
 	public DirectionPost markAnswersRead(Instant at) {
 		requireValue(at, "answersReadAt");
-		return new DirectionPost(id, senderId, approvedQuestionId, status, idempotencyKey, bodyText,
+		return new DirectionPost(id, senderId, approvedQuestionId, status, idempotencyKey, requestFingerprint, bodyText,
 			coarseRegionCode, moderationStatus, submittedAt, publishedAt, expiresAt, at, deletedAt);
 	}
 

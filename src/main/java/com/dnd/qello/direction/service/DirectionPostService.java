@@ -4,14 +4,18 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import com.dnd.qello.direction.config.DirectionReceiveProperties;
 import com.dnd.qello.direction.config.DirectionRecipientSelectionProperties;
 import com.dnd.qello.direction.domain.ActiveUserPresence;
 import com.dnd.qello.direction.domain.DirectionCandidate;
 import com.dnd.qello.direction.domain.DirectionPost;
+import com.dnd.qello.direction.domain.DirectionRequestFingerprint;
 import com.dnd.qello.direction.domain.DirectionScheme;
 import com.dnd.qello.direction.domain.DirectionSegment;
 import com.dnd.qello.direction.domain.PostAudience;
@@ -26,6 +30,8 @@ import com.dnd.qello.direction.repository.PostRecipientRepository;
 import com.dnd.qello.direction.repository.RecipientReceiveStateRepository;
 import com.dnd.qello.feed.config.DistanceBandPolicy;
 import com.dnd.qello.question.repository.ApprovedQuestionRepository;
+import com.dnd.qello.notification.domain.OutboxEvent;
+import com.dnd.qello.notification.repository.OutboxEventRepository;
 
 import lombok.RequiredArgsConstructor;
 
@@ -47,6 +53,8 @@ public class DirectionPostService {
 	private final ApprovedQuestionRepository approvedQuestionRepository;
 	private final DirectionReceiveProperties receiveProperties;
 	private final DistanceBandPolicy distanceBandPolicy;
+	private final OutboxEventRepository outboxEventRepository;
+	private final PlatformTransactionManager transactionManager;
 
 	@Transactional(readOnly = true)
 	public List<DirectionCandidate> preview(PreviewCommand command) {
@@ -56,11 +64,29 @@ public class DirectionPostService {
 		return candidates(command, sender, segment);
 	}
 
-	@Transactional
 	public SendResult send(SendCommand command) {
 		requireValue(command, "command");
+		DirectionRequestFingerprint requestFingerprint = DirectionRequestFingerprint.create(command.approvedQuestionId(),
+			command.schemeId(), command.segmentKey(), command.minDistanceMeters(), command.maxDistanceMeters(),
+			command.coarseRegionCode(), command.bodyText());
+		try {
+			TransactionTemplate transaction = new TransactionTemplate(transactionManager);
+			return transaction.execute(status -> sendInTransaction(command, requestFingerprint));
+		} catch (DataIntegrityViolationException race) {
+			return recoverConcurrentRequest(command, requestFingerprint, race);
+		}
+	}
+
+	private SendResult sendInTransaction(SendCommand command, DirectionRequestFingerprint requestFingerprint) {
 		var existing = postRepository.findBySenderAndIdempotencyKey(command.senderId(), command.idempotencyKey());
-		if (existing.isPresent()) return new SendResult(existing.get(), audienceRepository.findByPostId(existing.get().getId()).orElse(null), recipientRepository.findAllByPostId(existing.get().getId()));
+		if (existing.isPresent()) {
+			DirectionPost existingPost = existing.get();
+			if (existingPost.getRequestFingerprint() != null && !existingPost.getRequestFingerprint().equals(requestFingerprint)) {
+				throw new DirectionException(DirectionErrorCode.IDEMPOTENCY_KEY_REUSED, "idempotencyKey",
+					"같은 멱등키로 다른 요청을 재사용할 수 없습니다");
+			}
+			return existingResult(existingPost, requestFingerprint);
+		}
 
 		if (approvedQuestionRepository.findAssignableAt(command.submittedAt()).stream()
 			.noneMatch(question -> question.getId().equals(command.approvedQuestionId()))) {
@@ -70,7 +96,8 @@ public class DirectionPostService {
 		ActiveUserPresence sender = activeSender(command.senderId(), command.submittedAt());
 		DirectionSegment segment = segment(command.schemeId(), command.segmentKey());
 		DirectionPost post = postRepository.save(DirectionPost.submit(command.senderId(), command.approvedQuestionId(),
-			command.idempotencyKey(), command.bodyText(), command.coarseRegionCode(), command.submittedAt(), command.expiresAt()));
+			requestFingerprint, command.idempotencyKey(), command.bodyText(), command.coarseRegionCode(),
+			command.submittedAt(), command.expiresAt()));
 		PostAudience audience = audienceRepository.save(PostAudience.create(post.getId(), command.schemeId(), segment.getSegmentKey(),
 			segment.getCenterBearingDegrees(), segment.getAngularWidthDegrees(), command.minDistanceMeters(), command.maxDistanceMeters(),
 			sender.getLatitude(), sender.getLongitude(), sender.getCoarseCellId(), command.submittedAt()));
@@ -78,7 +105,86 @@ public class DirectionPostService {
 		PreviewCommand candidateCommand = new PreviewCommand(command.senderId(), command.schemeId(), command.segmentKey(),
 			command.minDistanceMeters(), command.maxDistanceMeters(), command.coarseRegionCode(), command.submittedAt());
 		List<PostRecipient> recipients = selectRecipients(post.getId(), candidates(candidateCommand, sender, segment), command.submittedAt());
+		enqueueMatchingEvent(post, audience, requestFingerprint, command);
 		return new SendResult(post, audience, recipients);
+	}
+
+	private SendResult recoverConcurrentRequest(SendCommand command,
+		DirectionRequestFingerprint requestFingerprint, DataIntegrityViolationException race) {
+		DirectionPost existing = postRepository.findBySenderAndIdempotencyKey(command.senderId(), command.idempotencyKey())
+			.orElseThrow(() -> race);
+		if (existing.getRequestFingerprint() != null && !existing.getRequestFingerprint().equals(requestFingerprint)) {
+			throw new DirectionException(DirectionErrorCode.IDEMPOTENCY_KEY_REUSED, "idempotencyKey",
+				"같은 멱등키로 다른 요청을 재사용할 수 없습니다");
+		}
+		return existingResult(existing, requestFingerprint);
+	}
+
+	private SendResult existingResult(DirectionPost post, DirectionRequestFingerprint requestFingerprint) {
+		PostAudience audience = audienceRepository.findByPostId(post.getId()).orElse(null);
+		DirectionPost restored = post;
+		if (post.getRequestFingerprint() == null && audience != null) {
+			try {
+				DirectionRequestFingerprint legacyFingerprint = DirectionRequestFingerprint.create(post.getApprovedQuestionId(),
+					audience.getDirectionSchemeId(), audience.getSelectedSegmentKey(), audience.getMinDistanceMeters(),
+					audience.getMaxDistanceMeters(), post.getCoarseRegionCode(), post.getBodyText());
+				if (!legacyFingerprint.equals(requestFingerprint)) {
+					throw new DirectionException(DirectionErrorCode.IDEMPOTENCY_KEY_REUSED, "idempotencyKey",
+						"같은 멱등키로 다른 요청을 재사용할 수 없습니다");
+				}
+				restored = postRepository.updateRequestFingerprintIfNull(post.getId(), legacyFingerprint)
+					.orElseGet(() -> postRepository.findById(post.getId()).orElse(post));
+				if (restored.getRequestFingerprint() != null
+					&& !restored.getRequestFingerprint().equals(requestFingerprint)) {
+					throw new DirectionException(DirectionErrorCode.IDEMPOTENCY_KEY_REUSED, "idempotencyKey",
+						"같은 멱등키로 다른 요청을 재사용할 수 없습니다");
+				}
+			} catch (DirectionException ignored) {
+				if (ignored.getErrorCode() == DirectionErrorCode.IDEMPOTENCY_KEY_REUSED) throw ignored;
+				// legacy 행의 저장 의도를 복원할 수 없으면 기존 결과를 보존한다.
+			}
+		}
+		return new SendResult(restored, audience, recipientRepository.findAllByPostId(post.getId()));
+	}
+
+	private void enqueueMatchingEvent(DirectionPost post, PostAudience audience,
+		DirectionRequestFingerprint requestFingerprint, SendCommand command) {
+		int matchRound = 1;
+		String eventType = "RECIPIENT_MATCH_REQUESTED";
+		String dedupKey = "direction-match:" + post.getId() + ":" + matchRound + ":" + eventType;
+		String payload = "{\"postId\":" + post.getId()
+			+ ",\"matchRound\":" + matchRound
+			+ ",\"eventType\":\"" + eventType + "\""
+			+ ",\"requestFingerprint\":\"" + jsonEscape(requestFingerprint.value()) + "\""
+			+ ",\"schemeId\":" + audience.getDirectionSchemeId()
+			+ ",\"segmentKey\":\"" + jsonEscape(audience.getSelectedSegmentKey()) + "\""
+			+ ",\"minDistanceMeters\":" + audience.getMinDistanceMeters()
+			+ ",\"maxDistanceMeters\":" + audience.getMaxDistanceMeters()
+			+ ",\"coarseRegionCode\":\"" + jsonEscape(command.coarseRegionCode()) + "\"}";
+		outboxEventRepository.findByDedupKey(dedupKey).orElseGet(() ->
+			outboxEventRepository.save(OutboxEvent.matchingPending(post.getId(), matchRound, dedupKey,
+				payload, command.submittedAt())));
+	}
+
+	private static String jsonEscape(String value) {
+		StringBuilder escaped = new StringBuilder(value.length());
+		for (int index = 0; index < value.length(); index++) {
+			char character = value.charAt(index);
+			switch (character) {
+				case '"' -> escaped.append("\\\"");
+				case '\\' -> escaped.append("\\\\");
+				case '\b' -> escaped.append("\\b");
+				case '\f' -> escaped.append("\\f");
+				case '\n' -> escaped.append("\\n");
+				case '\r' -> escaped.append("\\r");
+				case '\t' -> escaped.append("\\t");
+				default -> {
+					if (character < 0x20) escaped.append(String.format("\\u%04x", (int) character));
+					else escaped.append(character);
+				}
+			}
+		}
+		return escaped.toString();
 	}
 
 	private List<PostRecipient> selectRecipients(long postId, List<DirectionCandidate> candidates, Instant matchedAt) {
