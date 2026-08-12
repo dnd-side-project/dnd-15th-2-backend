@@ -1,38 +1,44 @@
-# GitHub Issue #117 Task Contract
+# GitHub Issue #118 Task Contract
 
-> Generated at: `2026-08-12T00:57:48+09:00`
+> Generated at: `2026-08-12T14:08:46+09:00`
 >
 > 이 파일은 현재 작업 브랜치의 계약이다. 저장소 전역 정책은 `AGENTS.md`를
 > 따른다.
 
 ## Work gate
 
-- Title: `방향 preview 전체 구간 후보 집계`
-- GitHub Issue: `#117`
-- Branch: `feat/gh-117-direction-preview-all-segments`
+- Title: `질문글 멱등 제출과 MatchRequested Outbox 기록`
+- GitHub Issue: `#118`
+- Branch: `feat/gh-118-direction-post-submit`
 - Base branch: `main`
 
 ## Objective
 
-- 모바일 회전 중 방향별 preview 호출을 반복하지 않도록, repository와 service 결과 모델에서
-  한 번의 PostgreSQL/PostGIS 질의로 모든 활성 direction segment의 예상 후보 수를 반환한다.
+- 질문글 제출을 수신자 확정과 분리하고, 같은 의미의 재시도는 기존 결과로
+  복원하며 다른 요청의 멱등 키 재사용은 충돌로 거절한다.
+- `direction_post`, `post_audience`, `RECIPIENT_MATCH_REQUESTED` Outbox를
+  하나의 트랜잭션으로 기록한다.
 
 ## Scope
 
-- 모든 활성 direction segment를 한 번에 집계한다.
-- `ST_DWithin`으로 반경 후보를 축소하고 `ST_Azimuth`로 방향을 계산한다.
-- segment 경계는 시작각 포함·종료각 제외로 처리하고 0/360도 wrap-around 경계를 보존한다.
-- 후보가 없는 segment를 `0` count로 채우는 service 결과를 구성한다.
-- preview 결과 모델에는 사용자 ID와 정확 좌표를 포함하지 않는다.
-- 방향, 날짜 변경선, 최소·최대 거리 경계를 실제 PostgreSQL/PostGIS 통합 테스트로 검증한다.
+- `DirectionPostService.send()`의 제출 트랜잭션을 post·audience·matching
+  Outbox 기록으로 제한한다.
+- 기존 #115의 `request_fingerprint` 정규화·비교와 legacy lazy backfill을
+  유지한다.
+- 최초 matching event는 승인된 #115 계약에 따라 `match_round = 1`을 사용한다.
+- 동일 key·동일 fingerprint 재시도는 기존 제출 결과를 반환한다.
+- 동일 key·상이 fingerprint 요청은 `IDEMPOTENCY_KEY_REUSED`로 거절한다.
+- 제출 경로에서 후보 조회, 수신 슬롯 예약, `post_recipient` 생성을 수행하지
+  않는 것을 단위·PostgreSQL 통합 테스트로 증명한다.
+- 제출 실패 시 post·audience·Outbox 부분 커밋이 남지 않는지 검증한다.
 
 ## Explicit exclusions
 
-- REST Controller 구현
-- preview cache
-- 거리 정책의 미확정 기본 숫자 결정
-- migration은 #115 범위와 조정하며, #117에서 임의로 추가하지 않는다.
-- 수신자 목록 노출
+- 매칭 워커와 PostGIS 후보 재계산
+- `post_recipient` 확정과 수신 슬롯 예약
+- 인앱/외부 푸시 알림 및 REST Controller
+- 새로운 migration 또는 #115의 `match_round`/lease 계약 변경
+- P02/P03 미확정 제품 숫자 결정
 - 인프라 apply, 배포, 프로덕션 변경은 별도 승인 없이는 실행하지 않는다.
 - Secret, 계정 식별자, 토큰, `.env` 값은 기록하지 않는다.
 
@@ -40,15 +46,14 @@
 
 | Area | Owner | Required review |
 | --- | --- | --- |
-| Direction repository SQL | Backend | PostGIS integration evidence |
-| Direction preview service/model | Backend | Privacy and zero-fill test evidence |
-| Test plan and test report | Backend | Human approval before implementation |
+| DirectionPostService 제출 orchestration | Backend | 멱등성·트랜잭션 리뷰 |
+| 기존 발송 회귀 테스트 정리 | Backend | #120 경계와의 계약 리뷰 |
+| 테스트 계획·보고서 | Backend | 검증 증거 리뷰 |
 
 ## Existing user-owned changes
 
-- `./harness start` 전에는 테스트 계획 초안 파일만 존재했다.
-- `./harness start`가 clean worktree를 요구하여 해당 파일을 임시 stash로 보존한 뒤
-  `feat/gh-117-direction-preview-all-segments` 브랜치를 생성하고 복원했다.
+- 작업 시작 시 `git status --short` 결과는 clean이었다.
+- `./harness start` 후 현재 브랜치는 `feat/gh-118-direction-post-submit`이다.
 
 ## Validation
 
@@ -60,8 +65,10 @@ git diff --check
 
 ## Completion criteria
 
-- 한 질의 결과로 모든 방향 구간의 count를 반환한다.
-- 구간 경계의 중복·누락이 없다.
-- 미리보기 결과에 사용자 식별자와 정확 좌표가 없다.
-- 실제 PostgreSQL/PostGIS 통합 테스트가 통과한다.
-- 승인된 테스트 계획 없이 테스트 또는 production code 구현을 시작하지 않는다.
+- 질문글 제출 성공 시 post·audience·matching Outbox가 각각 한 행 기록된다.
+- 제출 성공 시 `post_recipient`와 `recipient_receive_state`가 변경되지 않는다.
+- 같은 key·같은 fingerprint 재시도는 row 수와 결과 ID를 증가시키지 않는다.
+- 같은 key·다른 fingerprint는 `IDEMPOTENCY_KEY_REUSED`이고 기존 행을 보존한다.
+- 제출 트랜잭션 rollback 후 부분 결과가 남지 않는다.
+- 승인된 P0 단위·통합 테스트와 저장소 필수 검증이 통과한다.
+- 실행하지 못한 검증과 남은 위험을 테스트 보고서에 기록한다.
