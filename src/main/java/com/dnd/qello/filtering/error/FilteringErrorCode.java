@@ -46,7 +46,13 @@ public enum FilteringErrorCode implements ErrorCode {
 	// moderation 공급자 호출이 timeout/error로 끝나 판정을 완료하지 못함. 호출자가
 	// 재시도·fail-closed 등을 결정해야 하며, 이 코드 자체를 ALLOW/BLOCK으로 바꾸지 않는다
 	MODERATION_PROVIDER_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "FLT-EXT-001", ErrorCategory.EXT,
-		"moderation 공급자 판정을 완료하지 못했습니다.");
+		"moderation 공급자 판정을 완료하지 못했습니다."),
+
+	// 독립 보조 moderation 판정기 호출이 timeout/error로 끝나 판정을 완료하지 못함
+	// (닉네임 동기 경로, INV-NICK-003~005). 주 판정기 실패 코드와 관측을 분리하기
+	// 위한 별도 코드 — 이 코드 역시 ALLOW/BLOCK으로 바꾸지 않는다
+	SECONDARY_MODERATOR_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "FLT-EXT-002", ErrorCategory.EXT,
+		"보조 moderation 판정기 판정을 완료하지 못했습니다.");
 
 	private final HttpStatus httpStatus;
 	private final String code;
