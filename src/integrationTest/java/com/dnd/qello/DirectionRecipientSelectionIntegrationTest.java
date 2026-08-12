@@ -1,6 +1,7 @@
 /**
  * Created at: 2026-08-10T23:14:20+09:00
- * Source scenario: TEST-PLAN-GH-97-RECIPIENT-FILTER-LIMIT-DISTRIBUTION-INT-001 through INT-004, INT-006
+ * Source scenario: TEST-PLAN-GH-97-RECIPIENT-FILTER-LIMIT-DISTRIBUTION-INT-001 through INT-004, INT-006,
+ * TEST-PLAN-GH-118-DIRECTION-POST-SUBMISSION-INT-001
  */
 package com.dnd.qello;
 
@@ -21,7 +22,6 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
 
-import com.dnd.qello.direction.config.DirectionRecipientSelectionProperties;
 import com.dnd.qello.direction.domain.ActiveUserPresence;
 import com.dnd.qello.direction.domain.DirectionCandidate;
 import com.dnd.qello.direction.domain.DirectionScheme;
@@ -49,9 +49,6 @@ class DirectionRecipientSelectionIntegrationTest extends PostgisContainerIntegra
 
 	@Autowired
 	private DirectionPostService postService;
-
-	@Autowired
-	private DirectionRecipientSelectionProperties selectionProperties;
 
 	@BeforeEach
 	void reset() {
@@ -120,8 +117,8 @@ class DirectionRecipientSelectionIntegrationTest extends PostgisContainerIntegra
 	}
 
 	@Test
-	@DisplayName("발송은 설정된 최대 10명의 예약 성공자까지만 recipient를 확정한다")
-	void sendStopsAfterTenSuccessfulReservations() {
+	@DisplayName("질문글 제출은 설정된 수신자 상한을 적용해 동기 recipient를 확정하지 않는다")
+	void submissionDefersRecipientSelection() {
 		long senderId = account("limit-sender", "ACTIVE");
 		long questionId = activeQuestion(senderId);
 		long schemeId = eightSegmentScheme();
@@ -135,17 +132,16 @@ class DirectionRecipientSelectionIntegrationTest extends PostgisContainerIntegra
 		var result = postService.send(new DirectionPostService.SendCommand(senderId, questionId, schemeId, "S0",
 			0, 5_000, REGION, "gh97-limit-10", "본문", AT, AT.plusSeconds(3600)));
 
-		assertThat(selectionProperties.maxRecipientsPerPost()).isEqualTo(10);
-		assertThat(result.recipients()).hasSize(10)
-			.extracting(recipient -> recipient.getRecipientId())
-			.containsExactlyElementsOf(candidateIds.subList(0, 10));
+		assertThat(result.recipients()).isEmpty();
 		assertThat(jdbc.queryForObject("SELECT count(*) FROM post_recipient WHERE post_id = ?", Integer.class, result.post().getId()))
-			.isEqualTo(10);
+			.isZero();
+		assertThat(jdbc.queryForObject("SELECT sum(active_unhandled_count) FROM recipient_receive_state WHERE user_id IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+			Integer.class, candidateIds.toArray())).isZero();
 	}
 
 	@Test
-	@DisplayName("슬롯 예약에 실패한 상위 후보가 있어도 후순위 후보로 최대 10명을 채운다")
-	void sendSkipsFullRecipientsWithoutConsumingPostLimit() {
+	@DisplayName("질문글 제출은 슬롯이 비어도 후보를 동기 확정하지 않는다")
+	void submissionDoesNotReserveCandidateSlots() {
 		long senderId = account("full-slot-sender", "ACTIVE");
 		long questionId = activeQuestion(senderId);
 		long schemeId = eightSegmentScheme();
@@ -161,9 +157,11 @@ class DirectionRecipientSelectionIntegrationTest extends PostgisContainerIntegra
 		var result = postService.send(new DirectionPostService.SendCommand(senderId, questionId, schemeId, "S0",
 			0, 5_000, REGION, "gh97-full-slot-10", "본문", AT, AT.plusSeconds(3600)));
 
-		assertThat(result.recipients()).hasSize(9)
-			.extracting(recipient -> recipient.getRecipientId())
-			.containsExactlyElementsOf(candidateIds.subList(3, 12));
+		assertThat(result.recipients()).isEmpty();
+		assertThat(jdbc.queryForObject("SELECT count(*) FROM post_recipient WHERE post_id = ?", Integer.class, result.post().getId()))
+			.isZero();
+		assertThat(jdbc.queryForObject("SELECT count(*) FROM recipient_receive_state WHERE user_id IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+			Integer.class, candidateIds.toArray())).isEqualTo(12);
 	}
 
 	private long account(String nickname, String status) {

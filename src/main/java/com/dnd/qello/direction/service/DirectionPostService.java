@@ -1,7 +1,6 @@
 package com.dnd.qello.direction.service;
 
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -12,8 +11,6 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
-import com.dnd.qello.direction.config.DirectionReceiveProperties;
-import com.dnd.qello.direction.config.DirectionRecipientSelectionProperties;
 import com.dnd.qello.direction.domain.ActiveUserPresence;
 import com.dnd.qello.direction.domain.DirectionCandidate;
 import com.dnd.qello.direction.domain.DirectionPost;
@@ -29,10 +26,7 @@ import com.dnd.qello.direction.repository.ActiveUserPresenceRepository;
 import com.dnd.qello.direction.repository.DirectionPostRepository;
 import com.dnd.qello.direction.repository.DirectionSchemeRepository;
 import com.dnd.qello.direction.repository.PostAudienceRepository;
-import com.dnd.qello.direction.repository.PostRecipientRepository;
-import com.dnd.qello.direction.repository.RecipientReceiveStateRepository;
 import com.dnd.qello.direction.repository.ActiveUserPresenceRepository.DirectionSegmentCandidateCount;
-import com.dnd.qello.feed.config.DistanceBandPolicy;
 import com.dnd.qello.question.repository.ApprovedQuestionRepository;
 import com.dnd.qello.notification.domain.OutboxEvent;
 import com.dnd.qello.notification.repository.OutboxEventRepository;
@@ -40,8 +34,9 @@ import com.dnd.qello.notification.repository.OutboxEventRepository;
 import lombok.RequiredArgsConstructor;
 
 /**
- * 방향 글 발송과 질문자 측 읽음 표시를 소유한다.
- * 방향 preview는 참고값으로만 사용하고 send transaction에서 다시 계산한다.
+ * 방향 글 제출과 질문자 측 읽음 표시를 소유한다.
+ * 방향 preview는 참고값으로만 사용하고 제출 transaction은 수신자 확정 worker에
+ * MatchRequested 작업을 위임한다.
  */
 @Service
 @RequiredArgsConstructor
@@ -49,14 +44,9 @@ public class DirectionPostService {
 
 	private final DirectionSchemeRepository schemeRepository;
 	private final ActiveUserPresenceRepository presenceRepository;
-	private final RecipientReceiveStateRepository receiveStateRepository;
-	private final DirectionRecipientSelectionProperties recipientSelectionProperties;
 	private final DirectionPostRepository postRepository;
 	private final PostAudienceRepository audienceRepository;
-	private final PostRecipientRepository recipientRepository;
 	private final ApprovedQuestionRepository approvedQuestionRepository;
-	private final DirectionReceiveProperties receiveProperties;
-	private final DistanceBandPolicy distanceBandPolicy;
 	private final OutboxEventRepository outboxEventRepository;
 	private final PlatformTransactionManager transactionManager;
 
@@ -140,11 +130,8 @@ public class DirectionPostService {
 				segment.getCenterBearingDegrees(), segment.getAngularWidthDegrees(), command.minDistanceMeters(), command.maxDistanceMeters(),
 				sender.getLatitude(), sender.getLongitude(), sender.getCoarseCellId(), command.submittedAt()));
 
-		PreviewCommand candidateCommand = new PreviewCommand(command.senderId(), command.schemeId(), command.segmentKey(),
-				command.minDistanceMeters(), command.maxDistanceMeters(), command.coarseRegionCode(), command.submittedAt());
-		List<PostRecipient> recipients = selectRecipients(post.getId(), candidates(candidateCommand, sender, segment), command.submittedAt());
 		enqueueMatchingEvent(post, audience, requestFingerprint, command);
-		return new SendResult(post, audience, recipients);
+		return new SendResult(post, audience, List.of());
 	}
 
 	private SendResult recoverConcurrentRequest(SendCommand command,
@@ -182,7 +169,7 @@ public class DirectionPostService {
 				// legacy 행의 저장 의도를 복원할 수 없으면 기존 결과를 보존한다.
 			}
 		}
-		return new SendResult(restored, audience, recipientRepository.findAllByPostId(post.getId()));
+		return new SendResult(restored, audience, List.of());
 	}
 
 	private void enqueueMatchingEvent(DirectionPost post, PostAudience audience,
@@ -223,19 +210,6 @@ public class DirectionPostService {
 			}
 		}
 		return escaped.toString();
-	}
-
-	private List<PostRecipient> selectRecipients(long postId, List<DirectionCandidate> candidates, Instant matchedAt) {
-		List<PostRecipient> recipients = new ArrayList<>();
-		for (DirectionCandidate candidate : candidates) {
-			if (recipients.size() >= recipientSelectionProperties.maxRecipientsPerPost()) break;
-			if (!reserve(candidate.userId(), matchedAt)) continue;
-			recipients.add(recipientRepository.save(PostRecipient.available(postId, candidate.userId(),
-					distanceBandPolicy.forDistance(candidate.distanceMeters().longValue()),
-					candidate.bearingDegrees(), candidate.matchedRegionCode(), matchedAt,
-					candidate.inboundBearingDegrees(), candidate.distanceMeters().longValue())));
-		}
-		return List.copyOf(recipients);
 	}
 
 	/**
@@ -310,15 +284,6 @@ public class DirectionPostService {
 		return value;
 	}
 
-	/**
-	 * 초기 행 생성은 reserve()가 한 문장으로 함께 처리한다. 조회해서 없으면 만들고
-	 * 다시 예약하는 방식은 두 발송이 같은 신규 수신자를 동시에 잡을 때 서로의
-	 * 예약을 덮어썼다.
-	 */
-	private boolean reserve(long userId, Instant at) {
-		return receiveStateRepository.reserve(userId, at, receiveProperties.receiveCapacity());
-	}
-
 	public record PreviewCommand(Long senderId, Long schemeId, String segmentKey, long minDistanceMeters,
 								 long maxDistanceMeters, String coarseRegionCode, Instant at) {
 		public PreviewCommand {
@@ -374,6 +339,11 @@ public class DirectionPostService {
 	}
 
 	public record SendResult(DirectionPost post, PostAudience audience, List<PostRecipient> recipients) {
+		/**
+		 * 제출 단계에서는 수신자 확정을 수행하지 않는다. 이 목록은 후속 매칭 워커가
+		 * 결과를 연결할 때까지 비어 있으며, 기존 호출자와의 source compatibility를
+		 * 위해 결과 모델에 남겨 둔다.
+		 */
 		public SendResult {
 			recipients = List.copyOf(recipients);
 		}

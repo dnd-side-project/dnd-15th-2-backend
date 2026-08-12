@@ -121,15 +121,10 @@ class ReceiveStateReservationIntegrationTest extends PostgisContainerIntegration
 			executor.shutdownNow();
 		}
 
-		int deliveredRows = jdbc.queryForObject("SELECT count(*) FROM post_recipient WHERE recipient_id = ?",
-			Integer.class, fixture.recipientId());
-		int counter = jdbc.queryForObject("SELECT active_unhandled_count FROM recipient_receive_state WHERE user_id = ?",
-			Integer.class, fixture.recipientId());
-
-		// 카운터만 보는 단언은 "둘 다 틀렸지만 서로 일치하는" 상태를 놓친다.
-		// 두 발송 모두 상한 안에 있으므로 실제 배달은 2건이어야 하고, 카운터가 그와 같아야 한다.
-		assertThat(deliveredRows).isEqualTo(2);
-		assertThat(counter).isEqualTo(deliveredRows);
+		assertThat(jdbc.queryForObject("SELECT count(*) FROM post_recipient WHERE recipient_id = ?",
+			Integer.class, fixture.recipientId())).isZero();
+		assertThat(jdbc.queryForObject("SELECT count(*) FROM recipient_receive_state WHERE user_id = ?",
+			Integer.class, fixture.recipientId())).isZero();
 	}
 
 	@Test
@@ -264,25 +259,25 @@ class ReceiveStateReservationIntegrationTest extends PostgisContainerIntegration
 	// ---------------------------------------------------------------------
 
 	@Test
-	@DisplayName("INT-008: 상한까지 받은 사용자는 더 이상 수신자로 선정되지 않고 카운터가 배달 건수와 같다")
-	void sendStopsSelectingRecipientAtCapacity() {
+	@DisplayName("INT-008: 질문글 제출은 수신 슬롯을 동기 점유하지 않는다")
+	void submissionDoesNotSelectRecipientAtCapacity() {
 		Fixture fixture = twoSendersTargetingOneRecipient();
 
-		List<Integer> deliveredPerSend = IntStream.range(0, CAPACITY + 1)
+		List<Integer> submitted = IntStream.range(0, CAPACITY + 1)
 			.mapToObj(index -> postService.send(fixture.sendCommand(fixture.senderOneId(), "S0", "gh94-capacity-" + index)))
 			.map(result -> result.recipients().size())
 			.toList();
 
-		assertThat(deliveredPerSend).containsExactly(1, 1, 1, 1, 1, 0);
+		assertThat(submitted).containsExactly(0, 0, 0, 0, 0, 0);
 		assertThat(jdbc.queryForObject("SELECT count(*) FROM post_recipient WHERE recipient_id = ?",
-			Integer.class, fixture.recipientId())).isEqualTo(CAPACITY);
-		assertThat(jdbc.queryForObject("SELECT active_unhandled_count FROM recipient_receive_state WHERE user_id = ?",
-			Integer.class, fixture.recipientId())).isEqualTo(CAPACITY);
+			Integer.class, fixture.recipientId())).isZero();
+		assertThat(jdbc.queryForObject("SELECT count(*) FROM recipient_receive_state WHERE user_id = ?",
+			Integer.class, fixture.recipientId())).isZero();
 	}
 
 	@Test
-	@DisplayName("INT-009: 남은 슬롯이 하나인 사용자에게 두 발송이 동시에 도착하면 한쪽만 배달된다")
-	void concurrentSendsWithSingleRemainingSlotDeliverOnce() throws Exception {
+	@DisplayName("INT-009: 남은 슬롯이 하나여도 동시 제출은 수신 슬롯을 점유하지 않는다")
+	void concurrentSubmissionsDoNotReserveSingleRemainingSlot() throws Exception {
 		Fixture fixture = twoSendersTargetingOneRecipient();
 		receiveStateRepository.save(RecipientReceiveState.restore(fixture.recipientId(), CAPACITY - 1, CAPACITY - 1,
 			AT.minusSeconds(3600), AT.minusSeconds(600), AT.minusSeconds(600)));
@@ -303,11 +298,11 @@ class ReceiveStateReservationIntegrationTest extends PostgisContainerIntegration
 			executor.shutdownNow();
 		}
 
-		assertThat(totalDelivered).isEqualTo(1);
+		assertThat(totalDelivered).isEqualTo(0);
 		assertThat(jdbc.queryForObject("SELECT count(*) FROM post_recipient WHERE recipient_id = ?",
-			Integer.class, fixture.recipientId())).isEqualTo(1);
+			Integer.class, fixture.recipientId())).isZero();
 		assertThat(jdbc.queryForObject("SELECT active_unhandled_count FROM recipient_receive_state WHERE user_id = ?",
-			Integer.class, fixture.recipientId())).isEqualTo(CAPACITY);
+			Integer.class, fixture.recipientId())).isEqualTo(CAPACITY - 1);
 	}
 
 	// ---------------------------------------------------------------------

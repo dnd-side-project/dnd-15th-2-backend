@@ -2,7 +2,8 @@ package com.dnd.qello;
 
 /**
  * Created at: 2026-08-03T20:45:00+09:00
- * Source scenario: TEST-PLAN-GH-39-DIRECTION-POSTGIS-PERSISTENCE-INT-001 through INT-010
+ * Source scenario: TEST-PLAN-GH-39-DIRECTION-POSTGIS-PERSISTENCE-INT-001 through INT-010,
+ * TEST-PLAN-GH-118-DIRECTION-POST-SUBMISSION-INT-001
  */
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -119,8 +120,8 @@ class DirectionPostgisPersistenceIntegrationTest extends PostgisContainerIntegra
 	}
 
 	@Test
-	@DisplayName("send는 최신 presence로 audience와 recipient snapshot을 한 transaction에 저장한다")
-	void snapshotsAudienceAndRecipientsAtSendTime() {
+	@DisplayName("send는 최신 presence로 audience만 snapshot하고 수신자 확정은 위임한다")
+	void snapshotsAudienceAndDefersRecipients() {
 		long senderId = createUser("send-sender");
 		long recipientId = createUser("send-recipient");
 		long questionId = createActiveQuestion(senderId);
@@ -141,9 +142,10 @@ class DirectionPostgisPersistenceIntegrationTest extends PostgisContainerIntegra
 
 		assertThat(result.post().getStatus()).isEqualTo(com.dnd.qello.direction.domain.DirectionPostStatus.MATCHING);
 		assertThat(result.audience().getOriginLatitude()).isEqualByComparingTo("37.5000");
-		assertThat(result.recipients()).extracting(recipient -> recipient.getRecipientId()).containsExactly(recipientId);
+		assertThat(result.recipients()).isEmpty();
 		assertThat(retried.post().getId()).isEqualTo(result.post().getId());
-		assertThat(jdbc.queryForObject("SELECT active_unhandled_count FROM recipient_receive_state WHERE user_id = ?", Integer.class, recipientId)).isEqualTo(1);
+		assertThat(jdbc.queryForObject("SELECT active_unhandled_count FROM recipient_receive_state WHERE user_id = ?", Integer.class, recipientId)).isZero();
+		assertThat(jdbc.queryForObject("SELECT count(*) FROM post_recipient WHERE post_id = ?", Integer.class, result.post().getId())).isZero();
 		assertThat(jdbc.queryForObject("SELECT count(*) FROM post_audience WHERE post_id = ?", Integer.class, result.post().getId())).isEqualTo(1);
 	}
 

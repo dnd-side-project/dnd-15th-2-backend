@@ -2,7 +2,8 @@ package com.dnd.qello;
 
 /**
  * Created at: 2026-08-10T20:05:00+09:00
- * Source scenario: TEST-PLAN-GH-95-DISTANCE-BAND-PER-RECIPIENT-INT-001
+ * Source scenario: TEST-PLAN-GH-95-DISTANCE-BAND-PER-RECIPIENT-INT-001,
+ * TEST-PLAN-GH-118-DIRECTION-POST-SUBMISSION-INT-001
  */
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -10,9 +11,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.math.BigDecimal;
 import java.sql.Timestamp;
 import java.time.Instant;
-import java.util.Map;
-import java.util.function.Function;
-import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -25,7 +23,6 @@ import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
 
 import com.dnd.qello.direction.domain.ActiveUserPresence;
-import com.dnd.qello.direction.domain.PostRecipient;
 import com.dnd.qello.direction.domain.DirectionScheme;
 import com.dnd.qello.direction.domain.DirectionSegment;
 import com.dnd.qello.direction.service.DirectionPostService;
@@ -69,8 +66,8 @@ class DirectionPostDistanceBandIntegrationTest extends PostgisContainerIntegrati
 	}
 
 	@Test
-	@DisplayName("한 발송의 수신자는 각자의 실제 거리에서 distanceBand를 파생한다")
-	void derivesDistanceBandPerCandidateDistance() {
+	@DisplayName("질문글 제출은 수신자 distanceBand와 수신자 행을 동기 생성하지 않는다")
+	void submissionDefersRecipientDistanceBand() {
 		long senderId = createUser("distance-band-sender");
 		long nearRecipientId = createUser("distance-band-near");
 		long farRecipientId = createUser("distance-band-far");
@@ -87,16 +84,11 @@ class DirectionPostDistanceBandIntegrationTest extends PostgisContainerIntegrati
 		var result = postService.send(new DirectionPostService.SendCommand(senderId, questionId, schemeId, "S0",
 			0, 1_100_000, REGION, "distance-band-95-1", "거리 band 테스트", AT, AT.plusSeconds(3600)));
 
-		Map<Long, PostRecipient> recipientsByUser = result.recipients().stream()
-			.collect(Collectors.toMap(recipient -> recipient.getRecipientId(), Function.identity()));
-
-		assertThat(recipientsByUser).containsKeys(nearRecipientId, farRecipientId);
-		assertThat(recipientsByUser.get(nearRecipientId).getDistanceM()).isBetween(2_000L, 4_000L);
-		assertThat(recipientsByUser.get(farRecipientId).getDistanceM()).isBetween(900_000L, 1_100_000L);
-		assertThat(recipientsByUser.get(nearRecipientId).getDistanceBand())
-			.isEqualTo("10km 이내")
-			.isNotEqualTo(recipientsByUser.get(farRecipientId).getDistanceBand());
-		assertThat(recipientsByUser.get(farRecipientId).getDistanceBand()).isEqualTo("EXACT_DISTANCE");
+		assertThat(result.recipients()).isEmpty();
+		assertThat(jdbc.queryForObject("SELECT count(*) FROM post_recipient WHERE post_id = ?", Integer.class,
+			result.post().getId())).isZero();
+		assertThat(jdbc.queryForObject("SELECT count(*) FROM recipient_receive_state WHERE user_id IN (?, ?)",
+			Integer.class, nearRecipientId, farRecipientId)).isZero();
 	}
 
 	private long createUser(String nickname) {
