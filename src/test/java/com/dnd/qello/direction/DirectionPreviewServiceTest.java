@@ -126,6 +126,23 @@ class DirectionPreviewServiceTest {
 	}
 
 	@Test
+	@DisplayName("preview 결과 모델의 값 검증 실패는 direction 오류 코드로 반환한다")
+	void previewResultValidationUsesDirectionErrorCode() {
+		assertThatThrownBy(() -> new DirectionPreviewResult(0, "TEST", 1, List.of()))
+			.isInstanceOf(DirectionException.class)
+			.hasFieldOrPropertyWithValue("errorCode", DirectionErrorCode.INVALID_ID);
+		assertThatThrownBy(() -> new DirectionPreviewResult(1, " ", 1, List.of()))
+			.isInstanceOf(DirectionException.class)
+			.hasFieldOrPropertyWithValue("errorCode", DirectionErrorCode.INVALID_TEXT);
+		assertThatThrownBy(() -> new DirectionPreviewResult(1, "TEST", 0, List.of()))
+			.isInstanceOf(DirectionException.class)
+			.hasFieldOrPropertyWithValue("errorCode", DirectionErrorCode.INVALID_VALUE_RANGE);
+		assertThatThrownBy(() -> new DirectionPreviewResult.SegmentCount("S0", "segment", 0, -1))
+			.isInstanceOf(DirectionException.class)
+			.hasFieldOrPropertyWithValue("errorCode", DirectionErrorCode.INVALID_VALUE_RANGE);
+	}
+
+	@Test
 	@DisplayName("비활성 scheme은 전체 방향 preview 대상이 아니다")
 	void rejectsInactiveScheme() {
 		DirectionScheme inactive = DirectionScheme.restore(10L, "TEST", 1,
