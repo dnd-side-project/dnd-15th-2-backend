@@ -11,18 +11,38 @@
 - GitHub Issue: `#132`
 - Branch: `infra/gh-132-mvp-infra-design`
 - Base branch: `main`
+- DESIGN-ID: `D-2`
+- Design report: `docs/reports/infrastructure/gh-132-D-2.md`
+- Design status: `BLOCKED` — 사람 결정 6건 미확정(보고서 §15)
 
 ## Objective
 
-- TODO
+- Qello MVP를 실제로 구동할 AWS 컴퓨팅·데이터베이스·네트워크·배포·관측
+  계층을 설계하고, Terraform 구현 전에 검토 가능한 Infrastructure Design
+  Report를 만든다.
+- D-1(#63)이 만든 State Backend·OIDC·S3 자산 위에 얹는 설계이며, 기존 자산을
+  재설계하지 않는다.
+- 설계만 수행한다. Terraform 구현과 apply는 이 이슈 범위 밖이다.
 
 ## Scope
 
-- TODO
+1. 요구사항 intake — 확인된 값과 가정을 `CONFIRMED`/`ASSUMED`/`UNKNOWN`/
+   `BLOCKED`로 분류한다.
+2. 컴퓨팅·데이터베이스·네트워크 egress·비밀 관리 후보를 비교하고 탈락 이유를
+   기록한다.
+3. AWS Price List API의 공식 단가로 예산 구간별 월 비용을 산정한다.
+4. IAM·네트워크·암호화·State 관점의 독립 보안 검토를 수행한다.
+5. 변경 위험도, 실패 모드, 롤백·복구 절차를 기록한다.
+6. Terraform 소유 파일 경계와 검증 계획을 정의한다.
 
 ## Explicit exclusions
 
-- TODO
+- Terraform 코드 구현 — `/harness-infra-build`와 별도 이슈에서 수행한다.
+- `terraform apply`, `terraform plan`(자격 증명 필요), 실제 AWS 리소스 변경.
+- 애플리케이션 코드 변경. 특히 health 엔드포인트(actuator) 도입은 이 이슈
+  범위 밖이며 별도 이슈로 분리해야 한다(보고서 §15-5).
+- 배포 workflow(`.github/workflows/*deploy*`) 신규 작성.
+- `infra/environments/dev/storage/**`와 D-1 소유 리소스의 재설계.
 - 인프라 apply, 배포, 프로덕션 변경은 별도 승인 없이는 실행하지 않는다.
 - Secret, 계정 식별자, 토큰, `.env` 값은 기록하지 않는다.
 
@@ -30,11 +50,16 @@
 
 | Area | Owner | Required review |
 | --- | --- | --- |
-| TODO | TODO | TODO |
+| Infrastructure Design Report D-2(아키텍처 대안, 비용, 보안, 위험) | Infrastructure orchestrator | 대안 탈락 이유의 타당성, 공식 단가 근거, `infra-apply` 권한 확대 범위(SEC-A), 공인 IP 태스크 트레이드오프(SEC-B), RDS 자격증명 State 노출 방지(SEC-C) |
+| 사람 결정 6건 | `@Byuntil`, `@tkv00` | 예산 상한, 환경 구성, 도메인/TLS, 서비스 수명, health 엔드포인트 도입, 이미지 아키텍처 |
 
 ## Existing user-owned changes
 
-- 작업 시작 시 `git status --short` 결과를 확인하고 여기에 기록한다.
+- 격리된 worktree(`.claude/worktrees/gh-132-mvp-infra-design`)에서
+  `origin/main`(commit `2d6aba2`) 기준으로 분기했다. 분기 시점
+  `git status --short`는 비어 있었다.
+- 같은 저장소의 `feat/gh-106-nickname-sync-filter` 브랜치에 있던 사용자
+  변경(`TASK.md` 수정, `docs/test-plans/gh-106-*.md`)은 건드리지 않았다.
 
 ## Validation
 
@@ -44,6 +69,18 @@
 git diff --check
 ```
 
+인프라 정적 검증(`terraform fmt`/`validate`/`tflint`/`checkov`)은 이 이슈가
+Terraform 파일을 만들지 않으므로 대상이 없다. 빌드 이슈에서 수행한다.
+
 ## Completion criteria
 
-- TODO
+- [x] `templates/infrastructure-design-report.md` 형식의 보고서를 생성하고
+      `DESIGN-ID` `D-2`를 부여한다.
+- [x] 컴퓨팅·데이터베이스 각각 최소 두 가지 대안과 탈락 이유를 기록한다.
+- [x] `AGENTS.md` 4.5의 검토 영역을 모두 다룬다.
+- [x] 비용을 AWS 공식 단가(Price List API, 조회일 기록)로 산정한다.
+- [x] 독립 보안 검토 finding을 severity와 함께 기록한다.
+- [x] 변경 위험도, 실패 모드, 롤백·복구 절차를 기록한다.
+- [ ] 사람 결정 6건이 확정된다(보고서 §15).
+- [ ] 설계 상태가 `APPROVED_FOR_BUILD`로 승인된다.
+- [ ] `@Byuntil`, `@tkv00`의 PR 승인.
