@@ -237,3 +237,16 @@ Order 1이 정의하는 port 인터페이스에 의존하므로 병렬 실행하
   `INV-PIPE-001`/`002`/`004` 미정의 상태를 인지한 채로 승인함. 정의가 확인되지
   않으면 완료 보고에서 해당 항목을 `확인 필요`로 남긴다.
 - Approved at: `2026-08-11T21:05:00+09:00`
+
+## 12. Review addendum
+
+PR #130 CodeRabbit 리뷰(Major)에서 원래 계획의 INT-003(timeout)만으로는
+`OpenAiModerationProviderClient`의 HTTP 5xx 오류 변환 경로가 검증되지 않는다는
+지적을 받아 다음 시나리오를 추가한다.
+
+| Scenario ID | Components | Setup | Action | Expected result | Cleanup |
+| --- | --- | --- | --- | --- | --- |
+| TEST-PLAN-GH-105-MODERATION-PIPELINE-INT-007 | 위와 동일 | 로컬 fake 서버가 HTTP 503과 오류 본문을 반환하도록 구성 | pipeline을 실행한다 | `filter_decision`에는 어떤 행도 생성되지 않고, 호출자에게 `FilteringErrorCode.MODERATION_PROVIDER_UNAVAILABLE`를 담은 예외가 전달된다 | 동일 |
+
+INT-007은 기존 §2 설계 가정이나 P0 범위를 변경하지 않는 순수 커버리지 보강이라
+별도 재승인 없이 추가한다.

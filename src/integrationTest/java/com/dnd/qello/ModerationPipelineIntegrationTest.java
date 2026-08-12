@@ -1,6 +1,8 @@
 /*
  * Created at: 2026-08-11T22:10:00+09:00
- * Source scenario: TEST-PLAN-GH-105-MODERATION-PIPELINE-INT-001 through INT-005
+ * Source scenario: TEST-PLAN-GH-105-MODERATION-PIPELINE-INT-001 through INT-005,
+ * INT-007 (added 2026-08-12 per PR #130 CodeRabbit review — 5xx error conversion
+ * coverage, see test plan §12)
  * (INT-006은 Spring 빈 구성이 없어 이 통합 테스트로 다루지 않는다 — 실행 자원
  * 격리는 ModerationPipelineServiceTest#UNIT-013이 순수 자바 동시성 테스트로
  * 이미 검증했다)
@@ -8,6 +10,7 @@
 package com.dnd.qello;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.io.IOException;
@@ -19,6 +22,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.UUID;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -45,6 +49,7 @@ import com.dnd.qello.filtering.domain.FilterRelease;
 import com.dnd.qello.filtering.domain.FilterTarget;
 import com.dnd.qello.filtering.domain.FilterTargetType;
 import com.dnd.qello.filtering.domain.FilterVerdict;
+import com.dnd.qello.filtering.error.FilteringErrorCode;
 import com.dnd.qello.filtering.error.FilteringException;
 import com.dnd.qello.filtering.moderation.LocalRuleVerdict;
 import com.dnd.qello.filtering.moderation.ModerationLanguage;
@@ -133,9 +138,27 @@ class ModerationPipelineIntegrationTest extends PostgisContainerIntegrationTestS
 		ModerationPipelineService pipeline =
 			pipeline(LocalRuleVerdict.noMatch(), FilterVerdict.ALLOW, Duration.ofMillis(300));
 
-		assertThatThrownBy(() -> pipeline.execute(ModerationPipelineRequest.forJob(
-			FilterTargetType.ANSWER, ModerationLanguage.KO, "일반 텍스트", releaseFixture(), job.id(), 1)))
-			.isInstanceOf(FilteringException.class);
+		assertThatExceptionOfType(FilteringException.class)
+			.isThrownBy(() -> pipeline.execute(ModerationPipelineRequest.forJob(
+				FilterTargetType.ANSWER, ModerationLanguage.KO, "일반 텍스트", releaseFixture(), job.id(), 1)))
+			.extracting(FilteringException::getErrorCode)
+			.isEqualTo(FilteringErrorCode.MODERATION_PROVIDER_UNAVAILABLE);
+
+		assertThat(filterDecisionRepository.findByFilterJobIdAndAttemptGeneration(job.id(), 1)).isEmpty();
+	}
+
+	@Test
+	@DisplayName("공급자가 HTTP 5xx를 반환하면 filter_decision이 생성되지 않고 판정 불가 예외가 호출자에게 전달된다")
+	void doesNotPersistDecisionOnProviderServerError() {
+		fakeServer.respondWith(503, "{\"error\":\"service unavailable\"}");
+		FilterJob job = createJob();
+		ModerationPipelineService pipeline = pipeline(LocalRuleVerdict.noMatch(), FilterVerdict.ALLOW);
+
+		assertThatExceptionOfType(FilteringException.class)
+			.isThrownBy(() -> pipeline.execute(ModerationPipelineRequest.forJob(
+				FilterTargetType.ANSWER, ModerationLanguage.KO, "일반 텍스트", releaseFixture(), job.id(), 1)))
+			.extracting(FilteringException::getErrorCode)
+			.isEqualTo(FilteringErrorCode.MODERATION_PROVIDER_UNAVAILABLE);
 
 		assertThat(filterDecisionRepository.findByFilterJobIdAndAttemptGeneration(job.id(), 1)).isEmpty();
 	}
@@ -220,6 +243,7 @@ class ModerationPipelineIntegrationTest extends PostgisContainerIntegrationTestS
 	// HttpServer만 사용한다(TEST-PLAN-GH-105-MODERATION-PIPELINE §8).
 	private static final class FakeHttpModerationServer {
 		private final HttpServer server;
+		private final ExecutorService executor;
 		private final AtomicInteger requestCount = new AtomicInteger();
 		private volatile int statusCode = 200;
 		private volatile String responseBody = "{}";
@@ -228,7 +252,8 @@ class ModerationPipelineIntegrationTest extends PostgisContainerIntegrationTestS
 		FakeHttpModerationServer() throws IOException {
 			server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
 			server.createContext("/v1/moderations", this::handle);
-			server.setExecutor(Executors.newSingleThreadExecutor());
+			executor = Executors.newSingleThreadExecutor();
+			server.setExecutor(executor);
 		}
 
 		void start() {
@@ -237,6 +262,7 @@ class ModerationPipelineIntegrationTest extends PostgisContainerIntegrationTestS
 
 		void stop() {
 			server.stop(0);
+			executor.shutdownNow();
 		}
 
 		String baseUrl() {
