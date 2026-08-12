@@ -41,7 +41,12 @@ public enum FilteringErrorCode implements ErrorCode {
 	INVALID_RELEASE_STATUS(HttpStatus.CONFLICT, "FLT-DOM-004", ErrorCategory.DOM, "현재 release 상태로는 요청을 처리할 수 없습니다."),
 
 	// 요청한 release를 찾을 수 없음
-	RELEASE_NOT_FOUND(HttpStatus.NOT_FOUND, "FLT-DOM-005", ErrorCategory.DOM, "release를 찾을 수 없습니다.");
+	RELEASE_NOT_FOUND(HttpStatus.NOT_FOUND, "FLT-DOM-005", ErrorCategory.DOM, "release를 찾을 수 없습니다."),
+
+	// moderation 공급자 호출이 timeout/error로 끝나 판정을 완료하지 못함. 호출자가
+	// 재시도·fail-closed 등을 결정해야 하며, 이 코드 자체를 ALLOW/BLOCK으로 바꾸지 않는다
+	MODERATION_PROVIDER_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "FLT-EXT-001", ErrorCategory.EXT,
+		"moderation 공급자 판정을 완료하지 못했습니다.");
 
 	private final HttpStatus httpStatus;
 	private final String code;
