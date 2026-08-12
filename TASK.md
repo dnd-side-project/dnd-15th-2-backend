@@ -82,14 +82,32 @@ git diff --check
 
 ## Completion criteria
 
-- [ ] 답변 backlog와 장애 부하가 닉네임 예약 용량을 소진하지 않는다
-      (`INV-RES-003`, `INV-RES-004`).
-- [ ] 판정 불가를 `ALLOW`로 바꾸는 경로가 없다(`INV-GEN-002`).
+- [x] 답변 backlog와 장애 부하가 닉네임 예약 용량을 소진하지 않는다
+      (`INV-RES-003`, `INV-RES-004`) — `NicknameSyncModerationGate`는 호출자가
+      주입한 전용 `ExecutorService`만 사용하고 답변 경로 executor를 참조할
+      경로가 코드에 없다. INT-002(실제 게이트 인스턴스 + 답변 경로 흉내
+      executor 포화)로 검증.
+- [x] 판정 불가를 `ALLOW`로 바꾸는 경로가 없다(`INV-GEN-002`) — UNIT-006/007,
+      INT-003(양쪽 timeout이어도 `REJECTED(UNAVAILABLE)`)로 검증.
 - [ ] 보조 판정기 장애까지 포함한 fail-closed 통합 검증을 통과한다
-      (`INV-NICK-001`~`007`).
-- [ ] 주 판정기의 명시적 `BLOCK`을 보조 판정기가 뒤집지 못한다
-      (`INV-NICK-002`).
-- [ ] 최초 설정과 변경 실패 모두 서비스 진입을 차단하며, 임시/기존 닉네임
-      우회 경로가 없다(`INV-NICK-006`, `INV-NICK-007`).
-- [ ] 단위 테스트와 통합 테스트가 추가된다(정상 경로, timeout, 중복, 순서
-      역전, 부분 장애 포함).
+      (`INV-NICK-001`~`007`) — `INV-NICK-001/002/003/005/006/007`은 fake로
+      검증 완료(UNIT-001~011, INT-001~004). `INV-NICK-004`(보조 판정기가 주
+      판정기와 실제 공통 장애 영역이 없는지)는 `SecondaryModerationClient`의
+      실제 구현체가 없어 fake 수준 구조 검증(별도 인스턴스·별도 코드 경로)에
+      그친다 — 실제 독립성은 production 차단 게이트(공급자 확정 후)에서만
+      검증 가능하므로 이 항목은 완전 체크하지 않는다.
+- [x] 주 판정기의 명시적 `BLOCK`을 보조 판정기가 뒤집지 못한다
+      (`INV-NICK-002`) — UNIT-002로 검증(보조를 ALLOW로 구성해도 무시됨).
+- [x] 최초 설정과 변경 실패 모두 서비스 진입을 차단하며, 임시/기존 닉네임
+      우회 경로가 없다(`INV-NICK-006`, `INV-NICK-007`) — 게이트 API
+      (`evaluate(nickname, language)`)에는 최초/변경을 구분하는 파라미터나
+      분기 자체가 없다. 완화된 별도 경로가 코드에 존재하지 않는 구조로
+      두 요구를 함께 만족시켰다(UNIT-011). 이는 승인된 설계 가정 1~3의
+      구현 세부 조정이며 범위를 벗어나지 않는다.
+- [x] 단위 테스트와 통합 테스트가 추가된다(정상 경로, timeout, 부분 장애
+      포함) — unit 11개, concurrency 통합 4개(`docs/reports/tests/gh-106-
+      TEST-PLAN-GH-106-NICKNAME-SYNC-FILTER.md`). "중복"·"순서 역전"은 이
+      게이트에 적용되지 않는다 — 답변 경로(#105)와 달리 이 게이트는 job/
+      attempt generation 개념이 없는 단발 동기 호출이라 재시도·순서 역전
+      시나리오 자체가 성립하지 않는다(UNIT-009가 대신 인스턴스 재사용 시
+      상태 비공유를 검증).
