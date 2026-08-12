@@ -40,7 +40,7 @@ public class OpenAiModerationProviderClient implements ModerationProviderClient 
 				.body(OpenAiModerationResponse.class);
 		} catch (RestClientException e) {
 			String reason = e.getClass().getSimpleName();
-			log.warn("OpenAI moderation 호출 실패: model={}, reason={}", modelSnapshot, reason, e);
+			log.warn("OpenAI moderation 호출 실패: model={}, reason={}", modelSnapshot, reason);
 			throw new FilteringException(FilteringErrorCode.MODERATION_PROVIDER_UNAVAILABLE, "openai", reason);
 		}
 		return OpenAiModerationResponseMapper.toProviderResult(response);
