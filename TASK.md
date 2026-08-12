@@ -1,51 +1,49 @@
-# GitHub Issue #105 Task Contract
+# GitHub Issue #132 Task Contract
 
-> Generated at: `2026-08-11T20:37:13+09:00`
+> Generated at: `2026-08-12T10:10:54+09:00`
 >
 > 이 파일은 현재 작업 브랜치의 계약이다. 저장소 전역 정책은 `AGENTS.md`를
 > 따른다.
 
 ## Work gate
 
-- Title: `필터링 시스템 공통 moderation pipeline 구현 (F02)`
-- GitHub Issue: `#105`
-- Branch: `feat/gh-105-moderation-pipeline`
+- Title: `MVP AWS 아키텍처 전체 설계`
+- GitHub Issue: `#132`
+- Branch: `infra/gh-132-mvp-infra-design`
 - Base branch: `main`
+- DESIGN-ID: `D-2`
+- Design report: `docs/reports/infrastructure/gh-132-D-2.md`
+- Design status: `READY_FOR_DESIGN_REVIEW` — 사람 결정 6건 확정(2026-08-12).
+  선택안 Option C, 월 약 125 USD 추정
 
 ## Objective
 
-닉네임(동기)과 답변(비동기)이 공유하는 공통 moderation 판정 pipeline을 구현한다.
-정규화 → 고신뢰 로컬 규칙 → 고정 OpenAI snapshot → 내부 정책 결합 순서로
-처리하며, 공급자의 단일 `flagged` 값을 그대로 최종 판정으로 사용하지 않는다.
+- Qello MVP를 실제로 구동할 AWS 컴퓨팅·데이터베이스·네트워크·배포·관측
+  계층을 설계하고, Terraform 구현 전에 검토 가능한 Infrastructure Design
+  Report를 만든다.
+- D-1(#63)이 만든 State Backend·OIDC·S3 자산 위에 얹는 설계이며, 기존 자산을
+  재설계하지 않는다.
+- 설계만 수행한다. Terraform 구현과 apply는 이 이슈 범위 밖이다.
 
 ## Scope
 
-1. 입력 텍스트와 언어·콘텐츠 종류(닉네임/답변)를 받는 pipeline 진입점을 만든다.
-2. `FilterRelease`(#103/#104)에 귀속된 방식으로 입력을 정규화한다.
-3. 고신뢰 로컬 규칙의 명확한 `BLOCK`을 먼저 적용하고, 적중 시 OpenAI 호출 없이
-   결과를 확정한다.
-4. 규칙에서 차단하지 않은 입력만 release에 고정된 OpenAI snapshot으로 전송한다.
-5. 공급자 응답(`flagged`, `categories`, `category_scores`, 실제 `model`)을
-   벤더 중립 내부 결과로 변환하는 어댑터를 만든다.
-6. 내부 정책이 category, score, 콘텐츠 종류와 언어를 해석해 최종
-   `ALLOW`/`BLOCK`을 결정한다.
-7. OpenAI 호출의 timeout/error는 임의의 `ALLOW`/`BLOCK`으로 변환하지 않고
-   판정 불가로 호출 경로에 그대로 반환한다.
-8. 규칙 적중, 모델 응답(raw)과 최종 정책 결정을 각각 별도로 관측·기록할 수
-   있게 한다(`FilterDecision` 확장 또는 연관 기록).
-9. pipeline 실행 자원(스레드풀·동시성·설정)을 닉네임 동기 경로와 답변 비동기
-   경로가 재사용하지 못하도록 호출자가 경로별로 격리해 구성할 수 있는 구조로
-   만든다(실제 격리 배선은 #106/#107 소관, 이 이슈는 공유 불가능한 구조만
-   보장한다).
+1. 요구사항 intake — 확인된 값과 가정을 `CONFIRMED`/`ASSUMED`/`UNKNOWN`/
+   `BLOCKED`로 분류한다.
+2. 컴퓨팅·데이터베이스·네트워크 egress·비밀 관리 후보를 비교하고 탈락 이유를
+   기록한다.
+3. AWS Price List API의 공식 단가로 예산 구간별 월 비용을 산정한다.
+4. IAM·네트워크·암호화·State 관점의 독립 보안 검토를 수행한다.
+5. 변경 위험도, 실패 모드, 롤백·복구 절차를 기록한다.
+6. Terraform 소유 파일 경계와 검증 계획을 정의한다.
 
 ## Explicit exclusions
 
-- 정규화 규칙, 고신뢰 로컬 사전, category mapping과 한국어·영어 threshold의
-  구체 값 — 평가 후 확정 예정이며 이 이슈에서 최종 확정하지 않는다.
-- 보조 판정기(fallback) 구체 공급자·독립성 기준 — 닉네임 동기 필터 이슈(#106)
-  에서 다룬다.
-- 닉네임 동기 API와 답변 비동기 워커의 실제 연동(#106, #107).
-- `FilterRelease` registry 자체의 생성·승격·rollback(#104에서 이미 구현).
+- Terraform 코드 구현 — `/harness-infra-build`와 별도 이슈에서 수행한다.
+- `terraform apply`, `terraform plan`(자격 증명 필요), 실제 AWS 리소스 변경.
+- 애플리케이션 코드 변경. 특히 health 엔드포인트(actuator) 도입은 이 이슈
+  범위 밖이며 별도 이슈로 분리해야 한다(보고서 §15-5).
+- 배포 workflow(`.github/workflows/*deploy*`) 신규 작성.
+- `infra/environments/dev/storage/**`와 D-1 소유 리소스의 재설계.
 - 인프라 apply, 배포, 프로덕션 변경은 별도 승인 없이는 실행하지 않는다.
 - Secret, 계정 식별자, 토큰, `.env` 값은 기록하지 않는다.
 
@@ -53,17 +51,16 @@
 
 | Area | Owner | Required review |
 | --- | --- | --- |
-| moderation pipeline 서비스(정규화·로컬 규칙·OpenAI 어댑터·정책 결합) | Feature executor | `flagged` 직접 사용 금지, timeout/error 판정 변환 금지, 규칙/모델/최종결정 관측 분리 경계 검토 |
+| Infrastructure Design Report D-2(아키텍처 대안, 비용, 보안, 위험) | Infrastructure orchestrator | 대안 탈락 이유의 타당성, 공식 단가 근거, `infra-apply` 권한 확대 범위(SEC-A), RDS 자격증명 State 노출 방지(SEC-C), Option C 선택과 x86 채택 근거 |
+| 사람 결정 6건 | `@Byuntil`, `@tkv00` | 2026-08-12 확정 완료 — 예산 B~C, prod 단일, 도메인 추후 구매, 장기 운영, actuator 도입, 이미지 아키텍처 위임 |
 
 ## Existing user-owned changes
 
-- 브랜치는 F01(#104)의 release registry 승격·rollback API가 병합된 직후
-  `origin/main`에서 새로 분기했다(`./harness start --issue 105 --type feat
-  --slug moderation-pipeline`). 분기 시점 `git status --short`는 `task-init`이
-  갱신한 `TASK.md` 외에는 비어 있었다.
-- `./harness sync`로 `origin/main`(issue #115 병합 포함)을 재반영하는 과정에서
-  `TASK.md`가 #115 브랜치의 내용과 충돌했다 — 각 기능 브랜치가 자신의
-  `TASK.md`를 소유하므로 이 브랜치(#105) 내용으로 해결했다. 코드 충돌은 없었다.
+- 격리된 worktree(`.claude/worktrees/gh-132-mvp-infra-design`)에서
+  `origin/main`(commit `2d6aba2`) 기준으로 분기했다. 분기 시점
+  `git status --short`는 비어 있었다.
+- 같은 저장소의 `feat/gh-106-nickname-sync-filter` 브랜치에 있던 사용자
+  변경(`TASK.md` 수정, `docs/test-plans/gh-106-*.md`)은 건드리지 않았다.
 
 ## Validation
 
@@ -73,26 +70,26 @@
 git diff --check
 ```
 
+인프라 정적 검증(`terraform fmt`/`validate`/`tflint`/`checkov`)은 이 이슈가
+Terraform 파일을 만들지 않으므로 대상이 없다. 빌드 이슈에서 수행한다.
+
 ## Completion criteria
 
-- [x] 공급자의 단일 `flagged` 값이 최종 판정을 직접 결정하지 않는다
-      (`INV-PIPE-003`) — UNIT-003, UNIT-004로 검증.
-- [x] 규칙 적중, 모델 응답과 최종 정책 결정을 각각 관측할 수 있다
-      (`INV-PIPE-005`) — UNIT-008로 검증.
-- [x] 닉네임과 답변이 정책·결과 계약을 공유하되 실행 용량은 공유하지 않는
-      구조다(`INV-RES-001`, `INV-RES-002`) — `ModerationPipelineService`를
-      Spring 빈으로 만들지 않아 호출자마다 독립 인스턴스를 구성한다. UNIT-013은
-      독립적으로 생성된 두 pipeline 인스턴스가 서로의 실행을 블로킹하지
-      않음을 순수 자바 동시성 테스트로 검증하지만, 실제 프로덕션 배선(각
-      경로가 실제로 별도 executor/RestClient를 갖는지)은 #106/#107이 구성한
-      뒤에 검증 가능하다 — 그 전까지는 부분 검증으로 취급한다.
-- [ ] `INV-PIPE-001`, `002`, `004`를 위반하지 않는다 — 이슈 본문과 저장소
-      어디에도 정의가 없어 검증하지 못했다. `확인 필요`로 남긴다.
-- [x] 고신뢰 로컬 규칙이 명확한 `BLOCK`을 반환하면 OpenAI를 호출하지 않는다 —
-      UNIT-001, INT-002로 검증.
-- [x] OpenAI timeout/error 시 임의의 `ALLOW`/`BLOCK`으로 대체하지 않고 호출자에
-      판정 불가로 반환한다 — UNIT-005, UNIT-006, INT-003, INT-007(HTTP 5xx)로 검증.
-- [x] 단위 테스트와 통합 테스트가 추가된다 — unit 13개, integration 6개
-      (INT-006은 Spring 빈 구성이 없어 대상이 없음, UNIT-013이 인스턴스 간
-      비공유 속성만 대체 검증; INT-007은 PR 리뷰로 추가된 5xx 오류 변환 커버리지).
-      보고서: `docs/reports/tests/gh-105-TEST-PLAN-GH-105-MODERATION-PIPELINE.md`.
+- [x] `templates/infrastructure-design-report.md` 형식의 보고서를 생성하고
+      `DESIGN-ID` `D-2`를 부여한다.
+- [x] 컴퓨팅·데이터베이스 각각 최소 두 가지 대안과 탈락 이유를 기록한다.
+- [x] `AGENTS.md` 4.5의 검토 영역을 모두 다룬다.
+- [x] 비용을 AWS 공식 단가(Price List API, 조회일 기록)로 산정한다.
+- [x] 독립 보안 검토 finding을 severity와 함께 기록한다.
+- [x] 변경 위험도, 실패 모드, 롤백·복구 절차를 기록한다.
+- [x] 사람 결정 6건이 확정된다(보고서 §15) — 2026-08-12.
+- [x] 확정된 결정을 반영해 선택안을 하나로 확정한다(Option C).
+- [ ] 설계 상태가 `APPROVED_FOR_BUILD`로 승인된다.
+- [ ] `@Byuntil`, `@tkv00`의 PR 승인.
+
+## 후속 이슈 (이 이슈 범위 밖, 보고서 §15.1)
+
+- [ ] actuator 도입(애플리케이션 변경) — ALB health check의 선행 조건.
+- [ ] 배포 workflow 작성(ECR push + ECS 서비스 갱신).
+- [ ] 도메인 구매와 Route53 위임 — 실사용자 공개 전 필수.
+- [ ] OpenAI API Key를 SSM SecureString에 사람이 사전 등록.
