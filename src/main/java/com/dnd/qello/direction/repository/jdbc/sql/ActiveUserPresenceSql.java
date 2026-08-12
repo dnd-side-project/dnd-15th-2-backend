@@ -50,6 +50,7 @@ public final class ActiveUserPresenceSql {
 			  AND ua.status = 'ACTIVE'
 			  AND p.position IS NOT NULL
 			  AND p.receive_allowed = TRUE
+			  AND p.location_at <= :at
 			  AND p.expires_at > :at
 			  AND (:regionCode IS NULL OR p.coarse_region_code = :regionCode)
 			  AND ST_DWithin(p.position, origin.point, :maxDistanceMeters)
@@ -68,5 +69,59 @@ public final class ActiveUserPresenceSql {
 		  AND ((:sectorStartDegrees < :sectorEndDegrees AND bearing_deg >= :sectorStartDegrees AND bearing_deg < :sectorEndDegrees)
 		    OR (:sectorStartDegrees >= :sectorEndDegrees AND (bearing_deg >= :sectorStartDegrees OR bearing_deg < :sectorEndDegrees)))
 		ORDER BY recent_received_count, last_received_at NULLS FIRST, distance_m, user_id
+		""";
+
+	/**
+	 * 활성 scheme의 모든 segment를 기준으로 후보를 한 번에 집계한다.
+	 * segment를 기준으로 LEFT JOIN하기 때문에 후보가 없는 방향도 결과에서 사라지지 않는다.
+	 */
+	public static final String FIND_CANDIDATE_COUNTS_BY_SEGMENT_SQL = """
+		WITH origin AS (
+			SELECT ST_SetSRID(ST_MakePoint(:originLongitude, :originLatitude), 4326)::geography AS point
+		), candidate_bearings AS (
+			SELECT p.user_id,
+			       ST_Distance(p.position, origin.point) AS distance_m,
+			       DEGREES(ST_Azimuth(origin.point, p.position)) AS bearing_deg
+			FROM active_user_presence p
+			JOIN user_account ua ON ua.id = p.user_id
+			CROSS JOIN origin
+			WHERE p.user_id <> :excludedUserId
+			  AND ua.status = 'ACTIVE'
+			  AND p.position IS NOT NULL
+			  AND p.receive_allowed = TRUE
+			  AND p.location_at <= :at
+			  AND p.expires_at > :at
+			  AND (:regionCode IS NULL OR p.coarse_region_code = :regionCode)
+			  AND ST_DWithin(p.position, origin.point, :maxDistanceMeters)
+			  AND NOT EXISTS (SELECT 1 FROM user_block ub
+			                  WHERE ub.blocker_id = :excludedUserId
+			                    AND ub.blocked_id = p.user_id
+			                    AND ub.released_at IS NULL)
+			  AND NOT EXISTS (SELECT 1 FROM user_block ub
+			                  WHERE ub.blocker_id = p.user_id
+			                    AND ub.blocked_id = :excludedUserId
+			                    AND ub.released_at IS NULL)
+		), eligible_candidates AS (
+			SELECT user_id, distance_m, bearing_deg
+			FROM candidate_bearings
+			WHERE distance_m >= :minDistanceMeters
+			  AND distance_m <= :maxDistanceMeters
+		)
+		SELECT ds.segment_key, COUNT(ec.user_id) AS candidate_count
+		FROM direction_scheme scheme
+		JOIN direction_segment ds ON ds.scheme_id = scheme.id
+		CROSS JOIN LATERAL (
+			SELECT MOD(ds.center_bearing_deg - ds.angular_width_deg / 2 + 360, 360) AS start_deg,
+			       MOD(ds.center_bearing_deg + ds.angular_width_deg / 2 + 360, 360) AS end_deg
+		) bounds
+		LEFT JOIN eligible_candidates ec
+			ON ((bounds.start_deg < bounds.end_deg
+					AND ec.bearing_deg >= bounds.start_deg AND ec.bearing_deg < bounds.end_deg)
+				OR (bounds.start_deg >= bounds.end_deg
+					AND (ec.bearing_deg >= bounds.start_deg OR ec.bearing_deg < bounds.end_deg)))
+		WHERE scheme.id = :schemeId
+		  AND scheme.status = 'ACTIVE'
+		GROUP BY ds.segment_key, ds.sort_order
+		ORDER BY ds.sort_order
 		""";
 }

@@ -2,7 +2,9 @@ package com.dnd.qello.direction.service;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
@@ -17,6 +19,7 @@ import com.dnd.qello.direction.domain.DirectionCandidate;
 import com.dnd.qello.direction.domain.DirectionPost;
 import com.dnd.qello.direction.domain.DirectionRequestFingerprint;
 import com.dnd.qello.direction.domain.DirectionScheme;
+import com.dnd.qello.direction.domain.DirectionSchemeStatus;
 import com.dnd.qello.direction.domain.DirectionSegment;
 import com.dnd.qello.direction.domain.PostAudience;
 import com.dnd.qello.direction.domain.PostRecipient;
@@ -28,6 +31,7 @@ import com.dnd.qello.direction.repository.DirectionSchemeRepository;
 import com.dnd.qello.direction.repository.PostAudienceRepository;
 import com.dnd.qello.direction.repository.PostRecipientRepository;
 import com.dnd.qello.direction.repository.RecipientReceiveStateRepository;
+import com.dnd.qello.direction.repository.ActiveUserPresenceRepository.DirectionSegmentCandidateCount;
 import com.dnd.qello.feed.config.DistanceBandPolicy;
 import com.dnd.qello.question.repository.ApprovedQuestionRepository;
 import com.dnd.qello.notification.domain.OutboxEvent;
@@ -64,11 +68,45 @@ public class DirectionPostService {
 		return candidates(command, sender, segment);
 	}
 
+	@Transactional(readOnly = true)
+	public DirectionPreviewResult previewAll(PreviewAllCommand command) {
+		requireValue(command, "command");
+		ActiveUserPresence sender = activeSender(command.senderId(), command.at());
+		DirectionScheme scheme = activeScheme(command.schemeId());
+		List<DirectionSegment> segments = schemeRepository.findSegments(command.schemeId()).stream()
+				.sorted(java.util.Comparator.comparingInt(DirectionSegment::getSortOrder))
+				.toList();
+		scheme.validateCoverage(segments);
+		if (sender.getLatitude() == null || sender.getLongitude() == null) {
+			throw new DirectionException(
+					DirectionErrorCode.PRESENCE_LOCATION_MISSING,
+					"senderId",
+					"정확 위치가 없는 presence는 후보를 계산할 수 없습니다"
+			);
+		}
+
+		List<DirectionSegmentCandidateCount> rows = presenceRepository.findCandidateCountsBySegment(
+				command.schemeId(), command.senderId(), sender.getLatitude().doubleValue(), sender.getLongitude().doubleValue(),
+				command.minDistanceMeters(), command.maxDistanceMeters(), command.at(), command.coarseRegionCode());
+		Map<String, Long> counts = new HashMap<>();
+		for (DirectionSegmentCandidateCount row : rows) {
+			if (counts.put(row.segmentKey(), row.count()) != null) {
+				throw new DirectionException(DirectionErrorCode.INVALID_SCHEME_CONFIGURATION, "segments",
+						"preview 집계 결과에 같은 segment가 중복되었습니다");
+			}
+		}
+		List<DirectionPreviewResult.SegmentCount> result = segments.stream()
+				.map(segment -> new DirectionPreviewResult.SegmentCount(segment.getSegmentKey(), segment.getDisplayName(),
+						segment.getSortOrder(), counts.getOrDefault(segment.getSegmentKey(), 0L)))
+				.toList();
+		return new DirectionPreviewResult(scheme.getId(), scheme.getCode(), scheme.getVersion(), result);
+	}
+
 	public SendResult send(SendCommand command) {
 		requireValue(command, "command");
 		DirectionRequestFingerprint requestFingerprint = DirectionRequestFingerprint.create(command.approvedQuestionId(),
-			command.schemeId(), command.segmentKey(), command.minDistanceMeters(), command.maxDistanceMeters(),
-			command.coarseRegionCode(), command.bodyText());
+				command.schemeId(), command.segmentKey(), command.minDistanceMeters(), command.maxDistanceMeters(),
+				command.coarseRegionCode(), command.bodyText());
 		try {
 			TransactionTemplate transaction = new TransactionTemplate(transactionManager);
 			return transaction.execute(status -> sendInTransaction(command, requestFingerprint));
@@ -83,39 +121,39 @@ public class DirectionPostService {
 			DirectionPost existingPost = existing.get();
 			if (existingPost.getRequestFingerprint() != null && !existingPost.getRequestFingerprint().equals(requestFingerprint)) {
 				throw new DirectionException(DirectionErrorCode.IDEMPOTENCY_KEY_REUSED, "idempotencyKey",
-					"같은 멱등키로 다른 요청을 재사용할 수 없습니다");
+						"같은 멱등키로 다른 요청을 재사용할 수 없습니다");
 			}
 			return existingResult(existingPost, requestFingerprint);
 		}
 
 		if (approvedQuestionRepository.findAssignableAt(command.submittedAt()).stream()
-			.noneMatch(question -> question.getId().equals(command.approvedQuestionId()))) {
+				.noneMatch(question -> question.getId().equals(command.approvedQuestionId()))) {
 			throw new DirectionException(
-				DirectionErrorCode.QUESTION_NOT_ACTIVE, "approvedQuestionId", "전송 시각에 활성인 질문이 아닙니다");
+					DirectionErrorCode.QUESTION_NOT_ACTIVE, "approvedQuestionId", "전송 시각에 활성인 질문이 아닙니다");
 		}
 		ActiveUserPresence sender = activeSender(command.senderId(), command.submittedAt());
 		DirectionSegment segment = segment(command.schemeId(), command.segmentKey());
 		DirectionPost post = postRepository.save(DirectionPost.submit(command.senderId(), command.approvedQuestionId(),
-			requestFingerprint, command.idempotencyKey(), command.bodyText(), command.coarseRegionCode(),
-			command.submittedAt(), command.expiresAt()));
+				requestFingerprint, command.idempotencyKey(), command.bodyText(), command.coarseRegionCode(),
+				command.submittedAt(), command.expiresAt()));
 		PostAudience audience = audienceRepository.save(PostAudience.create(post.getId(), command.schemeId(), segment.getSegmentKey(),
-			segment.getCenterBearingDegrees(), segment.getAngularWidthDegrees(), command.minDistanceMeters(), command.maxDistanceMeters(),
-			sender.getLatitude(), sender.getLongitude(), sender.getCoarseCellId(), command.submittedAt()));
+				segment.getCenterBearingDegrees(), segment.getAngularWidthDegrees(), command.minDistanceMeters(), command.maxDistanceMeters(),
+				sender.getLatitude(), sender.getLongitude(), sender.getCoarseCellId(), command.submittedAt()));
 
 		PreviewCommand candidateCommand = new PreviewCommand(command.senderId(), command.schemeId(), command.segmentKey(),
-			command.minDistanceMeters(), command.maxDistanceMeters(), command.coarseRegionCode(), command.submittedAt());
+				command.minDistanceMeters(), command.maxDistanceMeters(), command.coarseRegionCode(), command.submittedAt());
 		List<PostRecipient> recipients = selectRecipients(post.getId(), candidates(candidateCommand, sender, segment), command.submittedAt());
 		enqueueMatchingEvent(post, audience, requestFingerprint, command);
 		return new SendResult(post, audience, recipients);
 	}
 
 	private SendResult recoverConcurrentRequest(SendCommand command,
-		DirectionRequestFingerprint requestFingerprint, DataIntegrityViolationException race) {
+												DirectionRequestFingerprint requestFingerprint, DataIntegrityViolationException race) {
 		DirectionPost existing = postRepository.findBySenderAndIdempotencyKey(command.senderId(), command.idempotencyKey())
-			.orElseThrow(() -> race);
+				.orElseThrow(() -> race);
 		if (existing.getRequestFingerprint() != null && !existing.getRequestFingerprint().equals(requestFingerprint)) {
 			throw new DirectionException(DirectionErrorCode.IDEMPOTENCY_KEY_REUSED, "idempotencyKey",
-				"같은 멱등키로 다른 요청을 재사용할 수 없습니다");
+					"같은 멱등키로 다른 요청을 재사용할 수 없습니다");
 		}
 		return existingResult(existing, requestFingerprint);
 	}
@@ -126,18 +164,18 @@ public class DirectionPostService {
 		if (post.getRequestFingerprint() == null && audience != null) {
 			try {
 				DirectionRequestFingerprint legacyFingerprint = DirectionRequestFingerprint.create(post.getApprovedQuestionId(),
-					audience.getDirectionSchemeId(), audience.getSelectedSegmentKey(), audience.getMinDistanceMeters(),
-					audience.getMaxDistanceMeters(), post.getCoarseRegionCode(), post.getBodyText());
+						audience.getDirectionSchemeId(), audience.getSelectedSegmentKey(), audience.getMinDistanceMeters(),
+						audience.getMaxDistanceMeters(), post.getCoarseRegionCode(), post.getBodyText());
 				if (!legacyFingerprint.equals(requestFingerprint)) {
 					throw new DirectionException(DirectionErrorCode.IDEMPOTENCY_KEY_REUSED, "idempotencyKey",
-						"같은 멱등키로 다른 요청을 재사용할 수 없습니다");
+							"같은 멱등키로 다른 요청을 재사용할 수 없습니다");
 				}
 				restored = postRepository.updateRequestFingerprintIfNull(post.getId(), legacyFingerprint)
-					.orElseGet(() -> postRepository.findById(post.getId()).orElse(post));
+						.orElseGet(() -> postRepository.findById(post.getId()).orElse(post));
 				if (restored.getRequestFingerprint() != null
-					&& !restored.getRequestFingerprint().equals(requestFingerprint)) {
+						&& !restored.getRequestFingerprint().equals(requestFingerprint)) {
 					throw new DirectionException(DirectionErrorCode.IDEMPOTENCY_KEY_REUSED, "idempotencyKey",
-						"같은 멱등키로 다른 요청을 재사용할 수 없습니다");
+							"같은 멱등키로 다른 요청을 재사용할 수 없습니다");
 				}
 			} catch (DirectionException ignored) {
 				if (ignored.getErrorCode() == DirectionErrorCode.IDEMPOTENCY_KEY_REUSED) throw ignored;
@@ -148,22 +186,22 @@ public class DirectionPostService {
 	}
 
 	private void enqueueMatchingEvent(DirectionPost post, PostAudience audience,
-		DirectionRequestFingerprint requestFingerprint, SendCommand command) {
+									  DirectionRequestFingerprint requestFingerprint, SendCommand command) {
 		int matchRound = 1;
 		String eventType = "RECIPIENT_MATCH_REQUESTED";
 		String dedupKey = "direction-match:" + post.getId() + ":" + matchRound + ":" + eventType;
 		String payload = "{\"postId\":" + post.getId()
-			+ ",\"matchRound\":" + matchRound
-			+ ",\"eventType\":\"" + eventType + "\""
-			+ ",\"requestFingerprint\":\"" + jsonEscape(requestFingerprint.value()) + "\""
-			+ ",\"schemeId\":" + audience.getDirectionSchemeId()
-			+ ",\"segmentKey\":\"" + jsonEscape(audience.getSelectedSegmentKey()) + "\""
-			+ ",\"minDistanceMeters\":" + audience.getMinDistanceMeters()
-			+ ",\"maxDistanceMeters\":" + audience.getMaxDistanceMeters()
-			+ ",\"coarseRegionCode\":\"" + jsonEscape(command.coarseRegionCode()) + "\"}";
+				+ ",\"matchRound\":" + matchRound
+				+ ",\"eventType\":\"" + eventType + "\""
+				+ ",\"requestFingerprint\":\"" + jsonEscape(requestFingerprint.value()) + "\""
+				+ ",\"schemeId\":" + audience.getDirectionSchemeId()
+				+ ",\"segmentKey\":\"" + jsonEscape(audience.getSelectedSegmentKey()) + "\""
+				+ ",\"minDistanceMeters\":" + audience.getMinDistanceMeters()
+				+ ",\"maxDistanceMeters\":" + audience.getMaxDistanceMeters()
+				+ ",\"coarseRegionCode\":\"" + jsonEscape(command.coarseRegionCode()) + "\"}";
 		outboxEventRepository.findByDedupKey(dedupKey).orElseGet(() ->
-			outboxEventRepository.save(OutboxEvent.matchingPending(post.getId(), matchRound, dedupKey,
-				payload, command.submittedAt())));
+				outboxEventRepository.save(OutboxEvent.matchingPending(post.getId(), matchRound, dedupKey,
+						payload, command.submittedAt())));
 	}
 
 	private static String jsonEscape(String value) {
@@ -193,9 +231,9 @@ public class DirectionPostService {
 			if (recipients.size() >= recipientSelectionProperties.maxRecipientsPerPost()) break;
 			if (!reserve(candidate.userId(), matchedAt)) continue;
 			recipients.add(recipientRepository.save(PostRecipient.available(postId, candidate.userId(),
-				distanceBandPolicy.forDistance(candidate.distanceMeters().longValue()),
-				candidate.bearingDegrees(), candidate.matchedRegionCode(), matchedAt,
-				candidate.inboundBearingDegrees(), candidate.distanceMeters().longValue())));
+					distanceBandPolicy.forDistance(candidate.distanceMeters().longValue()),
+					candidate.bearingDegrees(), candidate.matchedRegionCode(), matchedAt,
+					candidate.inboundBearingDegrees(), candidate.distanceMeters().longValue())));
 		}
 		return List.copyOf(recipients);
 	}
@@ -209,8 +247,8 @@ public class DirectionPostService {
 	@Transactional
 	public DirectionPost markAnswersRead(long senderId, long postId, Instant at) {
 		DirectionPost post = postRepository.findByIdAndSenderId(postId, senderId)
-			.orElseThrow(() -> new DirectionException(
-				DirectionErrorCode.POST_NOT_FOUND, "postId", "질문글을 찾을 수 없습니다"));
+				.orElseThrow(() -> new DirectionException(
+						DirectionErrorCode.POST_NOT_FOUND, "postId", "질문글을 찾을 수 없습니다"));
 		post.markAnswersRead(at);
 		return postRepository.advanceAnswersReadAt(postId, at);
 	}
@@ -222,33 +260,44 @@ public class DirectionPostService {
 		double end = DirectionScheme.normalize(center + half);
 		if (sender.getLatitude() == null || sender.getLongitude() == null) {
 			throw new DirectionException(
-				DirectionErrorCode.PRESENCE_LOCATION_MISSING,
-				"senderId",
-				"정확 위치가 없는 presence는 후보를 계산할 수 없습니다"
+					DirectionErrorCode.PRESENCE_LOCATION_MISSING,
+					"senderId",
+					"정확 위치가 없는 presence는 후보를 계산할 수 없습니다"
 			);
 		}
 		return presenceRepository.findCandidates(command.senderId(), sender.getLatitude().doubleValue(), sender.getLongitude().doubleValue(),
-			command.minDistanceMeters(), command.maxDistanceMeters(), start, end, command.at(), command.coarseRegionCode());
+				command.minDistanceMeters(), command.maxDistanceMeters(), start, end, command.at(), command.coarseRegionCode());
 	}
 
 	private DirectionSegment segment(long schemeId, String segmentKey) {
 		DirectionScheme scheme = schemeRepository.findById(schemeId)
-			.orElseThrow(() -> new DirectionException(
-				DirectionErrorCode.SCHEME_NOT_FOUND, "schemeId", "direction scheme을 찾을 수 없습니다"));
+				.orElseThrow(() -> new DirectionException(
+						DirectionErrorCode.SCHEME_NOT_FOUND, "schemeId", "direction scheme을 찾을 수 없습니다"));
 		List<DirectionSegment> segments = schemeRepository.findSegments(schemeId);
 		scheme.validateCoverage(segments);
 		return segments.stream().filter(candidate -> candidate.getSegmentKey().equals(segmentKey)).findFirst()
-			.orElseThrow(() -> new DirectionException(
-				DirectionErrorCode.SEGMENT_NOT_FOUND, "segmentKey", "direction segment을 찾을 수 없습니다"));
+				.orElseThrow(() -> new DirectionException(
+						DirectionErrorCode.SEGMENT_NOT_FOUND, "segmentKey", "direction segment을 찾을 수 없습니다"));
+	}
+
+	private DirectionScheme activeScheme(long schemeId) {
+		DirectionScheme scheme = schemeRepository.findById(schemeId)
+				.orElseThrow(() -> new DirectionException(
+						DirectionErrorCode.SCHEME_NOT_FOUND, "schemeId", "direction scheme을 찾을 수 없습니다"));
+		if (scheme.getStatus() != DirectionSchemeStatus.ACTIVE) {
+			throw new DirectionException(
+					DirectionErrorCode.SCHEME_NOT_FOUND, "schemeId", "활성 direction scheme을 찾을 수 없습니다");
+		}
+		return scheme;
 	}
 
 	private ActiveUserPresence activeSender(long senderId, Instant at) {
 		ActiveUserPresence sender = presenceRepository.findByUserId(senderId)
-			.orElseThrow(() -> new DirectionException(
-				DirectionErrorCode.PRESENCE_NOT_FOUND, "senderId", "sender presence를 찾을 수 없습니다"));
+				.orElseThrow(() -> new DirectionException(
+						DirectionErrorCode.PRESENCE_NOT_FOUND, "senderId", "sender presence를 찾을 수 없습니다"));
 		if (!sender.isCurrentAt(at)) {
 			throw new DirectionException(
-				DirectionErrorCode.PRESENCE_NOT_CURRENT, "senderId", "sender presence가 만료되었거나 수신 허용이 아닙니다");
+					DirectionErrorCode.PRESENCE_NOT_CURRENT, "senderId", "sender presence가 만료되었거나 수신 허용이 아닙니다");
 		}
 		return sender;
 	}
@@ -256,7 +305,7 @@ public class DirectionPostService {
 	private static <T> T requireValue(T value, String field) {
 		if (value == null) {
 			throw new DirectionException(
-				DirectionErrorCode.REQUIRED_VALUE_MISSING, field, field + "는 필수입니다");
+					DirectionErrorCode.REQUIRED_VALUE_MISSING, field, field + "는 필수입니다");
 		}
 		return value;
 	}
@@ -271,45 +320,62 @@ public class DirectionPostService {
 	}
 
 	public record PreviewCommand(Long senderId, Long schemeId, String segmentKey, long minDistanceMeters,
-		long maxDistanceMeters, String coarseRegionCode, Instant at) {
+								 long maxDistanceMeters, String coarseRegionCode, Instant at) {
 		public PreviewCommand {
 			if (senderId == null || senderId <= 0 || schemeId == null || schemeId <= 0) {
 				throw new DirectionException(DirectionErrorCode.INVALID_ID, null, "ID가 유효하지 않습니다");
 			}
 			if (minDistanceMeters < 0 || maxDistanceMeters <= minDistanceMeters) {
 				throw new DirectionException(
-					DirectionErrorCode.INVALID_DISTANCE_RANGE, "maxDistanceMeters", "거리 범위가 유효하지 않습니다");
+						DirectionErrorCode.INVALID_DISTANCE_RANGE, "maxDistanceMeters", "거리 범위가 유효하지 않습니다");
 			}
 			requireValue(segmentKey, "segmentKey");
 			requireValue(at, "at");
 		}
 	}
 
+	public record PreviewAllCommand(Long senderId, Long schemeId, long minDistanceMeters,
+									long maxDistanceMeters, String coarseRegionCode, Instant at) {
+		public PreviewAllCommand {
+			if (senderId == null || senderId <= 0 || schemeId == null || schemeId <= 0) {
+				throw new DirectionException(DirectionErrorCode.INVALID_ID, null, "ID가 유효하지 않습니다");
+			}
+			if (minDistanceMeters < 0 || maxDistanceMeters <= minDistanceMeters) {
+				throw new DirectionException(
+						DirectionErrorCode.INVALID_DISTANCE_RANGE, "maxDistanceMeters", "거리 범위가 유효하지 않습니다");
+			}
+			requireValue(at, "at");
+		}
+	}
+
 	public record SendCommand(Long senderId, Long approvedQuestionId, Long schemeId, String segmentKey,
-		long minDistanceMeters, long maxDistanceMeters, String coarseRegionCode, String idempotencyKey,
-		String bodyText, Instant submittedAt, Instant expiresAt) {
+							  long minDistanceMeters, long maxDistanceMeters, String coarseRegionCode,
+							  String idempotencyKey,
+							  String bodyText, Instant submittedAt, Instant expiresAt) {
 		public SendCommand {
 			if (senderId == null || senderId <= 0 || approvedQuestionId == null || approvedQuestionId <= 0 || schemeId == null || schemeId <= 0) {
 				throw new DirectionException(DirectionErrorCode.INVALID_ID, null, "ID가 유효하지 않습니다");
 			}
 			if (minDistanceMeters < 0 || maxDistanceMeters <= minDistanceMeters) {
 				throw new DirectionException(
-					DirectionErrorCode.INVALID_DISTANCE_RANGE, "maxDistanceMeters", "거리 범위가 유효하지 않습니다");
+						DirectionErrorCode.INVALID_DISTANCE_RANGE, "maxDistanceMeters", "거리 범위가 유효하지 않습니다");
 			}
 			if (segmentKey == null || segmentKey.isBlank() || coarseRegionCode == null || coarseRegionCode.isBlank() || idempotencyKey == null || idempotencyKey.isBlank()) {
 				throw new DirectionException(
-					DirectionErrorCode.REQUIRED_VALUE_MISSING, null, "필수 command 값이 없습니다");
+						DirectionErrorCode.REQUIRED_VALUE_MISSING, null, "필수 command 값이 없습니다");
 			}
 			requireValue(submittedAt, "submittedAt");
 			requireValue(expiresAt, "expiresAt");
 			if (!expiresAt.isAfter(submittedAt)) {
 				throw new DirectionException(
-					DirectionErrorCode.INVALID_TIME_ORDER, "expiresAt", "expiresAt은 submittedAt보다 늦어야 합니다");
+						DirectionErrorCode.INVALID_TIME_ORDER, "expiresAt", "expiresAt은 submittedAt보다 늦어야 합니다");
 			}
 		}
 	}
 
 	public record SendResult(DirectionPost post, PostAudience audience, List<PostRecipient> recipients) {
-		public SendResult { recipients = List.copyOf(recipients); }
+		public SendResult {
+			recipients = List.copyOf(recipients);
+		}
 	}
 }

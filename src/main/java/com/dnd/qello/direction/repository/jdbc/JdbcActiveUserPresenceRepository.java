@@ -54,6 +54,19 @@ public class JdbcActiveUserPresenceRepository implements ActiveUserPresenceRepos
 			rs.getBigDecimal("inbound_bearing_deg")));
 	}
 
+	@Override
+	public List<DirectionSegmentCandidateCount> findCandidateCountsBySegment(long schemeId, long excludedUserId,
+		double originLatitude, double originLongitude, long minDistanceMeters, long maxDistanceMeters,
+		Instant at, String regionCode) {
+		MapSqlParameterSource p = new MapSqlParameterSource()
+			.addValue("schemeId", schemeId).addValue("excludedUserId", excludedUserId)
+			.addValue("originLatitude", originLatitude).addValue("originLongitude", originLongitude)
+			.addValue("minDistanceMeters", minDistanceMeters).addValue("maxDistanceMeters", maxDistanceMeters)
+			.addValue("at", Timestamp.from(at)).addValue("regionCode", regionCode);
+		return jdbc.query(ActiveUserPresenceSql.FIND_CANDIDATE_COUNTS_BY_SEGMENT_SQL, p,
+			(rs, rowNum) -> new DirectionSegmentCandidateCount(rs.getString("segment_key"), rs.getLong("candidate_count")));
+	}
+
 	private static MapSqlParameterSource parameters(ActiveUserPresence p) {
 		return new MapSqlParameterSource().addValue("userId", p.getUserId())
 			.addValue("latitude", p.getLatitude()).addValue("longitude", p.getLongitude())
