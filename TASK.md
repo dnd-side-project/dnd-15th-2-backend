@@ -13,7 +13,8 @@
 - Base branch: `main`
 - DESIGN-ID: `D-2`
 - Design report: `docs/reports/infrastructure/gh-132-D-2.md`
-- Design status: `BLOCKED` — 사람 결정 6건 미확정(보고서 §15)
+- Design status: `READY_FOR_DESIGN_REVIEW` — 사람 결정 6건 확정(2026-08-12).
+  선택안 Option C, 월 약 125 USD 추정
 
 ## Objective
 
@@ -50,8 +51,8 @@
 
 | Area | Owner | Required review |
 | --- | --- | --- |
-| Infrastructure Design Report D-2(아키텍처 대안, 비용, 보안, 위험) | Infrastructure orchestrator | 대안 탈락 이유의 타당성, 공식 단가 근거, `infra-apply` 권한 확대 범위(SEC-A), 공인 IP 태스크 트레이드오프(SEC-B), RDS 자격증명 State 노출 방지(SEC-C) |
-| 사람 결정 6건 | `@Byuntil`, `@tkv00` | 예산 상한, 환경 구성, 도메인/TLS, 서비스 수명, health 엔드포인트 도입, 이미지 아키텍처 |
+| Infrastructure Design Report D-2(아키텍처 대안, 비용, 보안, 위험) | Infrastructure orchestrator | 대안 탈락 이유의 타당성, 공식 단가 근거, `infra-apply` 권한 확대 범위(SEC-A), RDS 자격증명 State 노출 방지(SEC-C), Option C 선택과 x86 채택 근거 |
+| 사람 결정 6건 | `@Byuntil`, `@tkv00` | 2026-08-12 확정 완료 — 예산 B~C, prod 단일, 도메인 추후 구매, 장기 운영, actuator 도입, 이미지 아키텍처 위임 |
 
 ## Existing user-owned changes
 
@@ -81,6 +82,14 @@ Terraform 파일을 만들지 않으므로 대상이 없다. 빌드 이슈에서
 - [x] 비용을 AWS 공식 단가(Price List API, 조회일 기록)로 산정한다.
 - [x] 독립 보안 검토 finding을 severity와 함께 기록한다.
 - [x] 변경 위험도, 실패 모드, 롤백·복구 절차를 기록한다.
-- [ ] 사람 결정 6건이 확정된다(보고서 §15).
+- [x] 사람 결정 6건이 확정된다(보고서 §15) — 2026-08-12.
+- [x] 확정된 결정을 반영해 선택안을 하나로 확정한다(Option C).
 - [ ] 설계 상태가 `APPROVED_FOR_BUILD`로 승인된다.
 - [ ] `@Byuntil`, `@tkv00`의 PR 승인.
+
+## 후속 이슈 (이 이슈 범위 밖, 보고서 §15.1)
+
+- [ ] actuator 도입(애플리케이션 변경) — ALB health check의 선행 조건.
+- [ ] 배포 workflow 작성(ECR push + ECS 서비스 갱신).
+- [ ] 도메인 구매와 Route53 위임 — 실사용자 공개 전 필수.
+- [ ] OpenAI API Key를 SSM SecureString에 사람이 사전 등록.
