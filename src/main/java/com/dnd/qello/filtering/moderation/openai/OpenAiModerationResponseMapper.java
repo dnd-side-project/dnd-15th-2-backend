@@ -26,6 +26,10 @@ public final class OpenAiModerationResponseMapper {
 				FilteringErrorCode.MODERATION_PROVIDER_UNAVAILABLE, "openai", "empty_results");
 		}
 		OpenAiModerationResponse.Result result = results.get(0);
+		if (result == null) {
+			throw new FilteringException(
+				FilteringErrorCode.MODERATION_PROVIDER_UNAVAILABLE, "openai", "null_result");
+		}
 		return new ModerationProviderResult(
 			result.flagged(), result.categories(), result.categoryScores(), response.model());
 	}
