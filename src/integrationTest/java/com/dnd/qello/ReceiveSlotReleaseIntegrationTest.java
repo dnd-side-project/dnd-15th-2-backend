@@ -41,10 +41,9 @@ import com.dnd.qello.safety.service.SafetyService;
 
 /**
  * 만료·넘김확정·차단 세 경로의 수신 슬롯 해제(#93)를 검증한다. 세 전이의 방향성과
- * 경쟁 시나리오가 핵심이며, 방향 판정 자체(45° 구간 로직)는 다루지 않는다 — INT-012만
- * 예외로 DirectionPostService.send()의 end-to-end 재현을 위해 기존 시드 OCTANT
- * 스킴을 재사용한다(새 스킴을 만들지 않는다 — 다른 테스트 클래스와 컨테이너를
- * 공유하므로 시드 데이터를 건드리지 않는다).
+ * 경쟁 시나리오가 핵심이며, 방향 판정 자체(45° 구간 로직)는 다루지 않는다. 질문글
+ * 제출은 #118에서 수신자 확정을 worker로 위임하므로 이 클래스의 end-to-end 제출
+ * 시나리오는 제출 시 슬롯을 동기 점유하지 않는 경계만 확인한다.
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -310,8 +309,8 @@ class ReceiveSlotReleaseIntegrationTest extends PostgisContainerIntegrationTestS
 	}
 
 	@Test
-	@DisplayName("상한까지 받은 뒤 전부 만료시킨 사용자는 다시 신규 발송의 수신자로 선정된다")
-	void userBecomesEligibleAgainAfterExpiringAllUnansweredSlots() {
+	@DisplayName("상한까지 받은 뒤 전부 만료시킨 사용자의 신규 제출은 수신자 확정을 위임한다")
+	void userCanSubmitAfterExpiringAllUnansweredSlots() {
 		DirectionScheme octant = schemeRepository.findByCodeAndVersion("OCTANT", 1).orElseThrow();
 		presenceRepository.save(ActiveUserPresence.create(senderId, BigDecimal.valueOf(37.5000), BigDecimal.valueOf(127.0000),
 			null, REGION, BigDecimal.ONE, true, NOW.minusSeconds(10), NOW.plusSeconds(3600)));
@@ -332,8 +331,8 @@ class ReceiveSlotReleaseIntegrationTest extends PostgisContainerIntegrationTestS
 		var result = directionPostService.send(new DirectionPostService.SendCommand(senderId, questionId, octant.getId(), "N",
 			0, 500, REGION, "int012-new-post", "새 질문글", NOW, NOW.plusSeconds(3600)));
 
-		assertThat(result.recipients()).extracting(PostRecipient::getRecipientId).containsExactly(recipientId);
-		assertThat(activeCount(recipientId)).isEqualTo(1);
+		assertThat(result.recipients()).isEmpty();
+		assertThat(activeCount(recipientId)).isZero();
 	}
 
 	@Test

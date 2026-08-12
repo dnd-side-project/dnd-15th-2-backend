@@ -1,61 +1,44 @@
-# GitHub Issue #106 Task Contract
+# GitHub Issue #118 Task Contract
 
-> Generated at: `2026-08-12T09:47:58+09:00`
+> Generated at: `2026-08-12T14:08:46+09:00`
 >
 > 이 파일은 현재 작업 브랜치의 계약이다. 저장소 전역 정책은 `AGENTS.md`를
 > 따른다.
 
 ## Work gate
 
-- Title: `[C] 필터링 시스템 — 닉네임 동기 필터 (F03)`
-- GitHub Issue: `#106`
-- Branch: `feat/gh-106-nickname-sync-filter`
+- Title: `질문글 멱등 제출과 MatchRequested Outbox 기록`
+- GitHub Issue: `#118`
+- Branch: `feat/gh-118-direction-post-submit`
 - Base branch: `main`
 
 ## Objective
 
-- 사용자가 닉네임을 설정·변경할 때 동기적으로 moderation을 통과해야 적용되는
-  fail-closed 판정 훅을 구현한다.
-- 닉네임은 별도 도메인이 아니라 `Account`(`user_account` 테이블)의 필드다 —
-  이 이슈는 `Account` 엔티티를 수정하지 않고, 기존 호출 지점이 사용할 동기
-  판정 훅만 제공한다.
-- 답변(비동기) 처리 부하와 완전히 분리된 실행 자원을 사용한다
-  (`INV-RES-002`~`004`).
+- 질문글 제출을 수신자 확정과 분리하고, 같은 의미의 재시도는 기존 결과로
+  복원하며 다른 요청의 멱등 키 재사용은 충돌로 거절한다.
+- `direction_post`, `post_audience`, `RECIPIENT_MATCH_REQUESTED` Outbox를
+  하나의 트랜잭션으로 기록한다.
 
 ## Scope
 
-1. 답변 worker와 분리된 실행 풀, concurrency, timeout, quota와 지표를 갖는
-   닉네임 전용 동기 실행 경계를 만든다.
-2. `#105`가 만든 `ModerationPipelineService`/`ModerationProviderClient`
-   (`filtering.moderation` 패키지)를 재사용해 주 판정기 호출 경로를 구성한다
-   — pipeline 오케스트레이션 로직 자체는 변경하지 않는다.
-3. 주 판정기의 `ALLOW`/`BLOCK`/timeout/error 결과를 각각 명확히 구분해
-   처리한다.
-4. 주 판정기가 timeout/error일 때만 독립 보조 판정기를 순차 호출한다
-   (`INV-NICK-003`).
-5. 주 판정기의 명시적 `BLOCK`은 확정 결과로 취급하고 보조 판정기가 재판정하지
-   못하도록 권한 경계를 둔다(`INV-NICK-002`).
-6. 주·보조 판정기가 모두 timeout/error이면 fail-closed로 닉네임 적용과
-   서비스 진입을 거부한다(`INV-NICK-005`).
-7. 최초 설정 실패와 변경 실패 모두 서비스 진입을 차단하고, 변경 실패 시
-   기존 닉네임 유지나 임시 닉네임 발급으로 우회하지 않는다
-   (`INV-NICK-006`, `INV-NICK-007`).
-8. 신규 REST endpoint는 만들지 않는다 — 호출자(#73 `DeviceRegistrationService`
-   등 Account/Auth 담당)가 사용할 동기 판정 훅(메서드/서비스)만 제공한다.
+- `DirectionPostService.send()`의 제출 트랜잭션을 post·audience·matching
+  Outbox 기록으로 제한한다.
+- 기존 #115의 `request_fingerprint` 정규화·비교와 legacy lazy backfill을
+  유지한다.
+- 최초 matching event는 승인된 #115 계약에 따라 `match_round = 1`을 사용한다.
+- 동일 key·동일 fingerprint 재시도는 기존 제출 결과를 반환한다.
+- 동일 key·상이 fingerprint 요청은 `IDEMPOTENCY_KEY_REUSED`로 거절한다.
+- 제출 경로에서 후보 조회, 수신 슬롯 예약, `post_recipient` 생성을 수행하지
+  않는 것을 단위·PostgreSQL 통합 테스트로 증명한다.
+- 제출 실패 시 post·audience·Outbox 부분 커밋이 남지 않는지 검증한다.
 
 ## Explicit exclusions
 
-- `Account.createUser`/`Account.updateProfile` 호출부 수정 — Account/Auth
-  담당 영역이며 별도로 조율한다. 이 이슈는 훅 자체만 만들고 실제 연결은
-  포함하지 않는다.
-- 독립 보조 판정기의 실제 공급자와 주 판정기와의 공통 장애 영역 확정 —
-  미결정, production 차단 게이트.
-- 동기 timeout, 예약 용량, quota, 사용자 오류 안내 수치 — 미결정
-  (`INVARIANTS.md` §11). configuration 자리는 두되 운영 기본값으로 하드코딩
-  하지 않는다.
-- `user_account` 테이블 스키마 변경, 신규 마이그레이션 — 이 이슈는 DB를
-  수정하지 않는다.
-- 신규 REST endpoint 추가.
+- 매칭 워커와 PostGIS 후보 재계산
+- `post_recipient` 확정과 수신 슬롯 예약
+- 인앱/외부 푸시 알림 및 REST Controller
+- 새로운 migration 또는 #115의 `match_round`/lease 계약 변경
+- P02/P03 미확정 제품 숫자 결정
 - 인프라 apply, 배포, 프로덕션 변경은 별도 승인 없이는 실행하지 않는다.
 - Secret, 계정 식별자, 토큰, `.env` 값은 기록하지 않는다.
 
@@ -63,14 +46,14 @@
 
 | Area | Owner | Required review |
 | --- | --- | --- |
-| 닉네임 동기 판정 훅(전용 실행 자원, 주·보조 판정기 순차 호출, fail-closed 경계) | Feature executor | 답변 경로와의 자원 격리, `BLOCK` 재판정 금지, timeout/error의 `ALLOW` 전환 금지, fail-closed 통합 검증 |
+| DirectionPostService 제출 orchestration | Backend | 멱등성·트랜잭션 리뷰 |
+| 기존 발송 회귀 테스트 정리 | Backend | #120 경계와의 계약 리뷰 |
+| 테스트 계획·보고서 | Backend | 검증 증거 리뷰 |
 
 ## Existing user-owned changes
 
-- `main`(#105 `feat/gh-105-moderation-pipeline` 병합 직후, commit `2d6aba2`)
-  에서 새로 분기했다(`./harness start --issue 106 --type feat --slug
-  nickname-sync-filter`). 분기 시점 `git status --short`는 `task-init`이
-  갱신한 `TASK.md` 외에는 비어 있었다.
+- 작업 시작 시 `git status --short` 결과는 clean이었다.
+- `./harness start` 후 현재 브랜치는 `feat/gh-118-direction-post-submit`이다.
 
 ## Validation
 
@@ -82,32 +65,10 @@ git diff --check
 
 ## Completion criteria
 
-- [x] 답변 backlog와 장애 부하가 닉네임 예약 용량을 소진하지 않는다
-      (`INV-RES-003`, `INV-RES-004`) — `NicknameSyncModerationGate`는 호출자가
-      주입한 전용 `ExecutorService`만 사용하고 답변 경로 executor를 참조할
-      경로가 코드에 없다. INT-002(실제 게이트 인스턴스 + 답변 경로 흉내
-      executor 포화)로 검증.
-- [x] 판정 불가를 `ALLOW`로 바꾸는 경로가 없다(`INV-GEN-002`) — UNIT-006/007,
-      INT-003(양쪽 timeout이어도 `REJECTED(UNAVAILABLE)`)로 검증.
-- [ ] 보조 판정기 장애까지 포함한 fail-closed 통합 검증을 통과한다
-      (`INV-NICK-001`~`007`) — `INV-NICK-001/002/003/005/006/007`은 fake로
-      검증 완료(UNIT-001~011, INT-001~004). `INV-NICK-004`(보조 판정기가 주
-      판정기와 실제 공통 장애 영역이 없는지)는 `SecondaryModerationClient`의
-      실제 구현체가 없어 fake 수준 구조 검증(별도 인스턴스·별도 코드 경로)에
-      그친다 — 실제 독립성은 production 차단 게이트(공급자 확정 후)에서만
-      검증 가능하므로 이 항목은 완전 체크하지 않는다.
-- [x] 주 판정기의 명시적 `BLOCK`을 보조 판정기가 뒤집지 못한다
-      (`INV-NICK-002`) — UNIT-002로 검증(보조를 ALLOW로 구성해도 무시됨).
-- [x] 최초 설정과 변경 실패 모두 서비스 진입을 차단하며, 임시/기존 닉네임
-      우회 경로가 없다(`INV-NICK-006`, `INV-NICK-007`) — 게이트 API
-      (`evaluate(nickname, language)`)에는 최초/변경을 구분하는 파라미터나
-      분기 자체가 없다. 완화된 별도 경로가 코드에 존재하지 않는 구조로
-      두 요구를 함께 만족시켰다(UNIT-011). 이는 승인된 설계 가정 1~3의
-      구현 세부 조정이며 범위를 벗어나지 않는다.
-- [x] 단위 테스트와 통합 테스트가 추가된다(정상 경로, timeout, 부분 장애
-      포함) — unit 11개, concurrency 통합 4개(`docs/reports/tests/gh-106-
-      TEST-PLAN-GH-106-NICKNAME-SYNC-FILTER.md`). "중복"·"순서 역전"은 이
-      게이트에 적용되지 않는다 — 답변 경로(#105)와 달리 이 게이트는 job/
-      attempt generation 개념이 없는 단발 동기 호출이라 재시도·순서 역전
-      시나리오 자체가 성립하지 않는다(UNIT-009가 대신 인스턴스 재사용 시
-      상태 비공유를 검증).
+- 질문글 제출 성공 시 post·audience·matching Outbox가 각각 한 행 기록된다.
+- 제출 성공 시 `post_recipient`와 `recipient_receive_state`가 변경되지 않는다.
+- 같은 key·같은 fingerprint 재시도는 row 수와 결과 ID를 증가시키지 않는다.
+- 같은 key·다른 fingerprint는 `IDEMPOTENCY_KEY_REUSED`이고 기존 행을 보존한다.
+- 제출 트랜잭션 rollback 후 부분 결과가 남지 않는다.
+- 승인된 P0 단위·통합 테스트와 저장소 필수 검증이 통과한다.
+- 실행하지 못한 검증과 남은 위험을 테스트 보고서에 기록한다.

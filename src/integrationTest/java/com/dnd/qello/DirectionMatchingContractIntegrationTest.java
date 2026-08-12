@@ -1,6 +1,7 @@
 /**
  * Created at: 2026-08-11T20:14:20+09:00
- * Source scenario: TEST-PLAN-GH-115-DIRECTION-MATCHING-CONTRACT-INT-002 through INT-004
+ * Source scenario: TEST-PLAN-GH-115-DIRECTION-MATCHING-CONTRACT-INT-002 through INT-004,
+ * TEST-PLAN-GH-118-DIRECTION-POST-SUBMISSION-INT-001 through INT-005
  */
 package com.dnd.qello;
 
@@ -24,6 +25,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.dao.DataAccessException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
@@ -103,6 +105,45 @@ class DirectionMatchingContractIntegrationTest extends PostgisContainerIntegrati
 		assertThat(restored.getRequestFingerprint()).isEqualTo(result.post().getRequestFingerprint());
 		assertThat(jdbc.queryForObject("SELECT request_fingerprint FROM direction_post WHERE id = ?",
 			String.class, result.post().getId())).isEqualTo(restored.getRequestFingerprint().value());
+		assertThat(result.recipients()).isEmpty();
+		assertThat(jdbc.queryForObject("SELECT count(*) FROM post_audience WHERE post_id = ?", Long.class,
+			result.post().getId())).isEqualTo(1L);
+		assertThat(jdbc.queryForObject("SELECT count(*) FROM outbox_event WHERE aggregate_id = ? AND event_type = ?",
+			Long.class, result.post().getId(), OutboxEventType.RECIPIENT_MATCH_REQUESTED.name())).isEqualTo(1L);
+		assertThat(jdbc.queryForObject("SELECT count(*) FROM post_recipient WHERE post_id = ?", Long.class,
+			result.post().getId())).isZero();
+	}
+
+	@Test
+	@DisplayName("matching Outbox 저장 실패는 post와 audience를 함께 rollback한다")
+	void rollsBackPostAndAudienceWhenMatchingOutboxFails() {
+		jdbc.execute("""
+			CREATE OR REPLACE FUNCTION test_gh118_fail_matching_outbox()
+			RETURNS trigger LANGUAGE plpgsql AS $$
+			BEGIN
+				RAISE EXCEPTION 'TEST-PLAN-GH-118 rollback injection';
+			END;
+			$$
+			""");
+		jdbc.execute("""
+			CREATE TRIGGER test_gh118_fail_matching_outbox
+			BEFORE INSERT ON outbox_event
+			FOR EACH ROW EXECUTE FUNCTION test_gh118_fail_matching_outbox()
+			""");
+		try {
+			assertThatThrownBy(() -> send("rollback-key", "rollback 의도"))
+				.isInstanceOf(DataAccessException.class);
+		} finally {
+			jdbc.execute("DROP TRIGGER IF EXISTS test_gh118_fail_matching_outbox ON outbox_event");
+			jdbc.execute("DROP FUNCTION IF EXISTS test_gh118_fail_matching_outbox()");
+		}
+
+		assertThat(jdbc.queryForObject("SELECT count(*) FROM direction_post WHERE sender_id = ? AND idempotency_key = ?",
+			Long.class, senderId, "rollback-key")).isZero();
+		assertThat(jdbc.queryForObject("SELECT count(*) FROM post_audience pa JOIN direction_post p ON p.id = pa.post_id WHERE p.sender_id = ?",
+			Long.class, senderId)).isZero();
+		assertThat(jdbc.queryForObject("SELECT count(*) FROM outbox_event WHERE aggregate_type = 'DIRECTION_POST' AND aggregate_id NOT IN (SELECT id FROM direction_post)",
+			Long.class)).isZero();
 	}
 
 	@Test
