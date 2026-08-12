@@ -40,6 +40,7 @@ public final class NotificationSql {
 				(status IN ('PENDING', 'FAILED') AND next_attempt_at <= :at)
 				OR (status = 'PROCESSING' AND lease_expires_at <= :at)
 			)
+			  AND event_type IN (:eventTypes)
 			ORDER BY next_attempt_at, id
 			LIMIT :limit
 			FOR UPDATE SKIP LOCKED
