@@ -18,6 +18,9 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.annotation.Configuration;
 
+import com.dnd.qello.direction.error.DirectionErrorCode;
+import com.dnd.qello.direction.error.DirectionException;
+
 class DirectionPresencePropertiesTest {
 
 	private final ApplicationContextRunner contextRunner = new ApplicationContextRunner()
@@ -40,20 +43,30 @@ class DirectionPresencePropertiesTest {
 	@DisplayName("양수가 아닌 TTL과 정확도 또는 음수 미래 오차는 시작 전에 거절한다")
 	void rejectsNonPositiveOrNegativePolicyValues() {
 		assertThatThrownBy(() -> properties(Duration.ZERO, BigDecimal.TEN, Duration.ZERO, Duration.ofSeconds(1)))
-			.isInstanceOf(IllegalArgumentException.class);
+			.isInstanceOf(DirectionException.class)
+			.hasFieldOrPropertyWithValue("errorCode", DirectionErrorCode.INVALID_VALUE_RANGE)
+			.hasFieldOrPropertyWithValue("field", "ttl");
 		assertThatThrownBy(() -> properties(Duration.ofHours(1), BigDecimal.ZERO, Duration.ZERO, Duration.ofSeconds(1)))
-			.isInstanceOf(IllegalArgumentException.class);
+			.isInstanceOf(DirectionException.class)
+			.hasFieldOrPropertyWithValue("errorCode", DirectionErrorCode.INVALID_VALUE_RANGE)
+			.hasFieldOrPropertyWithValue("field", "maxAccuracyMeters");
 		assertThatThrownBy(() -> properties(Duration.ofHours(1), BigDecimal.TEN, Duration.ofSeconds(-1), Duration.ofSeconds(1)))
-			.isInstanceOf(IllegalArgumentException.class);
+			.isInstanceOf(DirectionException.class)
+			.hasFieldOrPropertyWithValue("errorCode", DirectionErrorCode.INVALID_VALUE_RANGE)
+			.hasFieldOrPropertyWithValue("field", "maxFutureSkew");
 	}
 
 	@Test
 	@DisplayName("최대 관측 나이는 양수이고 TTL보다 짧아야 한다")
 	void requiresObservationAgeShorterThanTtl() {
 		assertThatThrownBy(() -> properties(Duration.ofMinutes(5), BigDecimal.TEN, Duration.ZERO, Duration.ofMinutes(5)))
-			.isInstanceOf(IllegalArgumentException.class);
+			.isInstanceOf(DirectionException.class)
+			.hasFieldOrPropertyWithValue("errorCode", DirectionErrorCode.INVALID_TIME_ORDER)
+			.hasFieldOrPropertyWithValue("field", "maxObservationAge");
 		assertThatThrownBy(() -> properties(Duration.ofMinutes(5), BigDecimal.TEN, Duration.ZERO, Duration.ZERO))
-			.isInstanceOf(IllegalArgumentException.class);
+			.isInstanceOf(DirectionException.class)
+			.hasFieldOrPropertyWithValue("errorCode", DirectionErrorCode.INVALID_VALUE_RANGE)
+			.hasFieldOrPropertyWithValue("field", "maxObservationAge");
 	}
 
 	@Test
