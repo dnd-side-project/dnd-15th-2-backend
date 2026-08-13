@@ -154,6 +154,25 @@
         },
         "type" : "object"
       },
+      "ApiResponseUpdateActiveUserPresenceResponse" : {
+        "properties" : {
+          "data" : {
+            "$ref" : "#/components/schemas/UpdateActiveUserPresenceResponse"
+          },
+          "status" : {
+            "enum" : [
+              "success",
+              "error"
+            ],
+            "type" : "string"
+          },
+          "timestamp" : {
+            "format" : "date-time",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
       "ApiResponseVoid" : {
         "properties" : {
           "data" : { },
@@ -370,6 +389,50 @@
             "description" : "로그인한 운영자의 계정 id",
             "format" : "int64",
             "type" : "integer"
+          }
+        },
+        "type" : "object"
+      },
+      "UpdateActiveUserPresenceRequest" : {
+        "properties" : {
+          "accuracyMeters" : {
+            "description" : "기기 위치 정확도(m). 운영 상한은 서버 설정을 따른다.",
+            "minimum" : 0,
+            "type" : "number"
+          },
+          "latitude" : {
+            "description" : "위도",
+            "maximum" : 90,
+            "minimum" : -90,
+            "type" : "number"
+          },
+          "longitude" : {
+            "description" : "경도",
+            "maximum" : 180,
+            "minimum" : -180,
+            "type" : "number"
+          },
+          "observedAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "receiveAllowed" : {
+            "type" : "boolean"
+          }
+        },
+        "required" : [
+          "accuracyMeters",
+          "latitude",
+          "longitude",
+          "observedAt",
+          "receiveAllowed"
+        ],
+        "type" : "object"
+      },
+      "UpdateActiveUserPresenceResponse" : {
+        "properties" : {
+          "applied" : {
+            "type" : "boolean"
           }
         },
         "type" : "object"
@@ -1230,6 +1293,93 @@
           "앱 기기 인증"
         ]
       }
+    },
+    "/api/v1/direction/presence" : {
+      "put" : {
+        "description" : "인증 사용자의 최신 위치와 질문 수신 허용 상태를 갱신한다.\n사용자와 지역은 서버에서 결정하고, 관측 시각이 같거나 더 오래된 재시도는 적용하지 않는다.\n정확 좌표는 성공 응답에 반환하지 않는다.",
+        "operationId" : "update",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/UpdateActiveUserPresenceRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiResponseUpdateActiveUserPresenceResponse"
+                }
+              }
+            },
+            "description" : "갱신 결과를 반환합니다."
+          },
+          "400" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "요청 값이 올바르지 않습니다. 오류 코드는 docs/error-codes.md를 따른다."
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "앱 액세스 토큰이 유효하지 않습니다."
+          },
+          "403" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "현재 계정은 위치를 갱신할 수 없습니다. (DIR-APP-007)"
+          },
+          "404" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "갱신할 계정을 찾을 수 없습니다. (DIR-APP-006)"
+          },
+          "500" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "서버 내부 오류가 발생했습니다."
+          }
+        },
+        "security" : [
+          {
+            "appAccessToken" : [ ]
+          }
+        ],
+        "summary" : "현재 위치 갱신",
+        "tags" : [
+          "방향 위치"
+        ]
+      }
     }
   },
   "servers" : [
@@ -1242,6 +1392,10 @@
     {
       "description" : "앱 기기 등록과 액세스 토큰 재발급",
       "name" : "앱 기기 인증"
+    },
+    {
+      "description" : "방향 preview와 매칭에 사용할 최신 위치 갱신",
+      "name" : "방향 위치"
     },
     {
       "description" : "moderation release candidate 생성, 평가 단계 전환, 승격과 rollback",
