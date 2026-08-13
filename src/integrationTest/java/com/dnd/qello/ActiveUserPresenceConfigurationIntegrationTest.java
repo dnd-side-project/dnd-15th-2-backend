@@ -9,6 +9,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.math.BigDecimal;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -65,7 +66,8 @@ class ActiveUserPresenceConfigurationIntegrationTest extends PostgisContainerInt
 			INSERT INTO user_account (country_code, coarse_region_code, locale, timezone, nickname)
 			VALUES ('KR', ?, 'ko-KR', 'Asia/Seoul', 'config-override') RETURNING id
 			""", Long.class, REGION);
-		Instant observedAt = Instant.now().minusSeconds(30);
+		// PostgreSQL TIMESTAMPTZ는 마이크로초 정밀도로 저장되므로 입력 시각도 같은 정밀도로 고정한다.
+		Instant observedAt = Instant.now().minusSeconds(30).truncatedTo(ChronoUnit.MICROS);
 
 		assertThat(presenceService.update(userId, new DirectionPresenceService.UpdateCommand(
 			new BigDecimal("37.5"), new BigDecimal("127.0"), new BigDecimal("75.5"), true, observedAt)))
