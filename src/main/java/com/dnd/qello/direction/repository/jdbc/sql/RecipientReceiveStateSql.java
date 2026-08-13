@@ -19,6 +19,25 @@ public final class RecipientReceiveStateSql {
 			updated_at = EXCLUDED.updated_at
 		""";
 
+	/** 매칭 후보에 처음 등장한 legacy 사용자의 상태 행을 예약 전에 만든다. */
+	public static final String ENSURE = """
+		INSERT INTO recipient_receive_state
+			(user_id, active_unhandled_count, recent_received_count, recent_window_started_at, last_received_at, updated_at)
+		VALUES (:userId, 0, 0, :at, NULL, :at)
+		ON CONFLICT (user_id) DO NOTHING
+		""";
+
+	/** 잠금된 후보만 반환해 다른 matching transaction이 같은 슬롯을 기다리지 않게 한다. */
+	public static final String LOCK_AVAILABLE = """
+		SELECT user_id
+		FROM recipient_receive_state
+		WHERE user_id IN (:userIds)
+		  AND active_unhandled_count < :activeLimit
+		ORDER BY active_unhandled_count, recent_received_count, last_received_at NULLS FIRST, user_id
+		LIMIT :lockLimit
+		FOR UPDATE SKIP LOCKED
+		""";
+
 	/**
 	 * 슬롯 하나를 예약한다. 행이 없으면 만들고 있으면 늘리는 것을 한 문장으로 수행한다 —
 	 * 조회 후 초기 행을 만들고 다시 갱신하는 3단계는 원자적이지 않아, 같은 신규 사용자를

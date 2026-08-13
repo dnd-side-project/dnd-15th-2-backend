@@ -22,7 +22,7 @@ public final class DirectionPostSql {
 	public static final String UPDATE = """
 		UPDATE direction_post
 		SET sender_id = :senderId, approved_question_id = :questionId, status = :status,
-		    idempotency_key = :idempotencyKey, body_text = :bodyText, coarse_region_code = :regionCode,
+		    idempotency_key = :idempotencyKey, request_fingerprint = :requestFingerprint, body_text = :bodyText, coarse_region_code = :regionCode,
 		    moderation_status = :moderationStatus, submitted_at = :submittedAt,
 		    published_at = :publishedAt, expires_at = :expiresAt, answers_read_at = :answersReadAt,
 		    deleted_at = :deletedAt

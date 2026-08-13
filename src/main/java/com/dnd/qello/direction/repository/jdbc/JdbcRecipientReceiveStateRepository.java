@@ -4,6 +4,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
@@ -49,6 +50,24 @@ public class JdbcRecipientReceiveStateRepository implements RecipientReceiveStat
 		int updated = jdbc.update(RecipientReceiveStateSql.RELEASE, new MapSqlParameterSource().addValue("userId", userId)
 			.addValue("releasedAt", timestamp(releasedAt)));
 		return updated == 1;
+	}
+
+	@Override
+	public void ensureForUsers(List<Long> userIds, Instant at) {
+		if (userIds == null || at == null) throw new IllegalArgumentException("userIds and at are required");
+		for (Long userId : userIds) {
+			if (userId == null || userId <= 0) throw new IllegalArgumentException("userId must be positive");
+			jdbc.update(RecipientReceiveStateSql.ENSURE, new MapSqlParameterSource()
+				.addValue("userId", userId).addValue("at", timestamp(at)));
+		}
+	}
+
+	@Override
+	public List<Long> lockAvailableUserIds(List<Long> userIds, int limit, int activeLimit) {
+		if (userIds == null || userIds.isEmpty() || limit <= 0 || activeLimit <= 0) return List.of();
+		return jdbc.query(RecipientReceiveStateSql.LOCK_AVAILABLE, new MapSqlParameterSource()
+			.addValue("userIds", userIds).addValue("lockLimit", limit).addValue("activeLimit", activeLimit),
+			(rs, rowNum) -> rs.getLong("user_id"));
 	}
 
 	private static RecipientReceiveState map(ResultSet rs) throws SQLException {

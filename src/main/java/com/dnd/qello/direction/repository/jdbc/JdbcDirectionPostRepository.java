@@ -50,6 +50,11 @@ public class JdbcDirectionPostRepository implements DirectionPostRepository {
 	public Optional<DirectionPost> findById(long id) { return one("SELECT * FROM direction_post WHERE id = :id", new MapSqlParameterSource("id", id)); }
 
 	@Override
+	public Optional<DirectionPost> findByIdForUpdate(long id) {
+		return one("SELECT * FROM direction_post WHERE id = :id FOR UPDATE", new MapSqlParameterSource("id", id));
+	}
+
+	@Override
 	public Optional<DirectionPost> findBySenderAndIdempotencyKey(long senderId, String idempotencyKey) {
 		return one("SELECT * FROM direction_post WHERE sender_id = :senderId AND idempotency_key = :idempotencyKey",
 			new MapSqlParameterSource().addValue("senderId", senderId).addValue("idempotencyKey", idempotencyKey));
