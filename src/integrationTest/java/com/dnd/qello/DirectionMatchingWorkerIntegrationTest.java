@@ -27,6 +27,7 @@ import com.dnd.qello.direction.domain.DirectionScheme;
 import com.dnd.qello.direction.domain.DirectionSegment;
 import com.dnd.qello.direction.matching.DirectionMatchingWorker;
 import com.dnd.qello.direction.repository.ActiveUserPresenceRepository;
+import com.dnd.qello.direction.repository.RecipientReceiveStateRepository;
 import com.dnd.qello.direction.repository.DirectionSchemeRepository;
 import com.dnd.qello.direction.service.DirectionPostService;
 import com.dnd.qello.notification.domain.OutboxEvent;
@@ -54,6 +55,8 @@ class DirectionMatchingWorkerIntegrationTest extends PostgisContainerIntegration
 	private DirectionMatchingWorker worker;
 	@Autowired
 	private OutboxEventRepository outboxRepository;
+	@Autowired
+	private RecipientReceiveStateRepository receiveStateRepository;
 
 	@BeforeEach
 	void reset() {
@@ -225,6 +228,27 @@ class DirectionMatchingWorkerIntegrationTest extends PostgisContainerIntegration
 		assertThat(jdbc.queryForObject("SELECT count(*) FROM post_recipient WHERE post_id = ?", Long.class, postId)).isEqualTo(10L);
 		assertThat(jdbc.queryForObject("SELECT sum(active_unhandled_count) FROM recipient_receive_state WHERE user_id IN (?, ?)", Long.class,
 			fixture.candidateIds().get(10), fixture.candidateIds().get(11))).isZero();
+	}
+
+	@Test
+	@DisplayName("receive state 잠금은 active count가 아니라 최근 수신량·시각·거리·ID 순서를 적용한다")
+	void locksReceiveStatesInApprovedFairnessOrder() {
+		Fixture fixture = fixtureWithCandidates(3);
+		List<Long> candidates = fixture.candidateIds();
+		receiveStateRepository.ensureForUsers(candidates, NOW);
+		jdbc.update("UPDATE recipient_receive_state SET active_unhandled_count = 4, recent_received_count = 0 WHERE user_id = ?",
+			candidates.get(0));
+		jdbc.update("UPDATE recipient_receive_state SET active_unhandled_count = 0, recent_received_count = 0 WHERE user_id = ?",
+			candidates.get(1));
+		jdbc.update("UPDATE recipient_receive_state SET active_unhandled_count = 0, recent_received_count = 0 WHERE user_id = ?",
+			candidates.get(2));
+
+		List<Long> locked = receiveStateRepository.lockAvailableUserIds(List.of(
+			new RecipientReceiveStateRepository.LockCandidate(candidates.get(0), BigDecimal.valueOf(100)),
+			new RecipientReceiveStateRepository.LockCandidate(candidates.get(1), BigDecimal.valueOf(200)),
+			new RecipientReceiveStateRepository.LockCandidate(candidates.get(2), BigDecimal.valueOf(50))), 2, 5);
+
+		assertThat(locked).containsExactly(candidates.get(2), candidates.get(0));
 	}
 
 	@Test

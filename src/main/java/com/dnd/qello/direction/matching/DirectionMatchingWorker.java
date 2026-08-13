@@ -69,10 +69,11 @@ public class DirectionMatchingWorker {
      */
     public BatchResult processBatch(BatchCommand command) {
         requireCommand(command);
-        Instant at = resolveProcessingTime(command);
-        List<OutboxEvent> claimed = claimMatchingEvents(command, at);
+        Instant claimAt = resolveClaimTime(command);
+        validateLeaseWindow(command, claimAt);
+        List<OutboxEvent> claimed = claimMatchingEvents(command, claimAt);
         List<Outcome> outcomes = claimed.stream()
-                .map(event -> processClaimed(event, command, at))
+                .map(event -> processClaimed(event, command, resolveEventTime(command)))
                 .toList();
         return new BatchResult(claimed.size(), outcomes);
     }
@@ -179,8 +180,12 @@ public class DirectionMatchingWorker {
         List<DirectionCandidate> scanned = scanCandidates(candidates, maxRecipients);
         List<Long> candidateIds = scanned.stream().map(DirectionCandidate::userId).toList();
         receiveStateRepository.ensureForUsers(candidateIds, at);
-        Set<Long> lockedUserIds = new HashSet<>(receiveStateRepository.lockAvailableUserIds(candidateIds, scanned.size(),
-                receiveProperties.receiveCapacity()));
+        List<RecipientReceiveStateRepository.LockCandidate> lockCandidates = scanned.stream()
+                .map(candidate -> new RecipientReceiveStateRepository.LockCandidate(candidate.userId(),
+                        candidate.distanceMeters()))
+                .toList();
+        Set<Long> lockedUserIds = new HashSet<>(receiveStateRepository.lockAvailableUserIds(lockCandidates,
+                scanned.size(), receiveProperties.receiveCapacity()));
         return new MatchingSelection(scanned, lockedUserIds, maxRecipients);
     }
 
@@ -243,8 +248,20 @@ public class DirectionMatchingWorker {
         }
     }
 
-    private Instant resolveProcessingTime(BatchCommand command) {
+    private Instant resolveClaimTime(BatchCommand command) {
         return command.at() == null ? clock.instant() : command.at();
+    }
+
+    /** at은 재현 가능한 테스트를 위한 선택적 claim 시각이며, 운영 처리 시각은 매 이벤트마다 Clock에서 읽는다. */
+    private Instant resolveEventTime(BatchCommand command) {
+        return command.at() == null ? clock.instant() : command.at();
+    }
+
+    private void validateLeaseWindow(BatchCommand command, Instant claimAt) {
+        if (!command.leaseExpiresAt().isAfter(claimAt)) {
+            throw new DirectionException(DirectionErrorCode.INVALID_VALUE_RANGE, "leaseExpiresAt",
+                    "lease 만료 시각은 claim 시각 이후여야 합니다");
+        }
     }
 
     private List<OutboxEvent> claimMatchingEvents(BatchCommand command, Instant at) {
@@ -264,16 +281,24 @@ public class DirectionMatchingWorker {
 
     public record BatchResult(int claimed, List<Outcome> outcomes) {
         public BatchResult {
-            if (claimed < 0 || outcomes == null) throw new IllegalArgumentException("batch result is invalid");
+            if (claimed < 0) {
+                throw new DirectionException(DirectionErrorCode.INVALID_VALUE_RANGE, "claimed",
+                        "claimed는 음수일 수 없습니다");
+            }
+            if (outcomes == null) {
+                throw new DirectionException(DirectionErrorCode.REQUIRED_VALUE_MISSING, "outcomes",
+                        "outcomes는 필수입니다");
+            }
             outcomes = List.copyOf(outcomes);
         }
     }
 
+    /** at이 null이면 claim은 현재 Clock 시각을 사용하고 각 이벤트 처리 시각도 매번 다시 읽는다. */
     public record BatchCommand(int limit, String leaseOwner, Instant at, Instant leaseExpiresAt,
                                OutboxRetryPolicy retryPolicy) {
         public BatchCommand {
-            if (limit <= 0 || leaseOwner == null || leaseOwner.isBlank() || at == null || leaseExpiresAt == null
-                    || !leaseExpiresAt.isAfter(at) || retryPolicy == null) {
+            if (limit <= 0 || leaseOwner == null || leaseOwner.isBlank() || leaseExpiresAt == null
+                    || (at != null && !leaseExpiresAt.isAfter(at)) || retryPolicy == null) {
                 throw new DirectionException(DirectionErrorCode.INVALID_VALUE_RANGE, "batch", "matching batch 입력이 유효하지 않습니다");
             }
         }
