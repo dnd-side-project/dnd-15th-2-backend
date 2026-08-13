@@ -11,6 +11,7 @@ import com.dnd.qello.direction.error.DirectionException;
 
 public interface ActiveUserPresenceRepository {
 	ActiveUserPresence save(ActiveUserPresence presence);
+	boolean saveIfNewer(ActiveUserPresence presence);
 	Optional<ActiveUserPresence> findByUserId(long userId);
 	List<DirectionCandidate> findCandidates(long excludedUserId, double originLatitude, double originLongitude,
 		long minDistanceMeters, long maxDistanceMeters, double sectorStartDegrees, double sectorEndDegrees,
