@@ -143,6 +143,17 @@ class DirectionPreviewServiceTest {
 	}
 
 	@Test
+	@DisplayName("방향 후보 집계 결과의 검증 실패는 direction 오류 코드로 반환한다")
+	void candidateCountValidationUsesDirectionErrorCode() {
+		assertThatThrownBy(() -> new ActiveUserPresenceRepository.DirectionSegmentCandidateCount(" ", 0))
+			.isInstanceOf(DirectionException.class)
+			.hasFieldOrPropertyWithValue("errorCode", DirectionErrorCode.INVALID_TEXT);
+		assertThatThrownBy(() -> new ActiveUserPresenceRepository.DirectionSegmentCandidateCount("S0", -1))
+			.isInstanceOf(DirectionException.class)
+			.hasFieldOrPropertyWithValue("errorCode", DirectionErrorCode.INVALID_VALUE_RANGE);
+	}
+
+	@Test
 	@DisplayName("비활성 scheme은 전체 방향 preview 대상이 아니다")
 	void rejectsInactiveScheme() {
 		DirectionScheme inactive = DirectionScheme.restore(10L, "TEST", 1,

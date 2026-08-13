@@ -9,6 +9,11 @@ import com.dnd.qello.direction.domain.DirectionRequestFingerprint;
 public interface DirectionPostRepository {
 	DirectionPost save(DirectionPost post);
 	Optional<DirectionPost> findById(long id);
+
+	/** 매칭 transaction의 상태·만료 재검증을 위해 질문글 행을 잠근다. */
+	default Optional<DirectionPost> findByIdForUpdate(long id) {
+		return findById(id);
+	}
 	Optional<DirectionPost> findBySenderAndIdempotencyKey(long senderId, String idempotencyKey);
 
 	/**

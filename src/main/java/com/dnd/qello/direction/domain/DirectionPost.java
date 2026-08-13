@@ -108,6 +108,47 @@ public final class DirectionPost {
 			coarseRegionCode, moderationStatus, submittedAt, publishedAt, expiresAt, at, deletedAt);
 	}
 
+	/**
+	 * 매칭 워커가 실행 시점에 다시 확인하는 fail-closed gate다.
+	 * 제출 시점의 preview나 Outbox payload가 아니라 현재 post 상태만 신뢰한다.
+	 */
+	public boolean canMatchAt(Instant at) {
+		requireValue(at, "at");
+		return status == DirectionPostStatus.MATCHING
+			&& moderationStatus == DirectionPostModerationStatus.PASSED
+			&& expiresAt.isAfter(at);
+	}
+
+	/** MATCHING/PASSED 질문글을 수신함에 보이는 ACTIVE 상태로 확정한다. */
+	public DirectionPost activate(Instant at) {
+		requireValue(at, "publishedAt");
+		if (!canMatchAt(at)) {
+			throw new DirectionException(
+				DirectionErrorCode.INVALID_POST_STATE, "status", "현재 질문글은 매칭을 활성화할 수 없습니다");
+		}
+		return copy(DirectionPostStatus.ACTIVE, at, expiresAt, answersReadAt, deletedAt);
+	}
+
+	/** 선택 A deadline 정책에 따라 만료 시각 이후에만 질문글을 EXPIRED로 닫는다. */
+	public DirectionPost expire(Instant at) {
+		requireValue(at, "expiredAt");
+		if (expiresAt.isAfter(at)
+			|| (status != DirectionPostStatus.MATCHING
+				&& status != DirectionPostStatus.SAFETY_CHECKING
+				&& status != DirectionPostStatus.ACTIVE)) {
+			throw new DirectionException(
+				DirectionErrorCode.INVALID_POST_STATE, "status", "현재 질문글은 만료 처리할 수 없습니다");
+		}
+		return copy(DirectionPostStatus.EXPIRED, publishedAt, expiresAt, answersReadAt, deletedAt);
+	}
+
+	private DirectionPost copy(DirectionPostStatus nextStatus, Instant nextPublishedAt, Instant nextExpiresAt,
+		Instant nextAnswersReadAt, Instant nextDeletedAt) {
+		return new DirectionPost(id, senderId, approvedQuestionId, nextStatus, idempotencyKey, requestFingerprint,
+			bodyText, coarseRegionCode, moderationStatus, submittedAt, nextPublishedAt, nextExpiresAt,
+			nextAnswersReadAt, nextDeletedAt);
+	}
+
 	private static <T> T requireValue(T value, String field) {
 		if (value == null) {
 			throw new DirectionException(

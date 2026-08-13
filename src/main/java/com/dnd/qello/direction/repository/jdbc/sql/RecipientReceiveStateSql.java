@@ -1,5 +1,8 @@
 package com.dnd.qello.direction.repository.jdbc.sql;
 
+import com.dnd.qello.direction.error.DirectionErrorCode;
+import com.dnd.qello.direction.error.DirectionException;
+
 /** JdbcRecipientReceiveStateRepository가 쓰는 SQL 상수. */
 public final class RecipientReceiveStateSql {
 
@@ -18,6 +21,34 @@ public final class RecipientReceiveStateSql {
 			last_received_at = EXCLUDED.last_received_at,
 			updated_at = EXCLUDED.updated_at
 		""";
+
+	/** 매칭 후보에 처음 등장한 legacy 사용자의 상태 행을 예약 전에 만든다. */
+	public static final String ENSURE = """
+		INSERT INTO recipient_receive_state
+			(user_id, active_unhandled_count, recent_received_count, recent_window_started_at, last_received_at, updated_at)
+		VALUES (:userId, 0, 0, :at, NULL, :at)
+		ON CONFLICT (user_id) DO NOTHING
+		""";
+
+	/** 공정성 순서를 보존한 후보만 잠가 다른 matching transaction이 같은 슬롯을 기다리지 않게 한다. */
+	public static String lockAvailable(String candidateValues) {
+		if (candidateValues == null || candidateValues.isBlank()) {
+			throw new DirectionException(DirectionErrorCode.REQUIRED_VALUE_MISSING, "candidateValues",
+				"candidateValues는 필수입니다");
+		}
+		return """
+			WITH candidate_order(user_id, distance_m) AS (
+				VALUES %s
+			)
+			SELECT r.user_id
+			FROM recipient_receive_state r
+			JOIN candidate_order c ON c.user_id = r.user_id
+			WHERE r.active_unhandled_count < :activeLimit
+			ORDER BY r.recent_received_count, r.last_received_at NULLS FIRST, c.distance_m, r.user_id
+			LIMIT :lockLimit
+			FOR UPDATE OF r SKIP LOCKED
+			""".formatted(candidateValues);
+	}
 
 	/**
 	 * 슬롯 하나를 예약한다. 행이 없으면 만들고 있으면 늘리는 것을 한 문장으로 수행한다 —
