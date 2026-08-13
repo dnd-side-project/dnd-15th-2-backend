@@ -4,6 +4,8 @@ import com.dnd.qello.notification.domain.*;
 import com.dnd.qello.notification.repository.NotificationRepository;
 import com.dnd.qello.notification.repository.OutboxEventRepository;
 import com.dnd.qello.notification.repository.jdbc.sql.NotificationSql;
+import com.dnd.qello.notification.error.NotificationErrorCode;
+import com.dnd.qello.notification.error.NotificationException;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
@@ -16,6 +18,10 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
+import java.util.EnumSet;
+import java.util.Objects;
+import java.util.stream.Collectors;
 
 @Repository
 public class JdbcNotificationRepository implements OutboxEventRepository, NotificationRepository {
@@ -61,14 +67,23 @@ public class JdbcNotificationRepository implements OutboxEventRepository, Notifi
     }
 
     @Override
-    public List<OutboxEvent> claimDue(int limit, String leaseOwner, Instant at, Instant leaseExpiresAt) {
+    public List<OutboxEvent> claimDue(Set<OutboxEventType> eventTypes, int limit, String leaseOwner,
+                                      Instant at, Instant leaseExpiresAt) {
         if (limit <= 0) {
-            throw new IllegalArgumentException("limit must be positive");
+            throw new NotificationException(NotificationErrorCode.INVALID_VALUE_RANGE, "limit",
+                    "limit은 양수여야 합니다.");
+        }
+        if (eventTypes == null || eventTypes.isEmpty() || eventTypes.stream().anyMatch(Objects::isNull)) {
+            throw new NotificationException(NotificationErrorCode.REQUIRED_VALUE_MISSING, "eventTypes",
+                    "eventTypes는 하나 이상 필요하며 유효한 값만 포함해야 합니다.");
         }
         validateLeaseRequest(leaseOwner, at, leaseExpiresAt);
+        Set<String> eventTypeNames = EnumSet.copyOf(eventTypes).stream()
+                .map(OutboxEventType::name).collect(Collectors.toUnmodifiableSet());
         return jdbc.query(NotificationSql.CLAIM_DUE_OUTBOX_EVENTS,
                 new MapSqlParameterSource().addValue("limit", limit).addValue("at", timestamp(at))
-                        .addValue("leaseOwner", leaseOwner).addValue("leaseExpiresAt", timestamp(leaseExpiresAt)),
+                        .addValue("leaseOwner", leaseOwner).addValue("leaseExpiresAt", timestamp(leaseExpiresAt))
+                        .addValue("eventTypes", eventTypeNames),
                 (rs, row) -> mapOutbox(rs));
     }
 
@@ -86,7 +101,8 @@ public class JdbcNotificationRepository implements OutboxEventRepository, Notifi
                         Instant nextAttemptAt, boolean dead) {
         validateLeaseIdentity(leaseOwner, leaseGeneration, at);
         if (nextAttemptAt == null) {
-            throw new IllegalArgumentException("nextAttemptAt must not be null");
+            throw new NotificationException(NotificationErrorCode.REQUIRED_VALUE_MISSING, "nextAttemptAt",
+                    "nextAttemptAt은 필수입니다.");
         }
         return jdbc.update(NotificationSql.FAIL_OUTBOX_EVENT,
                 new MapSqlParameterSource().addValue("id", id)
@@ -244,13 +260,15 @@ public class JdbcNotificationRepository implements OutboxEventRepository, Notifi
     private static void validateLeaseRequest(String owner, Instant at, Instant leaseExpiresAt) {
         if (owner == null || owner.isBlank() || owner.length() > 100 || at == null || leaseExpiresAt == null
                 || !leaseExpiresAt.isAfter(at)) {
-            throw new IllegalArgumentException("lease owner and a future expiry are required");
+            throw new NotificationException(NotificationErrorCode.INVALID_VALUE_RANGE, "lease",
+                    "lease owner와 현재 시각 이후의 만료 시각이 필요합니다.");
         }
     }
 
     private static void validateLeaseIdentity(String owner, long generation, Instant at) {
         if (owner == null || owner.isBlank() || owner.length() > 100 || generation < 0 || at == null) {
-            throw new IllegalArgumentException("lease owner, generation and time are required");
+            throw new NotificationException(NotificationErrorCode.INVALID_VALUE_RANGE, "lease",
+                    "lease owner, 유효한 generation과 현재 시각이 필요합니다.");
         }
     }
 

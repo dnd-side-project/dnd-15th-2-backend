@@ -1,13 +1,18 @@
 /**
- * Created at: 2026-08-11T20:15:23+09:00
- * Source scenario: TEST-PLAN-GH-115-DIRECTION-MATCHING-CONTRACT-INT-005, INT-006, INT-009
+ * Created at: 2026-08-13T01:45:09+09:00
+ * Source scenario: TEST-PLAN-GH-119-OUTBOX-RETRY-FOUNDATION-INT-001 through INT-009;
+ * regression coverage from TEST-PLAN-GH-115-DIRECTION-MATCHING-CONTRACT-INT-005, INT-006, INT-009
  */
 package com.dnd.qello;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Set;
+import java.util.HashSet;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -26,7 +31,12 @@ import org.springframework.transaction.support.TransactionTemplate;
 import com.dnd.qello.notification.domain.OutboxAggregateType;
 import com.dnd.qello.notification.domain.OutboxEvent;
 import com.dnd.qello.notification.domain.OutboxEventType;
+import com.dnd.qello.notification.domain.OutboxFailureKind;
+import com.dnd.qello.notification.domain.OutboxRetryDecision;
+import com.dnd.qello.notification.domain.OutboxRetryPolicy;
 import com.dnd.qello.notification.domain.OutboxStatus;
+import com.dnd.qello.notification.error.NotificationErrorCode;
+import com.dnd.qello.notification.error.NotificationException;
 import com.dnd.qello.notification.repository.OutboxEventRepository;
 
 @SpringBootTest
@@ -68,7 +78,7 @@ class OutboxLeaseIntegrationTest extends PostgisContainerIntegrationTestSupport 
 		assertThat(outboxRepository.fail(claimedDead.id(), "worker-terminal", claimedDead.leaseGeneration(),
 			NOW.plusSeconds(1), NOW.plusSeconds(100), true)).isTrue();
 
-		List<OutboxEvent> claimed = outboxRepository.claimDue(10, "worker-batch", NOW.plusSeconds(1),
+		List<OutboxEvent> claimed = outboxRepository.claimDue(Set.of(OutboxEventType.ANSWER_PUBLISHED), 10, "worker-batch", NOW.plusSeconds(1),
 			NOW.plusSeconds(61));
 
 		assertThat(claimed).extracting(OutboxEvent::id).containsExactly(due.id());
@@ -114,7 +124,7 @@ class OutboxLeaseIntegrationTest extends PostgisContainerIntegrationTestSupport 
 		OutboxEvent firstClaim = outboxRepository.claim(event.id(), "worker-a", NOW.plusSeconds(1),
 			NOW.plusSeconds(10)).orElseThrow();
 
-		List<OutboxEvent> reclaimed = outboxRepository.claimDue(10, "worker-b", NOW.plusSeconds(11),
+		List<OutboxEvent> reclaimed = outboxRepository.claimDue(Set.of(OutboxEventType.ANSWER_PUBLISHED), 10, "worker-b", NOW.plusSeconds(11),
 			NOW.plusSeconds(40));
 
 		assertThat(reclaimed).extracting(OutboxEvent::id).containsExactly(event.id());
@@ -145,9 +155,9 @@ class OutboxLeaseIntegrationTest extends PostgisContainerIntegrationTestSupport 
 		assertThat(outboxRepository.fail(event.id(), "worker-a", firstClaim.leaseGeneration(),
 			NOW.plusSeconds(2), NOW.plusSeconds(20), false)).isTrue();
 
-		assertThat(outboxRepository.claimDue(10, "worker-b", NOW.plusSeconds(10), NOW.plusSeconds(40)))
+		assertThat(outboxRepository.claimDue(Set.of(OutboxEventType.ANSWER_PUBLISHED), 10, "worker-b", NOW.plusSeconds(10), NOW.plusSeconds(40)))
 			.isEmpty();
-		List<OutboxEvent> retry = outboxRepository.claimDue(10, "worker-b", NOW.plusSeconds(21),
+		List<OutboxEvent> retry = outboxRepository.claimDue(Set.of(OutboxEventType.ANSWER_PUBLISHED), 10, "worker-b", NOW.plusSeconds(21),
 			NOW.plusSeconds(50));
 
 		assertThat(retry).hasSize(1);
@@ -168,16 +178,128 @@ class OutboxLeaseIntegrationTest extends PostgisContainerIntegrationTestSupport 
 		assertThat(claimed.leaseGeneration()).isEqualTo(1);
 	}
 
+	@Test
+	@DisplayName("batch claim은 요청한 event type만 점유하고 다른 due event는 변경하지 않는다")
+	void claimsOnlyRequestedEventTypes() {
+		OutboxEvent answer = outboxRepository.save(event("type-answer", OutboxAggregateType.ANSWER,
+			OutboxEventType.ANSWER_PUBLISHED, 201L, NOW));
+		OutboxEvent matching = outboxRepository.save(OutboxEvent.matchingPending(202L, 1,
+			"type-matching", "{\"postId\":202}", NOW));
+		OutboxEvent confirmed = outboxRepository.save(event("type-confirmed", OutboxAggregateType.POST_RECIPIENT,
+			OutboxEventType.RECIPIENTS_CONFIRMED, 203L, NOW));
+
+		List<OutboxEvent> claimed = outboxRepository.claimDue(Set.of(OutboxEventType.RECIPIENT_MATCH_REQUESTED),
+			10, "matching-worker", NOW, NOW.plusSeconds(30));
+
+		assertThat(claimed).extracting(OutboxEvent::id).containsExactly(matching.id());
+		assertThat(outboxRepository.findEventById(answer.id()).orElseThrow().status())
+			.isEqualTo(OutboxStatus.PENDING);
+		assertThat(outboxRepository.findEventById(confirmed.id()).orElseThrow().status())
+			.isEqualTo(OutboxStatus.PENDING);
+	}
+
+	@Test
+	@DisplayName("여러 worker의 동일 event type batch claim 결과는 중복되지 않는다")
+	void claimsBatchWithoutOverlapUnderConcurrency() throws Exception {
+		for (int index = 0; index < 4; index++) {
+			outboxRepository.save(event("batch-concurrent-" + index, OutboxAggregateType.ANSWER,
+				OutboxEventType.ANSWER_PUBLISHED, 220L + index, NOW));
+		}
+		ExecutorService executor = Executors.newFixedThreadPool(2);
+		CountDownLatch ready = new CountDownLatch(2);
+		CountDownLatch start = new CountDownLatch(1);
+		try {
+			Future<List<OutboxEvent>> first = executor.submit(() -> claimBatchEvents("batch-worker-a", ready, start));
+			Future<List<OutboxEvent>> second = executor.submit(() -> claimBatchEvents("batch-worker-b", ready, start));
+			assertThat(ready.await(5, TimeUnit.SECONDS)).isTrue();
+			start.countDown();
+
+			List<Long> firstIds = first.get(10, TimeUnit.SECONDS).stream().map(OutboxEvent::id).toList();
+			List<Long> secondIds = second.get(10, TimeUnit.SECONDS).stream().map(OutboxEvent::id).toList();
+			assertThat(firstIds).doesNotContainAnyElementsOf(secondIds);
+			assertThat(firstIds.size() + secondIds.size()).isEqualTo(4);
+		} finally {
+			executor.shutdownNow();
+		}
+	}
+
+	@Test
+	@DisplayName("retryable 실패는 backoff 후 재claim되고 최대 횟수와 permanent 실패는 DEAD로 끝난다")
+	void appliesRetryPolicyToFailedAndDeadEvents() {
+		OutboxRetryPolicy policy = new OutboxRetryPolicy(2, attempt -> Duration.ofSeconds(10));
+		OutboxEvent retryEvent = outboxRepository.save(event("policy-retry", OutboxAggregateType.ANSWER,
+			OutboxEventType.ANSWER_PUBLISHED, 240L, NOW));
+		OutboxEvent firstClaim = outboxRepository.claim(retryEvent.id(), "policy-a", NOW,
+			NOW.plusSeconds(30)).orElseThrow();
+		OutboxRetryDecision retry = policy.decide(firstClaim, OutboxFailureKind.RETRYABLE, NOW.plusSeconds(1));
+		assertThat(outboxRepository.fail(firstClaim.id(), "policy-a", firstClaim.leaseGeneration(),
+			NOW.plusSeconds(1), retry)).isTrue();
+		assertThat(outboxRepository.claimDue(Set.of(OutboxEventType.ANSWER_PUBLISHED), 10, "policy-b",
+			NOW.plusSeconds(10), NOW.plusSeconds(40))).isEmpty();
+		assertThat(outboxRepository.claimDue(Set.of(OutboxEventType.ANSWER_PUBLISHED), 10, "policy-b",
+			NOW.plusSeconds(11), NOW.plusSeconds(50))).hasSize(1);
+
+		OutboxEvent deadEvent = outboxRepository.save(event("policy-dead", OutboxAggregateType.ANSWER,
+			OutboxEventType.ANSWER_PUBLISHED, 241L, NOW));
+		OutboxEvent deadClaim = outboxRepository.claim(deadEvent.id(), "policy-dead", NOW,
+			NOW.plusSeconds(30)).orElseThrow();
+		OutboxRetryDecision dead = policy.decide(deadClaim, OutboxFailureKind.PERMANENT, NOW.plusSeconds(2));
+		assertThat(outboxRepository.fail(deadClaim.id(), "policy-dead", deadClaim.leaseGeneration(),
+			NOW.plusSeconds(2), dead)).isTrue();
+		OutboxEvent storedDead = outboxRepository.findEventById(deadEvent.id()).orElseThrow();
+		assertThat(storedDead.status()).isEqualTo(OutboxStatus.DEAD);
+		assertThat(storedDead.nextAttemptAt()).isEqualTo(NOW.plusSeconds(2));
+		assertThat(outboxRepository.claimDue(Set.of(OutboxEventType.ANSWER_PUBLISHED), 10, "policy-c",
+			NOW.plusSeconds(3), NOW.plusSeconds(40))).isEmpty();
+	}
+
+	@Test
+	@DisplayName("batch claim 입력 경계는 SQL 실행 전에 잘못된 요청을 거절한다")
+	void rejectsInvalidBatchClaimInputs() {
+		Set<OutboxEventType> nullElement = new HashSet<>();
+		nullElement.add(null);
+
+		assertThatThrownBy(() -> outboxRepository.claimDue(Set.of(), 10, "worker", NOW, NOW.plusSeconds(1)))
+			.isInstanceOfSatisfying(NotificationException.class, exception ->
+				assertThat(exception.getErrorCode()).isEqualTo(NotificationErrorCode.REQUIRED_VALUE_MISSING));
+		assertThatThrownBy(() -> outboxRepository.claimDue(null, 10, "worker", NOW, NOW.plusSeconds(1)))
+			.isInstanceOfSatisfying(NotificationException.class, exception ->
+				assertThat(exception.getErrorCode()).isEqualTo(NotificationErrorCode.REQUIRED_VALUE_MISSING));
+		assertThatThrownBy(() -> outboxRepository.claimDue(nullElement, 10, "worker", NOW, NOW.plusSeconds(1)))
+			.isInstanceOfSatisfying(NotificationException.class, exception ->
+				assertThat(exception.getErrorCode()).isEqualTo(NotificationErrorCode.REQUIRED_VALUE_MISSING));
+		assertThatThrownBy(() -> outboxRepository.claimDue(Set.of(OutboxEventType.ANSWER_PUBLISHED), 0,
+				"worker", NOW, NOW.plusSeconds(1)))
+			.isInstanceOfSatisfying(NotificationException.class, exception ->
+				assertThat(exception.getErrorCode()).isEqualTo(NotificationErrorCode.INVALID_VALUE_RANGE));
+		assertThatThrownBy(() -> outboxRepository.fail(1L, "worker", 1L, NOW, null))
+			.isInstanceOfSatisfying(NotificationException.class, exception ->
+				assertThat(exception.getErrorCode()).isEqualTo(NotificationErrorCode.REQUIRED_VALUE_MISSING));
+	}
+
 	private OutboxEvent event(String dedupKey, Instant nextAttemptAt) {
-		return OutboxEvent.pending(OutboxAggregateType.ANSWER, 115L,
-			OutboxEventType.ANSWER_PUBLISHED, dedupKey, "{\"answerId\":115}", nextAttemptAt);
+		return event(dedupKey, OutboxAggregateType.ANSWER, OutboxEventType.ANSWER_PUBLISHED, 115L, nextAttemptAt);
+	}
+
+	private OutboxEvent event(String dedupKey, OutboxAggregateType aggregateType, OutboxEventType eventType,
+		long aggregateId, Instant nextAttemptAt) {
+		return OutboxEvent.pending(aggregateType, aggregateId, eventType, dedupKey,
+			"{\"aggregateId\":" + aggregateId + "}", nextAttemptAt);
+	}
+
+	private List<OutboxEvent> claimBatchEvents(String owner, CountDownLatch ready, CountDownLatch start)
+		throws Exception {
+		ready.countDown();
+		assertThat(start.await(5, TimeUnit.SECONDS)).isTrue();
+		return transactionTemplate.execute(status -> outboxRepository.claimDue(Set.of(OutboxEventType.ANSWER_PUBLISHED),
+			2, owner, NOW, NOW.plusSeconds(30)));
 	}
 
 	private boolean claimBatch(long eventId, String owner, CountDownLatch ready, CountDownLatch start)
 		throws Exception {
 		ready.countDown();
 		assertThat(start.await(5, TimeUnit.SECONDS)).isTrue();
-		return transactionTemplate.execute(status -> !outboxRepository.claimDue(1, owner, NOW.plusSeconds(1),
+		return transactionTemplate.execute(status -> !outboxRepository.claimDue(Set.of(OutboxEventType.ANSWER_PUBLISHED), 1, owner, NOW.plusSeconds(1),
 			NOW.plusSeconds(61)).isEmpty());
 	}
 }
