@@ -369,6 +369,37 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 	}
 
 	@Test
+	@DisplayName("V13은 filter_job.deadline_at·deadline scan 인덱스와 outbox_event의 확장된 CHECK 제약을 생성한다")
+	void v13AddsAnswerModerationDeadlineAndOutboxContractCatalog() {
+		assertThat(columnExists("filter_job", "deadline_at")).isTrue();
+		Integer nullableDeadlineAt = jdbcTemplate.queryForObject("""
+			SELECT count(*)
+			FROM information_schema.columns
+			WHERE table_schema = 'public' AND table_name = 'filter_job' AND column_name = 'deadline_at'
+			  AND is_nullable = 'NO'
+			""", Integer.class);
+		assertThat(nullableDeadlineAt).isEqualTo(1);
+
+		String deadlineScanIndex = jdbcTemplate.queryForObject(
+			"SELECT indexdef FROM pg_indexes WHERE indexname = 'filter_job_deadline_scan_idx'", String.class);
+		assertThat(deadlineScanIndex).contains("deadline_at", "RESOLVED");
+
+		String aggregateTypeConstraint = jdbcTemplate.queryForObject("""
+			SELECT pg_get_constraintdef(oid)
+			FROM pg_constraint
+			WHERE conname = 'ck_outbox_event_aggregate_type' AND conrelid = 'outbox_event'::regclass
+			""", String.class);
+		String eventTypeConstraint = jdbcTemplate.queryForObject("""
+			SELECT pg_get_constraintdef(oid)
+			FROM pg_constraint
+			WHERE conname = 'ck_outbox_event_event_type' AND conrelid = 'outbox_event'::regclass
+			""", String.class);
+		assertThat(aggregateTypeConstraint).contains("FILTER_JOB");
+		assertThat(eventTypeConstraint).contains(
+			"MODERATION_EXECUTION_REQUESTED", "MODERATION_VERDICT_READY", "MODERATION_DEADLINE_ELAPSED");
+	}
+
+	@Test
 	@DisplayName("transactional V2가 실패하면 변경과 성공 이력을 남기지 않는다")
 	void failedMigrationIsNotRecordedAsSuccessful() {
 		Flyway failingFlyway = Flyway.configure()
