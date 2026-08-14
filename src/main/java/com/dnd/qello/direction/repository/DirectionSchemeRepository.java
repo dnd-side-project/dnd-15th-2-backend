@@ -12,9 +12,7 @@ public interface DirectionSchemeRepository {
 	Optional<DirectionScheme> findByCodeAndVersion(String code, int version);
 
 	/** 설정된 code의 현재 ACTIVE scheme을 반환한다. */
-	default Optional<DirectionScheme> findActiveByCode(String code) {
-		return Optional.empty();
-	}
+	Optional<DirectionScheme> findActiveByCode(String code);
 	List<DirectionSegment> findSegments(long schemeId);
 	DirectionSegment saveSegment(DirectionSegment segment);
 }

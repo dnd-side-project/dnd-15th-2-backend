@@ -11,6 +11,7 @@ import static org.mockito.ArgumentMatchers.anyDouble;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -51,6 +52,8 @@ import com.dnd.qello.direction.repository.DirectionSchemeRepository;
 import com.dnd.qello.direction.repository.PostAudienceRepository;
 import com.dnd.qello.answer.service.MediaAttachmentService;
 import com.dnd.qello.direction.service.DirectionPostService;
+import com.dnd.qello.answer.error.AnswerErrorCode;
+import com.dnd.qello.answer.error.AnswerException;
 import com.dnd.qello.notification.domain.OutboxEvent;
 import com.dnd.qello.notification.repository.OutboxEventRepository;
 import com.dnd.qello.question.domain.AnswerFormat;
@@ -217,6 +220,22 @@ class DirectionPostSubmissionServiceTest {
 
 		assertThat(result.post().getId()).isEqualTo(101L);
 		verify(mediaAttachmentService).attach(new MediaAttachmentService.AttachCommand(SENDER_ID, 77L, 101L, null, 0));
+	}
+
+	@Test
+	@DisplayName("미디어 첨부가 실패하면 질문글 transaction을 rollback하고 commit하지 않는다")
+	void mediaAttachmentFailureRollsBackSubmission() {
+		DirectionPostService.SendCommand command = new DirectionPostService.SendCommand(SENDER_ID, QUESTION_ID,
+			SCHEME_ID, "S0", 0, 500, "TEST-REGION", "media-rollback-key", null, List.of(77L), AT,
+			AT.plusSeconds(3600));
+		doThrow(new AnswerException(AnswerErrorCode.INVALID_MEDIA_STATUS, "mediaId", "미디어를 첨부할 수 없습니다"))
+			.when(mediaAttachmentService).attach(any(MediaAttachmentService.AttachCommand.class));
+
+		assertThatThrownBy(() -> service.send(command))
+			.isInstanceOf(AnswerException.class)
+			.hasFieldOrPropertyWithValue("errorCode", AnswerErrorCode.INVALID_MEDIA_STATUS);
+		verify(transactionManager).rollback(any(TransactionStatus.class));
+		verify(transactionManager, never()).commit(any(TransactionStatus.class));
 	}
 
 	@Test

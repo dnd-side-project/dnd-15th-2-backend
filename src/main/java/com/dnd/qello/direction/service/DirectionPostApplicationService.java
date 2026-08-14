@@ -70,6 +70,11 @@ public final class DirectionPostApplicationService {
 				"질문글 제출 요청은 필수입니다");
 		}
 		validateIdempotencyKey(idempotencyKey);
+		var replay = postService.replayIfExists(senderId, idempotencyKey, command.approvedQuestionId(),
+			command.schemeId(), command.segmentKey(), command.bodyText(), command.mediaIds());
+		if (replay.isPresent()) {
+			return replay.get();
+		}
 		Instant submittedAt = clock.instant();
 		ensureActiveUser(senderId);
 		ActiveUserPresence presence = currentPresence(senderId, submittedAt);

@@ -6,6 +6,7 @@
  */
 package com.dnd.qello.direction.service;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -36,6 +37,10 @@ import com.dnd.qello.direction.domain.ActiveUserPresence;
 import com.dnd.qello.direction.domain.DirectionScheme;
 import com.dnd.qello.direction.domain.DirectionSchemeStatus;
 import com.dnd.qello.direction.domain.DirectionSchemeType;
+import com.dnd.qello.direction.domain.DirectionPost;
+import com.dnd.qello.direction.domain.DirectionPostModerationStatus;
+import com.dnd.qello.direction.domain.DirectionPostStatus;
+import com.dnd.qello.direction.domain.DirectionRequestFingerprint;
 import com.dnd.qello.direction.error.DirectionErrorCode;
 import com.dnd.qello.direction.error.DirectionException;
 import com.dnd.qello.direction.repository.ActiveUserPresenceRepository;
@@ -131,6 +136,26 @@ class DirectionPostApplicationServiceTest {
 			101L, 999L, "N", "본문", List.of())))
 			.isInstanceOf(DirectionException.class)
 			.hasFieldOrPropertyWithValue("errorCode", DirectionErrorCode.SCHEME_NOT_FOUND);
+		verify(postService, never()).send(any());
+	}
+
+	@Test
+	@DisplayName("기존 멱등키 재시도는 활성 scheme이나 현재 정책이 바뀌어도 저장된 결과를 반환한다")
+	void replaysExistingRequestBeforeCurrentPolicyValidation() {
+		DirectionRequestFingerprint fingerprint = DirectionRequestFingerprint.create(
+			101L, 999L, "N", 0L, 20_100_000L, "본문", List.of());
+		DirectionPost post = DirectionPost.restore(101L, USER_ID, 101L, fingerprint,
+			DirectionPostStatus.MATCHING, "request-key", "본문", "KR-11",
+			DirectionPostModerationStatus.PENDING, NOW, null, NOW.plus(Duration.ofHours(12)), null, null);
+		DirectionPostService.SendResult result = new DirectionPostService.SendResult(post, null, List.of());
+		DirectionPostApplicationService.SubmitCommand command = new DirectionPostApplicationService.SubmitCommand(
+			101L, 999L, "N", "본문", List.of());
+		when(postService.replayIfExists(USER_ID, "request-key", 101L, 999L, "N", "본문", List.of()))
+			.thenReturn(Optional.of(result));
+
+		assertThat(service.submit(USER_ID, "request-key", command)).isSameAs(result);
+		verify(accountRepository, never()).findById(USER_ID);
+		verify(schemeRepository, never()).findActiveByCode(any());
 		verify(postService, never()).send(any());
 	}
 }
