@@ -67,7 +67,7 @@ class DirectionPostMatchingTest {
 	private DirectionPost post(DirectionPostModerationStatus moderationStatus,
 		DirectionPostStatus status, Instant expiresAt) {
 		DirectionRequestFingerprint fingerprint = DirectionRequestFingerprint.create(
-			101L, 202L, "S0", 0, 5_000L, "TEST-REGION", "matching body");
+			101L, 202L, "S0", 0, 5_000L, "matching body");
 		return DirectionPost.restore(1L, 11L, 101L, fingerprint, status, "matching-key",
 			"matching body", "TEST-REGION", moderationStatus, SUBMITTED_AT,
 			status == DirectionPostStatus.ACTIVE ? NOW : null, expiresAt, null, null);

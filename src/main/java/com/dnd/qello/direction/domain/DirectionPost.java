@@ -66,7 +66,7 @@ public final class DirectionPost {
 
 	public static DirectionPost submit(Long senderId, Long approvedQuestionId, String idempotencyKey,
 		String bodyText, String coarseRegionCode, Instant submittedAt, Instant expiresAt) {
-		// 기존 호출부와 legacy fixture를 위한 nullable 복원 호환 경로다. 신규 service 제출은
+		// 기존 호출부와 fixture를 위한 nullable 복원 호환 경로다. 신규 service 제출은
 		// fingerprint를 받는 아래 overload만 사용한다.
 		return new DirectionPost(null, senderId, approvedQuestionId, DirectionPostStatus.MATCHING,
 			idempotencyKey, null, bodyText, coarseRegionCode, DirectionPostModerationStatus.PENDING,
