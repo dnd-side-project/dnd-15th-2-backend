@@ -31,7 +31,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 //
 // 재스캔에도 같은 job에 두 번 신호를 보내지 않도록 dedup_key 존재 여부를 먼저
 // 확인하고, 그 확인과 삽입 사이의 경쟁은 DB unique 제약 위반을 잡아 흡수한다 —
-// job마다 독립된 트랜잭션을 써야 한 job의 제약 위반이 나머지 batch를 막지 않는다
+// job마다 독립된 트랜잭션을 쓰고 제약 위반이 아닌 다른 실패(FAILED)도 격리해서,
+// 한 job의 실패가 나머지 batch 처리를 막지 않는다
 // (DirectionMatchingWorker의 event별 트랜잭션 분리와 같은 이유).
 @Service
 public class AnswerModerationDeadlineWorker {
@@ -66,17 +67,21 @@ public class AnswerModerationDeadlineWorker {
 		return new BatchResult(due.size(), outcomes);
 	}
 
+	// job별로 예외를 격리한다 — 한 job의 실패(제약 위반이 아닌 다른 오류 포함)가
+	// 같은 batch의 나머지 job 처리를 막지 않게 한다.
 	private Outcome processOne(FilterJob job, Instant at) {
 		TransactionTemplate transaction = new TransactionTemplate(transactionManager);
 		try {
 			return transaction.execute(status -> emitIfAbsent(job, at));
 		} catch (DataIntegrityViolationException raceAlreadyFired) {
 			return Outcome.ALREADY_SIGNALED;
+		} catch (RuntimeException failed) {
+			return Outcome.FAILED;
 		}
 	}
 
 	private Outcome emitIfAbsent(FilterJob job, Instant at) {
-		String dedupKey = dedupKey(job.id());
+		String dedupKey = AnswerModerationEventPayloads.deadlineElapsedDedupKey(job.id());
 		if (outboxEventRepository.findByDedupKey(dedupKey).isPresent()) {
 			return Outcome.ALREADY_SIGNALED;
 		}
@@ -93,11 +98,7 @@ public class AnswerModerationDeadlineWorker {
 			AnswerModerationEventPayloads.toJson(objectMapper, payload), at);
 	}
 
-	private static String dedupKey(long filterJobId) {
-		return "filter-job:" + filterJobId + ":DEADLINE_ELAPSED";
-	}
-
-	public enum Outcome {SIGNALED, ALREADY_SIGNALED}
+	public enum Outcome {SIGNALED, ALREADY_SIGNALED, FAILED}
 
 	public record BatchResult(int scanned, List<Outcome> outcomes) {
 		public BatchResult {

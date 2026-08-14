@@ -91,6 +91,24 @@ class AnswerModerationDeadlineWorkerTest {
 	}
 
 	@Test
+	@DisplayName("한 job이 제약 위반이 아닌 다른 오류로 실패해도 나머지 batch 처리를 막지 않는다")
+	void isolatesNonConstraintFailurePerJob() {
+		FilterJob failing = dueJob();
+		FilterJob due = restoredDueJob(11L, "idem-job-2");
+		when(filterJobRepository.findDeadlineElapsedCandidates(NOW, 50)).thenReturn(List.of(failing, due));
+		when(outboxEventRepository.findByDedupKey("filter-job:10:DEADLINE_ELAPSED"))
+			.thenThrow(new RuntimeException("일시적 DB 오류"));
+		when(outboxEventRepository.findByDedupKey("filter-job:11:DEADLINE_ELAPSED")).thenReturn(Optional.empty());
+		AnswerModerationDeadlineWorker worker = worker();
+
+		AnswerModerationDeadlineWorker.BatchResult result = worker.processBatch(50, NOW);
+
+		assertThat(result.outcomes()).containsExactly(
+			AnswerModerationDeadlineWorker.Outcome.FAILED, AnswerModerationDeadlineWorker.Outcome.SIGNALED);
+		verify(outboxEventRepository).save(any());
+	}
+
+	@Test
 	@DisplayName("limit이 양수가 아니면 거부한다")
 	void rejectsNonPositiveLimit() {
 		AnswerModerationDeadlineWorker worker = worker();
@@ -108,8 +126,12 @@ class AnswerModerationDeadlineWorkerTest {
 	}
 
 	private static FilterJob dueJob() {
-		FilterJob created = FilterJob.create(TARGET, 5L, "idem-job", NOW.minusSeconds(1), NOW.minusSeconds(600));
-		return FilterJob.restore(10L, created.target(), created.filterReleaseId(), created.status(),
+		return restoredDueJob(10L, "idem-job");
+	}
+
+	private static FilterJob restoredDueJob(long id, String idempotencyKey) {
+		FilterJob created = FilterJob.create(TARGET, 5L, idempotencyKey, NOW.minusSeconds(1), NOW.minusSeconds(600));
+		return FilterJob.restore(id, created.target(), created.filterReleaseId(), created.status(),
 			created.attemptGeneration(), created.manuallyResolved(), created.resolvedVerdict(),
 			created.idempotencyKey(), created.deadlineAt(), created.createdAt(), created.updatedAt());
 	}
