@@ -1,7 +1,7 @@
 /**
  * Created at: 2026-08-14T18:01:54+09:00
  * Source scenario: TEST-PLAN-GH-123-DIRECTION-NOTIFICATION-FANOUT-INT-001 through INT-012,
- * INT-017 through INT-019, INT-024 through INT-025, INT-027 through INT-029
+ * INT-017 through INT-019, INT-024 through INT-025, INT-027 through INT-030
  */
 package com.dnd.qello;
 
@@ -381,6 +381,30 @@ class RecipientNotificationFanOutWorkerIntegrationTest extends PostgisContainerI
 		assertThat(sourceStatus(disabled.sourceId())).isEqualTo(OutboxStatus.PROCESSED);
 		assertThat(sourceStatus(retryable.sourceId())).isEqualTo(OutboxStatus.FAILED);
 		assertThat(sourceStatus(permanent.sourceId())).isEqualTo(OutboxStatus.DEAD);
+	}
+
+	@Test
+	@DisplayName("실패 기록 예외가 난 event를 batch에서 격리하고 lease 만료 후 재처리한다")
+	void isolatesFailureRecordingExceptionAndReclaimsExpiredLease() {
+		Fixture failed = fixture("int030-failure-recording", PostRecipientStatus.AVAILABLE);
+		Fixture following = fixture("int030-following", PostRecipientStatus.AVAILABLE);
+		installNotificationFailures(failed.recipientId(), -1, -1);
+		installFailureRecordingFailure(failed.sourceId());
+
+		assertThat(worker.processBatch(command(10)).outcomes()).containsExactly(
+			RecipientNotificationFanOutWorker.Outcome.FAILURE_RECORDING_FAILED,
+			RecipientNotificationFanOutWorker.Outcome.PROCESSED);
+		assertThat(notificationCount(failed)).isZero();
+		assertThat(notificationCount(following)).isEqualTo(1);
+		assertThat(sourceStatus(failed.sourceId())).isEqualTo(OutboxStatus.PROCESSING);
+		assertThat(sourceLeaseExpiresAt(failed.sourceId())).isEqualTo(NOW.plusSeconds(60));
+		assertThat(sourceStatus(following.sourceId())).isEqualTo(OutboxStatus.PROCESSED);
+
+		dropFailureInjection();
+		assertThat(worker.processBatch(commandAt(NOW.plusSeconds(61), 10)).outcomes())
+			.containsExactly(RecipientNotificationFanOutWorker.Outcome.PROCESSED);
+		assertThat(notificationCount(failed)).isEqualTo(1);
+		assertThat(sourceStatus(failed.sourceId())).isEqualTo(OutboxStatus.PROCESSED);
 	}
 
 	@Test
@@ -857,6 +881,11 @@ class RecipientNotificationFanOutWorkerIntegrationTest extends PostgisContainerI
 			.toInstant();
 	}
 
+	private Instant sourceLeaseExpiresAt(long sourceId) {
+		return jdbc.queryForObject("SELECT lease_expires_at FROM outbox_event WHERE id = ?", Timestamp.class, sourceId)
+			.toInstant();
+	}
+
 	private void assertFailed(long sourceId, int attemptCount, Instant nextAttemptAt) {
 		Map<String, Object> source = jdbc.queryForMap("""
 			SELECT status, attempt_count, next_attempt_at, processed_at, lease_owner, lease_expires_at
@@ -936,13 +965,31 @@ class RecipientNotificationFanOutWorkerIntegrationTest extends PostgisContainerI
 			""");
 	}
 
+	private void installFailureRecordingFailure(long sourceId) {
+		jdbc.execute("""
+			CREATE OR REPLACE FUNCTION gh123_fail_recording() RETURNS trigger LANGUAGE plpgsql AS $$
+			BEGIN
+			  IF OLD.id = %d AND NEW.status IN ('FAILED', 'DEAD') THEN
+			    RAISE EXCEPTION 'gh123 failure recording error' USING ERRCODE = '40001';
+			  END IF;
+			  RETURN NEW;
+			END $$
+			""".formatted(sourceId));
+		jdbc.execute("""
+			CREATE TRIGGER gh123_fail_recording_trigger BEFORE UPDATE ON outbox_event
+			FOR EACH ROW EXECUTE FUNCTION gh123_fail_recording()
+			""");
+	}
+
 	private void dropFailureInjection() {
 		jdbc.execute("DROP TRIGGER IF EXISTS gh123_fail_delivery_trigger ON notification_delivery");
 		jdbc.execute("DROP TRIGGER IF EXISTS gh123_fail_notification_trigger ON notification");
 		jdbc.execute("DROP TRIGGER IF EXISTS gh123_fail_complete_trigger ON outbox_event");
+		jdbc.execute("DROP TRIGGER IF EXISTS gh123_fail_recording_trigger ON outbox_event");
 		jdbc.execute("DROP FUNCTION IF EXISTS gh123_fail_delivery()");
 		jdbc.execute("DROP FUNCTION IF EXISTS gh123_fail_notification()");
 		jdbc.execute("DROP FUNCTION IF EXISTS gh123_fail_complete()");
+		jdbc.execute("DROP FUNCTION IF EXISTS gh123_fail_recording()");
 		jdbc.execute("DROP SEQUENCE IF EXISTS gh123_transient_once_seq");
 	}
 

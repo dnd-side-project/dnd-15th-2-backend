@@ -1,6 +1,6 @@
 # Issue #123 Test Evidence
 
-Captured at: `2026-08-14T18:29:00+09:00`
+Captured at: `2026-08-14T19:34:00+09:00`
 
 Branch: `feat/gh-123-direction-notification-fanout`
 Base commit: `a8e307d`
@@ -22,6 +22,23 @@ Result: `BUILD SUCCESSFUL in 7s`; 37 tests, 0 failures, 0 errors, 0 skipped.
 
 - `build/test-results/test/TEST-com.dnd.qello.notification.fanout.RecipientNotificationFanOutWorkerTest.xml` — 29/0/0/0
 - `build/test-results/test/TEST-com.dnd.qello.direction.matching.DirectionMatchingWorkerTest.xml` — 8/0/0/0
+
+### Failure-recording isolation follow-up
+
+```text
+./gradlew test --tests "com.dnd.qello.notification.fanout.RecipientNotificationFanOutWorkerTest.continuesAfterFailureRecordingException" --max-workers=1 --no-daemon --rerun-tasks
+```
+
+Result: `BUILD SUCCESSFUL in 7s`; 1 test, 0 failures, 0 errors, 0 skipped.
+
+```text
+./gradlew integrationTest --tests "com.dnd.qello.RecipientNotificationFanOutWorkerIntegrationTest.isolatesFailureRecordingExceptionAndReclaimsExpiredLease" --max-workers=1 --no-daemon --no-parallel --rerun-tasks
+```
+
+Result: `BUILD SUCCESSFUL in 15s`; 1 test, 0 failures, 0 errors, 0 skipped.
+
+- `build/test-results/integrationTest/TEST-com.dnd.qello.RecipientNotificationFanOutWorkerIntegrationTest.xml` — selected testcase `1/0/0/0`
+- 검증 결과: `fail()` 예외 event는 `FAILURE_RECORDING_FAILED`로 격리되고 후속 claimed event는 계속 `PROCESSED`된다. 첫 source는 lease 만료까지 `PROCESSING`으로 유지된 뒤 재claim되어 Notification 1건과 `PROCESSED`로 종료된다.
 
 ## Related integration and concurrency regression
 
@@ -55,7 +72,7 @@ The last clean, pre-remediation harness run completed successfully and reported
 is 700 tests, with no failures, errors, or skips; its underlying Gradle tasks
 also passed; only report scaffolding was refused because the report already
 exists. `harness check`, `pr-ready`, hooks validation, and `git diff --check`
-passed after remediation. Remote CI is not available until a PR is created.
+passed after remediation. PR #142의 원격 CI는 테스트·정책·API 문서화 체크가 진행 중이다.
 
 Environment note: PostgreSQL/PostGIS Testcontainers used a local amd64 image
 under arm64 Docker emulation; slower CI hosts may need timeout headroom.

@@ -1,6 +1,6 @@
 # Test Report: TEST-PLAN-GH-123-DIRECTION-NOTIFICATION-FANOUT
 
-> Created at: `2026-08-14T18:16:02+09:00`
+> Created at: `2026-08-14T19:34:00+09:00`
 > GitHub Issue: `#123`
 > Branch: `feat/gh-123-direction-notification-fanout`
 > Base commit: `a8e307d` (implementation changes are currently uncommitted)
@@ -34,12 +34,21 @@
 | `./harness test-run --id TEST-PLAN-GH-123-DIRECTION-NOTIFICATION-FANOUT` | PASS | 700 (최종 XML 합계; 이전 clean run 699) | 약 2분 35초 | `docs/reports/tests/gh-123-TEST-EVIDENCE.md`, Gradle XML aggregate |
 | `./harness pr-ready --project-tests` | PASS | 프로젝트 검사 | 약 1초 | Local PR readiness checks passed |
 
+### Follow-up: failure-recording isolation
+
+| Command / suite | Result | Tests | Evidence |
+| --- | --- | --- | --- |
+| `./gradlew test --tests "com.dnd.qello.notification.fanout.RecipientNotificationFanOutWorkerTest.continuesAfterFailureRecordingException" --max-workers=1 --no-daemon --rerun-tasks` | PASS | 1 | Gradle XML `RecipientNotificationFanOutWorkerTest.xml` |
+| `./gradlew integrationTest --tests "com.dnd.qello.RecipientNotificationFanOutWorkerIntegrationTest.isolatesFailureRecordingExceptionAndReclaimsExpiredLease" --max-workers=1 --no-daemon --no-parallel --rerun-tasks` | PASS | 1 | Gradle XML `RecipientNotificationFanOutWorkerIntegrationTest.xml` |
+
 ## 4. Scenario results
 
 | Scenario ID | Result | Test class / method | Notes |
 | --- | --- | --- | --- |
 | UNIT-001~010 | PASS | `RecipientNotificationFanOutWorkerTest` | claim/filter, 권위 aggregate, eligibility, dedup, retry/dead/stale, malformed lease fencing, Clock |
+| UNIT-011 | PASS | `RecipientNotificationFanOutWorkerTest.continuesAfterFailureRecordingException` | failure recording 예외를 별도 outcome으로 반환하고 후속 claimed event를 계속 처리 |
 | INT-001~012, INT-017~019, INT-024~025, INT-027~029 | PASS | `RecipientNotificationFanOutWorkerIntegrationTest` | PostgreSQL fan-out, suppression, rollback, batch isolation, privacy, GLOBAL handoff, snapshot |
+| INT-030 | PASS | `RecipientNotificationFanOutWorkerIntegrationTest.isolatesFailureRecordingExceptionAndReclaimsExpiredLease` | 실패 기록 예외 시 source PROCESSING 잔류, 후속 event 처리, lease 만료 후 재claim 성공 |
 | INT-013~016, INT-026 | PASS | `RecipientNotificationFanOutWorkerConcurrencyIntegrationTest` | claim 경합, stale lease, logical dedup, commit ordering, device snapshot |
 | INT-020~023 | PASS | `NotificationFanOutPersistenceIntegrationTest` | preference default, ACTIVE device, insert-if-absent, PostRecipient lock |
 | #119/#120/#121 regression | PASS | `OutboxLeaseIntegrationTest`, `DirectionMatchingWorker*`, `AnswerSafetyNotificationPersistenceIntegrationTest` | 기존 lease/matching/safety 경계 보존 |
@@ -89,6 +98,9 @@ wrapper만 exit 2를 반환했다. 이는 테스트 실패가 아니다.
 
 - retryable/permanent/stale lease와 partial fan-out 보충을 검증했다. 운영 reconciliation
   job과 scheduler activation은 별도 작업으로 남아 있다.
+- 실패 기록(`outboxEventRepository.fail`) 자체가 예외를 던져도 해당 event는
+  `FAILURE_RECORDING_FAILED`로 결과를 남기고 batch 후속 event를 계속 처리한다. source는
+  lease 만료 후 재claim되어 정상 fan-out과 `PROCESSED`로 완료되는 경로를 통합 검증했다.
 
 ## 7. Regression and residual risk
 
@@ -100,9 +112,9 @@ wrapper만 exit 2를 반환했다. 이는 테스트 실패가 아니다.
 - Test plan: `docs/test-plans/gh-123-TEST-PLAN-GH-123-DIRECTION-NOTIFICATION-FANOUT.md`
 - Durable command/test evidence: `docs/reports/tests/gh-123-TEST-EVIDENCE.md`
 - Gradle XML evidence: `build/test-results/test/` and `build/test-results/integrationTest/` (paths enumerated in the evidence file)
-- CI run: 로컬 검증 완료; 원격 CI는 PR 생성 후 확인
+- CI run: 로컬 검증 완료; PR #142 원격 CI는 진행 중
 - Related ADR: 없음
-- PR: 미생성
+- PR: https://github.com/dnd-side-project/dnd-15th-2-backend/pull/142
 
 ## 9. Reviewer checklist
 

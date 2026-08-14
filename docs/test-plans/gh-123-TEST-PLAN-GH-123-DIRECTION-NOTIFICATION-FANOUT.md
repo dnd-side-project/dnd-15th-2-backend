@@ -84,6 +84,7 @@ Push 상태가 `PostRecipient`와 수신 슬롯 또는 인앱 알림의 진실�
 | Delivery 일부 실패가 Notification만 남김 | 다음 retry에서 불완전 fan-out 또는 영구 누락 | High | P0 | test trigger failure 후 Notification/Delivery 0과 source FAILED/DEAD 확인 |
 | source complete와 domain write 분리 | stale worker write가 남아 재처리 중복 발생 | High | P0 | lease reclaim 뒤 old worker complete 0행과 전체 rollback |
 | 한 event 실패가 batch 전체에 전파 | 정상 알림도 재처리되어 backlog·중복 증가 | Medium | P0 | 정상/실패 event 혼합 batch의 독립 최종 상태 |
+| 실패 기록 자체가 예외로 종료됨 | 후속 claimed event가 중단되고 해당 source가 lease 만료까지 PROCESSING으로 잔류 | High | P0 | 별도 failure-recording outcome, 후속 event 처리와 lease 만료 후 재claim 검증 |
 | 억제를 retryable 실패로 분류 | 정책상 정상 no-op가 Outbox backlog/DEAD로 누적 | Medium | P0 | 모든 suppression 경로가 PROCESSED인지 확인 |
 | Notification/Delivery가 PostRecipient를 변경 | Push 실패가 수신함 자격·슬롯을 파괴 | High | P0 | Delivery FAILED/DEAD 전후 recipient/status/count 불변 비교 |
 | Notification 존재가 조회 권한을 우회 | 차단·만료 뒤 콘텐츠 접근 복원 | High | P0 | Notification 존재 상태에서 AVAILABLE 만료는 detail을 거절하고 ANSWERED 만료는 기존 권한만 유지하는 상태별 검사 |
@@ -106,6 +107,7 @@ Push 상태가 `PostRecipient`와 수신 슬롯 또는 인앱 알림의 진실�
 | TEST-PLAN-GH-123-DIRECTION-NOTIFICATION-FANOUT-UNIT-008 | 고정 at이 없는 batch와 event 2개 | batch를 처리 | claim 시각과 각 event 처리 시각을 Clock에서 읽고 한 event의 시각을 다음 event에 재사용하지 않는다. | P0 | Notification worker executor |
 | TEST-PLAN-GH-123-DIRECTION-NOTIFICATION-FANOUT-UNIT-009 | 정상 event와 retryable/permanent event가 같은 batch에 존재 | batch 처리 | 정상은 PROCESSED, 실패는 해당 event만 FAILED/DEAD이며 outcome 수와 순서가 claimed event와 일치한다. | P0 | Notification worker executor |
 | TEST-PLAN-GH-123-DIRECTION-NOTIFICATION-FANOUT-UNIT-010 | null/0 limit/blank owner/잘못된 lease/retry policy 없음 | command 생성 | feature boundary의 NotificationException/error code로 fail-fast하고 repository를 호출하지 않는다. | P0 | Notification worker executor |
+| TEST-PLAN-GH-123-DIRECTION-NOTIFICATION-FANOUT-UNIT-011 | domain failure 뒤 `outboxEventRepository.fail()`이 예외를 던지는 event와 후속 정상 event | batch 처리 | 실패 기록 예외는 `FAILURE_RECORDING_FAILED`로 반환하고 후속 claimed event는 계속 처리한다. | P0 | Notification worker executor |
 
 ## 6. Integration scenarios
 
@@ -140,6 +142,7 @@ Push 상태가 `PostRecipient`와 수신 슬롯 또는 인앱 알림의 진실�
 | TEST-PLAN-GH-123-DIRECTION-NOTIFICATION-FANOUT-INT-025 | failure retry oracle | transient DB failure event와 non-dedup FK/check failure event, max-attempt 직전 event | worker 반복 처리 | transient는 attempt 증가와 승인 backoff의 FAILED 후 성공하고, non-dedup integrity는 즉시 DEAD, max-attempt transient는 DEAD이며 nextAttempt/status가 retry policy와 일치한다. | failure fixture 삭제 |
 | TEST-PLAN-GH-123-DIRECTION-NOTIFICATION-FANOUT-INT-026 | PushDevice revoke snapshot | barrier로 (A) revoke commit→active device query, (B) active device query→revoke commit→Delivery insert 순서를 만든다 | worker 처리 | A는 Delivery를 만들지 않는다. B는 snapshot의 PENDING Delivery를 만들 수 있으며 실제 dispatch가 device 상태를 다시 확인해야 한다는 미검증 후속 경계를 기록한다. | device fixture 삭제 |
 | TEST-PLAN-GH-123-DIRECTION-NOTIFICATION-FANOUT-INT-027 | source complete SQL failure | source complete UPDATE가 transient SQLSTATE `40001`을 던지게 하는 deterministic failure injection | event 처리 | Notification/Delivery/complete가 rollback되고 source는 retry policy의 nextAttempt를 가진 FAILED가 된다. complete 0행 stale lease 결과와 혼동하지 않는다. | failure injection 제거, fixture 삭제 |
+| TEST-PLAN-GH-123-DIRECTION-NOTIFICATION-FANOUT-INT-030 | batch failure isolation, Outbox lease reclaim | 첫 event의 domain failure와 `fail()` failure injection, 후속 정상 event, 첫 event lease 만료 시각 | 한 batch 처리 후 lease 만료 시각에 재실행 | 첫 event는 `FAILURE_RECORDING_FAILED`와 PROCESSING으로 남고 후속 event는 PROCESSED다. lease 만료 후 첫 event를 reclaim해 Notification 1건과 source PROCESSED로 완료한다. | failure injection 제거, fixture 삭제 |
 
 ## 7. Cross-cutting scenarios
 
@@ -154,6 +157,9 @@ Push 상태가 `PostRecipient`와 수신 슬롯 또는 인앱 알림의 진실�
 - Notification/Delivery unique conflict는 expected idempotency 경로로 흡수한다. 기존
   `save`/`saveDelivery`의 duplicate 예외 계약은 바꾸지 않고 별도 insert-if-absent
   repository 계약으로 검증한다.
+- event 처리 실패와 실패 기록(`fail`)을 분리한다. 실패 기록 예외는 해당 event의
+  결과로 격리하고 batch 후속 event를 계속 처리하며, source는 lease 만료 뒤 재claim될 수
+  있어야 한다.
 - 신규 migration은 추가하지 않는다. 기존 제약으로 원자적 멱등성을 충족하지 못한다는
   실행 증거가 생기면 구현을 멈추고 별도 승인 범위로 반환한다.
 
@@ -237,6 +243,7 @@ Push 상태가 `PostRecipient`와 수신 슬롯 또는 인앱 알림의 진실�
 - [x] ACTIVE device N개와 Notification/Delivery/source Outbox 집합 대사 통과
 - [x] #119 event filter/retry/lease fencing, #120 confirmed event와 #140 GLOBAL matching 결과의 #123 fan-out handoff 회귀 통과
 - [x] account 비활성화·post 만료/비활성화의 선형화 경합과 후속 event 적용 시점 통과
+- [x] 실패 기록 예외의 batch 격리 결과와 lease 만료 후 source 재claim 통과
 - [x] Push failure가 Notification/PostRecipient/receive state를 변경하지 않는 분리 회귀 통과
 - [x] `./harness check`, `./harness pr-ready --project-tests`,
       `npm run hooks:validate`, `git diff --check` 통과

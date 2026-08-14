@@ -364,6 +364,31 @@ class RecipientNotificationFanOutWorkerTest {
 	}
 
 	@Test
+	@DisplayName("실패 기록 예외가 발생해도 후속 claimed event를 계속 처리하고 별도 outcome을 반환한다")
+	void continuesAfterFailureRecordingException() {
+		Context context = context();
+		OutboxEvent failedEvent = confirmedEvent(1L, 301L, "{}");
+		OutboxEvent followingEvent = confirmedEvent(2L, 302L, "{}");
+		givenClaimed(context, failedEvent, followingEvent);
+		givenEligible(context, 301L, 101L, 22L, PostRecipientStatus.AVAILABLE);
+		givenEligible(context, 302L, 102L, 23L, PostRecipientStatus.AVAILABLE);
+		when(context.notifications.saveIfAbsent(any(Notification.class))).thenAnswer(invocation -> {
+			Notification candidate = invocation.getArgument(0);
+			if (candidate.outboxEventId() == 1L) {
+				throw new TransientDataAccessResourceException("domain failure");
+			}
+			return withId(candidate, candidate.recipientId() + 500L);
+		});
+		when(context.outbox.fail(eq(1L), eq("notification-worker"), eq(1L), eq(NOW),
+			any(OutboxRetryDecision.class))).thenThrow(new TransientDataAccessResourceException("failure recording"));
+
+		assertThat(context.worker.processBatch(command()).outcomes()).containsExactly(
+			RecipientNotificationFanOutWorker.Outcome.FAILURE_RECORDING_FAILED,
+			RecipientNotificationFanOutWorker.Outcome.PROCESSED);
+		verify(context.outbox).complete(2L, "notification-worker", 1L, NOW);
+	}
+
+	@Test
 	@DisplayName("잘못된 batch 입력은 Notification 오류 코드로 fail-fast하고 repository를 호출하지 않는다")
 	void rejectsInvalidBatchInputAtFeatureBoundary() {
 		Context context = context();

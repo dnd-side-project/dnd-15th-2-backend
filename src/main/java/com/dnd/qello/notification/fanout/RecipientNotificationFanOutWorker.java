@@ -95,7 +95,11 @@ public class RecipientNotificationFanOutWorker {
 	private Outcome handleProcessingFailure(OutboxEvent event, BatchCommand command, Instant processingAt,
 		RuntimeException failure) {
 		if (failure instanceof StaleLeaseException) return Outcome.STALE_LEASE;
-		return recordFailure(event, command, processingAt, failureKind(failure));
+		try {
+			return recordFailure(event, command, processingAt, failureKind(failure));
+		} catch (RuntimeException failureRecordingFailure) {
+			return Outcome.FAILURE_RECORDING_FAILED;
+		}
 	}
 
 	private OutboxFailureKind failureKind(RuntimeException failure) {
@@ -268,7 +272,8 @@ public class RecipientNotificationFanOutWorker {
 		PROCESSED,
 		RETRYABLE,
 		DEAD,
-		STALE_LEASE
+		STALE_LEASE,
+		FAILURE_RECORDING_FAILED
 	}
 
 	public record BatchResult(int claimed, List<Outcome> outcomes) {
