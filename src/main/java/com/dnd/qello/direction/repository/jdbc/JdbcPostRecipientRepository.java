@@ -47,6 +47,11 @@ public class JdbcPostRecipientRepository implements PostRecipientRepository {
 	}
 
 	@Override
+	public Optional<PostRecipient> findByIdForUpdate(long id) {
+		return one(PostRecipientSql.FIND_BY_ID_FOR_UPDATE, new MapSqlParameterSource("id", id));
+	}
+
+	@Override
 	public Optional<PostRecipient> findByIdAndRecipientId(long id, long recipientId) {
 		return one("SELECT * FROM post_recipient WHERE id = :id AND recipient_id = :recipientId",
 			new MapSqlParameterSource().addValue("id", id).addValue("recipientId", recipientId));

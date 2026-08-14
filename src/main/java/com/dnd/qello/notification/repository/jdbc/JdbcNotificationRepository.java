@@ -129,6 +129,12 @@ public class JdbcNotificationRepository implements OutboxEventRepository, Notifi
     }
 
     @Override
+    public Notification saveIfAbsent(Notification notification) {
+        return jdbc.queryForObject(NotificationSql.INSERT_NOTIFICATION_IF_ABSENT,
+                notificationParams(notification), (rs, row) -> mapNotification(rs));
+    }
+
+    @Override
     public Optional<Notification> findById(long id) {
         return jdbc.query("SELECT * FROM notification WHERE id = :id",
                 new MapSqlParameterSource("id", id), (rs, row) -> mapNotification(rs)).stream().findFirst();
@@ -147,6 +153,12 @@ public class JdbcNotificationRepository implements OutboxEventRepository, Notifi
         Long id = jdbc.queryForObject(NotificationSql.INSERT_NOTIFICATION_DELIVERY, deliveryParams(delivery),
                 Long.class);
         return findDeliveryById(id).orElseThrow();
+    }
+
+    @Override
+    public NotificationDelivery saveDeliveryIfAbsent(NotificationDelivery delivery) {
+        return jdbc.queryForObject(NotificationSql.INSERT_NOTIFICATION_DELIVERY_IF_ABSENT,
+                deliveryParams(delivery), (rs, row) -> mapDelivery(rs));
     }
 
     @Override
@@ -184,6 +196,12 @@ public class JdbcNotificationRepository implements OutboxEventRepository, Notifi
     }
 
     @Override
+    public List<Long> findActiveDeviceIdsByUserId(long userId) {
+        return jdbc.queryForList(NotificationSql.FIND_ACTIVE_PUSH_DEVICE_IDS,
+                new MapSqlParameterSource("userId", userId), Long.class);
+    }
+
+    @Override
     public NotificationPreference savePreference(NotificationPreference preference) {
         jdbc.update(NotificationSql.UPSERT_NOTIFICATION_PREFERENCE,
                 new MapSqlParameterSource().addValue("notificationType", preference.notificationType().name())
@@ -191,6 +209,13 @@ public class JdbcNotificationRepository implements OutboxEventRepository, Notifi
                 .addValue("quietStart", preference.quietStart() == null ? null : Time.valueOf(preference.quietStart()))
                 .addValue("quietEnd", preference.quietEnd() == null ? null : Time.valueOf(preference.quietEnd())));
         return preference;
+    }
+
+    @Override
+    public boolean isPreferenceEnabled(long userId, NotificationType notificationType) {
+        return Boolean.TRUE.equals(jdbc.queryForObject(NotificationSql.FIND_NOTIFICATION_PREFERENCE_ENABLED,
+                new MapSqlParameterSource().addValue("userId", userId)
+                        .addValue("notificationType", notificationType.name()), Boolean.class));
     }
 
     private Optional<NotificationDelivery> findDeliveryById(long id) {

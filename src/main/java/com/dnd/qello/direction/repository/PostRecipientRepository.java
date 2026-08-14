@@ -27,6 +27,9 @@ public interface PostRecipientRepository {
 	 */
 	Optional<PostRecipient> findById(long id);
 
+	/** fan-out transaction의 현재 자격 판정을 직렬화하기 위해 수신 행을 잠근다. */
+	Optional<PostRecipient> findByIdForUpdate(long id);
+
 	/** 소유권을 쿼리 조건에 포함한다. 남의 항목이면 빈 결과이며 예외를 던지지 않는다. */
 	Optional<PostRecipient> findByIdAndRecipientId(long id, long recipientId);
 
