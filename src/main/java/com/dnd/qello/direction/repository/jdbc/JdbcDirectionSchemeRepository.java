@@ -45,6 +45,12 @@ public class JdbcDirectionSchemeRepository implements DirectionSchemeRepository 
 	}
 
 	@Override
+	public Optional<DirectionScheme> findActiveByCode(String code) {
+		return queryOne("SELECT * FROM direction_scheme WHERE code = :code AND status = 'ACTIVE' "
+			+ "ORDER BY version DESC LIMIT 1", new MapSqlParameterSource("code", code));
+	}
+
+	@Override
 	public List<DirectionSegment> findSegments(long schemeId) {
 		return jdbc.query("SELECT * FROM direction_segment WHERE scheme_id = :schemeId ORDER BY sort_order",
 			new MapSqlParameterSource("schemeId", schemeId),
