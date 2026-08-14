@@ -12,7 +12,8 @@ public record MediaUploadRequest(
 	String contentType,
 
 	@Positive(message = "byteSize는 양수여야 합니다")
-	@Schema(description = "업로드할 파일 크기(byte)", example = "524288", minimum = "1")
+	@Schema(description = "업로드할 파일 크기(byte)", example = "524288", minimum = "1",
+		requiredMode = Schema.RequiredMode.REQUIRED)
 	long byteSize,
 
 	@NotBlank(message = "checksum은 필수입니다")

@@ -45,6 +45,7 @@ public interface MediaAssetApiSpec {
 		description = "본인 소유 업로드 객체의 실제 MIME type과 크기를 확인합니다. 이미 확정된 상태는 멱등하게 반환합니다.")
 	@ApiResponses({
 		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "업로드 상태를 확인했습니다."),
+		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "미디어 식별자가 올바르지 않습니다.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
 		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "앱 액세스 토큰이 유효하지 않습니다.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
 		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "미디어를 찾을 수 없습니다.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
 		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "503", description = "외부 저장소를 일시적으로 사용할 수 없습니다.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class)))

@@ -90,6 +90,15 @@ class MediaUploadServiceTest {
 	}
 
 	@Test
+	@DisplayName("JPEG만 허용하는 부분 화이트리스트 설정은 PNG 누락으로 시작 전에 거부된다")
+	void rejectsPartialMimeConfiguration() {
+		assertThatThrownBy(() -> new MediaStorageProperties(
+			"test-bucket", Set.of("image/jpeg"), 1_000L, Duration.ofMinutes(10)))
+			.isInstanceOf(AnswerException.class)
+			.hasFieldOrPropertyWithValue("errorCode", AnswerErrorCode.INVALID_MEDIA_METADATA);
+	}
+
+	@Test
 	@DisplayName("소유자 본인이 허용 범위 안에서 요청하면 UPLOADING 자산과 presigned URL을 함께 반환한다")
 	void issuesUrlForOwnerWithinWhitelist() {
 		UploadUrl result = service.issueUploadUrl(
@@ -114,6 +123,17 @@ class MediaUploadServiceTest {
 	void confirmsReadyWhenObjectMatches() {
 		MediaAsset asset = repository.save(MediaAsset.upload(1L, "media/1/key", "image/jpeg", 500L, "checksum", NOW));
 		storage.put("media/1/key", 500L, "image/jpeg");
+
+		MediaAsset confirmed = service.confirm(asset.getId(), 1L);
+
+		assertThat(confirmed.getStatus()).isEqualTo(MediaAssetStatus.READY);
+	}
+
+	@Test
+	@DisplayName("confirm은 저장소의 대소문자·공백이 있는 JPG MIME도 JPEG로 정규화해 READY 처리한다")
+	void confirmsReadyForNormalizedJpgMetadata() {
+		MediaAsset asset = repository.save(MediaAsset.upload(1L, "media/1/jpg", "image/jpeg", 500L, "checksum", NOW));
+		storage.put("media/1/jpg", 500L, " IMAGE/JPG ");
 
 		MediaAsset confirmed = service.confirm(asset.getId(), 1L);
 

@@ -519,6 +519,7 @@
           }
         },
         "required" : [
+          "byteSize",
           "checksum",
           "contentType"
         ],
@@ -1901,7 +1902,7 @@
                 }
               }
             },
-            "description" : "요청 값이 올바르지 않습니다. 오류 코드는 docs/error-codes.md를 따른다."
+            "description" : "미디어 식별자가 올바르지 않습니다."
           },
           "401" : {
             "content" : {

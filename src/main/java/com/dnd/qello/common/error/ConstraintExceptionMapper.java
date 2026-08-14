@@ -42,6 +42,8 @@ public class ConstraintExceptionMapper {
 			// 먼저 조회로 같은 상황을 막지만, 동시 요청 race는 이 매핑이 최종 방어선이다.
 			case "uq_active_device_installation" ->
 				new ConstraintMapping(AuthErrorCode.DEVICE_ALREADY_REGISTERED, "installationId");
+			case "media_attachment_pkey" ->
+				new ConstraintMapping(AnswerErrorCode.INVALID_MEDIA_STATUS, "mediaId");
 			default -> new ConstraintMapping(CommonErrorCode.CONFLICT, null);
 		};
 	}
@@ -61,7 +63,8 @@ public class ConstraintExceptionMapper {
 			"uq_open_report_user",
 			"uq_open_report_post",
 			"uq_open_report_answer",
-			"uq_active_device_installation"
+			"uq_active_device_installation",
+			"media_attachment_pkey"
 		};
 	}
 }

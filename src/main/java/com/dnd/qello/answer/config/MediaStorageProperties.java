@@ -33,7 +33,7 @@ public record MediaStorageProperties(String bucket, Set<String> allowedMimeTypes
 		Set<String> canonicalMimeTypes = allowedMimeTypes.stream()
 			.map(MediaStorageProperties::canonicalConfiguredMimeType)
 			.collect(Collectors.toUnmodifiableSet());
-		if (canonicalMimeTypes.stream().anyMatch(mimeType -> !SUPPORTED_IMAGE_MIME_TYPES.contains(mimeType))) {
+		if (!SUPPORTED_IMAGE_MIME_TYPES.equals(canonicalMimeTypes)) {
 			throw new AnswerException(AnswerErrorCode.INVALID_MEDIA_METADATA, "allowedMimeTypes",
 				"qello.media.allowed-mime-types는 JPEG/PNG만 지원합니다");
 		}

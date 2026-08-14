@@ -20,6 +20,9 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -34,11 +37,14 @@ import org.springframework.web.context.request.NativeWebRequest;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.core.MethodParameter;
+import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
 
 import com.dnd.qello.common.error.ApiErrorResponseFactory;
 import com.dnd.qello.common.error.ConstraintExceptionMapper;
 import com.dnd.qello.common.web.GlobalExceptionHandler;
 import com.dnd.qello.common.web.response.ApiResponseFactory;
+import com.dnd.qello.direction.error.DirectionErrorCode;
+import com.dnd.qello.direction.error.DirectionException;
 import com.dnd.qello.direction.domain.DirectionPost;
 import com.dnd.qello.direction.domain.DirectionPostModerationStatus;
 import com.dnd.qello.direction.domain.DirectionPostStatus;
@@ -60,14 +66,23 @@ class DirectionPostApiMockMvcTest {
 
 	@BeforeEach
 	void setUp() {
+		mockMvc = buildMockMvc(true);
+	}
+
+	private MockMvc buildMockMvc(boolean authenticated) {
 		Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
 		DirectionPostController controller = new DirectionPostController(applicationService,
 			new ApiResponseFactory(clock));
+		ObjectMapper objectMapper = new ObjectMapper()
+			.registerModule(new JavaTimeModule())
+			.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
 		mockMvc = MockMvcBuilders.standaloneSetup(controller)
-			.setCustomArgumentResolvers(new AuthenticationResolver())
+			.setCustomArgumentResolvers(new AuthenticationResolver(authenticated))
+			.setMessageConverters(new MappingJackson2HttpMessageConverter(objectMapper))
 			.setControllerAdvice(new GlobalExceptionHandler(
 				new ApiErrorResponseFactory(clock), new ConstraintExceptionMapper()))
 			.build();
+		return mockMvc;
 	}
 
 	@Test
@@ -114,12 +129,54 @@ class DirectionPostApiMockMvcTest {
 			.andExpect(status().isAccepted())
 			.andExpect(jsonPath("$.data.postId").value(101))
 			.andExpect(jsonPath("$.data.submissionStatus").value("SUBMITTED"))
-			.andExpect(jsonPath("$.data.expiresAt").isNumber())
+			.andExpect(jsonPath("$.data.expiresAt").isString())
 			.andExpect(jsonPath("$.data.recipientIds").doesNotExist())
 			.andExpect(jsonPath("$.data.latitude").doesNotExist());
 	}
 
+	@Test
+	@DisplayName("인증 정보가 없으면 preview는 401을 반환하고 application service를 호출하지 않는다")
+	void previewRequiresAuthentication() throws Exception {
+		buildMockMvc(false).perform(get("/api/v1/direction/preview"))
+			.andExpect(status().isUnauthorized());
+
+		verify(applicationService, never()).preview(anyLong());
+	}
+
+	@Test
+	@DisplayName("200자를 넘는 멱등키는 400을 반환하고 application service를 호출하지 않는다")
+	void submitRejectsOversizedIdempotencyKey() throws Exception {
+		mockMvc.perform(post("/api/v1/direction/posts")
+			.header("Idempotency-Key", "k".repeat(201))
+			.contentType("application/json")
+			.content("{\"approvedQuestionId\":1,\"schemeId\":7,\"segmentKey\":\"N\",\"bodyText\":\"본문\",\"mediaIds\":[]}"))
+			.andExpect(status().isBadRequest());
+
+		verify(applicationService, never()).submit(anyLong(), any(), any());
+	}
+
+	@Test
+	@DisplayName("멱등키 재사용 충돌은 409와 방향 오류 코드를 반환한다")
+	void submitReturnsConflictForReusedIdempotencyKey() throws Exception {
+		when(applicationService.submit(anyLong(), any(), any())).thenThrow(
+			new DirectionException(DirectionErrorCode.IDEMPOTENCY_KEY_REUSED, "idempotencyKey",
+				"같은 멱등키로 다른 요청을 재사용할 수 없습니다"));
+
+		mockMvc.perform(post("/api/v1/direction/posts")
+			.header("Idempotency-Key", "key")
+			.contentType("application/json")
+			.content("{\"approvedQuestionId\":1,\"schemeId\":7,\"segmentKey\":\"N\",\"bodyText\":\"본문\",\"mediaIds\":[]}"))
+			.andExpect(status().isConflict())
+			.andExpect(jsonPath("$.errorDetail.code").value(DirectionErrorCode.IDEMPOTENCY_KEY_REUSED.code()));
+	}
+
 	private static final class AuthenticationResolver implements HandlerMethodArgumentResolver {
+		private final boolean authenticated;
+
+		private AuthenticationResolver(boolean authenticated) {
+			this.authenticated = authenticated;
+		}
+
 		@Override
 		public boolean supportsParameter(MethodParameter parameter) {
 			return Authentication.class.isAssignableFrom(parameter.getParameterType());
@@ -128,7 +185,7 @@ class DirectionPostApiMockMvcTest {
 		@Override
 		public Object resolveArgument(MethodParameter parameter, ModelAndViewContainer mavContainer,
 			NativeWebRequest webRequest, org.springframework.web.bind.support.WebDataBinderFactory binderFactory) {
-			return UsernamePasswordAuthenticationToken.authenticated("11", null, List.of());
+			return authenticated ? UsernamePasswordAuthenticationToken.authenticated("11", null, List.of()) : null;
 		}
 	}
 }
