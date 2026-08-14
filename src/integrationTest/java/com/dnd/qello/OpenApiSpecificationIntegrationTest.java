@@ -1,7 +1,8 @@
 /**
  * Created at: 2026-08-07T22:20:16+09:00
  * Source scenario: TEST-PLAN-GH-82-OPENAPI-SPEC-INT-001 through INT-004,
- * TEST-PLAN-GH-121-ACTIVE-USER-PRESENCE-API-INT-011 (added 2026-08-14T00:51:11+09:00)
+ * TEST-PLAN-GH-121-ACTIVE-USER-PRESENCE-API-INT-011 (added 2026-08-14T00:51:11+09:00),
+ * TEST-PLAN-GH-122-DIRECTION-PREVIEW-SUBMISSION-API-INT-019 (added 2026-08-14T12:27:28+09:00)
  */
 package com.dnd.qello;
 
@@ -113,6 +114,122 @@ class OpenApiSpecificationIntegrationTest extends PostgisContainerIntegrationTes
 			operation.at("/responses/200/content/application~1json/schema"));
 		JsonNode responseData = resolveSchema(specification, successEnvelope.at("/properties/data"));
 		assertThat(fieldNames(responseData)).containsExactly("applied");
+	}
+
+	@Test
+	@DisplayName("direction preview는 앱 인증·200 응답·구간별 count와 privacy 계약을 문서화한다")
+	void documentsDirectionPreviewContract() throws Exception {
+		JsonNode specification = objectMapper.readTree(fetchSpecification());
+		JsonNode operation = operation(specification, "/api/v1/direction/preview", "get");
+
+		assertThat(operation.isMissingNode()).isFalse();
+		assertAppAuthentication(operation);
+		assertResponses(operation, "200", "400", "401", "409", "500");
+
+		JsonNode successEnvelope = resolveSchema(specification,
+			operation.at("/responses/200/content/application~1json/schema"));
+		JsonNode responseData = resolveSchema(specification, successEnvelope.at("/properties/data"));
+		assertThat(fieldNames(responseData)).containsExactlyInAnyOrder("schemeId", "schemeCode", "schemeVersion", "segments");
+		JsonNode segmentSchema = resolveSchema(specification,
+			responseData.at("/properties/segments/items"));
+		assertThat(fieldNames(segmentSchema)).containsExactlyInAnyOrder("segmentKey", "displayName", "sortOrder", "count");
+		assertNoPrivateFields(operation);
+	}
+
+	@Test
+	@DisplayName("direction post 제출은 Idempotency-Key·앱 인증·202 응답과 비동기 privacy 계약을 문서화한다")
+	void documentsDirectionPostSubmissionContract() throws Exception {
+		JsonNode specification = objectMapper.readTree(fetchSpecification());
+		JsonNode operation = operation(specification, "/api/v1/direction/posts", "post");
+
+		assertThat(operation.isMissingNode()).isFalse();
+		assertAppAuthentication(operation);
+		assertThat(operation.at("/parameters").findValuesAsText("name"))
+			.contains("Idempotency-Key");
+		assertResponses(operation, "202", "400", "401", "403", "404", "409", "500");
+
+		JsonNode request = resolveSchema(specification,
+			operation.at("/requestBody/content/application~1json/schema"));
+		assertThat(fieldNames(request)).containsExactlyInAnyOrder(
+			"approvedQuestionId", "schemeId", "segmentKey", "bodyText", "mediaIds");
+		JsonNode successEnvelope = resolveSchema(specification,
+			operation.at("/responses/202/content/application~1json/schema"));
+		JsonNode responseData = resolveSchema(specification, successEnvelope.at("/properties/data"));
+		assertThat(fieldNames(responseData)).containsExactlyInAnyOrder(
+			"postId", "submissionStatus", "submittedAt", "expiresAt");
+		assertNoPrivateFields(operation);
+	}
+
+	@Test
+	@DisplayName("media upload 예약은 앱 인증·201 응답·presigned URL만 문서화한다")
+	void documentsMediaUploadContract() throws Exception {
+		JsonNode specification = objectMapper.readTree(fetchSpecification());
+		JsonNode operation = operation(specification, "/api/v1/media-assets/upload-requests", "post");
+
+		assertThat(operation.isMissingNode()).isFalse();
+		assertAppAuthentication(operation);
+		assertResponses(operation, "201", "400", "401", "500");
+
+		JsonNode request = resolveSchema(specification,
+			operation.at("/requestBody/content/application~1json/schema"));
+		assertThat(fieldNames(request)).containsExactlyInAnyOrder("contentType", "byteSize", "checksum");
+		JsonNode successEnvelope = resolveSchema(specification,
+			operation.at("/responses/201/content/application~1json/schema"));
+		JsonNode responseData = resolveSchema(specification, successEnvelope.at("/properties/data"));
+		assertThat(fieldNames(responseData)).containsExactlyInAnyOrder(
+			"mediaId", "uploadUrl", "contentType", "expiresAt");
+		assertThat(responseData.at("/properties/uploadUrl").path("type").asText()).isEqualTo("string");
+		assertThat(fieldNames(responseData)).doesNotContain("storageKey", "userId", "latitude", "longitude");
+	}
+
+	@Test
+	@DisplayName("media confirm은 앱 인증·200 응답과 storage 정보 비노출 계약을 문서화한다")
+	void documentsMediaConfirmContract() throws Exception {
+		JsonNode specification = objectMapper.readTree(fetchSpecification());
+		JsonNode operation = operation(specification, "/api/v1/media-assets/{mediaId}/confirm", "post");
+
+		assertThat(operation.isMissingNode()).isFalse();
+		assertAppAuthentication(operation);
+		assertResponses(operation, "200", "400", "401", "404", "500", "503");
+		assertThat(operation.at("/parameters").findValuesAsText("name")).contains("mediaId");
+
+		JsonNode successEnvelope = resolveSchema(specification,
+			operation.at("/responses/200/content/application~1json/schema"));
+		JsonNode responseData = resolveSchema(specification, successEnvelope.at("/properties/data"));
+		assertThat(fieldNames(responseData)).containsExactlyInAnyOrder("mediaId", "status");
+		assertNoPrivateFields(operation);
+	}
+
+	private JsonNode operation(JsonNode specification, String path, String method) {
+		// RFC 6901에서 path key의 slash만 escape한다. `{mediaId}`는 JSON Pointer에서
+		// 특별한 문자가 아니므로 그대로 둬야 springdoc 경로를 찾을 수 있다.
+		return specification.at("/paths/" + path.replace("/", "~1")
+			+ "/" + method);
+	}
+
+	private void assertAppAuthentication(JsonNode operation) {
+		assertThat(operation.at("/security/0/appAccessToken").isArray()).isTrue();
+	}
+
+	private void assertResponses(JsonNode operation, String... responseCodes) {
+		for (String responseCode : responseCodes) {
+			JsonNode response = operation.at("/responses/" + responseCode);
+			assertThat(response.isMissingNode())
+				.as("missing response %s", responseCode)
+				.isFalse();
+			if (responseCode.startsWith("4") || responseCode.startsWith("5")) {
+				assertThat(response.at("/content/application~1json/schema/$ref").asText())
+					.as("error schema for response %s", responseCode)
+					.isEqualTo("#/components/schemas/ApiErrorResponse");
+			}
+		}
+	}
+
+	private void assertNoPrivateFields(JsonNode operation) {
+		String serialized = operation.toString();
+		assertThat(serialized).doesNotContain(
+			"\"userId\"", "\"latitude\"", "\"longitude\"", "\"recipientId\"",
+			"\"recipients\"", "\"storageKey\"");
 	}
 
 	private String fetchSpecification() throws Exception {
