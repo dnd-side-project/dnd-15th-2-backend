@@ -41,13 +41,15 @@ class DirectionRequestFingerprintTest {
 	}
 
 	@Test
-	@DisplayName("bodyText null은 canonical 입력으로 보존되고 빈 문자열과 구분된다")
-	void distinguishesNullBodyFromEmptyMeaning() {
+	@DisplayName("bodyText null과 공백-only 입력은 동일한 canonical 입력으로 보존된다")
+	void normalizesBlankBodyToNull() {
 		DirectionRequestFingerprint withoutBody = DirectionRequestFingerprint.create(42L, 7L,
 			"SEGMENT-A", 100, 5000, null);
+		DirectionRequestFingerprint blankBody = DirectionRequestFingerprint.create(42L, 7L,
+			"SEGMENT-A", 100, 5000, " \t");
 		DirectionRequestFingerprint withBody = fingerprint("SEGMENT-A", "본문");
 
-		assertThat(withoutBody).isNotEqualTo(withBody);
+		assertThat(blankBody).isEqualTo(withoutBody).isNotEqualTo(withBody);
 		assertThat(DirectionRequestFingerprint.restore(withoutBody.value())).isEqualTo(withoutBody);
 		assertThat(DirectionRequestFingerprint.restore(null)).isNull();
 		assertThatThrownBy(() -> DirectionRequestFingerprint.restore(""))

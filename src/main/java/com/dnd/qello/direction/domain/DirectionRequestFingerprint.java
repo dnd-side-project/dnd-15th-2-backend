@@ -92,8 +92,9 @@ public record DirectionRequestFingerprint(String value) {
         if (value == null) {
             throw new DirectionException(DirectionErrorCode.REQUIRED_VALUE_MISSING, name, name + "는 필수입니다");
         }
-        String normalized = normalize(value);
-        if (normalized.isBlank()) {
+        String normalized = nullable ? normalizeBodyText(value) : normalize(value);
+        if (normalized == null || normalized.isBlank()) {
+            if (nullable) return "\"" + name + "\":null";
             throw new DirectionException(DirectionErrorCode.INVALID_TEXT, name, name + "이 유효하지 않습니다");
         }
         return "\"" + name + "\":\"" + escapeJson(normalized) + "\"";
@@ -123,6 +124,13 @@ public record DirectionRequestFingerprint(String value) {
             end -= Character.charCount(codePoint);
         }
         return normalized.substring(start, end);
+    }
+
+    /** 본문은 NFC와 바깥 Unicode 공백을 정규화하고, 공백-only 입력을 null로 통일한다. */
+    public static String normalizeBodyText(String value) {
+        if (value == null) return null;
+        String normalized = normalize(value);
+        return normalized.isBlank() ? null : normalized;
     }
 
     private static boolean isUnicodeWhitespace(int codePoint) {

@@ -9,6 +9,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.Instant;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -232,6 +233,15 @@ class MediaAttachmentServiceTest {
 		@Override
 		public Optional<MediaAttachment> findByMediaIdAndOwnerId(long mediaId, long ownerId) {
 			return findByMediaId(mediaId).filter(attachment -> attachment.ownerId() == ownerId);
+		}
+
+		@Override
+		public List<Long> findMediaIdsByPostId(long postId) {
+			return store.values().stream()
+				.filter(attachment -> attachment.postId() != null && attachment.postId() == postId)
+				.sorted(java.util.Comparator.comparingInt(MediaAttachment::displayOrder))
+				.map(MediaAttachment::mediaId)
+				.toList();
 		}
 
 		@Override

@@ -1,5 +1,7 @@
 package com.dnd.qello.answer.service;
 
+import java.util.List;
+
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -32,6 +34,10 @@ public class MediaAttachmentService {
 	private final MediaAttachmentRepository mediaAttachmentRepository;
 	private final DirectionPostRepository directionPostRepository;
 	private final AnswerRepository answerRepository;
+
+	public List<Long> findMediaIdsByPostId(long postId) {
+		return mediaAttachmentRepository.findMediaIdsByPostId(postId);
+	}
 
 	@Transactional
 	public MediaAttachment attach(AttachCommand command) {

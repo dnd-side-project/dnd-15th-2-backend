@@ -9,6 +9,8 @@ package com.dnd.qello.direction.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -154,8 +156,21 @@ class DirectionPostApplicationServiceTest {
 			.thenReturn(Optional.of(result));
 
 		assertThat(service.submit(USER_ID, "request-key", command)).isSameAs(result);
-		verify(accountRepository, never()).findById(USER_ID);
+		verify(accountRepository).findById(USER_ID);
 		verify(schemeRepository, never()).findActiveByCode(any());
 		verify(postService, never()).send(any());
+	}
+
+	@Test
+	@DisplayName("비활성 계정은 기존 멱등키 재시도도 결과를 조회할 수 없다")
+	void rejectsReplayForInactiveAccount() {
+		when(accountRepository.findById(USER_ID)).thenReturn(Optional.of(
+			Account.createUser("KR", "KR-11", "ko-KR", "Asia/Seoul", "test").block()));
+
+		assertThatThrownBy(() -> service.submit(USER_ID, "request-key", new DirectionPostApplicationService.SubmitCommand(
+			101L, SCHEME_ID, "N", "본문", List.of())))
+			.isInstanceOf(DirectionException.class)
+			.hasFieldOrPropertyWithValue("errorCode", DirectionErrorCode.PRESENCE_ACCOUNT_NOT_ELIGIBLE);
+		verify(postService, never()).replayIfExists(anyLong(), anyString(), anyLong(), anyLong(), anyString(), any(), any());
 	}
 }

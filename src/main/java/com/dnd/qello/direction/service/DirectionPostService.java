@@ -1,15 +1,12 @@
 package com.dnd.qello.direction.service;
 
 import java.time.Instant;
-import java.text.Normalizer;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
 import org.springframework.dao.DataIntegrityViolationException;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -47,8 +44,6 @@ import lombok.RequiredArgsConstructor;
 @Service
 @RequiredArgsConstructor
 public class DirectionPostService {
-
-	private static final Logger LOG = LoggerFactory.getLogger(DirectionPostService.class);
 
 	private final DirectionSchemeRepository schemeRepository;
 	private final ActiveUserPresenceRepository presenceRepository;
@@ -127,29 +122,19 @@ public class DirectionPostService {
 		}
 
 		DirectionPost post = existing.get();
-		PostAudience audience = audienceRepository.findByPostId(post.getId()).orElse(null);
-		if (audience == null) {
-			return Optional.of(new SendResult(post, null, List.of()));
-		}
+		PostAudience audience = audienceRepository.findByPostId(post.getId())
+			.orElseThrow(DirectionPostService::idempotencyKeyCannotBeReconstructed);
 		DirectionRequestFingerprint requestFingerprint = DirectionRequestFingerprint.create(
 			approvedQuestionId, schemeId, segmentKey, audience.getMinDistanceMeters(),
 			audience.getMaxDistanceMeters(), bodyText, mediaIds);
-		if (!isRequestCompatible(post, requestFingerprint)) {
-			throw new DirectionException(DirectionErrorCode.IDEMPOTENCY_KEY_REUSED, "idempotencyKey",
-				"같은 멱등키로 다른 요청을 재사용할 수 없습니다");
-		}
-		return Optional.of(existingResult(post, requestFingerprint, mediaIds));
+		return Optional.of(existingResult(restoreOrValidateFingerprint(post, requestFingerprint)));
 	}
 
 	private SendResult sendInTransaction(SendCommand command, DirectionRequestFingerprint requestFingerprint) {
 		var existing = postRepository.findBySenderAndIdempotencyKey(command.senderId(), command.idempotencyKey());
 		if (existing.isPresent()) {
 			DirectionPost existingPost = existing.get();
-			if (!isRequestCompatible(existingPost, requestFingerprint)) {
-				throw new DirectionException(DirectionErrorCode.IDEMPOTENCY_KEY_REUSED, "idempotencyKey",
-					"같은 멱등키로 다른 요청을 재사용할 수 없습니다");
-			}
-			return existingResult(existingPost, requestFingerprint, command.mediaIds());
+			return existingResult(restoreOrValidateFingerprint(existingPost, requestFingerprint));
 		}
 
 		if (approvedQuestionRepository.findAssignableAt(command.submittedAt()).stream()
@@ -172,43 +157,48 @@ public class DirectionPostService {
 	}
 
 	private SendResult recoverConcurrentRequest(SendCommand command,
-												DirectionRequestFingerprint requestFingerprint, DataIntegrityViolationException race) {
+															DirectionRequestFingerprint requestFingerprint, DataIntegrityViolationException race) {
 		DirectionPost existing = postRepository.findBySenderAndIdempotencyKey(command.senderId(), command.idempotencyKey())
 				.orElseThrow(() -> race);
-		if (!isRequestCompatible(existing, requestFingerprint)) {
-			throw new DirectionException(DirectionErrorCode.IDEMPOTENCY_KEY_REUSED, "idempotencyKey",
-					"같은 멱등키로 다른 요청을 재사용할 수 없습니다");
-		}
-		return existingResult(existing, requestFingerprint, command.mediaIds());
+		return existingResult(restoreOrValidateFingerprint(existing, requestFingerprint));
 	}
 
-	private boolean isRequestCompatible(DirectionPost existing, DirectionRequestFingerprint requestFingerprint) {
+	private DirectionPost restoreOrValidateFingerprint(DirectionPost existing,
+		DirectionRequestFingerprint requestFingerprint) {
 		DirectionRequestFingerprint stored = existing.getRequestFingerprint();
-		return stored == null || stored.equals(requestFingerprint);
+		if (stored != null) {
+			if (!stored.equals(requestFingerprint)) {
+				throw idempotencyKeyReused();
+			}
+			return existing;
+		}
+
+		PostAudience audience = audienceRepository.findByPostId(existing.getId())
+			.orElseThrow(DirectionPostService::idempotencyKeyCannotBeReconstructed);
+		List<Long> persistedMediaIds = mediaAttachmentService.findMediaIdsByPostId(existing.getId());
+		DirectionRequestFingerprint persisted = DirectionRequestFingerprint.create(
+			existing.getApprovedQuestionId(), audience.getDirectionSchemeId(), audience.getSelectedSegmentKey(),
+			audience.getMinDistanceMeters(), audience.getMaxDistanceMeters(), existing.getBodyText(), persistedMediaIds);
+		if (!persisted.equals(requestFingerprint)) {
+			throw idempotencyKeyReused();
+		}
+		return postRepository.updateRequestFingerprintIfNull(existing.getId(), persisted)
+			.orElseGet(() -> postRepository.findById(existing.getId()).orElse(existing));
 	}
 
-	private SendResult existingResult(DirectionPost post, DirectionRequestFingerprint requestFingerprint, List<Long> mediaIds) {
+	private SendResult existingResult(DirectionPost post) {
 		PostAudience audience = audienceRepository.findByPostId(post.getId()).orElse(null);
-		DirectionPost restored = post;
-		if (post.getRequestFingerprint() == null && audience != null) {
-			try {
-				DirectionRequestFingerprint persistedFingerprint = DirectionRequestFingerprint.create(post.getApprovedQuestionId(),
-					audience.getDirectionSchemeId(), audience.getSelectedSegmentKey(), audience.getMinDistanceMeters(),
-					audience.getMaxDistanceMeters(), post.getBodyText(), mediaIds);
-				if (!persistedFingerprint.equals(requestFingerprint)) {
-					throw new DirectionException(DirectionErrorCode.IDEMPOTENCY_KEY_REUSED, "idempotencyKey",
-						"같은 멱등키로 다른 요청을 재사용할 수 없습니다");
-				}
-				restored = postRepository.updateRequestFingerprintIfNull(post.getId(), requestFingerprint)
-						.orElseGet(() -> postRepository.findById(post.getId()).orElse(post));
-			} catch (DirectionException exception) {
-				if (exception.getErrorCode() == DirectionErrorCode.IDEMPOTENCY_KEY_REUSED) throw exception;
-				// fingerprint가 없는 기존 행의 의도를 복원할 수 없으면 기존 결과를 보존한다.
-				LOG.warn("기존 멱등 요청의 fingerprint 복원을 건너뜁니다: postId={}, errorCode={}",
-					post.getId(), exception.getErrorCode());
-			}
-		}
-		return new SendResult(restored, audience, List.of());
+		return new SendResult(post, audience, List.of());
+	}
+
+	private static DirectionException idempotencyKeyReused() {
+		return new DirectionException(DirectionErrorCode.IDEMPOTENCY_KEY_REUSED, "idempotencyKey",
+			"같은 멱등키로 다른 요청을 재사용할 수 없습니다");
+	}
+
+	private static DirectionException idempotencyKeyCannotBeReconstructed() {
+		return new DirectionException(DirectionErrorCode.IDEMPOTENCY_KEY_REUSED, "idempotencyKey",
+			"기존 멱등 요청의 원래 의도를 복원할 수 없습니다");
 	}
 
 	private void attachMedia(long postId, SendCommand command) {
@@ -403,22 +393,7 @@ public class DirectionPostService {
 		}
 
 		private static String normalizeBodyText(String value) {
-			if (value == null) return null;
-			String normalized = Normalizer.normalize(value, Normalizer.Form.NFC);
-			int start = 0;
-			int end = normalized.length();
-			while (start < end) {
-				int codePoint = normalized.codePointAt(start);
-				if (!Character.isWhitespace(codePoint) && !Character.isSpaceChar(codePoint)) break;
-				start += Character.charCount(codePoint);
-			}
-			while (start < end) {
-				int codePoint = normalized.codePointBefore(end);
-				if (!Character.isWhitespace(codePoint) && !Character.isSpaceChar(codePoint)) break;
-				end -= Character.charCount(codePoint);
-			}
-			String trimmed = normalized.substring(start, end);
-			return trimmed.isEmpty() ? null : trimmed;
+			return DirectionRequestFingerprint.normalizeBodyText(value);
 		}
 	}
 

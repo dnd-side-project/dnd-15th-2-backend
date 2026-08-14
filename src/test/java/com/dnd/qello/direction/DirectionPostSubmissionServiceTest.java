@@ -10,6 +10,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyDouble;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
@@ -134,6 +135,7 @@ class DirectionPostSubmissionServiceTest {
 		org.mockito.Mockito.lenient().when(approvedQuestionRepository.findAssignableAt(AT)).thenReturn(List.of(question));
 		org.mockito.Mockito.lenient().when(postRepository.save(any(DirectionPost.class))).thenReturn(savedPost);
 		org.mockito.Mockito.lenient().when(audienceRepository.save(any(PostAudience.class))).thenReturn(audience);
+		org.mockito.Mockito.lenient().when(audienceRepository.findByPostId(101L)).thenReturn(Optional.of(audience));
 		org.mockito.Mockito.lenient().when(outboxEventRepository.findByDedupKey(anyString())).thenReturn(Optional.empty());
 		org.mockito.Mockito.lenient().when(outboxEventRepository.save(any(OutboxEvent.class))).thenReturn(matchingEvent);
 	}
@@ -245,6 +247,41 @@ class DirectionPostSubmissionServiceTest {
 			0, 500, "TEST-REGION", "empty-key", null, List.of(), AT, AT.plusSeconds(3600)))
 			.isInstanceOf(DirectionException.class)
 			.hasFieldOrPropertyWithValue("errorCode", DirectionErrorCode.REQUIRED_VALUE_MISSING);
+	}
+
+	@Test
+	@DisplayName("nullable fingerprint 재생은 DB에 저장된 미디어 ID를 복원해 동일 요청만 허용한다")
+	void restoresLegacyFingerprintFromPersistedMediaIds() {
+		DirectionPost legacyPost = DirectionPost.restore(101L, SENDER_ID, QUESTION_ID, null,
+			DirectionPostStatus.MATCHING, "legacy-key", "본문", "TEST-REGION",
+			DirectionPostModerationStatus.PENDING, AT, null, AT.plusSeconds(3600), null, null);
+		when(postRepository.findBySenderAndIdempotencyKey(SENDER_ID, "legacy-key"))
+			.thenReturn(Optional.of(legacyPost));
+		when(mediaAttachmentService.findMediaIdsByPostId(101L)).thenReturn(List.of(77L));
+
+		DirectionPostService.SendResult result = service.replayIfExists(SENDER_ID, "legacy-key", QUESTION_ID,
+			SCHEME_ID, "S0", "본문", List.of(77L)).orElseThrow();
+
+		assertThat(result.post()).isEqualTo(legacyPost);
+		verify(mediaAttachmentService).findMediaIdsByPostId(101L);
+		verify(postRepository).updateRequestFingerprintIfNull(eq(101L), any(DirectionRequestFingerprint.class));
+	}
+
+	@Test
+	@DisplayName("nullable fingerprint 재생에서 다른 미디어 ID를 사용하면 멱등키 재사용으로 거절한다")
+	void rejectsLegacyReplayWithDifferentPersistedMediaIds() {
+		DirectionPost legacyPost = DirectionPost.restore(101L, SENDER_ID, QUESTION_ID, null,
+			DirectionPostStatus.MATCHING, "legacy-key", "본문", "TEST-REGION",
+			DirectionPostModerationStatus.PENDING, AT, null, AT.plusSeconds(3600), null, null);
+		when(postRepository.findBySenderAndIdempotencyKey(SENDER_ID, "legacy-key"))
+			.thenReturn(Optional.of(legacyPost));
+		when(mediaAttachmentService.findMediaIdsByPostId(101L)).thenReturn(List.of(88L));
+
+		assertThatThrownBy(() -> service.replayIfExists(SENDER_ID, "legacy-key", QUESTION_ID,
+			SCHEME_ID, "S0", "본문", List.of(77L)))
+			.isInstanceOf(DirectionException.class)
+			.hasFieldOrPropertyWithValue("errorCode", DirectionErrorCode.IDEMPOTENCY_KEY_REUSED);
+		verify(postRepository, never()).updateRequestFingerprintIfNull(anyLong(), any(DirectionRequestFingerprint.class));
 	}
 
 	private DirectionPostService.SendCommand command(String idempotencyKey, String body) {
