@@ -35,6 +35,7 @@ class FilterJobTest {
 		assertThat(job.attemptGeneration()).isEqualTo(1);
 		assertThat(job.manuallyResolved()).isFalse();
 		assertThat(job.resolvedVerdict()).isNull();
+		assertThat(job.deadlineAt()).isEqualTo(DEADLINE);
 	}
 
 	@Test
@@ -47,6 +48,7 @@ class FilterJobTest {
 		assertThat(resolved.status()).isEqualTo(FilterJobStatus.RESOLVED);
 		assertThat(resolved.resolvedVerdict()).isEqualTo(FilterVerdict.ALLOW);
 		assertThat(resolved.manuallyResolved()).isFalse();
+		assertThat(resolved.deadlineAt()).isEqualTo(DEADLINE);
 	}
 
 	@Test
