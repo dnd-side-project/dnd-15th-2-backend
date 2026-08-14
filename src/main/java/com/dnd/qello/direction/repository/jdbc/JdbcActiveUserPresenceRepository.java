@@ -31,6 +31,11 @@ public class JdbcActiveUserPresenceRepository implements ActiveUserPresenceRepos
 	}
 
 	@Override
+	public boolean saveIfNewer(ActiveUserPresence presence) {
+		return jdbc.update(ActiveUserPresenceSql.UPSERT_IF_NEWER, parameters(presence)) == 1;
+	}
+
+	@Override
 	public Optional<ActiveUserPresence> findByUserId(long userId) {
 		return jdbc.query("""
 			SELECT user_id, ST_Y(position::geometry) AS latitude, ST_X(position::geometry) AS longitude,

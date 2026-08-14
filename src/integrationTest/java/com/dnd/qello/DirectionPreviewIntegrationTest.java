@@ -1,6 +1,7 @@
 /**
  * Created at: 2026-08-12T01:17:58+09:00
- * Source scenario: TEST-PLAN-GH-117-DIRECTION-PREVIEW-ALL-SEGMENTS-INT-001 through INT-008
+ * Source scenario: TEST-PLAN-GH-117-DIRECTION-PREVIEW-ALL-SEGMENTS-INT-001 through INT-008,
+ * TEST-PLAN-GH-121-ACTIVE-USER-PRESENCE-API-INT-013 (added 2026-08-14T00:51:11+09:00)
  */
 package com.dnd.qello;
 
@@ -128,7 +129,7 @@ class DirectionPreviewIntegrationTest extends PostgisContainerIntegrationTestSup
 		presenceAtBearing(account("min-boundary", "ACTIVE"), 37.5, 127.0, 1_000, 90, true, AT.minusSeconds(60), AT.plusSeconds(3600));
 		presenceAtBearing(account("max-boundary", "ACTIVE"), 37.5, 127.0, 2_000, 90, true, AT.minusSeconds(60), AT.plusSeconds(3600));
 		presenceAtBearing(account("outside-max", "ACTIVE"), 37.5, 127.0, 2_500, 90, true, AT.minusSeconds(60), AT.plusSeconds(3600));
-		presenceAtBearing(account("expired", "ACTIVE"), 37.5, 127.0, 1_500, 90, true, AT.minusSeconds(3600), AT.minusSeconds(1));
+		presenceAtBearing(account("expired", "ACTIVE"), 37.5, 127.0, 1_500, 90, true, AT.minusSeconds(3600), AT);
 		presenceAtBearing(account("receive-disabled", "ACTIVE"), 37.5, 127.0, 1_500, 90, false, AT.minusSeconds(60), AT.plusSeconds(3600));
 		presenceAtBearing(account("blocked-account", "BLOCKED"), 37.5, 127.0, 1_500, 90, true, AT.minusSeconds(60), AT.plusSeconds(3600));
 
@@ -136,6 +137,25 @@ class DirectionPreviewIntegrationTest extends PostgisContainerIntegrationTestSup
 
 		assertThat(count(result, "S2")).isEqualTo(2);
 		assertThat(result.segments().stream().mapToLong(DirectionPreviewResult.SegmentCount::count).sum()).isEqualTo(2);
+	}
+
+	@Test
+	@DisplayName("수신 거부 중인 발신자도 유효한 위치로 preview할 수 있지만 후보에는 포함되지 않는다")
+	void receiveDeniedSenderCanPreviewButIsNotCandidate() {
+		long senderId = account("receive-denied-sender", "ACTIVE");
+		presence(senderId, 37.5, 127.0, false, AT.minusSeconds(60), AT.plusSeconds(3600));
+		long schemeId = scheme("PREVIEW-SENDER-DENIED", 5);
+		long candidateId = account("receive-allowed-candidate", "ACTIVE");
+		presenceAtBearing(candidateId, 37.5, 127.0, 100, 0, true,
+			AT.minusSeconds(60), AT.plusSeconds(3600));
+
+		DirectionPreviewResult senderPreview = preview(senderId, schemeId, 0, 1_000);
+		var reverseCandidates = presenceRepository.findCandidates(candidateId, 37.501, 127.0,
+			0, 1_000, 0, 360, AT, REGION);
+
+		assertThat(senderPreview.segments().stream().mapToLong(DirectionPreviewResult.SegmentCount::count).sum())
+			.isEqualTo(1);
+		assertThat(reverseCandidates).extracting(candidate -> candidate.userId()).doesNotContain(senderId);
 	}
 
 	private DirectionPreviewResult preview(long senderId, long schemeId, long minDistance, long maxDistance) {

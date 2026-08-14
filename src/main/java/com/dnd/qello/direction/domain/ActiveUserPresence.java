@@ -67,8 +67,16 @@ public final class ActiveUserPresence {
 	}
 
 	public boolean isCurrentAt(Instant at) {
+		return isReceiveEligibleAt(at);
+	}
+
+	public boolean hasCurrentLocationAt(Instant at) {
 		requireValue(at, "at");
-		return receiveAllowed && !at.isBefore(locationAt) && at.isBefore(expiresAt);
+		return latitude != null && longitude != null && !at.isBefore(locationAt) && at.isBefore(expiresAt);
+	}
+
+	public boolean isReceiveEligibleAt(Instant at) {
+		return receiveAllowed && hasCurrentLocationAt(at);
 	}
 
 	private static <T> T requireValue(T value, String field) {

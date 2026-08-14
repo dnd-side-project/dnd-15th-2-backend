@@ -269,9 +269,9 @@ public class DirectionPostService {
 		ActiveUserPresence sender = presenceRepository.findByUserId(senderId)
 				.orElseThrow(() -> new DirectionException(
 						DirectionErrorCode.PRESENCE_NOT_FOUND, "senderId", "sender presence를 찾을 수 없습니다"));
-		if (!sender.isCurrentAt(at)) {
+		if (!sender.hasCurrentLocationAt(at)) {
 			throw new DirectionException(
-					DirectionErrorCode.PRESENCE_NOT_CURRENT, "senderId", "sender presence가 만료되었거나 수신 허용이 아닙니다");
+					DirectionErrorCode.PRESENCE_NOT_CURRENT, "senderId", "sender presence가 현재 유효하지 않습니다");
 		}
 		return sender;
 	}

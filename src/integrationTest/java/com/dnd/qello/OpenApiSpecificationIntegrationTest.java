@@ -1,6 +1,7 @@
 /**
  * Created at: 2026-08-07T22:20:16+09:00
- * Source scenario: TEST-PLAN-GH-82-OPENAPI-SPEC-INT-001 through INT-004
+ * Source scenario: TEST-PLAN-GH-82-OPENAPI-SPEC-INT-001 through INT-004,
+ * TEST-PLAN-GH-121-ACTIVE-USER-PRESENCE-API-INT-011 (added 2026-08-14T00:51:11+09:00)
  */
 package com.dnd.qello;
 
@@ -13,6 +14,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
+import java.util.Set;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -24,6 +26,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import com.fasterxml.jackson.core.util.DefaultIndenter;
 import com.fasterxml.jackson.core.util.DefaultPrettyPrinter;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.json.JsonMapper;
@@ -92,12 +95,47 @@ class OpenApiSpecificationIntegrationTest extends PostgisContainerIntegrationTes
 		assertThat(specification).doesNotContain(FORBIDDEN_FRAGMENTS);
 	}
 
+	@Test
+	@DisplayName("presence PUT은 앱 토큰과 승인된 요청·응답 privacy 계약을 문서화한다")
+	void documentsActiveUserPresenceContract() throws Exception {
+		JsonNode specification = objectMapper.readTree(fetchSpecification());
+		JsonNode operation = specification.at("/paths/~1api~1v1~1direction~1presence/put");
+
+		assertThat(operation.isMissingNode()).isFalse();
+		assertThat(operation.at("/security/0/appAccessToken").isArray()).isTrue();
+		assertThat(fieldNames(resolveSchema(specification,
+			operation.at("/requestBody/content/application~1json/schema"))))
+			.containsExactlyInAnyOrder("latitude", "longitude", "accuracyMeters", "receiveAllowed", "observedAt");
+		assertThat(operation.at("/responses").fieldNames()).toIterable()
+			.contains("200", "400", "401", "403", "404", "500");
+
+		JsonNode successEnvelope = resolveSchema(specification,
+			operation.at("/responses/200/content/application~1json/schema"));
+		JsonNode responseData = resolveSchema(specification, successEnvelope.at("/properties/data"));
+		assertThat(fieldNames(responseData)).containsExactly("applied");
+	}
+
 	private String fetchSpecification() throws Exception {
 		return mockMvc.perform(get("/v3/api-docs"))
 			.andExpect(status().isOk())
 			.andReturn()
 			.getResponse()
 			.getContentAsString(StandardCharsets.UTF_8);
+	}
+
+	private JsonNode resolveSchema(JsonNode specification, JsonNode schema) {
+		String reference = schema.path("$ref").asText();
+		if (reference.isBlank()) {
+			return schema;
+		}
+		String schemaName = reference.substring(reference.lastIndexOf('/') + 1);
+		return specification.path("components").path("schemas").path(schemaName);
+	}
+
+	private Set<String> fieldNames(JsonNode schema) {
+		Set<String> names = new java.util.LinkedHashSet<>();
+		schema.path("properties").fieldNames().forEachRemaining(names::add);
+		return names;
 	}
 
 	/**

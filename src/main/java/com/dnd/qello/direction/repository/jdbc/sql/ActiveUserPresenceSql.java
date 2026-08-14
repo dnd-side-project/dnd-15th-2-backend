@@ -28,6 +28,11 @@ public final class ActiveUserPresenceSql {
 			expires_at = EXCLUDED.expires_at
 		""";
 
+	public static final String UPSERT_IF_NEWER = UPSERT.stripTrailing() + """
+
+		WHERE active_user_presence.location_at < EXCLUDED.location_at
+		""";
+
 	// inbound_bearing_deg는 후보(수신자) 위치를 원점으로 계산한 역방위다. ST_Azimuth의
 	// 두 인자 순서를 뒤집으면(origin, p.position 대신 p.position, origin) 구면 역방위를
 	// 얻는다 — bearing_deg에 +180을 더하는 평면 근사와 다르다. post_recipient가 표시하는
