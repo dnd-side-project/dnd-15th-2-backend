@@ -4,6 +4,7 @@ import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
@@ -19,6 +20,7 @@ import com.dnd.qello.direction.domain.DirectionScheme;
 import com.dnd.qello.direction.domain.DirectionSchemeStatus;
 import com.dnd.qello.direction.domain.DirectionSegment;
 import com.dnd.qello.direction.domain.PostAudience;
+import com.dnd.qello.direction.config.DirectionPostProperties;
 import com.dnd.qello.direction.domain.PostRecipient;
 import com.dnd.qello.direction.error.DirectionErrorCode;
 import com.dnd.qello.direction.error.DirectionException;
@@ -27,6 +29,7 @@ import com.dnd.qello.direction.repository.DirectionPostRepository;
 import com.dnd.qello.direction.repository.DirectionSchemeRepository;
 import com.dnd.qello.direction.repository.PostAudienceRepository;
 import com.dnd.qello.direction.repository.ActiveUserPresenceRepository.DirectionSegmentCandidateCount;
+import com.dnd.qello.answer.service.MediaAttachmentService;
 import com.dnd.qello.question.repository.ApprovedQuestionRepository;
 import com.dnd.qello.notification.domain.OutboxEvent;
 import com.dnd.qello.notification.repository.OutboxEventRepository;
@@ -48,6 +51,7 @@ public class DirectionPostService {
 	private final PostAudienceRepository audienceRepository;
 	private final ApprovedQuestionRepository approvedQuestionRepository;
 	private final OutboxEventRepository outboxEventRepository;
+	private final MediaAttachmentService mediaAttachmentService;
 	private final PlatformTransactionManager transactionManager;
 
 	@Transactional(readOnly = true)
@@ -77,7 +81,7 @@ public class DirectionPostService {
 
 		List<DirectionSegmentCandidateCount> rows = presenceRepository.findCandidateCountsBySegment(
 				command.schemeId(), command.senderId(), sender.getLatitude().doubleValue(), sender.getLongitude().doubleValue(),
-				command.minDistanceMeters(), command.maxDistanceMeters(), command.at(), command.coarseRegionCode());
+				command.minDistanceMeters(), command.maxDistanceMeters(), command.at(), null);
 		Map<String, Long> counts = new HashMap<>();
 		for (DirectionSegmentCandidateCount row : rows) {
 			if (counts.put(row.segmentKey(), row.count()) != null) {
@@ -96,7 +100,7 @@ public class DirectionPostService {
 		requireValue(command, "command");
 		DirectionRequestFingerprint requestFingerprint = DirectionRequestFingerprint.create(command.approvedQuestionId(),
 				command.schemeId(), command.segmentKey(), command.minDistanceMeters(), command.maxDistanceMeters(),
-				command.coarseRegionCode(), command.bodyText());
+				command.bodyText(), command.mediaIds());
 		try {
 			TransactionTemplate transaction = new TransactionTemplate(transactionManager);
 			return transaction.execute(status -> sendInTransaction(command, requestFingerprint));
@@ -105,15 +109,32 @@ public class DirectionPostService {
 		}
 	}
 
+	/**
+	 * 기존 멱등 요청은 현재 활성 scheme·정책과 무관하게 저장된 결과를 재생한다.
+	 * 새 요청은 빈 Optional을 반환해 application facade가 현재 정책을 검증하도록 한다.
+	 */
+	@Transactional
+	public Optional<SendResult> replayIfExists(long senderId, String idempotencyKey, Long approvedQuestionId,
+		Long schemeId, String segmentKey, String bodyText, List<Long> mediaIds) {
+		Optional<DirectionPost> existing = postRepository.findBySenderAndIdempotencyKey(senderId, idempotencyKey);
+		if (existing.isEmpty()) {
+			return Optional.empty();
+		}
+
+		DirectionPost post = existing.get();
+		PostAudience audience = audienceRepository.findByPostId(post.getId())
+			.orElseThrow(DirectionPostService::idempotencyKeyCannotBeReconstructed);
+		DirectionRequestFingerprint requestFingerprint = DirectionRequestFingerprint.create(
+			approvedQuestionId, schemeId, segmentKey, audience.getMinDistanceMeters(),
+			audience.getMaxDistanceMeters(), bodyText, mediaIds);
+		return Optional.of(existingResult(restoreOrValidateFingerprint(post, requestFingerprint)));
+	}
+
 	private SendResult sendInTransaction(SendCommand command, DirectionRequestFingerprint requestFingerprint) {
 		var existing = postRepository.findBySenderAndIdempotencyKey(command.senderId(), command.idempotencyKey());
 		if (existing.isPresent()) {
 			DirectionPost existingPost = existing.get();
-			if (existingPost.getRequestFingerprint() != null && !existingPost.getRequestFingerprint().equals(requestFingerprint)) {
-				throw new DirectionException(DirectionErrorCode.IDEMPOTENCY_KEY_REUSED, "idempotencyKey",
-						"같은 멱등키로 다른 요청을 재사용할 수 없습니다");
-			}
-			return existingResult(existingPost, requestFingerprint);
+			return existingResult(restoreOrValidateFingerprint(existingPost, requestFingerprint));
 		}
 
 		if (approvedQuestionRepository.findAssignableAt(command.submittedAt()).stream()
@@ -129,47 +150,63 @@ public class DirectionPostService {
 		PostAudience audience = audienceRepository.save(PostAudience.create(post.getId(), command.schemeId(), segment.getSegmentKey(),
 				segment.getCenterBearingDegrees(), segment.getAngularWidthDegrees(), command.minDistanceMeters(), command.maxDistanceMeters(),
 				sender.getLatitude(), sender.getLongitude(), sender.getCoarseCellId(), command.submittedAt()));
+		attachMedia(post.getId(), command);
 
 		enqueueMatchingEvent(post, audience, requestFingerprint, command);
 		return new SendResult(post, audience, List.of());
 	}
 
 	private SendResult recoverConcurrentRequest(SendCommand command,
-												DirectionRequestFingerprint requestFingerprint, DataIntegrityViolationException race) {
+															DirectionRequestFingerprint requestFingerprint, DataIntegrityViolationException race) {
 		DirectionPost existing = postRepository.findBySenderAndIdempotencyKey(command.senderId(), command.idempotencyKey())
 				.orElseThrow(() -> race);
-		if (existing.getRequestFingerprint() != null && !existing.getRequestFingerprint().equals(requestFingerprint)) {
-			throw new DirectionException(DirectionErrorCode.IDEMPOTENCY_KEY_REUSED, "idempotencyKey",
-					"같은 멱등키로 다른 요청을 재사용할 수 없습니다");
-		}
-		return existingResult(existing, requestFingerprint);
+		return existingResult(restoreOrValidateFingerprint(existing, requestFingerprint));
 	}
 
-	private SendResult existingResult(DirectionPost post, DirectionRequestFingerprint requestFingerprint) {
-		PostAudience audience = audienceRepository.findByPostId(post.getId()).orElse(null);
-		DirectionPost restored = post;
-		if (post.getRequestFingerprint() == null && audience != null) {
-			try {
-				DirectionRequestFingerprint legacyFingerprint = DirectionRequestFingerprint.create(post.getApprovedQuestionId(),
-						audience.getDirectionSchemeId(), audience.getSelectedSegmentKey(), audience.getMinDistanceMeters(),
-						audience.getMaxDistanceMeters(), post.getCoarseRegionCode(), post.getBodyText());
-				if (!legacyFingerprint.equals(requestFingerprint)) {
-					throw new DirectionException(DirectionErrorCode.IDEMPOTENCY_KEY_REUSED, "idempotencyKey",
-							"같은 멱등키로 다른 요청을 재사용할 수 없습니다");
-				}
-				restored = postRepository.updateRequestFingerprintIfNull(post.getId(), legacyFingerprint)
-						.orElseGet(() -> postRepository.findById(post.getId()).orElse(post));
-				if (restored.getRequestFingerprint() != null
-						&& !restored.getRequestFingerprint().equals(requestFingerprint)) {
-					throw new DirectionException(DirectionErrorCode.IDEMPOTENCY_KEY_REUSED, "idempotencyKey",
-							"같은 멱등키로 다른 요청을 재사용할 수 없습니다");
-				}
-			} catch (DirectionException ignored) {
-				if (ignored.getErrorCode() == DirectionErrorCode.IDEMPOTENCY_KEY_REUSED) throw ignored;
-				// legacy 행의 저장 의도를 복원할 수 없으면 기존 결과를 보존한다.
+	private DirectionPost restoreOrValidateFingerprint(DirectionPost existing,
+		DirectionRequestFingerprint requestFingerprint) {
+		DirectionRequestFingerprint stored = existing.getRequestFingerprint();
+		if (stored != null) {
+			if (!stored.equals(requestFingerprint)) {
+				throw idempotencyKeyReused();
 			}
+			return existing;
 		}
-		return new SendResult(restored, audience, List.of());
+
+		PostAudience audience = audienceRepository.findByPostId(existing.getId())
+			.orElseThrow(DirectionPostService::idempotencyKeyCannotBeReconstructed);
+		List<Long> persistedMediaIds = mediaAttachmentService.findMediaIdsByPostId(existing.getId());
+		DirectionRequestFingerprint persisted = DirectionRequestFingerprint.create(
+			existing.getApprovedQuestionId(), audience.getDirectionSchemeId(), audience.getSelectedSegmentKey(),
+			audience.getMinDistanceMeters(), audience.getMaxDistanceMeters(), existing.getBodyText(), persistedMediaIds);
+		if (!persisted.equals(requestFingerprint)) {
+			throw idempotencyKeyReused();
+		}
+		return postRepository.updateRequestFingerprintIfNull(existing.getId(), persisted)
+			.orElseGet(() -> postRepository.findById(existing.getId()).orElse(existing));
+	}
+
+	private SendResult existingResult(DirectionPost post) {
+		PostAudience audience = audienceRepository.findByPostId(post.getId()).orElse(null);
+		return new SendResult(post, audience, List.of());
+	}
+
+	private static DirectionException idempotencyKeyReused() {
+		return new DirectionException(DirectionErrorCode.IDEMPOTENCY_KEY_REUSED, "idempotencyKey",
+			"같은 멱등키로 다른 요청을 재사용할 수 없습니다");
+	}
+
+	private static DirectionException idempotencyKeyCannotBeReconstructed() {
+		return new DirectionException(DirectionErrorCode.IDEMPOTENCY_KEY_REUSED, "idempotencyKey",
+			"기존 멱등 요청의 원래 의도를 복원할 수 없습니다");
+	}
+
+	private void attachMedia(long postId, SendCommand command) {
+		if (command.mediaIds().isEmpty()) return;
+		for (Long mediaId : command.mediaIds()) {
+			mediaAttachmentService.attach(new MediaAttachmentService.AttachCommand(
+				command.senderId(), mediaId, postId, null, 0));
+		}
 	}
 
 	private void enqueueMatchingEvent(DirectionPost post, PostAudience audience,
@@ -240,7 +277,7 @@ public class DirectionPostService {
 			);
 		}
 		return presenceRepository.findCandidates(command.senderId(), sender.getLatitude().doubleValue(), sender.getLongitude().doubleValue(),
-				command.minDistanceMeters(), command.maxDistanceMeters(), start, end, command.at(), command.coarseRegionCode());
+				command.minDistanceMeters(), command.maxDistanceMeters(), start, end, command.at(), null);
 	}
 
 	private DirectionSegment segment(long schemeId, String segmentKey) {
@@ -315,8 +352,15 @@ public class DirectionPostService {
 
 	public record SendCommand(Long senderId, Long approvedQuestionId, Long schemeId, String segmentKey,
 							  long minDistanceMeters, long maxDistanceMeters, String coarseRegionCode,
-							  String idempotencyKey,
-							  String bodyText, Instant submittedAt, Instant expiresAt) {
+							  String idempotencyKey, String bodyText, List<Long> mediaIds,
+							  Instant submittedAt, Instant expiresAt) {
+		public SendCommand(Long senderId, Long approvedQuestionId, Long schemeId, String segmentKey,
+							long minDistanceMeters, long maxDistanceMeters, String coarseRegionCode,
+							String idempotencyKey, String bodyText, Instant submittedAt, Instant expiresAt) {
+			this(senderId, approvedQuestionId, schemeId, segmentKey, minDistanceMeters, maxDistanceMeters,
+				coarseRegionCode, idempotencyKey, bodyText, List.of(), submittedAt, expiresAt);
+		}
+
 		public SendCommand {
 			if (senderId == null || senderId <= 0 || approvedQuestionId == null || approvedQuestionId <= 0 || schemeId == null || schemeId <= 0) {
 				throw new DirectionException(DirectionErrorCode.INVALID_ID, null, "ID가 유효하지 않습니다");
@@ -329,12 +373,27 @@ public class DirectionPostService {
 				throw new DirectionException(
 						DirectionErrorCode.REQUIRED_VALUE_MISSING, null, "필수 command 값이 없습니다");
 			}
+			bodyText = normalizeBodyText(bodyText);
+			if (mediaIds == null || mediaIds.size() > 1 || mediaIds.stream().anyMatch(id -> id == null || id <= 0)) {
+				throw new DirectionException(DirectionErrorCode.INVALID_VALUE_RANGE, "mediaIds", "미디어 수 또는 ID가 유효하지 않습니다");
+			}
+			mediaIds = List.copyOf(mediaIds);
+			if ((bodyText == null || bodyText.isBlank()) && mediaIds.isEmpty()) {
+				throw new DirectionException(DirectionErrorCode.REQUIRED_VALUE_MISSING, "content", "본문 또는 미디어가 필요합니다");
+			}
+			if (bodyText != null && bodyText.codePoints().count() > DirectionPostProperties.APPROVED_MAX_BODY_CODE_POINTS) {
+				throw new DirectionException(DirectionErrorCode.INVALID_VALUE_RANGE, "bodyText", "본문은 300자를 초과할 수 없습니다");
+			}
 			requireValue(submittedAt, "submittedAt");
 			requireValue(expiresAt, "expiresAt");
 			if (!expiresAt.isAfter(submittedAt)) {
 				throw new DirectionException(
 						DirectionErrorCode.INVALID_TIME_ORDER, "expiresAt", "expiresAt은 submittedAt보다 늦어야 합니다");
 			}
+		}
+
+		private static String normalizeBodyText(String value) {
+			return DirectionRequestFingerprint.normalizeBodyText(value);
 		}
 	}
 

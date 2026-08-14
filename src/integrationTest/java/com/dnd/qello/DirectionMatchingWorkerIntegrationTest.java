@@ -1,6 +1,7 @@
 /**
  * Created at: 2026-08-13T17:45:00+09:00
  * Source scenario: TEST-PLAN-GH-120-DIRECTION-MATCHING-WORKER-INT-001 through INT-009, INT-013, INT-015
+ * Source scenario: TEST-PLAN-GH-122-DIRECTION-PREVIEW-SUBMISSION-API-INT-014
  */
 package com.dnd.qello;
 
@@ -41,6 +42,7 @@ import com.dnd.qello.notification.repository.OutboxEventRepository;
 class DirectionMatchingWorkerIntegrationTest extends PostgisContainerIntegrationTestSupport {
 
 	private static final String REGION = "TEST-DIRECTION-MATCHING-WORKER";
+	private static final String OTHER_REGION = "TEST-DIRECTION-MATCHING-WORKER-OTHER";
 	private static final Instant NOW = Instant.parse("2026-08-13T08:30:00Z");
 
 	@Autowired
@@ -73,9 +75,12 @@ class DirectionMatchingWorkerIntegrationTest extends PostgisContainerIntegration
 		jdbc.update("DELETE FROM direction_scheme");
 		jdbc.update("DELETE FROM approved_question");
 		jdbc.update("DELETE FROM user_account WHERE coarse_region_code = ?", REGION);
+		jdbc.update("DELETE FROM user_account WHERE coarse_region_code = ?", OTHER_REGION);
 		jdbc.update("DELETE FROM region_code WHERE code = ?", REGION);
+		jdbc.update("DELETE FROM region_code WHERE code = ?", OTHER_REGION);
 		jdbc.update("INSERT INTO region_code (code, parent_code, display_name, level) VALUES ('KR', NULL, 'Korea', 'COUNTRY') ON CONFLICT (code, level) DO NOTHING");
 		jdbc.update("INSERT INTO region_code (code, parent_code, display_name, level) VALUES (?, 'KR', 'Matching Worker', 'REGION')", REGION);
+		jdbc.update("INSERT INTO region_code (code, parent_code, display_name, level) VALUES (?, 'KR', 'Matching Worker Other', 'REGION')", OTHER_REGION);
 	}
 
 	@Test
@@ -96,6 +101,23 @@ class DirectionMatchingWorkerIntegrationTest extends PostgisContainerIntegration
 		assertThat(jdbc.queryForObject("SELECT count(*) FROM outbox_event WHERE aggregate_type = 'POST_RECIPIENT' AND event_type = ?",
 			Long.class, OutboxEventType.RECIPIENTS_CONFIRMED.name())).isEqualTo(3L);
 		assertThat(jdbc.queryForObject("SELECT count(*) FROM notification", Long.class)).isZero();
+	}
+
+	@Test
+	@DisplayName("GLOBAL worker는 질문글 표시 지역과 다른 후보도 방향·거리 조건이면 확정한다")
+	void matchesCandidateOutsidePostRegionInGlobalScope() {
+		Fixture fixture = fixtureWithCandidates(1);
+		long candidateId = fixture.candidateIds().getFirst();
+		jdbc.update("UPDATE user_account SET coarse_region_code = ? WHERE id = ?", OTHER_REGION, candidateId);
+		jdbc.update("UPDATE active_user_presence SET coarse_region_code = ? WHERE user_id = ?", OTHER_REGION, candidateId);
+		long postId = submitAndPass(fixture, "worker-global-region");
+
+		assertThat(worker.processBatch(command()).outcomes())
+			.containsExactly(DirectionMatchingWorker.Outcome.PROCESSED);
+		assertThat(jdbc.queryForList("SELECT recipient_id FROM post_recipient WHERE post_id = ?", Long.class, postId))
+			.containsExactly(candidateId);
+		assertThat(jdbc.queryForObject("SELECT matched_region_code FROM post_recipient WHERE post_id = ?", String.class, postId))
+			.isEqualTo(OTHER_REGION);
 	}
 
 	@Test

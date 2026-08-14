@@ -1,6 +1,6 @@
 /**
- * Created at: 2026-08-07T04:00:00+09:00
- * Source scenario: TEST-PLAN-GH-70-MEDIA-ASSET-SERVICE-UNIT-006 through UNIT-007
+ * Created at: 2026-08-14T16:05:00+09:00
+ * Source scenario: TEST-PLAN-GH-122-DIRECTION-PREVIEW-SUBMISSION-API-UNIT-009
  */
 package com.dnd.qello.answer;
 
@@ -9,6 +9,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.Instant;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -69,6 +70,9 @@ class MediaAttachmentServiceTest {
 		assertThatThrownBy(() -> new MediaAttachment(0L, OWNER, 10L, null, 0))
 			.isInstanceOf(AnswerException.class)
 			.hasFieldOrPropertyWithValue("errorCode", AnswerErrorCode.INVALID_ID);
+		assertThatThrownBy(() -> new AttachCommand(OWNER, 1L, null, null, 0))
+			.isInstanceOf(AnswerException.class)
+			.hasFieldOrPropertyWithValue("errorCode", AnswerErrorCode.INVALID_MEDIA_TARGET);
 	}
 
 	@Test
@@ -115,6 +119,18 @@ class MediaAttachmentServiceTest {
 
 		assertThat(attachment.mediaId()).isEqualTo(ready.getId());
 		assertThat(mediaAttachmentRepository.findByMediaId(ready.getId())).isPresent();
+	}
+
+	@Test
+	@DisplayName("이미 첨부된 READY 미디어는 다른 콘텐츠에 재사용할 수 없다")
+	void attachRejectsAlreadyAttachedMedia() {
+		MediaAsset ready = readyMedia(OWNER);
+		directionPostRepository.put(post(OWNER, DirectionPostStatus.ACTIVE, "본문 있음"));
+		service.attach(new AttachCommand(OWNER, ready.getId(), OWNER_POST_ID, null, 0));
+
+		assertThatThrownBy(() -> service.attach(new AttachCommand(OWNER, ready.getId(), OWNER_POST_ID, null, 0)))
+			.isInstanceOf(AnswerException.class)
+			.hasFieldOrPropertyWithValue("errorCode", AnswerErrorCode.INVALID_MEDIA_STATUS);
 	}
 
 	@Test
@@ -217,6 +233,15 @@ class MediaAttachmentServiceTest {
 		@Override
 		public Optional<MediaAttachment> findByMediaIdAndOwnerId(long mediaId, long ownerId) {
 			return findByMediaId(mediaId).filter(attachment -> attachment.ownerId() == ownerId);
+		}
+
+		@Override
+		public List<Long> findMediaIdsByPostId(long postId) {
+			return store.values().stream()
+				.filter(attachment -> attachment.postId() != null && attachment.postId() == postId)
+				.sorted(java.util.Comparator.comparingInt(MediaAttachment::displayOrder))
+				.map(MediaAttachment::mediaId)
+				.toList();
 		}
 
 		@Override

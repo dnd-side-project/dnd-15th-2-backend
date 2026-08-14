@@ -17,7 +17,7 @@ public interface DirectionPostRepository {
 	Optional<DirectionPost> findBySenderAndIdempotencyKey(long senderId, String idempotencyKey);
 
 	/**
-	 * legacy 행의 null fingerprint만 조건부로 채운다. 다른 post 상태나 본문을 덮어쓰지
+	 * 기존 null fingerprint 행만 조건부로 채운다. 다른 post 상태나 본문을 덮어쓰지
 	 * 않으며, 이미 다른 요청이 채운 경우에는 빈 결과를 반환한다.
 	 */
 	default Optional<DirectionPost> updateRequestFingerprintIfNull(long id,

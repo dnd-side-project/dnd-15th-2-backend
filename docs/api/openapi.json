@@ -94,6 +94,44 @@
         },
         "type" : "object"
       },
+      "ApiResponseDirectionPostSubmissionResponse" : {
+        "properties" : {
+          "data" : {
+            "$ref" : "#/components/schemas/DirectionPostSubmissionResponse"
+          },
+          "status" : {
+            "enum" : [
+              "success",
+              "error"
+            ],
+            "type" : "string"
+          },
+          "timestamp" : {
+            "format" : "date-time",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "ApiResponseDirectionPreviewResponse" : {
+        "properties" : {
+          "data" : {
+            "$ref" : "#/components/schemas/DirectionPreviewResponse"
+          },
+          "status" : {
+            "enum" : [
+              "success",
+              "error"
+            ],
+            "type" : "string"
+          },
+          "timestamp" : {
+            "format" : "date-time",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
       "ApiResponseFilterReleaseResponse" : {
         "properties" : {
           "data" : {
@@ -120,6 +158,44 @@
               "$ref" : "#/components/schemas/FilterReleaseResponse"
             },
             "type" : "array"
+          },
+          "status" : {
+            "enum" : [
+              "success",
+              "error"
+            ],
+            "type" : "string"
+          },
+          "timestamp" : {
+            "format" : "date-time",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "ApiResponseMediaConfirmResponse" : {
+        "properties" : {
+          "data" : {
+            "$ref" : "#/components/schemas/MediaConfirmResponse"
+          },
+          "status" : {
+            "enum" : [
+              "success",
+              "error"
+            ],
+            "type" : "string"
+          },
+          "timestamp" : {
+            "format" : "date-time",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "ApiResponseMediaUploadResponse" : {
+        "properties" : {
+          "data" : {
+            "$ref" : "#/components/schemas/MediaUploadResponse"
           },
           "status" : {
             "enum" : [
@@ -322,6 +398,48 @@
         },
         "type" : "object"
       },
+      "DirectionPostSubmissionResponse" : {
+        "properties" : {
+          "expiresAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "postId" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "submissionStatus" : {
+            "type" : "string"
+          },
+          "submittedAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "DirectionPreviewResponse" : {
+        "properties" : {
+          "schemeCode" : {
+            "type" : "string"
+          },
+          "schemeId" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "schemeVersion" : {
+            "format" : "int32",
+            "type" : "integer"
+          },
+          "segments" : {
+            "items" : {
+              "$ref" : "#/components/schemas/SegmentCount"
+            },
+            "type" : "array"
+          }
+        },
+        "type" : "object"
+      },
       "FilterReleaseResponse" : {
         "properties" : {
           "categoryMappingRef" : {
@@ -362,6 +480,70 @@
         },
         "type" : "object"
       },
+      "MediaConfirmResponse" : {
+        "properties" : {
+          "mediaId" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "status" : {
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "MediaUploadRequest" : {
+        "properties" : {
+          "byteSize" : {
+            "description" : "업로드할 파일 크기(byte)",
+            "example" : 524288,
+            "format" : "int64",
+            "minimum" : 1,
+            "type" : "integer"
+          },
+          "checksum" : {
+            "description" : "업로드 파일 checksum",
+            "minLength" : 1,
+            "type" : "string"
+          },
+          "contentType" : {
+            "description" : "업로드할 이미지 MIME type. image/jpeg, image/jpg 또는 image/png",
+            "enum" : [
+              "image/jpeg",
+              "image/jpg",
+              "image/png"
+            ],
+            "example" : "image/jpeg",
+            "minLength" : 1,
+            "type" : "string"
+          }
+        },
+        "required" : [
+          "byteSize",
+          "checksum",
+          "contentType"
+        ],
+        "type" : "object"
+      },
+      "MediaUploadResponse" : {
+        "properties" : {
+          "contentType" : {
+            "type" : "string"
+          },
+          "expiresAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "mediaId" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "uploadUrl" : {
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
       "OperatorLoginRequest" : {
         "description" : "운영자 로그인 요청",
         "properties" : {
@@ -391,6 +573,67 @@
             "type" : "integer"
           }
         },
+        "type" : "object"
+      },
+      "SegmentCount" : {
+        "properties" : {
+          "count" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "displayName" : {
+            "type" : "string"
+          },
+          "segmentKey" : {
+            "type" : "string"
+          },
+          "sortOrder" : {
+            "format" : "int32",
+            "type" : "integer"
+          }
+        },
+        "type" : "object"
+      },
+      "SubmitDirectionPostRequest" : {
+        "properties" : {
+          "approvedQuestionId" : {
+            "description" : "승인된 질문 식별자",
+            "example" : 101,
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "bodyText" : {
+            "description" : "선택적 본문. 정규화 후 최대 300 Unicode code points",
+            "type" : "string"
+          },
+          "mediaIds" : {
+            "description" : "첨부할 READY 이미지 식별자. 0개 또는 1개",
+            "items" : {
+              "format" : "int64",
+              "type" : "integer"
+            },
+            "maxItems" : 1,
+            "minItems" : 0,
+            "type" : "array"
+          },
+          "schemeId" : {
+            "description" : "방향 구획 체계 식별자",
+            "example" : 7,
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "segmentKey" : {
+            "description" : "선택한 방향 구획 키",
+            "example" : "N",
+            "minLength" : 1,
+            "type" : "string"
+          }
+        },
+        "required" : [
+          "approvedQuestionId",
+          "schemeId",
+          "segmentKey"
+        ],
         "type" : "object"
       },
       "UpdateActiveUserPresenceRequest" : {
@@ -1294,6 +1537,114 @@
         ]
       }
     },
+    "/api/v1/direction/posts" : {
+      "post" : {
+        "description" : "텍스트만, JPEG/PNG 이미지 한 장만 또는 둘을 조합해 제출합니다. 수신자 확정은 비동기 worker가 수행합니다.",
+        "operationId" : "submit",
+        "parameters" : [
+          {
+            "description" : "동일 요청 재시도를 위한 1~200자 멱등 키",
+            "in" : "header",
+            "name" : "Idempotency-Key",
+            "required" : true,
+            "schema" : {
+              "type" : "string"
+            }
+          }
+        ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/SubmitDirectionPostRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "202" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiResponseDirectionPostSubmissionResponse"
+                }
+              }
+            },
+            "description" : "질문글 제출을 접수했습니다."
+          },
+          "400" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "본문, 미디어 또는 멱등키가 정책에 맞지 않습니다."
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "앱 액세스 토큰이 유효하지 않습니다."
+          },
+          "403" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "미디어 소유권 또는 계정 자격이 없습니다."
+          },
+          "404" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "질문 또는 방향 구획을 찾을 수 없습니다."
+          },
+          "409" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "멱등키가 다른 요청에 재사용됐거나 현재 정책을 사용할 수 없습니다."
+          },
+          "500" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "서버 내부 오류가 발생했습니다."
+          }
+        },
+        "security" : [
+          {
+            "appAccessToken" : [ ]
+          }
+        ],
+        "summary" : "방향 질문글 비동기 제출",
+        "tags" : [
+          "방향 질문글"
+        ]
+      }
+    },
     "/api/v1/direction/presence" : {
       "put" : {
         "description" : "인증 사용자의 최신 위치와 질문 수신 허용 상태를 갱신한다.\n사용자와 지역은 서버에서 결정하고, 관측 시각이 같거나 더 오래된 재시도는 적용하지 않는다.\n정확 좌표는 성공 응답에 반환하지 않는다.",
@@ -1380,6 +1731,230 @@
           "방향 위치"
         ]
       }
+    },
+    "/api/v1/direction/preview" : {
+      "get" : {
+        "description" : "인증 사용자의 현재 presence와 서버 정책으로 모든 활성 방향 구간의 참고 후보 수를 반환합니다. 사용자 ID와 정확 위치는 반환하지 않습니다.",
+        "operationId" : "preview",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiResponseDirectionPreviewResponse"
+                }
+              }
+            },
+            "description" : "미리보기를 반환합니다."
+          },
+          "400" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "요청 값이 올바르지 않습니다. 오류 코드는 docs/error-codes.md를 따른다."
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "앱 액세스 토큰이 유효하지 않습니다."
+          },
+          "409" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "현재 위치 또는 방향 정책을 사용할 수 없습니다."
+          },
+          "500" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "서버 내부 오류가 발생했습니다."
+          }
+        },
+        "security" : [
+          {
+            "appAccessToken" : [ ]
+          }
+        ],
+        "summary" : "방향별 후보 수 미리보기",
+        "tags" : [
+          "방향 질문글"
+        ]
+      }
+    },
+    "/api/v1/media-assets/upload-requests" : {
+      "post" : {
+        "description" : "인증 사용자 소유의 JPEG/JPG 또는 PNG 한 건에 대한 presigned PUT URL을 발급합니다. storage key는 반환하지 않습니다.",
+        "operationId" : "issueUploadUrl",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/MediaUploadRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "201" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiResponseMediaUploadResponse"
+                }
+              }
+            },
+            "description" : "업로드 예약을 발급했습니다."
+          },
+          "400" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "MIME type 또는 파일 크기가 정책에 맞지 않습니다."
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "앱 액세스 토큰이 유효하지 않습니다."
+          },
+          "500" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "서버 내부 오류가 발생했습니다."
+          }
+        },
+        "security" : [
+          {
+            "appAccessToken" : [ ]
+          }
+        ],
+        "summary" : "이미지 업로드 예약",
+        "tags" : [
+          "미디어"
+        ]
+      }
+    },
+    "/api/v1/media-assets/{mediaId}/confirm" : {
+      "post" : {
+        "description" : "본인 소유 업로드 객체의 실제 MIME type과 크기를 확인합니다. 이미 확정된 상태는 멱등하게 반환합니다.",
+        "operationId" : "confirm",
+        "parameters" : [
+          {
+            "description" : "미디어 식별자",
+            "example" : 42,
+            "in" : "path",
+            "name" : "mediaId",
+            "required" : true,
+            "schema" : {
+              "format" : "int64",
+              "type" : "integer"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiResponseMediaConfirmResponse"
+                }
+              }
+            },
+            "description" : "업로드 상태를 확인했습니다."
+          },
+          "400" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "미디어 식별자가 올바르지 않습니다."
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "앱 액세스 토큰이 유효하지 않습니다."
+          },
+          "404" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "미디어를 찾을 수 없습니다."
+          },
+          "500" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "서버 내부 오류가 발생했습니다."
+          },
+          "503" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "외부 저장소를 일시적으로 사용할 수 없습니다."
+          }
+        },
+        "security" : [
+          {
+            "appAccessToken" : [ ]
+          }
+        ],
+        "summary" : "이미지 업로드 확인",
+        "tags" : [
+          "미디어"
+        ]
+      }
     }
   },
   "servers" : [
@@ -1404,6 +1979,14 @@
     {
       "description" : "운영자 세션 로그인과 로그아웃",
       "name" : "백오피스 인증"
+    },
+    {
+      "description" : "질문글 이미지 업로드 예약과 완료 확인",
+      "name" : "미디어"
+    },
+    {
+      "description" : "방향별 후보 미리보기와 비동기 질문글 제출",
+      "name" : "방향 질문글"
     }
   ]
 }

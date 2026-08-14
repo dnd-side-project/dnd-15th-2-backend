@@ -57,7 +57,7 @@ public final class ActiveUserPresenceSql {
 			  AND p.receive_allowed = TRUE
 			  AND p.location_at <= :at
 			  AND p.expires_at > :at
-			  AND (:regionCode IS NULL OR p.coarse_region_code = :regionCode)
+			  AND (CAST(:regionCode AS VARCHAR) IS NULL OR p.coarse_region_code = CAST(:regionCode AS VARCHAR))
 			  AND ST_DWithin(p.position, origin.point, :maxDistanceMeters)
 			  AND NOT EXISTS (SELECT 1 FROM user_block ub
 			                  WHERE ub.blocker_id = :excludedUserId
@@ -96,7 +96,7 @@ public final class ActiveUserPresenceSql {
 			  AND p.receive_allowed = TRUE
 			  AND p.location_at <= :at
 			  AND p.expires_at > :at
-			  AND (:regionCode IS NULL OR p.coarse_region_code = :regionCode)
+			  AND (CAST(:regionCode AS VARCHAR) IS NULL OR p.coarse_region_code = CAST(:regionCode AS VARCHAR))
 			  AND ST_DWithin(p.position, origin.point, :maxDistanceMeters)
 			  AND NOT EXISTS (SELECT 1 FROM user_block ub
 			                  WHERE ub.blocker_id = :excludedUserId

@@ -2,6 +2,7 @@ package com.dnd.qello.answer.repository.jdbc;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.List;
 import java.util.Optional;
 
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
@@ -39,6 +40,16 @@ public class JdbcMediaAttachmentRepository implements MediaAttachmentRepository 
 	public Optional<MediaAttachment> findByMediaIdAndOwnerId(long mediaId, long ownerId) {
 		return one("SELECT * FROM media_attachment WHERE media_id = :mediaId AND owner_id = :ownerId",
 			new MapSqlParameterSource().addValue("mediaId", mediaId).addValue("ownerId", ownerId));
+	}
+
+	@Override
+	public List<Long> findMediaIdsByPostId(long postId) {
+		return jdbc.queryForList("""
+			SELECT media_id
+			FROM media_attachment
+			WHERE post_id = :postId
+			ORDER BY display_order, media_id
+			""", new MapSqlParameterSource("postId", postId), Long.class);
 	}
 
 	@Override
