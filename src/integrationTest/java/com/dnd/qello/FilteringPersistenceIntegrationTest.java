@@ -96,6 +96,28 @@ class FilteringPersistenceIntegrationTest extends PostgisContainerIntegrationTes
 	}
 
 	@Test
+	@DisplayName("deadline 경과 후보 조회는 deadlineAt<=at·RESOLVED 제외·deadlineAt/id 오름차순·limit을 실제 저장소로 지킨다")
+	void findsDeadlineElapsedCandidatesWithinBoundary() {
+		FilterJob dueEarlier = filterJobRepository.save(
+			FilterJob.create(TARGET, releaseId, "deadline-key-1", NOW.minusSeconds(1), NOW.minusSeconds(700)));
+		FilterJob dueAtBoundary = filterJobRepository.save(
+			FilterJob.create(TARGET, releaseId, "deadline-key-2", NOW, NOW.minusSeconds(700)));
+		FilterJob notDueYet = filterJobRepository.save(
+			FilterJob.create(TARGET, releaseId, "deadline-key-3", NOW.plusSeconds(1), NOW.minusSeconds(700)));
+		FilterJob resolvedPastDeadline = filterJobRepository.save(
+			FilterJob.create(TARGET, releaseId, "deadline-key-4", NOW.minusSeconds(1), NOW.minusSeconds(700)));
+		filterJobRepository.save(resolvedPastDeadline.applyAutomatedDecision(1, FilterVerdict.ALLOW, NOW));
+
+		assertThat(filterJobRepository.findDeadlineElapsedCandidates(NOW, 50))
+			.extracting(FilterJob::id)
+			.containsExactly(dueEarlier.id(), dueAtBoundary.id());
+		assertThat(filterJobRepository.findDeadlineElapsedCandidates(NOW, 1))
+			.extracting(FilterJob::id)
+			.containsExactly(dueEarlier.id());
+		assertThat(notDueYet.deadlineAt()).isAfter(NOW);
+	}
+
+	@Test
 	@DisplayName("같은 job·attempt generation의 두 번째 FilterDecision 저장은 유일성 제약으로 거절된다")
 	void rejectsDuplicateDecisionForSameAttempt() {
 		FilterJob job = filterJobRepository.save(FilterJob.create(TARGET, releaseId, "decision-key", DEADLINE, NOW));
@@ -143,15 +165,15 @@ class FilteringPersistenceIntegrationTest extends PostgisContainerIntegrationTes
 	void enforcesJobStateCheckConstraintsAtDatabaseLevel() {
 		assertThatThrownBy(() -> jdbc.update("""
 			INSERT INTO filter_job
-				(target_type, target_id, filter_release_id, status, idempotency_key, resolved_verdict)
-			VALUES ('ANSWER', 1, ?, 'RESOLVED', 'raw-1', NULL)
+				(target_type, target_id, filter_release_id, status, idempotency_key, resolved_verdict, deadline_at)
+			VALUES ('ANSWER', 1, ?, 'RESOLVED', 'raw-1', NULL, clock_timestamp() + interval '10 minutes')
 			""", releaseId))
 			.isInstanceOf(DataIntegrityViolationException.class);
 
 		assertThatThrownBy(() -> jdbc.update("""
 			INSERT INTO filter_job
-				(target_type, target_id, filter_release_id, status, idempotency_key, manually_resolved)
-			VALUES ('ANSWER', 1, ?, 'AUTOMATED', 'raw-2', TRUE)
+				(target_type, target_id, filter_release_id, status, idempotency_key, manually_resolved, deadline_at)
+			VALUES ('ANSWER', 1, ?, 'AUTOMATED', 'raw-2', TRUE, clock_timestamp() + interval '10 minutes')
 			""", releaseId))
 			.isInstanceOf(DataIntegrityViolationException.class);
 	}
