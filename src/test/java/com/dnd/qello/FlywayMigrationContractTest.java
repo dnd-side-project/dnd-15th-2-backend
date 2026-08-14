@@ -55,6 +55,7 @@ class FlywayMigrationContractTest {
 			"V11__add_filter_release_registry.sql",
 			"V12__add_direction_matching_outbox_contract.sql",
 			"V13__add_answer_moderation_job_deadline_and_outbox_contract.sql",
+			"V14__add_answer_moderation_retry_budget_and_release_gate.sql",
 			"V1__create_direction_communication_schema.sql",
 			"V2__add_reactions_and_skip_pending.sql",
 			"V3__add_user_account_password_hash.sql",

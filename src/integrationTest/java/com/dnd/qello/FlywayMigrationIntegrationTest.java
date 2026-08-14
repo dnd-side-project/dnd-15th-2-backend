@@ -162,7 +162,7 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 	private JdbcTemplate jdbcTemplate;
 
 	@Test
-	@DisplayName("빈 PostGIS 데이터베이스의 startup에서 V1부터 V13까지 migration을 적용한다")
+	@DisplayName("빈 PostGIS 데이터베이스의 startup에서 V1부터 V14까지 migration을 적용한다")
 	void appliesAllMigrationsOnApplicationStartup() {
 		Integer successfulV1 = jdbcTemplate.queryForObject("""
 			SELECT count(*)
@@ -229,6 +229,11 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 			FROM flyway_schema_history
 			WHERE version = '13' AND success
 			""", Integer.class);
+		Integer successfulV14 = jdbcTemplate.queryForObject("""
+			SELECT count(*)
+			FROM flyway_schema_history
+			WHERE version = '14' AND success
+			""", Integer.class);
 		String postgisVersion = jdbcTemplate.queryForObject(
 			"SELECT PostGIS_Version()", String.class);
 
@@ -245,7 +250,8 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 		assertThat(successfulV11).isEqualTo(1);
 		assertThat(successfulV12).isEqualTo(1);
 		assertThat(successfulV13).isEqualTo(1);
-		assertThat(flyway.info().applied()).hasSize(13);
+		assertThat(successfulV14).isEqualTo(1);
+		assertThat(flyway.info().applied()).hasSize(14);
 		assertThat(postgisVersion).isNotBlank();
 	}
 
@@ -397,6 +403,38 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 		assertThat(aggregateTypeConstraint).contains("FILTER_JOB");
 		assertThat(eventTypeConstraint).contains(
 			"MODERATION_EXECUTION_REQUESTED", "MODERATION_VERDICT_READY", "MODERATION_DEADLINE_ELAPSED");
+	}
+
+	@Test
+	@DisplayName("V14는 filter_job.logical_attempt_count와 filter_release_retry_gate 테이블·제약을 생성한다")
+	void v14AddsAnswerModerationRetryBudgetAndReleaseGateCatalog() {
+		assertThat(columnExists("filter_job", "logical_attempt_count")).isTrue();
+		Integer nullableLogicalAttemptCount = jdbcTemplate.queryForObject("""
+			SELECT count(*)
+			FROM information_schema.columns
+			WHERE table_schema = 'public' AND table_name = 'filter_job' AND column_name = 'logical_attempt_count'
+			  AND is_nullable = 'NO'
+			""", Integer.class);
+		assertThat(nullableLogicalAttemptCount).isEqualTo(1);
+
+		Integer retryGateTableExists = jdbcTemplate.queryForObject("""
+			SELECT count(*)
+			FROM information_schema.tables
+			WHERE table_schema = 'public' AND table_name = 'filter_release_retry_gate'
+			""", Integer.class);
+		assertThat(retryGateTableExists).isEqualTo(1);
+
+		Set<String> retryGateConstraintNames = new HashSet<>(jdbcTemplate.queryForList("""
+			SELECT conname
+			FROM pg_constraint
+			WHERE conrelid = 'filter_release_retry_gate'::regclass
+			""", String.class));
+		assertThat(retryGateConstraintNames).contains(
+			"fk_filter_release_retry_gate_release",
+			"ck_filter_release_retry_gate_state",
+			"ck_filter_release_retry_gate_limit",
+			"ck_filter_release_retry_gate_limit_positive",
+			"ck_filter_release_retry_gate_counts");
 	}
 
 	@Test
