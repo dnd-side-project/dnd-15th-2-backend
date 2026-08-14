@@ -150,13 +150,13 @@ class AnswerModerationJobIntakeServiceTest {
 
 	private static FilterJob withId(FilterJob job, long id) {
 		return FilterJob.restore(id, job.target(), job.filterReleaseId(), job.status(), job.attemptGeneration(),
-			job.manuallyResolved(), job.resolvedVerdict(), job.idempotencyKey(), job.deadlineAt(), job.createdAt(),
-			job.updatedAt());
+			job.logicalAttemptCount(), job.manuallyResolved(), job.resolvedVerdict(), job.idempotencyKey(),
+			job.deadlineAt(), job.createdAt(), job.updatedAt());
 	}
 
 	private static FilterJob restoredJob() {
-		return FilterJob.restore(1L, TARGET, 5L, com.dnd.qello.filtering.domain.FilterJobStatus.AUTOMATED, 1, false,
-			null, "idem-1", NOW.plus(DEADLINE_WINDOW), NOW, NOW);
+		return FilterJob.restore(1L, TARGET, 5L, com.dnd.qello.filtering.domain.FilterJobStatus.AUTOMATED, 1, 0,
+			false, null, "idem-1", NOW.plus(DEADLINE_WINDOW), NOW, NOW);
 	}
 
 	private static FilterRelease release() {
