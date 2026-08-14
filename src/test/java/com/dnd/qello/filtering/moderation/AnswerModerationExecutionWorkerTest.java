@@ -168,6 +168,40 @@ class AnswerModerationExecutionWorkerTest {
 	}
 
 	@Test
+	@DisplayName("claim한 이벤트가 가리키는 job이 존재하지 않으면 JOB_NOT_FOUND로 이벤트를 종결한다")
+	void marksEventDeadWhenJobMissing() {
+		when(filterJobRepository.findById(10L)).thenReturn(Optional.empty());
+		when(outboxEventRepository.fail(eq(1L), eq("worker-1"), eq(1L), eq(NOW), eq(NOW), eq(true))).thenReturn(true);
+		AnswerModerationExecutionWorker worker = worker(allowingPipeline());
+		when(outboxEventRepository.claimDue(any(), eq(10), eq("worker-1"), eq(NOW), eq(NOW.plusSeconds(30))))
+			.thenReturn(List.of(claimedExecutionEvent(automatedJob())));
+
+		AnswerModerationExecutionWorker.BatchResult result = worker.processBatch(command());
+
+		assertThat(result.outcomes()).containsExactly(AnswerModerationExecutionWorker.Outcome.JOB_NOT_FOUND);
+		verify(filterJobRepository, never()).save(any());
+	}
+
+	@Test
+	@DisplayName("payload의 attemptGeneration이 job의 현재 세대보다 낮으면 판정을 적용하지 않고 claim만 완료한다")
+	void skipsStaleAttemptGenerationVerdict() {
+		FilterJob migrated = automatedJob().advanceAttemptGeneration(NOW);
+		when(filterJobRepository.findById(10L)).thenReturn(Optional.of(migrated));
+		when(outboxEventRepository.complete(1L, "worker-1", 1L, NOW)).thenReturn(true);
+		AnswerModerationExecutionWorker worker = worker(allowingPipeline());
+		OutboxEvent staleEvent = claimedExecutionEvent(automatedJob());
+		when(outboxEventRepository.claimDue(any(), eq(10), eq("worker-1"), eq(NOW), eq(NOW.plusSeconds(30))))
+			.thenReturn(List.of(staleEvent));
+
+		AnswerModerationExecutionWorker.BatchResult result = worker.processBatch(command());
+
+		assertThat(result.outcomes()).containsExactly(AnswerModerationExecutionWorker.Outcome.SKIPPED_NOT_ELIGIBLE);
+		verify(filterJobRepository, never()).save(any());
+		verify(outboxEventRepository, never()).save(any());
+		verify(outboxEventRepository).complete(1L, "worker-1", 1L, NOW);
+	}
+
+	@Test
 	@DisplayName("claim 완료 시점에 이미 다른 worker가 선점했다면 STALE_LEASE를 반환한다")
 	void returnsStaleLeaseWhenCompleteFails() {
 		FilterJob job = automatedJob();

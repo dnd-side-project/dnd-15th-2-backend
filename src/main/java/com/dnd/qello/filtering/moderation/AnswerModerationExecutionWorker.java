@@ -83,6 +83,10 @@ public class AnswerModerationExecutionWorker {
 	public BatchResult processBatch(BatchCommand command) {
 		requireCommand(command);
 		Instant claimAt = command.at() == null ? clock.instant() : command.at();
+		if (!command.leaseExpiresAt().isAfter(claimAt)) {
+			throw new FilteringException(
+				FilteringErrorCode.INVALID_VALUE_RANGE, "batch", "실행 batch 입력이 유효하지 않습니다");
+		}
 		List<OutboxEvent> claimed = outboxEventRepository.claimDue(
 			Set.of(OutboxEventType.MODERATION_EXECUTION_REQUESTED), command.limit(), command.leaseOwner(),
 			claimAt, command.leaseExpiresAt());
@@ -95,7 +99,7 @@ public class AnswerModerationExecutionWorker {
 			objectMapper, event.payload(), AnswerModerationEventPayloads.ExecutionRequested.class);
 		Optional<FilterJob> jobOpt = filterJobRepository.findById(payload.filterJobId());
 		if (jobOpt.isEmpty()) {
-			return finishDead(event);
+			return finishDead(event, Outcome.JOB_NOT_FOUND);
 		}
 		FilterJob job = jobOpt.get();
 		if (job.status() != FilterJobStatus.AUTOMATED) {
@@ -106,9 +110,9 @@ public class AnswerModerationExecutionWorker {
 		try {
 			result = callPipelineBounded(payload, job);
 		} catch (PipelineUnavailableException unavailable) {
-			return finishDead(event);
+			return finishDead(event, Outcome.PIPELINE_UNAVAILABLE);
 		}
-		return applyVerdict(event, job, result.verdict());
+		return applyVerdict(event, job, payload.attemptGeneration(), result.verdict());
 	}
 
 	private ModerationPipelineResult callPipelineBounded(
@@ -117,7 +121,7 @@ public class AnswerModerationExecutionWorker {
 		FilterRelease release = filterReleaseRepository.findById(job.filterReleaseId())
 			.orElseThrow(() -> new FilteringException(FilteringErrorCode.RELEASE_NOT_FOUND, "filterReleaseId"));
 		ModerationPipelineRequest request = ModerationPipelineRequest.forJob(payload.targetType(),
-			payload.language(), payload.rawContent(), release, job.id(), job.attemptGeneration());
+			payload.language(), payload.rawContent(), release, job.id(), payload.attemptGeneration());
 
 		Future<ModerationPipelineResult> future = executor.submit(() -> pipeline.execute(request));
 		try {
@@ -136,33 +140,52 @@ public class AnswerModerationExecutionWorker {
 		}
 	}
 
-	private Outcome applyVerdict(OutboxEvent event, FilterJob job, FilterVerdict verdict) {
+	// decisionAttemptGeneration은 이 이벤트가 발행된 시점의 세대(payload.attemptGeneration())여야
+	// 한다 — job의 현재 세대를 그대로 넘기면 STALE_ATTEMPT_GENERATION 검사가 자기 자신과
+	// 비교하는 셈이 되어 emergency migration으로 세대가 넘어간 뒤 도착한 낡은 결과를
+	// 걸러내지 못한다(fencing 무력화).
+	//
+	// pipeline 호출은 트랜잭션 밖에서 실행되므로, 그 사이 job의 세대가 바뀌었을 수 있다.
+	// processClaimed가 넘긴 job은 pipeline 호출 전 스냅샷이라 여기서 그대로 저장하면
+	// 그 사이의 변경을 덮어쓸 수 있다 — 저장 직전 같은 트랜잭션에서 다시 조회해 검증한다.
+	private Outcome applyVerdict(OutboxEvent event, FilterJob job, int decisionAttemptGeneration, FilterVerdict verdict) {
 		try {
-			Outcome outcome = transactionTemplate.execute(status -> {
+			return transactionTemplate.execute(status -> {
 				Instant now = Instant.now(clock);
-				FilterJob resolved = job.applyAutomatedDecision(job.attemptGeneration(), verdict, now);
+				FilterJob current = filterJobRepository.findById(job.id())
+					.orElseThrow(() -> new FilteringException(
+						FilteringErrorCode.INVALID_JOB_STATUS, "filterJobId", "job을 찾을 수 없습니다"));
+				FilterJob resolved = current.applyAutomatedDecision(decisionAttemptGeneration, verdict, now);
 				filterJobRepository.save(resolved);
 				filterJobStatusHistoryRepository.save(FilterJobStatusHistoryEntry.of(
-					job.id(), job.status(), FilterJobStatus.RESOLVED, "automated decision", now));
+					current.id(), current.status(), FilterJobStatus.RESOLVED, "automated decision", now));
 				outboxEventRepository.save(verdictReadyEvent(resolved, now));
 				return completeClaimOrThrow(event, now);
 			});
-			return outcome;
 		} catch (StaleLeaseException staleLease) {
 			return Outcome.STALE_LEASE;
 		} catch (FilteringException raceOnJobState) {
-			// 이 worker가 pipeline을 기다리는 사이 job이 이미 다른 경로(수동 결정 등)로
-			// 종결된 race. 이 결과를 덮어쓰지 않고 claim만 완료한다.
+			// job이 이미 다른 경로로 종결된 race만 흡수한다 — 그 외 FilteringException(예:
+			// payload 직렬화 실패)은 판정 유실을 감추게 되므로 그대로 전파한다.
+			if (!isJobStateRace(raceOnJobState)) {
+				throw raceOnJobState;
+			}
 			return finishSkipped(event);
 		}
 	}
 
-	private Outcome finishDead(OutboxEvent event) {
+	private static boolean isJobStateRace(FilteringException e) {
+		return e.getErrorCode() == FilteringErrorCode.ALREADY_MANUALLY_RESOLVED
+			|| e.getErrorCode() == FilteringErrorCode.STALE_ATTEMPT_GENERATION
+			|| e.getErrorCode() == FilteringErrorCode.INVALID_JOB_STATUS;
+	}
+
+	private Outcome finishDead(OutboxEvent event, Outcome deadOutcome) {
 		return transactionTemplate.execute(status -> {
 			Instant now = Instant.now(clock);
 			boolean updated = outboxEventRepository.fail(
 				event.id(), event.leaseOwner(), event.leaseGeneration(), now, now, true);
-			return updated ? Outcome.PIPELINE_UNAVAILABLE : Outcome.STALE_LEASE;
+			return updated ? deadOutcome : Outcome.STALE_LEASE;
 		});
 	}
 
@@ -189,9 +212,9 @@ public class AnswerModerationExecutionWorker {
 		FilterTarget target = job.target();
 		AnswerModerationEventPayloads.VerdictReady payload = new AnswerModerationEventPayloads.VerdictReady(
 			job.id(), target.targetType(), target.targetId(), target.targetVersion(), job.resolvedVerdict());
-		String dedupKey = "filter-job:" + job.id() + ":VERDICT_READY";
 		return OutboxEvent.pending(OutboxAggregateType.FILTER_JOB, job.id(), OutboxEventType.MODERATION_VERDICT_READY,
-			dedupKey, AnswerModerationEventPayloads.toJson(objectMapper, payload), now);
+			AnswerModerationEventPayloads.verdictReadyDedupKey(job.id()),
+			AnswerModerationEventPayloads.toJson(objectMapper, payload), now);
 	}
 
 	private void requireCommand(BatchCommand command) {
@@ -200,7 +223,7 @@ public class AnswerModerationExecutionWorker {
 		}
 	}
 
-	public enum Outcome {RESOLVED, SKIPPED_NOT_ELIGIBLE, PIPELINE_UNAVAILABLE, STALE_LEASE}
+	public enum Outcome {RESOLVED, SKIPPED_NOT_ELIGIBLE, PIPELINE_UNAVAILABLE, JOB_NOT_FOUND, STALE_LEASE}
 
 	public record BatchResult(int claimed, List<Outcome> outcomes) {
 		public BatchResult {
@@ -211,11 +234,12 @@ public class AnswerModerationExecutionWorker {
 		}
 	}
 
-	/** at이 null이면 claim 시각을 Clock에서 읽는다. */
+	// at이 null이면 claim 시각을 Clock에서 읽는다. leaseExpiresAt이 실제 claim 시각보다
+	// 뒤인지는 그 시각이 확정되는 processBatch에서 검증한다 — 여기서 at != null일 때만
+	// 검증하면 at이 null인 호출은 과거 시각의 leaseExpiresAt도 그대로 통과시킬 수 있다.
 	public record BatchCommand(int limit, String leaseOwner, Instant at, Instant leaseExpiresAt) {
 		public BatchCommand {
-			if (limit <= 0 || leaseOwner == null || leaseOwner.isBlank() || leaseExpiresAt == null
-				|| (at != null && !leaseExpiresAt.isAfter(at))) {
+			if (limit <= 0 || leaseOwner == null || leaseOwner.isBlank() || leaseExpiresAt == null) {
 				throw new FilteringException(
 					FilteringErrorCode.INVALID_VALUE_RANGE, "batch", "실행 batch 입력이 유효하지 않습니다");
 			}
