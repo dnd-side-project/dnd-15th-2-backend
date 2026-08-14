@@ -38,6 +38,7 @@ class FilteringPersistenceIntegrationTest extends PostgisContainerIntegrationTes
 
 	private static final Instant NOW = Instant.parse("2026-08-11T00:00:00Z");
 	private static final FilterTarget TARGET = FilterTarget.of(FilterTargetType.ANSWER, 1L);
+	private static final Instant DEADLINE = NOW.plusSeconds(600);
 
 	@Autowired
 	private JdbcTemplate jdbc;
@@ -69,7 +70,7 @@ class FilteringPersistenceIntegrationTest extends PostgisContainerIntegrationTes
 	@Test
 	@DisplayName("FilterJob은 저장 후 조회해도 값이 그대로 보존된다")
 	void savesAndFindsFilterJobThroughDomainPort() {
-		FilterJob saved = filterJobRepository.save(FilterJob.create(TARGET, releaseId, "job-key-1", NOW));
+		FilterJob saved = filterJobRepository.save(FilterJob.create(TARGET, releaseId, "job-key-1", DEADLINE, NOW));
 
 		FilterJob found = filterJobRepository.findById(saved.id()).orElseThrow();
 
@@ -80,16 +81,16 @@ class FilteringPersistenceIntegrationTest extends PostgisContainerIntegrationTes
 	@Test
 	@DisplayName("같은 idempotencyKey의 두 번째 FilterJob 저장은 DB 유일성 제약으로 거절된다")
 	void rejectsDuplicateJobIdempotencyKey() {
-		filterJobRepository.save(FilterJob.create(TARGET, releaseId, "dup-key", NOW));
+		filterJobRepository.save(FilterJob.create(TARGET, releaseId, "dup-key", DEADLINE, NOW));
 
-		assertThatThrownBy(() -> filterJobRepository.save(FilterJob.create(TARGET, releaseId, "dup-key", NOW)))
+		assertThatThrownBy(() -> filterJobRepository.save(FilterJob.create(TARGET, releaseId, "dup-key", DEADLINE, NOW)))
 			.isInstanceOf(DataIntegrityViolationException.class);
 	}
 
 	@Test
 	@DisplayName("존재하지 않는 filterReleaseId로 FilterJob을 저장하면 FK 제약으로 거절된다")
 	void rejectsFilterJobWithMissingRelease() {
-		FilterJob orphan = FilterJob.create(TARGET, releaseId + 999, "orphan-key", NOW);
+		FilterJob orphan = FilterJob.create(TARGET, releaseId + 999, "orphan-key", DEADLINE, NOW);
 
 		assertThatThrownBy(() -> filterJobRepository.save(orphan)).isInstanceOf(DataIntegrityViolationException.class);
 	}
@@ -97,7 +98,7 @@ class FilteringPersistenceIntegrationTest extends PostgisContainerIntegrationTes
 	@Test
 	@DisplayName("같은 job·attempt generation의 두 번째 FilterDecision 저장은 유일성 제약으로 거절된다")
 	void rejectsDuplicateDecisionForSameAttempt() {
-		FilterJob job = filterJobRepository.save(FilterJob.create(TARGET, releaseId, "decision-key", NOW));
+		FilterJob job = filterJobRepository.save(FilterJob.create(TARGET, releaseId, "decision-key", DEADLINE, NOW));
 		filterDecisionRepository.save(
 			FilterDecision.of(job.id(), 1, FilterVerdict.ALLOW, releaseId, "text-moderation-2026-08", NOW));
 
@@ -121,7 +122,7 @@ class FilteringPersistenceIntegrationTest extends PostgisContainerIntegrationTes
 	@Test
 	@DisplayName("동일 대상·decision의 AppealCase는 하나만 만들 수 있고 기존 appeal을 조회로 찾을 수 있다")
 	void enforcesAppealCaseUniquenessAndIdempotentLookup() {
-		FilterJob job = filterJobRepository.save(FilterJob.create(TARGET, releaseId, "appeal-decision-key", NOW));
+		FilterJob job = filterJobRepository.save(FilterJob.create(TARGET, releaseId, "appeal-decision-key", DEADLINE, NOW));
 		FilterDecision decision = filterDecisionRepository.save(
 			FilterDecision.of(job.id(), 1, FilterVerdict.BLOCK, releaseId, "text-moderation-2026-08", NOW));
 

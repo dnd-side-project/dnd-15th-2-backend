@@ -6,5 +6,6 @@ public enum OutboxAggregateType {
 	ANSWER,
 	QUESTION_ASSIGNMENT,
 	QUESTION_PROPOSAL,
-	REPORT
+	REPORT,
+	FILTER_JOB
 }

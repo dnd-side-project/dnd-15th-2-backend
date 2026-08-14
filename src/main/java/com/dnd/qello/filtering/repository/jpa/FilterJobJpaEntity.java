@@ -48,6 +48,8 @@ public class FilterJobJpaEntity {
 	private FilterVerdict resolvedVerdict;
 	@Column(name = "idempotency_key", nullable = false, length = 200)
 	private String idempotencyKey;
+	@Column(name = "deadline_at", nullable = false)
+	private Instant deadlineAt;
 	@Column(name = "created_at", nullable = false)
 	private Instant createdAt;
 	@Column(name = "updated_at", nullable = false)
@@ -66,6 +68,7 @@ public class FilterJobJpaEntity {
 		this.manuallyResolved = job.manuallyResolved();
 		this.resolvedVerdict = job.resolvedVerdict();
 		this.idempotencyKey = job.idempotencyKey();
+		this.deadlineAt = job.deadlineAt();
 		this.createdAt = job.createdAt();
 		this.updatedAt = job.updatedAt();
 	}
@@ -80,6 +83,7 @@ public class FilterJobJpaEntity {
 	boolean isManuallyResolved() { return manuallyResolved; }
 	FilterVerdict getResolvedVerdict() { return resolvedVerdict; }
 	String getIdempotencyKey() { return idempotencyKey; }
+	Instant getDeadlineAt() { return deadlineAt; }
 	Instant getCreatedAt() { return createdAt; }
 	Instant getUpdatedAt() { return updatedAt; }
 }

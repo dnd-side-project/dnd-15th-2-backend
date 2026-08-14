@@ -66,6 +66,7 @@ import com.dnd.qello.filtering.repository.FilterReleaseRepository;
 class ModerationPipelineIntegrationTest extends PostgisContainerIntegrationTestSupport {
 
 	private static final Instant NOW = Instant.parse("2026-08-11T00:00:00Z");
+	private static final Instant DEADLINE = NOW.plusSeconds(600);
 	private static final String MODEL_SNAPSHOT = "omni-moderation-2024-09-26";
 
 	@Autowired
@@ -198,7 +199,7 @@ class ModerationPipelineIntegrationTest extends PostgisContainerIntegrationTestS
 
 	private FilterJob createJob() {
 		return filterJobRepository.save(FilterJob.create(
-			FilterTarget.of(FilterTargetType.ANSWER, 1L), releaseId, "job-" + UUID.randomUUID(), NOW));
+			FilterTarget.of(FilterTargetType.ANSWER, 1L), releaseId, "job-" + UUID.randomUUID(), DEADLINE, NOW));
 	}
 
 	private FilterRelease releaseFixture() {
