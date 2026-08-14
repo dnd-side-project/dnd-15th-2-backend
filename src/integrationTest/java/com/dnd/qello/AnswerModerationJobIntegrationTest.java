@@ -80,6 +80,7 @@ class AnswerModerationJobIntegrationTest extends PostgisContainerIntegrationTest
 
 	private long releaseId;
 	private ExecutorService executor;
+	private ExecutorService pipelineExecutor;
 
 	@BeforeEach
 	void setUp() {
@@ -91,11 +92,16 @@ class AnswerModerationJobIntegrationTest extends PostgisContainerIntegrationTest
 		jdbc.update("DELETE FROM filter_release");
 		releaseId = promotedRelease();
 		executor = Executors.newFixedThreadPool(4);
+		// worker 실행(processBatch)과 pipeline 호출(callPipelineBounded)이 같은 풀을 쓰면,
+		// worker task가 자기 pipeline task의 완료를 기다리며 풀을 점유해 데드락이 생길 수
+		// 있다 — 두 역할을 별도 풀로 분리한다.
+		pipelineExecutor = Executors.newFixedThreadPool(4);
 	}
 
 	@AfterEach
 	void tearDown() {
 		executor.shutdownNow();
+		pipelineExecutor.shutdownNow();
 	}
 
 	@Test
@@ -231,7 +237,10 @@ class AnswerModerationJobIntegrationTest extends PostgisContainerIntegrationTest
 			future.get(10, TimeUnit.SECONDS);
 		} catch (java.util.concurrent.ExecutionException raceLoser) {
 			// 동시 접수의 패자는 idempotency_key unique 제약 위반으로 끝날 수 있다 —
-			// 그 자체가 "job이 두 개 만들어지지 않는다"는 보장의 증거다.
+			// 그 자체가 "job이 두 개 만들어지지 않는다"는 보장의 증거다. 원인이 그
+			// 제약 위반이 아니면 다른 결함을 감추는 것이므로 테스트를 실패시킨다.
+			assertThat(raceLoser.getCause())
+				.isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
 		}
 	}
 
@@ -247,7 +256,7 @@ class AnswerModerationJobIntegrationTest extends PostgisContainerIntegrationTest
 
 	private AnswerModerationExecutionWorker executionWorker(ModerationPipelineService pipeline) {
 		return new AnswerModerationExecutionWorker(pipeline, filterJobRepository, filterReleaseRepository,
-			historyRepository, outboxEventRepository, objectMapper, executor, Duration.ofSeconds(5),
+			historyRepository, outboxEventRepository, objectMapper, pipelineExecutor, Duration.ofSeconds(5),
 			transactionManager, Clock.fixed(NOW, ZoneOffset.UTC));
 	}
 
