@@ -57,7 +57,12 @@ public enum FilteringErrorCode implements ErrorCode {
 	// (닉네임 동기 경로, INV-NICK-003~005). 주 판정기 실패 코드와 관측을 분리하기
 	// 위한 별도 코드 — 이 코드 역시 ALLOW/BLOCK으로 바꾸지 않는다
 	SECONDARY_MODERATOR_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "FLT-EXT-002", ErrorCategory.EXT,
-		"보조 moderation 판정기 판정을 완료하지 못했습니다.");
+		"보조 moderation 판정기 판정을 완료하지 못했습니다."),
+
+	// outbox payload JSON 직렬화/역직렬화 실패. 입력값 검증 실패가 아니라 내부 오류이므로
+	// INVALID_TEXT(FLT-VAL-003)와 구분한다
+	PAYLOAD_SERIALIZATION_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "FLT-INFRA-003", ErrorCategory.INFRA,
+		"payload 직렬화 처리에 실패했습니다.");
 
 	private final HttpStatus httpStatus;
 	private final String code;
