@@ -20,6 +20,7 @@ import com.dnd.qello.notification.domain.OutboxEventType;
 import com.dnd.qello.notification.repository.OutboxEventRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
@@ -71,11 +72,21 @@ public class AnswerModerationJobIntakeService {
 	// idempotencyKey가 이미 접수된 job을 가리키면 그 job을 그대로 반환하고 아무것도
 	// 새로 만들지 않는다(INV-GEN-003) — 중복 호출이 job이나 콜백/이벤트를 추가로
 	// 만들지 않는다. 현재 승격된 release가 없으면 fail-closed로 거부한다.
+	//
+	// 조회 후 삽입 사이에는 경쟁 구간이 있다 — 두 트랜잭션이 모두 부재를 읽고 동시에
+	// createJob을 실행하면 idempotencyKey unique 제약이 최종 중재자로서 후발 트랜잭션의
+	// 삽입만 막는다. 그 경우 예외를 그대로 전파하지 않고, 새 트랜잭션에서 먼저 커밋된
+	// job을 다시 조회해 반환한다.
 	public FilterJob submit(
 		FilterTarget target, String rawContent, ModerationLanguage language, String idempotencyKey
 	) {
-		return transactionTemplate.execute(status -> filterJobRepository.findByIdempotencyKey(idempotencyKey)
-			.orElseGet(() -> createJob(target, rawContent, language, idempotencyKey)));
+		try {
+			return transactionTemplate.execute(status -> filterJobRepository.findByIdempotencyKey(idempotencyKey)
+				.orElseGet(() -> createJob(target, rawContent, language, idempotencyKey)));
+		} catch (DataIntegrityViolationException concurrentInsert) {
+			return transactionTemplate.execute(status -> filterJobRepository.findByIdempotencyKey(idempotencyKey))
+				.orElseThrow(() -> concurrentInsert);
+		}
 	}
 
 	private FilterJob createJob(
@@ -102,11 +113,8 @@ public class AnswerModerationJobIntakeService {
 			job.id(), target.targetType(), target.targetId(), target.targetVersion(),
 			rawContent, language, release.id(), job.attemptGeneration());
 		return OutboxEvent.pending(OutboxAggregateType.FILTER_JOB, job.id(),
-			OutboxEventType.MODERATION_EXECUTION_REQUESTED, executionDedupKey(job.id()),
+			OutboxEventType.MODERATION_EXECUTION_REQUESTED,
+			AnswerModerationEventPayloads.executionRequestedDedupKey(job.id()),
 			AnswerModerationEventPayloads.toJson(objectMapper, payload), now);
-	}
-
-	static String executionDedupKey(long filterJobId) {
-		return "filter-job:" + filterJobId + ":EXECUTION_REQUESTED";
 	}
 }

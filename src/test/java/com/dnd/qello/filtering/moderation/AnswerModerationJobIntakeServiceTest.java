@@ -21,6 +21,7 @@ import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionStatus;
 
@@ -119,6 +120,24 @@ class AnswerModerationJobIntakeServiceTest {
 		assertThat(event.eventType()).isEqualTo(OutboxEventType.MODERATION_EXECUTION_REQUESTED);
 		assertThat(event.dedupKey()).isEqualTo("filter-job:200:EXECUTION_REQUESTED");
 		assertThat(event.payload()).contains("답변 내용").contains("\"targetId\":42");
+	}
+
+	@Test
+	@DisplayName("조회 후 삽입 사이 경쟁으로 idempotencyKey unique 제약을 위반하면 예외를 전파하지 않고 먼저 커밋된 job을 다시 조회해 반환한다")
+	void returnsExistingJobWhenConcurrentInsertRaces() {
+		FilterJob existing = restoredJob();
+		when(filterJobRepository.findByIdempotencyKey("idem-1"))
+			.thenReturn(Optional.empty())
+			.thenReturn(Optional.of(existing));
+		when(filterReleaseRepository.findCurrentlyPromoted()).thenReturn(Optional.of(release()));
+		when(filterJobRepository.save(any())).thenThrow(new DataIntegrityViolationException("duplicate idempotency key"));
+		AnswerModerationJobIntakeService service = service();
+
+		FilterJob result = service.submit(TARGET, "답변 내용", ModerationLanguage.KO, "idem-1");
+
+		assertThat(result).isEqualTo(existing);
+		verify(outboxEventRepository, never()).save(any());
+		verify(historyRepository, never()).save(any());
 	}
 
 	private AnswerModerationJobIntakeService service() {
