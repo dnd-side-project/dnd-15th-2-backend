@@ -52,6 +52,11 @@ public class MediaAttachmentService {
 					AnswerErrorCode.MEDIA_OWNER_MISMATCH, "answerId", "본인 답변에만 첨부할 수 있습니다"));
 		}
 
+		if (mediaAttachmentRepository.findByMediaId(command.mediaId()).isPresent()) {
+			throw new AnswerException(
+				AnswerErrorCode.INVALID_MEDIA_STATUS, "mediaId", "이미 다른 콘텐츠에 첨부된 미디어입니다");
+		}
+
 		MediaAttachment attachment = new MediaAttachment(
 			command.mediaId(), command.requesterId(), command.postId(), command.answerId(), command.displayOrder());
 		return mediaAttachmentRepository.save(attachment);
@@ -95,5 +100,21 @@ public class MediaAttachmentService {
 	}
 
 	public record AttachCommand(long requesterId, long mediaId, Long postId, Long answerId, int displayOrder) {
+		public AttachCommand {
+			if (requesterId <= 0 || mediaId <= 0) {
+				throw new AnswerException(AnswerErrorCode.INVALID_ID, null, "미디어 첨부 식별자가 올바르지 않습니다");
+			}
+			if ((postId == null ? 0 : 1) + (answerId == null ? 0 : 1) != 1) {
+				throw new AnswerException(
+					AnswerErrorCode.INVALID_MEDIA_TARGET, null, "미디어 대상은 정확히 하나여야 합니다");
+			}
+			if (postId != null && postId <= 0 || answerId != null && answerId <= 0) {
+				throw new AnswerException(
+					AnswerErrorCode.INVALID_MEDIA_TARGET, null, "미디어 대상 ID가 유효하지 않습니다");
+			}
+			if (displayOrder < 0) {
+				throw new AnswerException(AnswerErrorCode.INVALID_ID, "displayOrder", "displayOrder는 음수일 수 없습니다");
+			}
+		}
 	}
 }

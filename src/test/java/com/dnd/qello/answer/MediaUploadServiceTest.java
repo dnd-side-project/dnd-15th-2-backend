@@ -1,6 +1,6 @@
 /**
- * Created at: 2026-08-07T03:10:00+09:00
- * Source scenario: TEST-PLAN-GH-70-MEDIA-ASSET-SERVICE-UNIT-004 through UNIT-005
+ * Created at: 2026-08-14T16:00:00+09:00
+ * Source scenario: TEST-PLAN-GH-122-DIRECTION-PREVIEW-SUBMISSION-API-UNIT-004
  */
 package com.dnd.qello.answer;
 
@@ -40,7 +40,7 @@ class MediaUploadServiceTest {
 	private final InMemoryMediaAssetRepository repository = new InMemoryMediaAssetRepository();
 	private final FakeObjectStoragePort storage = new FakeObjectStoragePort();
 	private final MediaStorageProperties properties = new MediaStorageProperties(
-		"test-bucket", Set.of("image/jpeg"), 1_000L, Duration.ofMinutes(10));
+		"test-bucket", Set.of("image/jpeg", "image/png"), 1_000L, Duration.ofMinutes(10));
 	private final MediaUploadService service = new MediaUploadService(repository, storage, properties);
 
 	@Test
@@ -66,12 +66,46 @@ class MediaUploadServiceTest {
 	}
 
 	@Test
+	@DisplayName("JPG MIME 별칭은 image/jpeg로 정규화하고 WebP는 허용하지 않는다")
+	void canonicalizesJpgAliasAndRejectsWebp() {
+		UploadUrl result = service.issueUploadUrl(
+			new IssueUploadUrlCommand(1L, 1L, " IMAGE/JPG ", 500L, "checksum", NOW));
+
+		assertThat(result.asset().getMimeType()).isEqualTo("image/jpeg");
+		assertThat(result.presignedUpload()).isNotNull();
+		assertThatThrownBy(() -> service.issueUploadUrl(
+			new IssueUploadUrlCommand(1L, 1L, "image/webp", 500L, "checksum", NOW)))
+			.isInstanceOf(AnswerException.class)
+			.hasFieldOrPropertyWithValue("errorCode", AnswerErrorCode.INVALID_MEDIA_METADATA);
+	}
+
+	@Test
+	@DisplayName("JPEG·PNG 이외 형식을 허용하는 미디어 설정은 애플리케이션 시작 전에 거부된다")
+	void rejectsUnsupportedMimeConfiguration() {
+		assertThatThrownBy(() -> new MediaStorageProperties(
+			"test-bucket", Set.of("image/jpeg", "image/webp"), 1_000L, Duration.ofMinutes(10)))
+			.isInstanceOf(AnswerException.class)
+			.hasFieldOrPropertyWithValue("errorCode", AnswerErrorCode.INVALID_MEDIA_METADATA)
+			.hasFieldOrPropertyWithValue("reason", "qello.media.allowed-mime-types는 JPEG/PNG만 지원합니다");
+	}
+
+	@Test
 	@DisplayName("소유자 본인이 허용 범위 안에서 요청하면 UPLOADING 자산과 presigned URL을 함께 반환한다")
 	void issuesUrlForOwnerWithinWhitelist() {
 		UploadUrl result = service.issueUploadUrl(
 			new IssueUploadUrlCommand(1L, 1L, "image/jpeg", 500L, "checksum", NOW));
 
 		assertThat(result.asset().getStatus()).isEqualTo(MediaAssetStatus.UPLOADING);
+		assertThat(result.presignedUpload().url()).isNotNull();
+	}
+
+	@Test
+	@DisplayName("PNG도 허용 목록에서 presigned URL을 발급한다")
+	void issuesUrlForPng() {
+		UploadUrl result = service.issueUploadUrl(
+			new IssueUploadUrlCommand(1L, 1L, "image/png", 1_000L, "checksum", NOW));
+
+		assertThat(result.asset().getMimeType()).isEqualTo("image/png");
 		assertThat(result.presignedUpload().url()).isNotNull();
 	}
 

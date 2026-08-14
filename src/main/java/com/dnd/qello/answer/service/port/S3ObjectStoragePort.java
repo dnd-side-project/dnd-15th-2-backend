@@ -42,7 +42,7 @@ public class S3ObjectStoragePort implements ObjectStoragePort {
 			return new PresignedUpload(presigned.url(), presigned.expiration());
 		} catch (SdkException exception) {
 			throw new AnswerException(
-				AnswerErrorCode.STORAGE_UNAVAILABLE, "storageKey", "presigned URL 발급에 실패했습니다", exception);
+				AnswerErrorCode.STORAGE_UNAVAILABLE, null, "presigned URL 발급에 실패했습니다", exception);
 		}
 	}
 
@@ -59,10 +59,10 @@ public class S3ObjectStoragePort implements ObjectStoragePort {
 				return Optional.empty();
 			}
 			throw new AnswerException(
-				AnswerErrorCode.STORAGE_UNAVAILABLE, "storageKey", "미디어 조회에 실패했습니다", exception);
+				AnswerErrorCode.STORAGE_UNAVAILABLE, null, "미디어 조회에 실패했습니다", exception);
 		} catch (SdkException exception) {
 			throw new AnswerException(
-				AnswerErrorCode.STORAGE_UNAVAILABLE, "storageKey", "미디어 조회에 실패했습니다", exception);
+				AnswerErrorCode.STORAGE_UNAVAILABLE, null, "미디어 조회에 실패했습니다", exception);
 		}
 	}
 }

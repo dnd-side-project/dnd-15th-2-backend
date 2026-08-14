@@ -34,7 +34,8 @@ public class MediaUploadService {
 			throw new AnswerException(
 				AnswerErrorCode.MEDIA_OWNER_MISMATCH, "ownerId", "본인 명의로만 업로드를 요청할 수 있습니다");
 		}
-		if (!properties.isAllowedMimeType(command.mimeType())) {
+		String canonicalMimeType = MediaStorageProperties.canonicalMimeType(command.mimeType());
+		if (!properties.isAllowedMimeType(canonicalMimeType)) {
 			throw new AnswerException(
 				AnswerErrorCode.INVALID_MEDIA_METADATA, "mimeType", "허용되지 않는 mime type입니다");
 		}
@@ -45,8 +46,8 @@ public class MediaUploadService {
 
 		String storageKey = "media/" + command.ownerId() + "/" + UUID.randomUUID();
 		MediaAsset saved = mediaAssetRepository.save(MediaAsset.upload(command.ownerId(), storageKey,
-			command.mimeType(), command.byteSize(), command.checksum(), command.requestedAt()));
-		PresignedUpload presigned = objectStoragePort.issuePutUrl(storageKey, command.mimeType(), properties.uploadUrlTtl());
+			canonicalMimeType, command.byteSize(), command.checksum(), command.requestedAt()));
+		PresignedUpload presigned = objectStoragePort.issuePutUrl(storageKey, canonicalMimeType, properties.uploadUrlTtl());
 		return new UploadUrl(saved, presigned);
 	}
 
@@ -57,6 +58,12 @@ public class MediaUploadService {
 	 */
 	@Transactional
 	public MediaAsset confirm(long mediaId, long requesterId) {
+		if (mediaId <= 0) {
+			throw new AnswerException(AnswerErrorCode.INVALID_ID, "mediaId", "미디어 식별자가 올바르지 않습니다");
+		}
+		if (requesterId <= 0) {
+			throw new AnswerException(AnswerErrorCode.INVALID_ID, "requesterId", "요청자 식별자가 올바르지 않습니다");
+		}
 		MediaAsset asset = mediaAssetRepository.findByIdAndOwnerId(mediaId, requesterId)
 			.orElseThrow(() -> new AnswerException(AnswerErrorCode.MEDIA_NOT_FOUND, "mediaId", "미디어를 찾을 수 없습니다"));
 		if (asset.getStatus() != MediaAssetStatus.UPLOADING) {
@@ -74,7 +81,8 @@ public class MediaUploadService {
 	}
 
 	private static boolean matches(MediaAsset asset, StoredObjectMetadata metadata) {
-		return metadata.contentLength() == asset.getByteSize() && asset.getMimeType().equals(metadata.contentType());
+		String contentType = MediaStorageProperties.canonicalMimeType(metadata.contentType());
+		return metadata.contentLength() == asset.getByteSize() && asset.getMimeType().equals(contentType);
 	}
 
 	public record IssueUploadUrlCommand(
