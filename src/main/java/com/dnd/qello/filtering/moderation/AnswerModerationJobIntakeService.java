@@ -1,0 +1,112 @@
+package com.dnd.qello.filtering.moderation;
+
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
+
+import com.dnd.qello.filtering.domain.FilterJob;
+import com.dnd.qello.filtering.domain.FilterJobStatus;
+import com.dnd.qello.filtering.domain.FilterJobStatusHistoryEntry;
+import com.dnd.qello.filtering.domain.FilterRelease;
+import com.dnd.qello.filtering.domain.FilterTarget;
+import com.dnd.qello.filtering.error.FilteringErrorCode;
+import com.dnd.qello.filtering.error.FilteringException;
+import com.dnd.qello.filtering.repository.FilterJobRepository;
+import com.dnd.qello.filtering.repository.FilterJobStatusHistoryRepository;
+import com.dnd.qello.filtering.repository.FilterReleaseRepository;
+import com.dnd.qello.notification.domain.OutboxAggregateType;
+import com.dnd.qello.notification.domain.OutboxEvent;
+import com.dnd.qello.notification.domain.OutboxEventType;
+import com.dnd.qello.notification.repository.OutboxEventRepository;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
+
+// 답변 담당 코드가 호출하는 moderation job 접수 진입점(GitHub #107). 활성 release와
+// deadline을 원자적으로 고정하고, durable job과 pipeline 실행 요청을 같은
+// 트랜잭션에 커밋한다 — 이 메서드가 정상 반환하면 job은 유실되지 않는다.
+//
+// 의도적으로 Spring 빈이 아니다. deadlineWindow(최초 판정에 허용하는 유예 시간)는
+// 아직 결정되지 않은 운영값이다(TASK.md 제외 항목) — 지금 이 클래스를 빈으로
+// 등록하면 그 값을 임의로 확정해야 한다. 실제 값이 정해지면 호출자가 그 값으로
+// 이 클래스를 생성해 쓴다. 빈이 아니므로 @Transactional 프록시를 쓸 수 없어
+// TransactionTemplate으로 트랜잭션 경계를 직접 연다(DirectionMatchingWorker와
+// 같은 방식).
+//
+// 실행 자체(공급자 호출)는 이 서비스가 하지 않는다 — job 생성과 pipeline 실행을
+// 분리해 답변 제출 요청 스레드가 외부 I/O를 기다리지 않게 한다
+// (AnswerModerationExecutionWorker가 MODERATION_EXECUTION_REQUESTED를 소비한다).
+public class AnswerModerationJobIntakeService {
+
+	private final FilterJobRepository filterJobRepository;
+	private final FilterReleaseRepository filterReleaseRepository;
+	private final FilterJobStatusHistoryRepository filterJobStatusHistoryRepository;
+	private final OutboxEventRepository outboxEventRepository;
+	private final ObjectMapper objectMapper;
+	private final Duration deadlineWindow;
+	private final Clock clock;
+	private final TransactionTemplate transactionTemplate;
+
+	public AnswerModerationJobIntakeService(
+		FilterJobRepository filterJobRepository,
+		FilterReleaseRepository filterReleaseRepository,
+		FilterJobStatusHistoryRepository filterJobStatusHistoryRepository,
+		OutboxEventRepository outboxEventRepository,
+		ObjectMapper objectMapper,
+		Duration deadlineWindow,
+		PlatformTransactionManager transactionManager,
+		Clock clock
+	) {
+		this.filterJobRepository = filterJobRepository;
+		this.filterReleaseRepository = filterReleaseRepository;
+		this.filterJobStatusHistoryRepository = filterJobStatusHistoryRepository;
+		this.outboxEventRepository = outboxEventRepository;
+		this.objectMapper = objectMapper;
+		this.deadlineWindow = deadlineWindow;
+		this.clock = clock;
+		this.transactionTemplate = new TransactionTemplate(transactionManager);
+	}
+
+	// idempotencyKey가 이미 접수된 job을 가리키면 그 job을 그대로 반환하고 아무것도
+	// 새로 만들지 않는다(INV-GEN-003) — 중복 호출이 job이나 콜백/이벤트를 추가로
+	// 만들지 않는다. 현재 승격된 release가 없으면 fail-closed로 거부한다.
+	public FilterJob submit(
+		FilterTarget target, String rawContent, ModerationLanguage language, String idempotencyKey
+	) {
+		return transactionTemplate.execute(status -> filterJobRepository.findByIdempotencyKey(idempotencyKey)
+			.orElseGet(() -> createJob(target, rawContent, language, idempotencyKey)));
+	}
+
+	private FilterJob createJob(
+		FilterTarget target, String rawContent, ModerationLanguage language, String idempotencyKey
+	) {
+		FilterRelease release = filterReleaseRepository.findCurrentlyPromoted()
+			.orElseThrow(() -> new FilteringException(FilteringErrorCode.NO_ACTIVE_RELEASE, "release"));
+		Instant now = Instant.now(clock);
+		Instant deadlineAt = now.plus(deadlineWindow);
+
+		FilterJob job = filterJobRepository.save(
+			FilterJob.create(target, release.id(), idempotencyKey, deadlineAt, now));
+		filterJobStatusHistoryRepository.save(
+			FilterJobStatusHistoryEntry.of(job.id(), null, FilterJobStatus.AUTOMATED, "job submitted", now));
+		outboxEventRepository.save(executionRequestedEvent(job, target, rawContent, language, release, now));
+		return job;
+	}
+
+	private OutboxEvent executionRequestedEvent(
+		FilterJob job, FilterTarget target, String rawContent, ModerationLanguage language,
+		FilterRelease release, Instant now
+	) {
+		AnswerModerationEventPayloads.ExecutionRequested payload = new AnswerModerationEventPayloads.ExecutionRequested(
+			job.id(), target.targetType(), target.targetId(), target.targetVersion(),
+			rawContent, language, release.id(), job.attemptGeneration());
+		return OutboxEvent.pending(OutboxAggregateType.FILTER_JOB, job.id(),
+			OutboxEventType.MODERATION_EXECUTION_REQUESTED, executionDedupKey(job.id()),
+			AnswerModerationEventPayloads.toJson(objectMapper, payload), now);
+	}
+
+	static String executionDedupKey(long filterJobId) {
+		return "filter-job:" + filterJobId + ":EXECUTION_REQUESTED";
+	}
+}
