@@ -1,7 +1,6 @@
 package com.dnd.qello.answer.config;
 
 import java.time.Duration;
-import java.util.Locale;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -9,6 +8,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 
 import com.dnd.qello.answer.error.AnswerErrorCode;
 import com.dnd.qello.answer.error.AnswerException;
+import com.dnd.qello.answer.domain.ImageMimeType;
 
 /**
  * presigned URL 발급 정책. 이미지 입력은 JPEG/JPG(image/jpeg)와 PNG(image/png)만
@@ -18,8 +18,6 @@ import com.dnd.qello.answer.error.AnswerException;
 @ConfigurationProperties(prefix = "qello.media")
 public record MediaStorageProperties(String bucket, Set<String> allowedMimeTypes, long maxByteSize,
 	Duration uploadUrlTtl) {
-
-	private static final Set<String> SUPPORTED_IMAGE_MIME_TYPES = Set.of("image/jpeg", "image/png");
 
 	public MediaStorageProperties {
 		if (bucket == null || bucket.isBlank()) {
@@ -33,7 +31,7 @@ public record MediaStorageProperties(String bucket, Set<String> allowedMimeTypes
 		Set<String> canonicalMimeTypes = allowedMimeTypes.stream()
 			.map(MediaStorageProperties::canonicalConfiguredMimeType)
 			.collect(Collectors.toUnmodifiableSet());
-		if (!SUPPORTED_IMAGE_MIME_TYPES.equals(canonicalMimeTypes)) {
+		if (!ImageMimeType.supportedMimeTypes().equals(canonicalMimeTypes)) {
 			throw new AnswerException(AnswerErrorCode.INVALID_MEDIA_METADATA, "allowedMimeTypes",
 				"qello.media.allowed-mime-types는 JPEG/PNG만 지원합니다");
 		}
@@ -61,15 +59,18 @@ public record MediaStorageProperties(String bucket, Set<String> allowedMimeTypes
 		if (mimeType == null) {
 			return null;
 		}
-		String normalized = mimeType.trim().toLowerCase(Locale.ROOT);
-		return "image/jpg".equals(normalized) ? "image/jpeg" : normalized;
+		return ImageMimeType.canonicalMimeType(mimeType);
 	}
 
 	private static String canonicalConfiguredMimeType(String mimeType) {
-		String canonical = canonicalMimeType(mimeType);
-		if (canonical == null || canonical.isBlank()) {
+		if (mimeType == null || mimeType.isBlank()) {
 			throw new AnswerException(AnswerErrorCode.INVALID_MEDIA_METADATA, "allowedMimeTypes",
 				"qello.media.allowed-mime-types에 빈 값이 있습니다");
+		}
+		String canonical = canonicalMimeType(mimeType);
+		if (canonical == null) {
+			throw new AnswerException(AnswerErrorCode.INVALID_MEDIA_METADATA, "allowedMimeTypes",
+				"qello.media.allowed-mime-types는 JPEG/PNG만 지원합니다");
 		}
 		return canonical;
 	}

@@ -20,7 +20,8 @@ public interface MediaAssetRepository {
 	/**
 	 * status가 여전히 UPLOADING일 때만 next의 상태로 전이하고 저장한다. 영향받은 행이 없으면
 	 * (이미 다른 트랜잭션이 먼저 확정한 경우) empty를 반환한다 — 호출자는 이 empty를 신호로
-	 * 현재 상태를 다시 조회해 멱등하게 처리하고, 상태를 두 번 확정하지 않는다.
+	 * 현재 상태를 다시 조회해 멱등하게 처리하고, 상태를 두 번 확정하지 않는다. 외부 저장소
+	 * 확인과 분리된 짧은 트랜잭션에서 실행한다.
 	 */
 	Optional<MediaAsset> transitionFromUploading(MediaAsset next);
 }

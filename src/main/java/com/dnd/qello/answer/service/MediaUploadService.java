@@ -5,11 +5,13 @@ import java.util.Optional;
 import java.util.UUID;
 
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.dnd.qello.answer.config.MediaStorageProperties;
 import com.dnd.qello.answer.domain.MediaAsset;
 import com.dnd.qello.answer.domain.MediaAssetStatus;
+import com.dnd.qello.answer.domain.ImageMimeType;
 import com.dnd.qello.answer.error.AnswerErrorCode;
 import com.dnd.qello.answer.error.AnswerException;
 import com.dnd.qello.answer.repository.MediaAssetRepository;
@@ -27,6 +29,7 @@ public class MediaUploadService {
 	private final MediaAssetRepository mediaAssetRepository;
 	private final ObjectStoragePort objectStoragePort;
 	private final MediaStorageProperties properties;
+	private final MediaAssetStatusTransitionService statusTransitionService;
 
 	@Transactional
 	public UploadUrl issueUploadUrl(IssueUploadUrlCommand command) {
@@ -34,7 +37,7 @@ public class MediaUploadService {
 			throw new AnswerException(
 				AnswerErrorCode.MEDIA_OWNER_MISMATCH, "ownerId", "본인 명의로만 업로드를 요청할 수 있습니다");
 		}
-		String canonicalMimeType = MediaStorageProperties.canonicalMimeType(command.mimeType());
+		String canonicalMimeType = ImageMimeType.canonicalMimeType(command.mimeType());
 		if (!properties.isAllowedMimeType(canonicalMimeType)) {
 			throw new AnswerException(
 				AnswerErrorCode.INVALID_MEDIA_METADATA, "mimeType", "허용되지 않는 mime type입니다");
@@ -53,10 +56,11 @@ public class MediaUploadService {
 
 	/**
 	 * UPLOADING이 아니면 이미 확정된 결과를 그대로 반환한다(멱등) — 재호출로 HeadObject를
-	 * 다시 부르거나 상태를 다시 확정하지 않는다. transitionFromUploading이 경쟁에서 진
-	 * 경우(0행)도 같은 방식으로 현재 상태를 다시 읽어 멱등하게 반환한다.
+	 * 다시 부르거나 상태를 다시 확정하지 않는다. 외부 S3 I/O 동안 호출자 트랜잭션을
+	 * 중단하고, transitionFromUploading의 조건부 UPDATE만 별도 짧은 트랜잭션으로 실행한다.
+	 * transitionFromUploading이 경쟁에서 진 경우(0행)도 현재 상태를 다시 읽어 멱등하게 반환한다.
 	 */
-	@Transactional
+	@Transactional(propagation = Propagation.NOT_SUPPORTED)
 	public MediaAsset confirm(long mediaId, long requesterId) {
 		if (mediaId <= 0) {
 			throw new AnswerException(AnswerErrorCode.INVALID_ID, "mediaId", "미디어 식별자가 올바르지 않습니다");
@@ -75,13 +79,13 @@ public class MediaUploadService {
 			.map(found -> asset.ready())
 			.orElseGet(asset::reject);
 
-		return mediaAssetRepository.transitionFromUploading(resolved)
+		return statusTransitionService.transitionFromUploading(resolved)
 			.orElseGet(() -> mediaAssetRepository.findByIdAndOwnerId(mediaId, requesterId)
 				.orElseThrow(() -> new AnswerException(AnswerErrorCode.MEDIA_NOT_FOUND, "mediaId", "미디어를 찾을 수 없습니다")));
 	}
 
 	private static boolean matches(MediaAsset asset, StoredObjectMetadata metadata) {
-		String contentType = MediaStorageProperties.canonicalMimeType(metadata.contentType());
+		String contentType = ImageMimeType.canonicalMimeType(metadata.contentType());
 		return metadata.contentLength() == asset.getByteSize() && asset.getMimeType().equals(contentType);
 	}
 

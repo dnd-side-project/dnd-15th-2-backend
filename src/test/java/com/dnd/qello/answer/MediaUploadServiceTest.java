@@ -23,9 +23,11 @@ import org.junit.jupiter.api.Test;
 import com.dnd.qello.answer.config.MediaStorageProperties;
 import com.dnd.qello.answer.domain.MediaAsset;
 import com.dnd.qello.answer.domain.MediaAssetStatus;
+import com.dnd.qello.answer.domain.ImageMimeType;
 import com.dnd.qello.answer.error.AnswerErrorCode;
 import com.dnd.qello.answer.error.AnswerException;
 import com.dnd.qello.answer.repository.MediaAssetRepository;
+import com.dnd.qello.answer.service.MediaAssetStatusTransitionService;
 import com.dnd.qello.answer.service.MediaUploadService;
 import com.dnd.qello.answer.service.MediaUploadService.IssueUploadUrlCommand;
 import com.dnd.qello.answer.service.MediaUploadService.UploadUrl;
@@ -40,8 +42,11 @@ class MediaUploadServiceTest {
 	private final InMemoryMediaAssetRepository repository = new InMemoryMediaAssetRepository();
 	private final FakeObjectStoragePort storage = new FakeObjectStoragePort();
 	private final MediaStorageProperties properties = new MediaStorageProperties(
-		"test-bucket", Set.of("image/jpeg", "image/png"), 1_000L, Duration.ofMinutes(10));
-	private final MediaUploadService service = new MediaUploadService(repository, storage, properties);
+		"test-bucket", ImageMimeType.supportedMimeTypes(), 1_000L, Duration.ofMinutes(10));
+	private final MediaAssetStatusTransitionService statusTransitionService =
+		new MediaAssetStatusTransitionService(repository);
+	private final MediaUploadService service =
+		new MediaUploadService(repository, storage, properties, statusTransitionService);
 
 	@Test
 	@DisplayName("발급 요청자와 소유자가 다르면 presigned URL을 발급하지 않는다")
@@ -77,6 +82,15 @@ class MediaUploadServiceTest {
 			new IssueUploadUrlCommand(1L, 1L, "image/webp", 500L, "checksum", NOW)))
 			.isInstanceOf(AnswerException.class)
 			.hasFieldOrPropertyWithValue("errorCode", AnswerErrorCode.INVALID_MEDIA_METADATA);
+	}
+
+	@Test
+	@DisplayName("허용 MIME은 포맷 타입의 canonical 값으로 저장한다")
+	void storesCanonicalMimeTypeFromImageFormat() {
+		UploadUrl result = service.issueUploadUrl(
+			new IssueUploadUrlCommand(1L, 1L, " IMAGE/JPEG ", 500L, "checksum", NOW));
+
+		assertThat(result.asset().getMimeType()).isEqualTo(ImageMimeType.JPEG.mimeType());
 	}
 
 	@Test
