@@ -3,6 +3,7 @@
  * Source scenario: TEST-PLAN-GH-117-DIRECTION-PREVIEW-ALL-SEGMENTS-UNIT-002,
  * TEST-PLAN-GH-117-DIRECTION-PREVIEW-ALL-SEGMENTS-UNIT-003,
  * TEST-PLAN-GH-117-DIRECTION-PREVIEW-ALL-SEGMENTS-UNIT-007
+ * Source scenario: TEST-PLAN-GH-122-DIRECTION-PREVIEW-SUBMISSION-API-UNIT-011
  */
 package com.dnd.qello.direction;
 
@@ -31,6 +32,17 @@ class DirectionPreviewPersistenceBoundaryTest {
 			.contains("LEFT JOIN eligible_candidates ec")
 			.contains("COUNT(ec.user_id)")
 			.contains("scheme.status = 'ACTIVE'");
+	}
+
+	@Test
+	@DisplayName("GLOBAL nullable region parameter는 PostgreSQL 타입 추론 오류 없이 동작하도록 명시적 타입을 갖는다")
+	void aggregateSqlCastsNullableRegionParameter() {
+		assertThat(ActiveUserPresenceSql.FIND_CANDIDATES_SQL)
+			.contains("CAST(:regionCode AS VARCHAR) IS NULL")
+			.contains("p.coarse_region_code = CAST(:regionCode AS VARCHAR)");
+		assertThat(ActiveUserPresenceSql.FIND_CANDIDATE_COUNTS_BY_SEGMENT_SQL)
+			.contains("CAST(:regionCode AS VARCHAR) IS NULL")
+			.contains("p.coarse_region_code = CAST(:regionCode AS VARCHAR)");
 	}
 
 	@Test

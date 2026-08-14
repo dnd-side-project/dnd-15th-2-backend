@@ -1,6 +1,7 @@
 /**
  * Created at: 2026-08-13T17:35:00+09:00
  * Source scenario: TEST-PLAN-GH-120-DIRECTION-MATCHING-WORKER-UNIT-004 through UNIT-006
+ * Source scenario: TEST-PLAN-GH-122-DIRECTION-PREVIEW-SUBMISSION-API-UNIT-011
  */
 package com.dnd.qello.direction.matching;
 
@@ -15,6 +16,7 @@ import static org.mockito.Mockito.when;
 
 import java.math.BigDecimal;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
@@ -28,10 +30,12 @@ import org.mockito.ArgumentCaptor;
 import org.springframework.transaction.PlatformTransactionManager;
 
 import com.dnd.qello.direction.config.DirectionReceiveProperties;
+import com.dnd.qello.direction.config.DirectionPostProperties;
 import com.dnd.qello.direction.config.DirectionRecipientSelectionProperties;
 import com.dnd.qello.direction.domain.DirectionPost;
 import com.dnd.qello.direction.domain.DirectionPostModerationStatus;
 import com.dnd.qello.direction.domain.DirectionPostStatus;
+import com.dnd.qello.direction.domain.PostAudience;
 import com.dnd.qello.direction.error.DirectionErrorCode;
 import com.dnd.qello.direction.error.DirectionException;
 import com.dnd.qello.direction.repository.ActiveUserPresenceRepository;
@@ -66,6 +70,32 @@ class DirectionMatchingWorkerTest {
 		verify(outbox).claimDue(types.capture(), eq(10), eq("matching-worker"), eq(NOW), eq(NOW.plusSeconds(30)));
 		org.assertj.core.api.Assertions.assertThat(types.getValue())
 			.containsExactly(OutboxEventType.RECIPIENT_MATCH_REQUESTED);
+	}
+
+	@Test
+	@DisplayName("GLOBAL worker는 작성자의 coarse region을 후보 필터로 전달하지 않는다")
+	void doesNotFilterCandidatesByPostRegionInGlobalScope() {
+		OutboxEventRepository outbox = mock(OutboxEventRepository.class);
+		DirectionPostRepository posts = mock(DirectionPostRepository.class);
+		PostAudienceRepository audiences = mock(PostAudienceRepository.class);
+		ActiveUserPresenceRepository presence = mock(ActiveUserPresenceRepository.class);
+		OutboxEvent claimed = matchingEvent().claimed("matching-worker", NOW, NOW.plusSeconds(30));
+		when(outbox.claimDue(any(), any(Integer.class), any(String.class), any(Instant.class), any(Instant.class)))
+			.thenReturn(List.of(claimed));
+		when(posts.findByIdForUpdate(1L)).thenReturn(Optional.of(post(DirectionPostModerationStatus.PASSED)));
+		when(audiences.findByPostId(1L)).thenReturn(Optional.of(PostAudience.create(1L, 101L, "N",
+			BigDecimal.ZERO, BigDecimal.valueOf(90), 0, 20_100_000,
+			BigDecimal.valueOf(37.5), BigDecimal.valueOf(127.0), "TEST-CELL", NOW)));
+		when(presence.findCandidates(eq(11L), eq(37.5), eq(127.0), eq(0L), eq(20_100_000L),
+			eq(315.0), eq(45.0), eq(NOW), org.mockito.ArgumentMatchers.isNull())).thenReturn(List.of());
+		when(outbox.complete(1L, "matching-worker", 1L, NOW)).thenReturn(true);
+
+		DirectionMatchingWorker worker = worker(outbox, posts, audiences, presence, transactionManager());
+
+		assertThat(worker.processBatch(command()).outcomes())
+			.containsExactly(DirectionMatchingWorker.Outcome.PROCESSED);
+		verify(presence).findCandidates(eq(11L), eq(37.5), eq(127.0), eq(0L), eq(20_100_000L),
+			eq(315.0), eq(45.0), eq(NOW), org.mockito.ArgumentMatchers.isNull());
 	}
 
 	@Test
@@ -190,14 +220,30 @@ class DirectionMatchingWorkerTest {
 
 	private DirectionMatchingWorker worker(OutboxEventRepository outbox, DirectionPostRepository posts,
 		PlatformTransactionManager transactionManager) {
-		return worker(outbox, posts, transactionManager, Clock.fixed(NOW, ZoneOffset.UTC));
+		return worker(outbox, posts, mock(PostAudienceRepository.class), mock(ActiveUserPresenceRepository.class),
+			transactionManager, Clock.fixed(NOW, ZoneOffset.UTC));
 	}
 
 	private DirectionMatchingWorker worker(OutboxEventRepository outbox, DirectionPostRepository posts,
 		PlatformTransactionManager transactionManager, Clock clock) {
-		return new DirectionMatchingWorker(outbox, posts, mock(PostAudienceRepository.class),
-			mock(ActiveUserPresenceRepository.class), mock(PostRecipientRepository.class),
+		return worker(outbox, posts, mock(PostAudienceRepository.class), mock(ActiveUserPresenceRepository.class),
+			transactionManager, clock);
+	}
+
+	private DirectionMatchingWorker worker(OutboxEventRepository outbox, DirectionPostRepository posts,
+		PostAudienceRepository audiences, ActiveUserPresenceRepository presence,
+		PlatformTransactionManager transactionManager) {
+		return worker(outbox, posts, audiences, presence, transactionManager, Clock.fixed(NOW, ZoneOffset.UTC));
+	}
+
+	private DirectionMatchingWorker worker(OutboxEventRepository outbox, DirectionPostRepository posts,
+		PostAudienceRepository audiences, ActiveUserPresenceRepository presence,
+		PlatformTransactionManager transactionManager, Clock clock) {
+		return new DirectionMatchingWorker(outbox, posts, audiences,
+			presence, mock(PostRecipientRepository.class),
 			mock(RecipientReceiveStateRepository.class), new DirectionRecipientSelectionProperties(10),
+			new DirectionPostProperties(DirectionPostProperties.DeliveryScope.GLOBAL, 0, 20_100_000,
+				Duration.ofHours(12), 300, 1),
 			new DirectionReceiveProperties(5), new DistanceBandPolicy(new FeedDistanceProperties(10_000)),
 			transactionManager, clock);
 	}

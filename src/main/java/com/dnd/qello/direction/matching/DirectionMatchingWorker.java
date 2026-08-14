@@ -14,6 +14,7 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import com.dnd.qello.direction.config.DirectionReceiveProperties;
+import com.dnd.qello.direction.config.DirectionPostProperties;
 import com.dnd.qello.direction.config.DirectionRecipientSelectionProperties;
 import com.dnd.qello.direction.domain.DirectionCandidate;
 import com.dnd.qello.direction.domain.DirectionPost;
@@ -59,6 +60,7 @@ public class DirectionMatchingWorker {
     private final PostRecipientRepository recipientRepository;
     private final RecipientReceiveStateRepository receiveStateRepository;
     private final DirectionRecipientSelectionProperties selectionProperties;
+    private final DirectionPostProperties postProperties;
     private final DirectionReceiveProperties receiveProperties;
     private final DistanceBandPolicy distanceBandPolicy;
     private final PlatformTransactionManager transactionManager;
@@ -206,7 +208,9 @@ public class DirectionMatchingWorker {
             DirectionBounds bounds, Instant at) {
         return presenceRepository.findCandidates(post.getSenderId(), audience.getOriginLatitude().doubleValue(),
                 audience.getOriginLongitude().doubleValue(), audience.getMinDistanceMeters(),
-                audience.getMaxDistanceMeters(), bounds.start(), bounds.end(), at, post.getCoarseRegionCode());
+                audience.getMaxDistanceMeters(), bounds.start(), bounds.end(), at,
+                // coarse_region_code는 표시 snapshot일 뿐이며 GLOBAL에서 후보 범위에 사용하지 않는다.
+                postProperties.isGlobal() ? null : post.getCoarseRegionCode());
     }
 
     private List<DirectionCandidate> scanCandidates(List<DirectionCandidate> candidates, int maxRecipients) {

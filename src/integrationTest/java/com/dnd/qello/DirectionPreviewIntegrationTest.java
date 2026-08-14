@@ -2,6 +2,7 @@
  * Created at: 2026-08-12T01:17:58+09:00
  * Source scenario: TEST-PLAN-GH-117-DIRECTION-PREVIEW-ALL-SEGMENTS-INT-001 through INT-008,
  * TEST-PLAN-GH-121-ACTIVE-USER-PRESENCE-API-INT-013 (added 2026-08-14T00:51:11+09:00)
+ * Source scenario: TEST-PLAN-GH-122-DIRECTION-PREVIEW-SUBMISSION-API-INT-001, INT-003
  */
 package com.dnd.qello;
 
@@ -34,6 +35,7 @@ import com.dnd.qello.direction.service.DirectionPreviewResult;
 class DirectionPreviewIntegrationTest extends PostgisContainerIntegrationTestSupport {
 
 	private static final String REGION = "TEST-DIRECTION-PREVIEW-117";
+	private static final String OTHER_REGION = "TEST-DIRECTION-PREVIEW-117-OTHER";
 	private static final Instant AT = Instant.parse("2026-08-12T00:00:00Z");
 
 	@Autowired
@@ -52,9 +54,12 @@ class DirectionPreviewIntegrationTest extends PostgisContainerIntegrationTestSup
 		jdbc.update("DELETE FROM direction_segment");
 		jdbc.update("DELETE FROM direction_scheme");
 		jdbc.update("DELETE FROM user_account WHERE coarse_region_code = ?", REGION);
+		jdbc.update("DELETE FROM user_account WHERE coarse_region_code = ?", OTHER_REGION);
 		jdbc.update("DELETE FROM region_code WHERE code = ?", REGION);
+		jdbc.update("DELETE FROM region_code WHERE code = ?", OTHER_REGION);
 		jdbc.update("INSERT INTO region_code (code, parent_code, display_name, level) VALUES ('KR', NULL, 'Korea', 'COUNTRY') ON CONFLICT (code, level) DO NOTHING");
 		jdbc.update("INSERT INTO region_code (code, parent_code, display_name, level) VALUES (?, 'KR', 'Direction Preview Test Region', 'REGION')", REGION);
+		jdbc.update("INSERT INTO region_code (code, parent_code, display_name, level) VALUES (?, 'KR', 'Direction Preview Other Region', 'REGION')", OTHER_REGION);
 	}
 
 	@Test
@@ -78,6 +83,22 @@ class DirectionPreviewIntegrationTest extends PostgisContainerIntegrationTestSup
 			.containsExactly("S0", "S1", "S2", "S3", "S4", "S5", "S6", "S7");
 		assertThat(result.segments()).extracting(DirectionPreviewResult.SegmentCount::count)
 			.containsExactly(2L, 0L, 1L, 0L, 0L, 0L, 0L, 0L);
+	}
+
+	@Test
+	@DisplayName("GLOBAL preview는 발신자 표시 지역과 다른 후보도 방향·거리 count에 포함한다")
+	void includesCandidateOutsideSenderRegionInGlobalScope() {
+		long senderId = account("global-preview-sender", "ACTIVE");
+		presence(senderId, 37.5, 127.0, true, AT.minusSeconds(60), AT.plusSeconds(3600));
+		long schemeId = scheme("PREVIEW-GLOBAL", 6);
+		long candidateId = account("global-preview-candidate", "ACTIVE");
+		presenceAtBearing(candidateId, 37.5, 127.0, 100, 0, true, AT.minusSeconds(60), AT.plusSeconds(3600));
+		jdbc.update("UPDATE user_account SET coarse_region_code = ? WHERE id = ?", OTHER_REGION, candidateId);
+		jdbc.update("UPDATE active_user_presence SET coarse_region_code = ? WHERE user_id = ?", OTHER_REGION, candidateId);
+
+		DirectionPreviewResult result = preview(senderId, schemeId, 0, 1_000);
+
+		assertThat(count(result, "S0")).isEqualTo(1);
 	}
 
 	@Test
