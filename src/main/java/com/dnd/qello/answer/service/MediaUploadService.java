@@ -84,9 +84,16 @@ public class MediaUploadService {
 				.orElseThrow(() -> new AnswerException(AnswerErrorCode.MEDIA_NOT_FOUND, "mediaId", "미디어를 찾을 수 없습니다")));
 	}
 
-	private static boolean matches(MediaAsset asset, StoredObjectMetadata metadata) {
+	private boolean matches(MediaAsset asset, StoredObjectMetadata metadata) {
 		String contentType = ImageMimeType.canonicalMimeType(metadata.contentType());
-		return metadata.contentLength() == asset.getByteSize() && asset.getMimeType().equals(contentType);
+		if (metadata.contentLength() != asset.getByteSize() || !asset.getMimeType().equals(contentType)) {
+			return false;
+		}
+		ImageMimeType format = ImageMimeType.fromMimeType(asset.getMimeType()).orElse(null);
+		return format != null
+			&& objectStoragePort.readObjectPrefix(asset.getStorageKey(), format.signatureLength())
+				.map(format::matchesSignature)
+				.orElse(false);
 	}
 
 	public record IssueUploadUrlCommand(

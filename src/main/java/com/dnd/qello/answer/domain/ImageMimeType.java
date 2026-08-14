@@ -10,8 +10,10 @@ import java.util.stream.Collectors;
 /** 이미지 포맷별 canonical MIME과 허용 별칭을 한 곳에서 관리한다. */
 public enum ImageMimeType {
 
-	JPEG("image/jpeg", Set.of("image/jpeg", "image/jpg")),
-	PNG("image/png", Set.of("image/png"));
+	JPEG("image/jpeg", Set.of("image/jpeg", "image/jpg"),
+		new byte[] {(byte) 0xFF, (byte) 0xD8, (byte) 0xFF}),
+	PNG("image/png", Set.of("image/png"),
+		new byte[] {(byte) 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A});
 
 	private static final Map<String, ImageMimeType> BY_MIME_TYPE = Arrays.stream(values())
 		.flatMap(format -> format.aliases().stream().map(alias -> Map.entry(alias, format)))
@@ -22,10 +24,12 @@ public enum ImageMimeType {
 
 	private final String mimeType;
 	private final Set<String> aliases;
+	private final byte[] signature;
 
-	ImageMimeType(String mimeType, Set<String> aliases) {
+	ImageMimeType(String mimeType, Set<String> aliases, byte[] signature) {
 		this.mimeType = mimeType;
 		this.aliases = aliases;
+		this.signature = signature.clone();
 	}
 
 	public String mimeType() {
@@ -34,6 +38,22 @@ public enum ImageMimeType {
 
 	public Set<String> aliases() {
 		return aliases;
+	}
+
+	public int signatureLength() {
+		return signature.length;
+	}
+
+	public boolean matchesSignature(byte[] bytes) {
+		if (bytes == null || bytes.length < signature.length) {
+			return false;
+		}
+		for (int index = 0; index < signature.length; index++) {
+			if (bytes[index] != signature[index]) {
+				return false;
+			}
+		}
+		return true;
 	}
 
 	public static Set<String> supportedMimeTypes() {

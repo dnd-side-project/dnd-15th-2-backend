@@ -94,7 +94,7 @@ class MediaAssetStorageIntegrationTest extends LocalStackContainerIntegrationTes
 	@Test
 	@DisplayName("presigned URL로 실제 업로드 후 confirm하면 크기·타입이 일치할 때 READY로 전이한다")
 	void confirmTransitionsToReadyWhenUploadedObjectMatches() throws Exception {
-		byte[] body = "hello-world".getBytes(StandardCharsets.UTF_8);
+		byte[] body = validJpegBody(11);
 		UploadUrl issued = mediaUploadService.issueUploadUrl(
 			new IssueUploadUrlCommand(ownerId, ownerId, "image/jpeg", body.length, "checksum", NOW));
 
@@ -153,7 +153,7 @@ class MediaAssetStorageIntegrationTest extends LocalStackContainerIntegrationTes
 	@Test
 	@DisplayName("동시에 confirm을 두 번 호출해도 한 번만 상태를 확정하고 둘 다 같은 결과를 멱등하게 반환한다")
 	void concurrentConfirmIsIdempotent() throws Exception {
-		byte[] body = "concurrent".getBytes(StandardCharsets.UTF_8);
+		byte[] body = validJpegBody(10);
 		UploadUrl issued = mediaUploadService.issueUploadUrl(new IssueUploadUrlCommand(
 			ownerId, ownerId, "image/jpeg", body.length, "checksum", NOW));
 		putViaPresignedUrl(issued.presignedUpload(), "image/jpeg", body);
@@ -222,6 +222,14 @@ class MediaAssetStorageIntegrationTest extends LocalStackContainerIntegrationTes
 		assertThat(response.statusCode())
 			.as("presigned PUT 실패: " + response.statusCode() + " " + preview(response.body()))
 			.isEqualTo(200);
+	}
+
+	private static byte[] validJpegBody(int size) {
+		byte[] body = new byte[size];
+		body[0] = (byte) 0xFF;
+		body[1] = (byte) 0xD8;
+		body[2] = (byte) 0xFF;
+		return body;
 	}
 
 	private static String preview(String body) {

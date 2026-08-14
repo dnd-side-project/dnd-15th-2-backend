@@ -12,6 +12,7 @@ import java.net.URI;
 import java.net.URL;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -144,6 +145,17 @@ class MediaUploadServiceTest {
 	}
 
 	@Test
+	@DisplayName("MIME과 크기가 일치해도 JPEG 시그니처가 아니면 REJECTED로 전이한다")
+	void rejectsNonImageBytesWithMatchingMetadata() {
+		MediaAsset asset = repository.save(MediaAsset.upload(1L, "media/1/not-image", "image/jpeg", 500L, "checksum", NOW));
+		storage.putRaw("media/1/not-image", 500L, "image/jpeg", new byte[] {0x00, 0x01, 0x02});
+
+		MediaAsset confirmed = service.confirm(asset.getId(), 1L);
+
+		assertThat(confirmed.getStatus()).isEqualTo(MediaAssetStatus.REJECTED);
+	}
+
+	@Test
 	@DisplayName("confirm은 저장소의 대소문자·공백이 있는 JPG MIME도 JPEG로 정규화해 READY 처리한다")
 	void confirmsReadyForNormalizedJpgMetadata() {
 		MediaAsset asset = repository.save(MediaAsset.upload(1L, "media/1/jpg", "image/jpeg", 500L, "checksum", NOW));
@@ -181,13 +193,20 @@ class MediaUploadServiceTest {
 
 	private static final class FakeObjectStoragePort implements ObjectStoragePort {
 		private final Map<String, StoredObjectMetadata> objects = new HashMap<>();
+		private final Map<String, byte[]> prefixes = new HashMap<>();
 
 		void put(String key, long size, String contentType) {
+			putRaw(key, size, contentType, signature(contentType));
+		}
+
+		void putRaw(String key, long size, String contentType, byte[] prefix) {
 			objects.put(key, new StoredObjectMetadata(size, contentType));
+			prefixes.put(key, prefix.clone());
 		}
 
 		void remove(String key) {
 			objects.remove(key);
+			prefixes.remove(key);
 		}
 
 		@Override
@@ -203,6 +222,20 @@ class MediaUploadServiceTest {
 		@Override
 		public Optional<StoredObjectMetadata> headObject(String storageKey) {
 			return Optional.ofNullable(objects.get(storageKey));
+		}
+
+		@Override
+		public Optional<byte[]> readObjectPrefix(String storageKey, int maxBytes) {
+			return Optional.ofNullable(prefixes.get(storageKey))
+				.map(prefix -> Arrays.copyOf(prefix, Math.min(prefix.length, maxBytes)));
+		}
+
+		private static byte[] signature(String contentType) {
+			return ImageMimeType.fromMimeType(contentType)
+				.map(format -> format == ImageMimeType.PNG
+					? new byte[] {(byte) 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A}
+					: new byte[] {(byte) 0xFF, (byte) 0xD8, (byte) 0xFF})
+				.orElse(new byte[] {0x00});
 		}
 	}
 
