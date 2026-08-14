@@ -43,6 +43,11 @@ public enum FilteringErrorCode implements ErrorCode {
 	// 요청한 release를 찾을 수 없음
 	RELEASE_NOT_FOUND(HttpStatus.NOT_FOUND, "FLT-DOM-005", ErrorCategory.DOM, "release를 찾을 수 없습니다."),
 
+	// 현재 승격된 release가 없어 moderation job을 접수할 수 없음. fail-closed로
+	// 거부한다 — 판정 불가 상태를 임의의 release로 대체하지 않는다(INV-GEN-002)
+	NO_ACTIVE_RELEASE(HttpStatus.SERVICE_UNAVAILABLE, "FLT-DOM-006", ErrorCategory.DOM,
+		"현재 승격된 moderation release가 없습니다."),
+
 	// moderation 공급자 호출이 timeout/error로 끝나 판정을 완료하지 못함. 호출자가
 	// 재시도·fail-closed 등을 결정해야 하며, 이 코드 자체를 ALLOW/BLOCK으로 바꾸지 않는다
 	MODERATION_PROVIDER_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "FLT-EXT-001", ErrorCategory.EXT,
@@ -52,7 +57,12 @@ public enum FilteringErrorCode implements ErrorCode {
 	// (닉네임 동기 경로, INV-NICK-003~005). 주 판정기 실패 코드와 관측을 분리하기
 	// 위한 별도 코드 — 이 코드 역시 ALLOW/BLOCK으로 바꾸지 않는다
 	SECONDARY_MODERATOR_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "FLT-EXT-002", ErrorCategory.EXT,
-		"보조 moderation 판정기 판정을 완료하지 못했습니다.");
+		"보조 moderation 판정기 판정을 완료하지 못했습니다."),
+
+	// outbox payload JSON 직렬화/역직렬화 실패. 입력값 검증 실패가 아니라 내부 오류이므로
+	// INVALID_TEXT(FLT-VAL-003)와 구분한다
+	PAYLOAD_SERIALIZATION_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "FLT-INFRA-003", ErrorCategory.INFRA,
+		"payload 직렬화 처리에 실패했습니다.");
 
 	private final HttpStatus httpStatus;
 	private final String code;

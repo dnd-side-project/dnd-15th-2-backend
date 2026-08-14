@@ -16,4 +16,8 @@ public class FilteringException extends DomainException {
 	public FilteringException(FilteringErrorCode errorCode, String field, String reason) {
 		super(errorCode, field, reason);
 	}
+
+	public FilteringException(FilteringErrorCode errorCode, String field, String reason, Throwable cause) {
+		super(errorCode, field, reason, null, cause);
+	}
 }

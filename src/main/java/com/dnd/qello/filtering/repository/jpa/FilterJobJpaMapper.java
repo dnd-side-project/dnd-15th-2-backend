@@ -11,6 +11,6 @@ final class FilterJobJpaMapper {
 		FilterTarget target = new FilterTarget(entity.getTargetType(), entity.getTargetId(), entity.getTargetVersion());
 		return FilterJob.restore(entity.getId(), target, entity.getFilterReleaseId(), entity.getStatus(),
 			entity.getAttemptGeneration(), entity.isManuallyResolved(), entity.getResolvedVerdict(),
-			entity.getIdempotencyKey(), entity.getCreatedAt(), entity.getUpdatedAt());
+			entity.getIdempotencyKey(), entity.getDeadlineAt(), entity.getCreatedAt(), entity.getUpdatedAt());
 	}
 }

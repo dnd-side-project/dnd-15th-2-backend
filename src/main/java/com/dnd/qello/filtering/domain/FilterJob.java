@@ -8,9 +8,14 @@ import com.dnd.qello.filtering.error.FilteringException;
 // moderation job. INV-GEN-001~005의 authority(현재 attemptGeneration, manuallyResolved)를
 // 소유한다. 공개 여부(APPROVED/HIDDEN)는 이 객체에 없다 — resolvedVerdict를 호출자
 // 도메인에 콜백으로 전달하는 것은 이 job을 다루는 서비스 계층의 책임이다.
+//
+// deadlineAt은 job 생성 시 한 번만 고정되고 이후 어떤 전이 메서드도 바꾸지 않는다
+// (INV-ANS-002) — 재시도나 시스템 부하 변화로 연장되지 않는다. deadline 경과는
+// 승인을 뜻하지 않으며(INV-ANS-003, INV-ANS-004), 그 신호를 만들지 여부는 이
+// 값을 읽는 서비스 계층(deadline scheduler)의 책임이다.
 public record FilterJob(Long id, FilterTarget target, long filterReleaseId, FilterJobStatus status,
 	int attemptGeneration, boolean manuallyResolved, FilterVerdict resolvedVerdict, String idempotencyKey,
-	Instant createdAt, Instant updatedAt) {
+	Instant deadlineAt, Instant createdAt, Instant updatedAt) {
 
 	private static final int IDEMPOTENCY_KEY_MAX_LENGTH = 200;
 
@@ -36,6 +41,9 @@ public record FilterJob(Long id, FilterTarget target, long filterReleaseId, Filt
 			throw new FilteringException(
 				FilteringErrorCode.REQUIRED_VALUE_MISSING, "idempotencyKey", "idempotencyKey가 유효하지 않습니다");
 		}
+		if (deadlineAt == null) {
+			throw new FilteringException(FilteringErrorCode.REQUIRED_VALUE_MISSING, "deadlineAt");
+		}
 		if (createdAt == null || updatedAt == null) {
 			throw new FilteringException(FilteringErrorCode.REQUIRED_VALUE_MISSING, "createdAt/updatedAt");
 		}
@@ -49,16 +57,18 @@ public record FilterJob(Long id, FilterTarget target, long filterReleaseId, Filt
 		}
 	}
 
-	public static FilterJob create(FilterTarget target, long filterReleaseId, String idempotencyKey, Instant now) {
+	public static FilterJob create(
+		FilterTarget target, long filterReleaseId, String idempotencyKey, Instant deadlineAt, Instant now
+	) {
 		return new FilterJob(null, target, filterReleaseId, FilterJobStatus.AUTOMATED, 1, false, null,
-			idempotencyKey, now, now);
+			idempotencyKey, deadlineAt, now, now);
 	}
 
 	public static FilterJob restore(Long id, FilterTarget target, long filterReleaseId, FilterJobStatus status,
 		int attemptGeneration, boolean manuallyResolved, FilterVerdict resolvedVerdict, String idempotencyKey,
-		Instant createdAt, Instant updatedAt) {
+		Instant deadlineAt, Instant createdAt, Instant updatedAt) {
 		return new FilterJob(id, target, filterReleaseId, status, attemptGeneration, manuallyResolved,
-			resolvedVerdict, idempotencyKey, createdAt, updatedAt);
+			resolvedVerdict, idempotencyKey, deadlineAt, createdAt, updatedAt);
 	}
 
 	// 자동 pipeline 결과 적용. decisionAttemptGeneration이 현재 세대와 다르면(마이그레이션으로
@@ -116,7 +126,7 @@ public record FilterJob(Long id, FilterTarget target, long filterReleaseId, Filt
 			throw new FilteringException(FilteringErrorCode.REQUIRED_VALUE_MISSING, "now");
 		}
 		return new FilterJob(id, target, filterReleaseId, nextStatus, nextAttemptGeneration,
-			nextManuallyResolved, nextResolvedVerdict, idempotencyKey, createdAt, now);
+			nextManuallyResolved, nextResolvedVerdict, idempotencyKey, deadlineAt, createdAt, now);
 	}
 
 	private void requireStatus(FilterJobStatus expected, String action) {
