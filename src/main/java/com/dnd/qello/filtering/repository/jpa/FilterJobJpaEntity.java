@@ -41,6 +41,8 @@ public class FilterJobJpaEntity {
 	private FilterJobStatus status;
 	@Column(name = "attempt_generation", nullable = false)
 	private int attemptGeneration;
+	@Column(name = "logical_attempt_count", nullable = false)
+	private int logicalAttemptCount;
 	@Column(name = "manually_resolved", nullable = false)
 	private boolean manuallyResolved;
 	@Enumerated(EnumType.STRING)
@@ -65,6 +67,7 @@ public class FilterJobJpaEntity {
 		this.filterReleaseId = job.filterReleaseId();
 		this.status = job.status();
 		this.attemptGeneration = job.attemptGeneration();
+		this.logicalAttemptCount = job.logicalAttemptCount();
 		this.manuallyResolved = job.manuallyResolved();
 		this.resolvedVerdict = job.resolvedVerdict();
 		this.idempotencyKey = job.idempotencyKey();
@@ -80,6 +83,7 @@ public class FilterJobJpaEntity {
 	long getFilterReleaseId() { return filterReleaseId; }
 	FilterJobStatus getStatus() { return status; }
 	int getAttemptGeneration() { return attemptGeneration; }
+	int getLogicalAttemptCount() { return logicalAttemptCount; }
 	boolean isManuallyResolved() { return manuallyResolved; }
 	FilterVerdict getResolvedVerdict() { return resolvedVerdict; }
 	String getIdempotencyKey() { return idempotencyKey; }

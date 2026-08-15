@@ -1,6 +1,6 @@
 /**
- * Created at: 2026-08-14T00:00:00+09:00
- * Source scenario: TEST-PLAN-GH-107-ANSWER-MODERATION-JOB-INT-001 through INT-004
+ * Created at: 2026-08-15T00:30:00+09:00
+ * Source scenario: TEST-PLAN-GH-108-ANSWER-MODERATION-RETRY-INT-001 through INT-004
  */
 package com.dnd.qello;
 
@@ -11,7 +11,6 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -33,8 +32,9 @@ import com.dnd.qello.filtering.domain.FilterJob;
 import com.dnd.qello.filtering.domain.FilterRelease;
 import com.dnd.qello.filtering.domain.FilterTarget;
 import com.dnd.qello.filtering.domain.FilterTargetType;
-import com.dnd.qello.filtering.domain.FilterVerdict;
 import com.dnd.qello.filtering.domain.RetryGateConfig;
+import com.dnd.qello.filtering.error.FilteringErrorCode;
+import com.dnd.qello.filtering.error.FilteringException;
 import com.dnd.qello.filtering.moderation.AnswerModerationDeadlineWorker;
 import com.dnd.qello.filtering.moderation.AnswerModerationExecutionWorker;
 import com.dnd.qello.filtering.moderation.AnswerModerationJobIntakeService;
@@ -42,7 +42,6 @@ import com.dnd.qello.filtering.moderation.AnswerModerationRetryPolicy;
 import com.dnd.qello.filtering.moderation.LocalRuleVerdict;
 import com.dnd.qello.filtering.moderation.ModerationLanguage;
 import com.dnd.qello.filtering.moderation.ModerationPipelineService;
-import com.dnd.qello.filtering.moderation.ModerationProviderResult;
 import com.dnd.qello.filtering.repository.FilterDecisionRepository;
 import com.dnd.qello.filtering.repository.FilterJobRepository;
 import com.dnd.qello.filtering.repository.FilterJobStatusHistoryRepository;
@@ -54,16 +53,18 @@ import com.dnd.qello.notification.domain.OutboxBackoffStrategy;
 import com.dnd.qello.notification.repository.OutboxEventRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+// #108: durable retry가 실제 PostgreSQL 동시성 아래에서도 logical attempt budget,
+// manual review case 유일성, release 게이트 행 갱신을 정확히 지키는지 검증한다.
+// AnswerModerationJobIntegrationTest(#107)와 같은 latch-barrier 패턴을 재사용한다.
 @SpringBootTest
 @ActiveProfiles("test")
-class AnswerModerationJobIntegrationTest extends PostgisContainerIntegrationTestSupport {
+class AnswerModerationRetryIntegrationTest extends PostgisContainerIntegrationTestSupport {
 
-	private static final Instant NOW = Instant.parse("2026-08-14T00:00:00Z");
+	private static final Instant NOW = Instant.parse("2026-08-15T00:00:00Z");
 	private static final String MODEL_SNAPSHOT = "omni-moderation-2024-09-26";
-	private static final FilterTarget TARGET = FilterTarget.of(FilterTargetType.ANSWER, 900L);
 	private static final RetryGateConfig GATE_CONFIG = new RetryGateConfig(3, 2, 2, 2, 6);
-	private static final OutboxBackoffStrategy FAST_BACKOFF = attempt -> Duration.ofSeconds(1);
-	private static final OutboxBackoffStrategy SLOW_BACKOFF = attempt -> Duration.ofSeconds(60);
+	private static final OutboxBackoffStrategy FAST_BACKOFF = attempt -> Duration.ofSeconds(60);
+	private static final OutboxBackoffStrategy SLOW_BACKOFF = attempt -> Duration.ofSeconds(120);
 
 	@Autowired
 	private JdbcTemplate jdbc;
@@ -106,9 +107,6 @@ class AnswerModerationJobIntegrationTest extends PostgisContainerIntegrationTest
 		jdbc.update("DELETE FROM filter_release");
 		releaseId = promotedRelease();
 		executor = Executors.newFixedThreadPool(4);
-		// worker 실행(processBatch)과 pipeline 호출(callPipelineBounded)이 같은 풀을 쓰면,
-		// worker task가 자기 pipeline task의 완료를 기다리며 풀을 점유해 데드락이 생길 수
-		// 있다 — 두 역할을 별도 풀로 분리한다.
 		pipelineExecutor = Executors.newFixedThreadPool(4);
 	}
 
@@ -119,40 +117,18 @@ class AnswerModerationJobIntegrationTest extends PostgisContainerIntegrationTest
 	}
 
 	@Test
-	@DisplayName("같은 idempotencyKey로 동시에 접수해도 filter_job과 실행 요청 outbox는 정확히 하나만 커밋된다")
-	void concurrentDuplicateSubmissionCreatesExactlyOneJob() throws Exception {
+	@DisplayName("동시에 재시도 claim이 경쟁해도 logicalAttemptCount는 정확히 한 번만 증가한다")
+	void concurrentRetryClaimsDoNotDoubleCountLogicalAttempts() throws Exception {
 		AnswerModerationJobIntakeService intake = intakeService();
-		CountDownLatch ready = new CountDownLatch(2);
-		CountDownLatch start = new CountDownLatch(1);
-
-		List<Future<FilterJob>> futures = List.of(
-			executor.submit(submitAfterSignal(intake, ready, start)),
-			executor.submit(submitAfterSignal(intake, ready, start)));
-		assertThat(ready.await(5, TimeUnit.SECONDS)).isTrue();
-		start.countDown();
-		awaitIgnoringDuplicateFailure(futures.get(0));
-		awaitIgnoringDuplicateFailure(futures.get(1));
-
-		assertThat(jdbc.queryForObject(
-			"SELECT count(*) FROM filter_job WHERE idempotency_key = ?", Long.class, "dup-key-int-001")).isEqualTo(1L);
-		assertThat(jdbc.queryForObject(
-			"SELECT count(*) FROM outbox_event WHERE aggregate_type = 'FILTER_JOB' AND event_type = 'MODERATION_EXECUTION_REQUESTED'",
-			Long.class)).isEqualTo(1L);
-	}
-
-	@Test
-	@DisplayName("같은 실행 요청 이벤트를 두 worker가 동시에 claim해도 job은 한 번만 RESOLVED된다")
-	void concurrentExecutionWorkersResolveJobExactlyOnce() throws Exception {
-		AnswerModerationJobIntakeService intake = intakeService();
-		FilterJob job = intake.submit(TARGET, "동시성 답변 내용", ModerationLanguage.KO, "concurrent-exec-001");
-		AnswerModerationExecutionWorker workerA = executionWorker(allowingPipeline());
-		AnswerModerationExecutionWorker workerB = executionWorker(allowingPipeline());
+		FilterJob job = intake.submit(target(1L), "재시도 경쟁 답변", ModerationLanguage.KO, "retry-race-001");
+		AnswerModerationExecutionWorker workerA = executionWorker(failingPipeline(), 100);
+		AnswerModerationExecutionWorker workerB = executionWorker(failingPipeline(), 100);
 		CountDownLatch ready = new CountDownLatch(2);
 		CountDownLatch start = new CountDownLatch(1);
 
 		List<Future<AnswerModerationExecutionWorker.BatchResult>> futures = List.of(
-			executor.submit(processAfterSignal(workerA, "exec-worker-a", ready, start)),
-			executor.submit(processAfterSignal(workerB, "exec-worker-b", ready, start)));
+			executor.submit(processAfterSignal(workerA, "retry-worker-a", ready, start)),
+			executor.submit(processAfterSignal(workerB, "retry-worker-b", ready, start)));
 		assertThat(ready.await(5, TimeUnit.SECONDS)).isTrue();
 		start.countDown();
 		AnswerModerationExecutionWorker.BatchResult first = futures.get(0).get(10, TimeUnit.SECONDS);
@@ -160,65 +136,87 @@ class AnswerModerationJobIntegrationTest extends PostgisContainerIntegrationTest
 
 		assertThat(first.claimed() + second.claimed()).isEqualTo(1);
 		assertThat(jdbc.queryForObject(
-			"SELECT status FROM filter_job WHERE id = ?", String.class, job.id())).isEqualTo("RESOLVED");
+			"SELECT logical_attempt_count FROM filter_job WHERE id = ?", Long.class, job.id())).isEqualTo(1L);
 		assertThat(jdbc.queryForObject(
-			"SELECT count(*) FROM outbox_event WHERE aggregate_type = 'FILTER_JOB' AND event_type = 'MODERATION_VERDICT_READY' AND aggregate_id = ?",
-			Long.class, job.id())).isEqualTo(1L);
+			"SELECT status FROM filter_job WHERE id = ?", String.class, job.id())).isEqualTo("AUTOMATED");
 	}
 
 	@Test
-	@DisplayName("deadline worker를 동시에 두 번 돌려도 같은 job에 신호를 두 번 보내지 않는다")
-	void concurrentDeadlineScansSignalExactlyOnce() throws Exception {
-		AnswerModerationJobIntakeService intake = intakeService(Duration.ofSeconds(-1));
-		FilterJob job = intake.submit(TARGET, "deadline 답변 내용", ModerationLanguage.KO, "deadline-race-001");
+	@DisplayName("같은 대상·release로 소진되는 두 job이 동시에 처리돼도 ManualReviewCase는 하나만 생긴다")
+	void concurrentExhaustionDoesNotDuplicateManualReviewCase() throws Exception {
+		AnswerModerationJobIntakeService intake = intakeService();
+		FilterTarget sharedTarget = target(2L);
+		FilterJob jobA = intake.submit(sharedTarget, "동시 소진 답변 A", ModerationLanguage.KO, "exhaust-race-a");
+		FilterJob jobB = intake.submit(sharedTarget, "동시 소진 답변 B", ModerationLanguage.KO, "exhaust-race-b");
+		AnswerModerationExecutionWorker workerA = executionWorker(failingPipeline(), 1);
+		AnswerModerationExecutionWorker workerB = executionWorker(failingPipeline(), 1);
 		CountDownLatch ready = new CountDownLatch(2);
 		CountDownLatch start = new CountDownLatch(1);
 
-		List<Future<AnswerModerationDeadlineWorker.BatchResult>> futures = List.of(
-			executor.submit(scanAfterSignal(ready, start)),
-			executor.submit(scanAfterSignal(ready, start)));
+		List<Future<AnswerModerationExecutionWorker.BatchResult>> futures = List.of(
+			executor.submit(processAfterSignal(workerA, "exhaust-worker-a", ready, start)),
+			executor.submit(processAfterSignal(workerB, "exhaust-worker-b", ready, start)));
 		assertThat(ready.await(5, TimeUnit.SECONDS)).isTrue();
 		start.countDown();
 		futures.get(0).get(10, TimeUnit.SECONDS);
 		futures.get(1).get(10, TimeUnit.SECONDS);
 
 		assertThat(jdbc.queryForObject(
-			"SELECT count(*) FROM outbox_event WHERE aggregate_type = 'FILTER_JOB' AND event_type = 'MODERATION_DEADLINE_ELAPSED' AND aggregate_id = ?",
-			Long.class, job.id())).isEqualTo(1L);
+			"SELECT status FROM filter_job WHERE id = ?", String.class, jobA.id())).isEqualTo("MANUAL_REVIEW_REQUIRED");
+		assertThat(jdbc.queryForObject(
+			"SELECT status FROM filter_job WHERE id = ?", String.class, jobB.id())).isEqualTo("MANUAL_REVIEW_REQUIRED");
+		assertThat(jdbc.queryForObject("""
+			SELECT count(*) FROM manual_review_case
+			WHERE target_type = 'ANSWER' AND target_id = ? AND target_version = 0 AND filter_release_id = ?
+			""", Long.class, sharedTarget.targetId(), releaseId)).isEqualTo(1L);
 	}
 
 	@Test
-	@DisplayName("deadline 경과 신호가 이미 나간 뒤 도착한 판정도 MODERATION_VERDICT_READY로 전달된다")
-	void lateVerdictAfterDeadlineElapsedStillEmitsVerdictReady() {
+	@DisplayName("같은 release의 동시 실패가 게이트 행 갱신을 유실하지 않는다(FOR UPDATE 직렬화)")
+	void concurrentFailuresDoNotLoseGateUpdates() throws Exception {
+		AnswerModerationJobIntakeService intake = intakeService();
+		FilterJob jobA = intake.submit(target(3L), "게이트 경쟁 답변 A", ModerationLanguage.KO, "gate-race-a");
+		FilterJob jobB = intake.submit(target(4L), "게이트 경쟁 답변 B", ModerationLanguage.KO, "gate-race-b");
+		AnswerModerationExecutionWorker workerA = executionWorker(failingPipeline(), 100);
+		AnswerModerationExecutionWorker workerB = executionWorker(failingPipeline(), 100);
+		CountDownLatch ready = new CountDownLatch(2);
+		CountDownLatch start = new CountDownLatch(1);
+
+		List<Future<AnswerModerationExecutionWorker.BatchResult>> futures = List.of(
+			executor.submit(processAfterSignal(workerA, "gate-worker-a", ready, start)),
+			executor.submit(processAfterSignal(workerB, "gate-worker-b", ready, start)));
+		assertThat(ready.await(5, TimeUnit.SECONDS)).isTrue();
+		start.countDown();
+		futures.get(0).get(10, TimeUnit.SECONDS);
+		futures.get(1).get(10, TimeUnit.SECONDS);
+
+		assertThat(jdbc.queryForObject(
+			"SELECT consecutive_failures FROM filter_release_retry_gate WHERE filter_release_id = ?",
+			Long.class, releaseId)).isEqualTo(2L);
+		assertThat(jdbc.queryForObject(
+			"SELECT state FROM filter_release_retry_gate WHERE filter_release_id = ?",
+			String.class, releaseId)).isEqualTo("HEALTHY");
+	}
+
+	@Test
+	@DisplayName("deadline 경과 신호와 retry 소진 handoff가 동시에 일어나도 서로 충돌하지 않는다")
+	void deadlineElapsedAndRetryExhaustionCoexist() {
 		AnswerModerationJobIntakeService intake = intakeService(Duration.ofSeconds(-1));
-		FilterJob job = intake.submit(TARGET, "늦은 판정 답변", ModerationLanguage.KO, "late-verdict-001");
+		FilterJob job = intake.submit(target(5L), "deadline 동시 소진 답변", ModerationLanguage.KO, "deadline-exhaust-001");
 
 		deadlineWorker.processBatch(50, NOW);
+		AnswerModerationExecutionWorker worker = executionWorker(failingPipeline(), 1);
+		worker.processBatch(new AnswerModerationExecutionWorker.BatchCommand(10, "deadline-exhaust-worker", NOW,
+			NOW.plusSeconds(30)));
+
 		assertThat(jdbc.queryForObject(
 			"SELECT count(*) FROM outbox_event WHERE aggregate_type = 'FILTER_JOB' AND event_type = 'MODERATION_DEADLINE_ELAPSED' AND aggregate_id = ?",
 			Long.class, job.id())).isEqualTo(1L);
-
-		AnswerModerationExecutionWorker worker = executionWorker(allowingPipeline());
-		worker.processBatch(new AnswerModerationExecutionWorker.BatchCommand(
-			10, "late-worker", NOW, NOW.plusSeconds(30)));
-
 		assertThat(jdbc.queryForObject(
-			"SELECT status FROM filter_job WHERE id = ?", String.class, job.id())).isEqualTo("RESOLVED");
+			"SELECT status FROM filter_job WHERE id = ?", String.class, job.id())).isEqualTo("MANUAL_REVIEW_REQUIRED");
 		assertThat(jdbc.queryForObject(
-			"SELECT count(*) FROM outbox_event WHERE aggregate_type = 'FILTER_JOB' AND event_type = 'MODERATION_VERDICT_READY' AND aggregate_id = ?",
-			Long.class, job.id())).isEqualTo(1L);
-	}
-
-	private Callable<FilterJob> submitAfterSignal(
-		AnswerModerationJobIntakeService intake, CountDownLatch ready, CountDownLatch start
-	) {
-		return () -> {
-			ready.countDown();
-			if (!start.await(5, TimeUnit.SECONDS)) {
-				throw new AssertionError("submit start barrier timed out");
-			}
-			return intake.submit(TARGET, "동시 접수 답변", ModerationLanguage.KO, "dup-key-int-001");
-		};
+			"SELECT count(*) FROM manual_review_case WHERE target_type = 'ANSWER' AND target_id = ? AND filter_release_id = ?",
+			Long.class, 5L, releaseId)).isEqualTo(1L);
 	}
 
 	private Callable<AnswerModerationExecutionWorker.BatchResult> processAfterSignal(
@@ -234,30 +232,6 @@ class AnswerModerationJobIntegrationTest extends PostgisContainerIntegrationTest
 		};
 	}
 
-	private Callable<AnswerModerationDeadlineWorker.BatchResult> scanAfterSignal(
-		CountDownLatch ready, CountDownLatch start
-	) {
-		return () -> {
-			ready.countDown();
-			if (!start.await(5, TimeUnit.SECONDS)) {
-				throw new AssertionError("deadline scan start barrier timed out");
-			}
-			return deadlineWorker.processBatch(50, NOW);
-		};
-	}
-
-	private void awaitIgnoringDuplicateFailure(Future<FilterJob> future) throws Exception {
-		try {
-			future.get(10, TimeUnit.SECONDS);
-		} catch (java.util.concurrent.ExecutionException raceLoser) {
-			// 동시 접수의 패자는 idempotency_key unique 제약 위반으로 끝날 수 있다 —
-			// 그 자체가 "job이 두 개 만들어지지 않는다"는 보장의 증거다. 원인이 그
-			// 제약 위반이 아니면 다른 결함을 감추는 것이므로 테스트를 실패시킨다.
-			assertThat(raceLoser.getCause())
-				.isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
-		}
-	}
-
 	private AnswerModerationJobIntakeService intakeService() {
 		return intakeService(Duration.ofMinutes(10));
 	}
@@ -268,28 +242,31 @@ class AnswerModerationJobIntegrationTest extends PostgisContainerIntegrationTest
 			Clock.fixed(NOW, ZoneOffset.UTC));
 	}
 
-	private AnswerModerationExecutionWorker executionWorker(ModerationPipelineService pipeline) {
+	private AnswerModerationExecutionWorker executionWorker(ModerationPipelineService pipeline, int maxAttempts) {
 		AnswerModerationRetryPolicy retryPolicy =
-			new AnswerModerationRetryPolicy(FAST_BACKOFF, SLOW_BACKOFF, 100, Duration.ofHours(1));
+			new AnswerModerationRetryPolicy(FAST_BACKOFF, SLOW_BACKOFF, maxAttempts, Duration.ofHours(1));
 		return new AnswerModerationExecutionWorker(pipeline, filterJobRepository, filterReleaseRepository,
 			historyRepository, outboxEventRepository, retryPolicy, filterReleaseRetryGateRepository, GATE_CONFIG,
 			manualReviewCaseRepository, Duration.ofSeconds(5), objectMapper, pipelineExecutor, Duration.ofSeconds(5),
 			transactionManager, Clock.fixed(NOW, ZoneOffset.UTC));
 	}
 
-	private ModerationPipelineService allowingPipeline() {
+	private ModerationPipelineService failingPipeline() {
 		return new ModerationPipelineService(
 			(rawContent, normalizationRef) -> rawContent,
 			(normalizedContent, localRulesetRef) -> LocalRuleVerdict.noMatch(),
-			(normalizedContent, modelSnapshot) -> providerResult(false),
-			(providerResult, contentType, language, categoryMappingRef) -> FilterVerdict.ALLOW,
+			(normalizedContent, modelSnapshot) -> {
+				throw new FilteringException(FilteringErrorCode.MODERATION_PROVIDER_UNAVAILABLE, "openai", "boom");
+			},
+			(providerResult, contentType, language, categoryMappingRef) -> {
+				throw new AssertionError("판정까지 도달하면 안 됩니다");
+			},
 			filterDecisionRepository,
 			Clock.fixed(NOW, ZoneOffset.UTC));
 	}
 
-	private static ModerationProviderResult providerResult(boolean flagged) {
-		return new ModerationProviderResult(flagged, Map.of("harassment", flagged),
-			Map.of("harassment", flagged ? 0.9 : 0.01), MODEL_SNAPSHOT);
+	private static FilterTarget target(long targetId) {
+		return FilterTarget.of(FilterTargetType.ANSWER, targetId);
 	}
 
 	private long promotedRelease() {

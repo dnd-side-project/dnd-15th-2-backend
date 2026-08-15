@@ -132,7 +132,8 @@ class AnswerModerationDeadlineWorkerTest {
 	private static FilterJob restoredDueJob(long id, String idempotencyKey) {
 		FilterJob created = FilterJob.create(TARGET, 5L, idempotencyKey, NOW.minusSeconds(1), NOW.minusSeconds(600));
 		return FilterJob.restore(id, created.target(), created.filterReleaseId(), created.status(),
-			created.attemptGeneration(), created.manuallyResolved(), created.resolvedVerdict(),
-			created.idempotencyKey(), created.deadlineAt(), created.createdAt(), created.updatedAt());
+			created.attemptGeneration(), created.logicalAttemptCount(), created.manuallyResolved(),
+			created.resolvedVerdict(), created.idempotencyKey(), created.deadlineAt(), created.createdAt(),
+			created.updatedAt());
 	}
 }

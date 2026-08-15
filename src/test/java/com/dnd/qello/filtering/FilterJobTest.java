@@ -18,7 +18,8 @@ import com.dnd.qello.filtering.error.FilteringException;
 
 /**
  * Created at: 2026-08-11T00:00:00+09:00
- * Source scenario: TEST-PLAN-GH-103-FILTERING-FOUNDATION-UNIT-001 through UNIT-010
+ * Source scenario: TEST-PLAN-GH-103-FILTERING-FOUNDATION-UNIT-001 through UNIT-010,
+ * TEST-PLAN-GH-108-ANSWER-MODERATION-RETRY-UNIT-001
  */
 class FilterJobTest {
 
@@ -157,14 +158,48 @@ class FilterJobTest {
 	}
 
 	@Test
+	@DisplayName("실제 시도 기록은 AUTOMATED 상태에서만 logicalAttemptCount를 증가시키고 다른 필드는 바꾸지 않는다")
+	void recordsAutomatedAttemptOnlyFromAutomated() {
+		FilterJob job = FilterJob.create(TARGET, 10L, "idem-key", DEADLINE, NOW);
+		assertThat(job.logicalAttemptCount()).isZero();
+
+		FilterJob attempted = job.recordAutomatedAttempt(1, NOW.plusSeconds(1));
+		FilterJob attemptedAgain = attempted.recordAutomatedAttempt(1, NOW.plusSeconds(2));
+
+		assertThat(attempted.logicalAttemptCount()).isEqualTo(1);
+		assertThat(attempted.status()).isEqualTo(FilterJobStatus.AUTOMATED);
+		assertThat(attemptedAgain.logicalAttemptCount()).isEqualTo(2);
+
+		FilterJob resolved = attemptedAgain.applyAutomatedDecision(1, FilterVerdict.ALLOW, NOW.plusSeconds(3));
+		assertThat(resolved.logicalAttemptCount()).isEqualTo(2);
+
+		assertThatThrownBy(() -> resolved.recordAutomatedAttempt(1, NOW.plusSeconds(4)))
+			.isInstanceOf(FilteringException.class)
+			.hasFieldOrPropertyWithValue("errorCode", FilteringErrorCode.INVALID_JOB_STATUS);
+	}
+
+	@Test
+	@DisplayName("deadline 경과 이후에도 logicalAttemptCount는 초기화되지 않고 계속 누적된다")
+	void logicalAttemptCountSurvivesDeadlineElapse() {
+		FilterJob job = FilterJob.create(TARGET, 10L, "idem-key", NOW.plusSeconds(1), NOW)
+			.recordAutomatedAttempt(1, NOW.plusSeconds(2));
+
+		Instant afterDeadline = NOW.plusSeconds(3600);
+		FilterJob attemptedAfterDeadline = job.recordAutomatedAttempt(1, afterDeadline);
+
+		assertThat(attemptedAfterDeadline.logicalAttemptCount()).isEqualTo(2);
+		assertThat(attemptedAfterDeadline.deadlineAt()).isEqualTo(job.deadlineAt());
+	}
+
+	@Test
 	@DisplayName("RESOLVED 상태와 resolvedVerdict의 불일치, manuallyResolved와 상태의 불일치는 복원 시점에 거절된다")
 	void rejectsInconsistentRestoredState() {
-		assertThatThrownBy(() -> FilterJob.restore(1L, TARGET, 10L, FilterJobStatus.RESOLVED, 1, false, null,
+		assertThatThrownBy(() -> FilterJob.restore(1L, TARGET, 10L, FilterJobStatus.RESOLVED, 1, 0, false, null,
 			"idem-key", DEADLINE, NOW, NOW))
 			.isInstanceOf(FilteringException.class)
 			.hasFieldOrPropertyWithValue("errorCode", FilteringErrorCode.INVALID_JOB_STATUS);
 
-		assertThatThrownBy(() -> FilterJob.restore(1L, TARGET, 10L, FilterJobStatus.AUTOMATED, 1, true, null,
+		assertThatThrownBy(() -> FilterJob.restore(1L, TARGET, 10L, FilterJobStatus.AUTOMATED, 1, 0, true, null,
 			"idem-key", DEADLINE, NOW, NOW))
 			.isInstanceOf(FilteringException.class)
 			.hasFieldOrPropertyWithValue("errorCode", FilteringErrorCode.INVALID_JOB_STATUS);
