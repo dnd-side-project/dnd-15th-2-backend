@@ -42,6 +42,15 @@ public enum QuestionErrorCode implements ErrorCode {
 	// 배정 시각에 활성 상태가 아닌 질문. 질문 풀 변경 시 해소
 	QUESTION_NOT_ASSIGNABLE(HttpStatus.CONFLICT, "QUE-APP-001", ErrorCategory.APP, "배정 시각에 활성인 질문이 아닙니다."),
 
+	// 요청한 식별자의 질문 제안이 없음
+	PROPOSAL_NOT_FOUND(HttpStatus.NOT_FOUND, "QUE-APP-002", ErrorCategory.APP, "질문 제안을 찾을 수 없습니다."),
+
+	// 질문을 제안할 계정을 찾을 수 없음
+	PROPOSER_ACCOUNT_NOT_FOUND(HttpStatus.NOT_FOUND, "QUE-APP-003", ErrorCategory.APP, "질문을 제안할 계정을 찾을 수 없습니다."),
+
+	// 계정 역할 또는 상태상 질문 제안을 사용할 수 없음
+	PROPOSER_ACCOUNT_NOT_ELIGIBLE(HttpStatus.FORBIDDEN, "QUE-APP-004", ErrorCategory.APP, "현재 계정은 질문을 제안할 수 없습니다."),
+
 	// cycle 저장 후 식별자 부재. 매핑 또는 DB 설정 문제이므로 로그로 추적
 	ASSIGNMENT_CYCLE_NOT_PERSISTED(HttpStatus.INTERNAL_SERVER_ERROR, "QUE-INFRA-001", ErrorCategory.INFRA, "질문 배정 주기를 저장하지 못했습니다."),
 
