@@ -9,6 +9,8 @@ import com.dnd.qello.question.domain.AnswerFormat;
 import com.dnd.qello.question.domain.ApprovedQuestion;
 import com.dnd.qello.question.domain.QuestionProposal;
 import com.dnd.qello.question.domain.QuestionProposalReview;
+import com.dnd.qello.question.error.QuestionErrorCode;
+import com.dnd.qello.question.error.QuestionException;
 import com.dnd.qello.question.repository.ApprovedQuestionRepository;
 import com.dnd.qello.question.repository.QuestionProposalRepository;
 import com.dnd.qello.question.repository.QuestionProposalReviewRepository;
@@ -31,6 +33,16 @@ public class QuestionReviewService {
 		this.proposalRepository = proposalRepository;
 		this.reviewRepository = reviewRepository;
 		this.approvedQuestionRepository = approvedQuestionRepository;
+	}
+
+	/**
+	 * DRAFT 제안을 생성과 동시에 SUBMITTED로 전이한다. 사용자가 별도의 임시저장
+	 * 단계 없이 한 번에 제안을 제출하는 API 경로에서 쓴다.
+	 */
+	@Transactional
+	public QuestionProposal propose(long proposerId, String proposedText, Instant submittedAt) {
+		QuestionProposal draft = proposalRepository.save(QuestionProposal.create(proposerId, proposedText));
+		return proposalRepository.save(draft.submit(submittedAt));
 	}
 
 	@Transactional
@@ -82,6 +94,6 @@ public class QuestionReviewService {
 
 	private QuestionProposal getProposal(long proposalId) {
 		return proposalRepository.findById(proposalId)
-			.orElseThrow(() -> new IllegalArgumentException("질문 제안을 찾을 수 없습니다: " + proposalId));
+			.orElseThrow(() -> new QuestionException(QuestionErrorCode.PROPOSAL_NOT_FOUND, "proposalId"));
 	}
 }
