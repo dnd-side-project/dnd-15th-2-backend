@@ -33,6 +33,13 @@ public final class PostRecipientSql {
 		RETURNING id
 		""";
 
+	public static final String FIND_BY_ID_FOR_UPDATE = """
+		SELECT *
+		FROM post_recipient
+		WHERE id = :id
+		FOR UPDATE
+		""";
+
 	/**
 	 * 만료 sweep 후보. `SKIP_PENDING`은 제외한다 — 되돌리기 유예 동안은 넘김 확정
 	 * sweep의 전용 레인이며, 두 sweep의 대상 상태 집합이 겹치지 않아야 동시 실행에서

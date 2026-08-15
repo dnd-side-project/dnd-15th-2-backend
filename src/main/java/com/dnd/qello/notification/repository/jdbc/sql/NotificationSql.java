@@ -93,6 +93,21 @@ public final class NotificationSql {
 		RETURNING id
 		""";
 
+	/**
+	 * 동일 수신자와 dedup key의 기존 알림은 내용을 덮어쓰지 않고 그대로 반환한다.
+	 * no-op UPDATE는 동시 insert 경합에서도 하나의 행을 원자적으로 반환하기 위해 사용한다.
+	 */
+	public static final String INSERT_NOTIFICATION_IF_ABSENT = """
+		INSERT INTO notification
+			(recipient_id, outbox_event_id, notification_type, dedup_key,
+			 direction_post_id, answer_id, status, created_at, read_at)
+		VALUES (:recipientId, :outboxEventId, :notificationType, :dedupKey,
+			:directionPostId, :answerId, :status, :createdAt, :readAt)
+		ON CONFLICT (recipient_id, dedup_key) DO UPDATE
+		SET dedup_key = notification.dedup_key
+		RETURNING notification.*
+		""";
+
 	public static final String INSERT_NOTIFICATION_DELIVERY = """
 		INSERT INTO notification_delivery
 			(notification_id, push_device_id, status, attempt_count, next_attempt_at,
@@ -100,6 +115,33 @@ public final class NotificationSql {
 		VALUES (:notificationId, :pushDeviceId, :status, :attemptCount, :nextAttemptAt,
 			:createdAt, :sentAt, :providerMessageId)
 		RETURNING id
+		""";
+
+	/** 기존 알림/기기 전달 행을 보존하면서 동시 재처리에 같은 행을 반환한다. */
+	public static final String INSERT_NOTIFICATION_DELIVERY_IF_ABSENT = """
+		INSERT INTO notification_delivery
+			(notification_id, push_device_id, status, attempt_count, next_attempt_at,
+			 created_at, sent_at, provider_message_id)
+		VALUES (:notificationId, :pushDeviceId, :status, :attemptCount, :nextAttemptAt,
+			:createdAt, :sentAt, :providerMessageId)
+		ON CONFLICT (notification_id, push_device_id) DO UPDATE
+		SET push_device_id = notification_delivery.push_device_id
+		RETURNING notification_delivery.*
+		""";
+
+	public static final String FIND_ACTIVE_PUSH_DEVICE_IDS = """
+		SELECT id
+		FROM push_device
+		WHERE user_id = :userId AND device_status = 'ACTIVE'
+		ORDER BY id
+		""";
+
+	public static final String FIND_NOTIFICATION_PREFERENCE_ENABLED = """
+		SELECT COALESCE((
+			SELECT enabled
+			FROM notification_preference
+			WHERE notification_type = :notificationType AND user_id = :userId
+		), TRUE)
 		""";
 
 	public static final String UPSERT_NOTIFICATION_PREFERENCE = """
