@@ -162,7 +162,7 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 	private JdbcTemplate jdbcTemplate;
 
 	@Test
-	@DisplayName("빈 PostGIS 데이터베이스의 startup에서 V1부터 V14까지 migration을 적용한다")
+	@DisplayName("빈 PostGIS 데이터베이스의 startup에서 V1부터 V15까지 migration을 적용한다")
 	void appliesAllMigrationsOnApplicationStartup() {
 		Integer successfulV1 = jdbcTemplate.queryForObject("""
 			SELECT count(*)
@@ -234,6 +234,11 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 			FROM flyway_schema_history
 			WHERE version = '14' AND success
 			""", Integer.class);
+		Integer successfulV15 = jdbcTemplate.queryForObject("""
+			SELECT count(*)
+			FROM flyway_schema_history
+			WHERE version = '15' AND success
+			""", Integer.class);
 		String postgisVersion = jdbcTemplate.queryForObject(
 			"SELECT PostGIS_Version()", String.class);
 
@@ -251,7 +256,8 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 		assertThat(successfulV12).isEqualTo(1);
 		assertThat(successfulV13).isEqualTo(1);
 		assertThat(successfulV14).isEqualTo(1);
-		assertThat(flyway.info().applied()).hasSize(14);
+		assertThat(successfulV15).isEqualTo(1);
+		assertThat(flyway.info().applied()).hasSize(15);
 		assertThat(postgisVersion).isNotBlank();
 	}
 
@@ -435,6 +441,50 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 			"ck_filter_release_retry_gate_limit",
 			"ck_filter_release_retry_gate_limit_positive",
 			"ck_filter_release_retry_gate_counts");
+	}
+
+	@Test
+	@DisplayName("V15는 snapshot_health·probe_result·emergency_migration_history 테이블과 제약을 생성한다")
+	void v15AddsSnapshotHealthAndEmergencyMigrationCatalog() {
+		Set<String> newTableNames = new HashSet<>(jdbcTemplate.queryForList("""
+			SELECT table_name
+			FROM information_schema.tables
+			WHERE table_schema = 'public'
+			  AND table_name IN
+			      ('snapshot_health', 'snapshot_health_probe_result', 'snapshot_emergency_migration_history')
+			""", String.class));
+		assertThat(newTableNames).containsExactlyInAnyOrder(
+			"snapshot_health", "snapshot_health_probe_result", "snapshot_emergency_migration_history");
+
+		Set<String> snapshotHealthConstraintNames = new HashSet<>(jdbcTemplate.queryForList("""
+			SELECT conname
+			FROM pg_constraint
+			WHERE conrelid = 'snapshot_health'::regclass
+			""", String.class));
+		assertThat(snapshotHealthConstraintNames).contains(
+			"ck_snapshot_health_status", "ck_snapshot_health_target_only_failure_count",
+			"ck_snapshot_health_confirmed");
+
+		Set<String> probeResultConstraintNames = new HashSet<>(jdbcTemplate.queryForList("""
+			SELECT conname
+			FROM pg_constraint
+			WHERE conrelid = 'snapshot_health_probe_result'::regclass
+			""", String.class));
+		assertThat(probeResultConstraintNames).contains(
+			"fk_snapshot_health_probe_result_snapshot", "ck_snapshot_health_probe_result_type",
+			"ck_snapshot_health_probe_result_classification");
+
+		Set<String> migrationHistoryConstraintNames = new HashSet<>(jdbcTemplate.queryForList("""
+			SELECT conname
+			FROM pg_constraint
+			WHERE conrelid = 'snapshot_emergency_migration_history'::regclass
+			""", String.class));
+		assertThat(migrationHistoryConstraintNames).contains(
+			"fk_snapshot_emergency_migration_history_snapshot",
+			"fk_snapshot_emergency_migration_history_source_release",
+			"fk_snapshot_emergency_migration_history_target_release",
+			"ck_snapshot_emergency_migration_history_job_count",
+			"ck_snapshot_emergency_migration_history_different_release");
 	}
 
 	@Test
