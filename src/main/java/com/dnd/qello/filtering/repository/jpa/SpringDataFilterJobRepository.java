@@ -15,4 +15,6 @@ interface SpringDataFilterJobRepository extends JpaRepository<FilterJobJpaEntity
 
 	List<FilterJobJpaEntity> findByStatusNotAndDeadlineAtLessThanEqualOrderByDeadlineAtAscIdAsc(
 		FilterJobStatus resolvedStatus, Instant at, Pageable pageable);
+
+	List<FilterJobJpaEntity> findByFilterReleaseIdAndStatus(long filterReleaseId, FilterJobStatus status);
 }

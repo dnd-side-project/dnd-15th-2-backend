@@ -21,4 +21,11 @@ public interface FilterJobRepository {
 	 * 신호 발행 여부를 결정하는 것은 호출 서비스의 책임이다.
 	 */
 	List<FilterJob> findDeadlineElapsedCandidates(Instant at, int limit);
+
+	/**
+	 * emergency migration(#109) 대상 후보 조회. 지정한 release에 묶인 AUTOMATED
+	 * job만 반환한다 — RESOLVED/RETRY_EXHAUSTED/MANUAL_REVIEW_REQUIRED job은
+	 * 이관 대상이 아니다.
+	 */
+	List<FilterJob> findAutomatedByFilterReleaseId(long filterReleaseId);
 }
