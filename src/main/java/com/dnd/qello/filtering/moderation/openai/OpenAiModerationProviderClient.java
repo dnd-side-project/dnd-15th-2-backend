@@ -9,9 +9,10 @@ import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
-import com.dnd.qello.filtering.error.FilteringErrorCode;
+import com.dnd.qello.filtering.domain.ModerationFailureClassification;
 import com.dnd.qello.filtering.error.FilteringException;
 import com.dnd.qello.filtering.moderation.ModerationProviderClient;
+import com.dnd.qello.filtering.moderation.ModerationProviderFailureException;
 import com.dnd.qello.filtering.moderation.ModerationProviderResult;
 import com.dnd.qello.filtering.moderation.ModerationRateLimitedException;
 
@@ -37,7 +38,11 @@ public class OpenAiModerationProviderClient implements ModerationProviderClient 
 	//
 	// 429만 예외적으로 별도 타입(ModerationRateLimitedException, #108)으로 구분해
 	// 던진다 — 호출자가 Retry-After를 다음 재시도 지연의 최소 하한으로 쓸 수 있게
-	// 하기 위해서다. 다른 4xx/5xx/timeout은 이 구분 없이 기존 경로를 그대로 탄다.
+	// 하기 위해서다. 그 외 실패는 ModerationProviderFailureException(#109)으로
+	// 원인 분류(ModerationFailureClassification)를 함께 실어 던지되, 기존
+	// FilteringException(MODERATION_PROVIDER_UNAVAILABLE) 계약(타입·errorCode)은
+	// 그대로 유지한다 — snapshot health 판정처럼 분류가 필요한 새 호출자만 이 하위
+	// 타입을 꺼내 쓴다.
 	@Override
 	public ModerationProviderResult moderate(String normalizedContent, String modelSnapshot) {
 		OpenAiModerationResponse response;
@@ -54,10 +59,19 @@ public class OpenAiModerationProviderClient implements ModerationProviderClient 
 			throw new ModerationRateLimitedException(retryAfter);
 		} catch (RestClientException e) {
 			String reason = e.getClass().getSimpleName();
-			log.warn("OpenAI moderation 호출 실패: model={}, reason={}", modelSnapshot, reason);
-			throw new FilteringException(FilteringErrorCode.MODERATION_PROVIDER_UNAVAILABLE, "openai", reason);
+			ModerationFailureClassification classification = OpenAiModerationFailureClassifier.classify(e);
+			log.warn("OpenAI moderation 호출 실패: model={}, reason={}, classification={}", modelSnapshot, reason,
+				classification);
+			throw new ModerationProviderFailureException(classification, "openai", reason);
 		}
-		return OpenAiModerationResponseMapper.toProviderResult(response);
+		try {
+			return OpenAiModerationResponseMapper.toProviderResult(response);
+		} catch (FilteringException malformedResponse) {
+			// 응답은 받았지만(2xx) 모양이 기대와 달라 해석할 수 없는 경우 — HTTP status
+			// 신호가 없어 4xx/5xx로 분류할 근거가 없다(#109, UNKNOWN).
+			throw new ModerationProviderFailureException(
+				ModerationFailureClassification.UNKNOWN, "openai", "malformed_response", malformedResponse);
+		}
 	}
 
 	// OpenAI는 Retry-After를 정수 초 단위(delta-seconds)로 반환한다. 헤더가 없거나
