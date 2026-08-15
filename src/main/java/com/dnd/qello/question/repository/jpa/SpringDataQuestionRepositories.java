@@ -10,6 +10,8 @@ import org.springframework.data.repository.query.Param;
 import com.dnd.qello.question.domain.ApprovedQuestionStatus;
 
 interface SpringDataQuestionProposalRepository extends JpaRepository<QuestionProposalJpaEntity, Long> {
+
+	List<QuestionProposalJpaEntity> findAllByProposerIdOrderByCreatedAtDesc(long proposerId);
 }
 
 interface SpringDataQuestionProposalReviewRepository extends JpaRepository<QuestionProposalReviewJpaEntity, Long> {
