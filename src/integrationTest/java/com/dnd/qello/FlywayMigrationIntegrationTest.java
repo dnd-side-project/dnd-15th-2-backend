@@ -162,7 +162,7 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 	private JdbcTemplate jdbcTemplate;
 
 	@Test
-	@DisplayName("빈 PostGIS 데이터베이스의 startup에서 V1부터 V12까지 migration을 적용한다")
+	@DisplayName("빈 PostGIS 데이터베이스의 startup에서 V1부터 V13까지 migration을 적용한다")
 	void appliesAllMigrationsOnApplicationStartup() {
 		Integer successfulV1 = jdbcTemplate.queryForObject("""
 			SELECT count(*)
@@ -224,6 +224,11 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 			FROM flyway_schema_history
 			WHERE version = '12' AND success
 			""", Integer.class);
+		Integer successfulV13 = jdbcTemplate.queryForObject("""
+			SELECT count(*)
+			FROM flyway_schema_history
+			WHERE version = '13' AND success
+			""", Integer.class);
 		String postgisVersion = jdbcTemplate.queryForObject(
 			"SELECT PostGIS_Version()", String.class);
 
@@ -239,7 +244,8 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 		assertThat(successfulV10).isEqualTo(1);
 		assertThat(successfulV11).isEqualTo(1);
 		assertThat(successfulV12).isEqualTo(1);
-		assertThat(flyway.info().applied()).hasSize(12);
+		assertThat(successfulV13).isEqualTo(1);
+		assertThat(flyway.info().applied()).hasSize(13);
 		assertThat(postgisVersion).isNotBlank();
 	}
 
@@ -360,6 +366,37 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 		assertThat(matchingIndex).contains("aggregate_id", "match_round", "event_type", "DIRECTION_POST",
 			"RECIPIENT_MATCH_REQUESTED");
 		assertThat(claimIndex).contains("lease_expires_at", "PROCESSING");
+	}
+
+	@Test
+	@DisplayName("V13은 filter_job.deadline_at·deadline scan 인덱스와 outbox_event의 확장된 CHECK 제약을 생성한다")
+	void v13AddsAnswerModerationDeadlineAndOutboxContractCatalog() {
+		assertThat(columnExists("filter_job", "deadline_at")).isTrue();
+		Integer nullableDeadlineAt = jdbcTemplate.queryForObject("""
+			SELECT count(*)
+			FROM information_schema.columns
+			WHERE table_schema = 'public' AND table_name = 'filter_job' AND column_name = 'deadline_at'
+			  AND is_nullable = 'NO'
+			""", Integer.class);
+		assertThat(nullableDeadlineAt).isEqualTo(1);
+
+		String deadlineScanIndex = jdbcTemplate.queryForObject(
+			"SELECT indexdef FROM pg_indexes WHERE indexname = 'filter_job_deadline_scan_idx'", String.class);
+		assertThat(deadlineScanIndex).contains("deadline_at", "RESOLVED");
+
+		String aggregateTypeConstraint = jdbcTemplate.queryForObject("""
+			SELECT pg_get_constraintdef(oid)
+			FROM pg_constraint
+			WHERE conname = 'ck_outbox_event_aggregate_type' AND conrelid = 'outbox_event'::regclass
+			""", String.class);
+		String eventTypeConstraint = jdbcTemplate.queryForObject("""
+			SELECT pg_get_constraintdef(oid)
+			FROM pg_constraint
+			WHERE conname = 'ck_outbox_event_event_type' AND conrelid = 'outbox_event'::regclass
+			""", String.class);
+		assertThat(aggregateTypeConstraint).contains("FILTER_JOB");
+		assertThat(eventTypeConstraint).contains(
+			"MODERATION_EXECUTION_REQUESTED", "MODERATION_VERDICT_READY", "MODERATION_DEADLINE_ELAPSED");
 	}
 
 	@Test

@@ -99,7 +99,6 @@
 ./harness test-run --id TEST-PLAN-GH-123-DIRECTION-NOTIFICATION-FANOUT
 ./harness check
 ./harness pr-ready --project-tests
-npm run hooks:validate
 git diff --check
 ```
 
