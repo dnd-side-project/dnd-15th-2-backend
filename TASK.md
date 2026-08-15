@@ -46,9 +46,10 @@
    실행 worker가 이를 다음 재시도 지연의 최소 하한으로 사용한다.
 6. 위 cadence/backoff/Retry-After 조합 판단을 `AnswerModerationRetryPolicy`
    (신규, 순수 도메인)로 분리한다.
-7. 재시도 소진 시 같은 트랜잭션에서 `exhaustRetries().openManualReview()`
-   저장 + `ManualReviewCase` idempotent 생성을 수행한다(별도 worker
-   신설 없음 — 기존 실패 트랜잭션에 편입).
+7. 재시도 소진 시 `exhaustRetries().openManualReview()` 저장은 기존 실패
+   트랜잭션에 편입한다(별도 worker 신설 없음). `ManualReviewCase` idempotent
+   생성은 그 앞에서 별도 트랜잭션으로 수행해, 유일성 제약 위반이 `FilterJob`/
+   outbox 전이를 rollback하지 않게 한다.
 8. `FilterReleaseRetryGate`(신규 도메인 + 테이블)로 release(snapshot)
    단위 상태를 갖는 재시도 게이트를 구현한다 — 연속 실패로 저하, 연속
    성공으로 단계적 한도 증가. claim SQL 자체는 건드리지 않고 배치 처리
