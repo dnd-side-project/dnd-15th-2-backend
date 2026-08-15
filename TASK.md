@@ -93,5 +93,7 @@ git diff --check
       `QuestionProposalApiMockMvcTest#submitRequiresAuthentication`,
       `#findMineRequiresAuthentication`으로 확인했다.
 - [ ] 단위·통합 테스트와 테스트 보고서. 단위·컨트롤러 테스트(Mockito/MockMvc)
-      20건을 추가했으나 PostgreSQL 통합 테스트와 정식 테스트 보고서는 없다.
-      정식 `/harness-test-plan` 승인과 통합 테스트는 `#145`로 이관했다.
+      20건과 `QuestionProposalApiIntegrationTest`(PostgreSQL, 5건 — propose
+      단일 행 생성, application service 제출·조회·부적격 계정 거부, propose로
+      제출한 제안의 승인·반려 흐름)를 추가했다. 정식 `/harness-test-plan`
+      승인과 테스트 보고서는 여전히 없으며 `#145`로 이관했다.
