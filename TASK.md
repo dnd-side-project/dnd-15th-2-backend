@@ -34,6 +34,10 @@
    `question_proposal`/`question_proposal_review`/`approved_question`
    테이블 재사용을 우선한다).
 
+`/harness-review` 검토 결과, 4번(알림 발행 연결)과 5번(filtering 연동 확인)은
+이 브랜치에서 구현하지 않고 후속 이슈 `#145`로 이관했다. Issue #144 본문도
+동일하게 갱신했다.
+
 ## Explicit exclusions
 
 - 질문 배정/추천 주기(`question_assignment_cycle`) 로직 변경 — 별도
@@ -71,11 +75,23 @@ git diff --check
 
 ## Completion criteria
 
-- [ ] 제안 제출 API가 `QuestionProposal`을 생성하고 DRAFT→SUBMITTED로
-      전이한다.
-- [ ] 운영자 승인 API 호출 시 `ApprovedQuestion`이 생성되고
-      `QuestionProposalReview`가 append-only로 기록된다.
+- [x] 제안 제출 API가 `QuestionProposal`을 생성하고 DRAFT→SUBMITTED로
+      전이한다. `QuestionReviewService.propose()`와
+      `QuestionProposalApiMockMvcTest#submitReturnsCreatedProposal`로 확인했다.
+- [x] 운영자 승인 API 호출 시 `ApprovedQuestion`이 생성되고
+      `QuestionProposalReview`가 append-only로 기록된다. 판정 로직 자체는
+      `#38`에서 구현됐고, 이 브랜치는
+      `OperatorQuestionProposalApiMockMvcTest#approveDelegatesWithExactArguments`로
+      컨트롤러가 `QuestionReviewService.approve`에 정확한 인자를 넘기는지
+      확인했다.
 - [ ] 반려 시 사유가 기록되고 `QUESTION_PROPOSAL_REVIEWED` 알림이
-      제안자에게 발행된다.
-- [ ] 인증되지 않은 사용자는 제안 제출·조회를 할 수 없다.
-- [ ] 단위·통합 테스트와 테스트 보고서.
+      제안자에게 발행된다. 사유 기록은
+      `OperatorQuestionProposalApiMockMvcTest#rejectDelegatesWithExactArguments`로
+      확인했지만, 알림 실제 발행 연결은 이 브랜치 범위에서 제외하고 `#145`로
+      이관했다.
+- [x] 인증되지 않은 사용자는 제안 제출·조회를 할 수 없다.
+      `QuestionProposalApiMockMvcTest#submitRequiresAuthentication`,
+      `#findMineRequiresAuthentication`으로 확인했다.
+- [ ] 단위·통합 테스트와 테스트 보고서. 단위·컨트롤러 테스트(Mockito/MockMvc)
+      20건을 추가했으나 PostgreSQL 통합 테스트와 정식 테스트 보고서는 없다.
+      정식 `/harness-test-plan` 승인과 통합 테스트는 `#145`로 이관했다.
