@@ -266,13 +266,13 @@ public class AnswerModerationExecutionWorker {
 		OutboxEvent event, FilterJob job, int decisionAttemptGeneration, Duration retryAfterHint
 	) {
 		boolean willExhaust;
+		Instant decideAt = Instant.now(clock);
 		try {
-			Instant precomputeAt = Instant.now(clock);
 			FilterJob attempted = filterJobRepository.findById(job.id())
 				.orElseThrow(() -> new FilteringException(
 					FilteringErrorCode.INVALID_JOB_STATUS, "filterJobId", "job을 찾을 수 없습니다"))
-				.recordAutomatedAttempt(decisionAttemptGeneration, precomputeAt);
-			willExhaust = retryPolicy.decide(attempted, retryAfterHint, precomputeAt).exhausted();
+				.recordAutomatedAttempt(decisionAttemptGeneration, decideAt);
+			willExhaust = retryPolicy.decide(attempted, retryAfterHint, decideAt).exhausted();
 		} catch (FilteringException raceOnJobState) {
 			if (!isJobStateRace(raceOnJobState)) {
 				throw raceOnJobState;
@@ -281,7 +281,7 @@ public class AnswerModerationExecutionWorker {
 		}
 
 		if (willExhaust) {
-			openManualReviewCaseIfAbsent(job.target(), job.filterReleaseId(), Instant.now(clock));
+			openManualReviewCaseIfAbsent(job.target(), job.filterReleaseId(), decideAt);
 		}
 
 		try {
@@ -291,7 +291,11 @@ public class AnswerModerationExecutionWorker {
 					.orElseThrow(() -> new FilteringException(
 						FilteringErrorCode.INVALID_JOB_STATUS, "filterJobId", "job을 찾을 수 없습니다"));
 				FilterJob attempted = current.recordAutomatedAttempt(decisionAttemptGeneration, now);
-				AnswerModerationRetryPolicy.Decision decision = retryPolicy.decide(attempted, retryAfterHint, now);
+				// 소진 여부는 사전 판정과 반드시 같은 시각(decideAt)으로 다시 계산한다 —
+				// 서로 다른 시각을 쓰면 maxRetryLifetime 경계가 그 사이에 걸릴 때 case 없이
+				// job만 소진 전이되어 위 불변식이 깨진다.
+				AnswerModerationRetryPolicy.Decision decision =
+					retryPolicy.decide(attempted, retryAfterHint, decideAt);
 
 				FilterReleaseRetryGate gate = filterReleaseRetryGateRepository
 					.findOrCreateForUpdate(attempted.filterReleaseId(), now)
