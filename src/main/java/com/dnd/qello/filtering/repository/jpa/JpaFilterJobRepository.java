@@ -60,4 +60,12 @@ public class JpaFilterJobRepository implements FilterJobRepository {
 			.map(FilterJobJpaMapper::toDomain)
 			.toList();
 	}
+
+	// 호출자가 이미 열어 둔 쓰기 트랜잭션에 참여한다(propagation REQUIRED) —
+	// PESSIMISTIC_WRITE 잠금은 쓰기 트랜잭션 안에서만 유효하다.
+	@Override
+	@Transactional
+	public Optional<FilterJob> findByIdForUpdate(long id) {
+		return repository.findByIdForUpdate(id).map(FilterJobJpaMapper::toDomain);
+	}
 }
