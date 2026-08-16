@@ -41,6 +41,9 @@ class InboxPersistenceBoundaryTest {
 			.contains("dp.expires_at > :at")
 			.contains("pr.capacity_released_at IS NULL")
 			.contains("FOR UPDATE OF pr");
+		assertThat(PostRecipientSql.FIND_BLOCKABLE)
+			.contains("pr.status IN ('AVAILABLE', 'DISCOVERED', 'OPENED', 'SKIP_PENDING')")
+			.contains("FOR UPDATE OF pr");
 	}
 
 	@Test

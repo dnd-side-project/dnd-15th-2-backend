@@ -89,7 +89,9 @@ public final class PostRecipientSql {
 	/**
 	 * 차단자(blockerId) 자신의 수신 항목 중 차단당한 발신자(blockedSenderId)가 보낸
 	 * 질문글에 대한 것만 대상이다. 방향은 feed 조회의 `ub.blocker_id = 뷰어` 필터와
-	 * 같다 — 차단당한 사람의 수신 항목은 건드리지 않는다.
+	 * 같다 — 차단당한 사람의 수신 항목은 건드리지 않는다. 후보를 반환하기 전에
+	 * 수신 행을 잠가 사용자 skip과의 경합에서 오래된 snapshot으로 BLOCKED 전이를
+	 * 시도하지 않게 한다.
 	 */
 	public static final String FIND_BLOCKABLE = """
 		SELECT pr.* FROM post_recipient pr
@@ -97,6 +99,7 @@ public final class PostRecipientSql {
 		WHERE pr.recipient_id = :blockerId
 		  AND dp.sender_id = :blockedSenderId
 		  AND pr.status IN ('AVAILABLE', 'DISCOVERED', 'OPENED', 'SKIP_PENDING')
+		FOR UPDATE OF pr
 		""";
 
 	/**
