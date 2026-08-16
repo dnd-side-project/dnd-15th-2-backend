@@ -107,5 +107,11 @@ git diff --check
       답변·방향 글을 포함해 어떤 도메인에도 아직 연결되어 있지 않음을
       확인했고, 질문 제안만 먼저 연결하지 않기로 결정했다(사용자 승인,
       2026-08-16 — 근거는 "Filtering integration decision" 절 참고).
-- [ ] `/harness-test-plan` 승인을 받은 정식 테스트 계획이 존재한다.
-- [ ] 통합(PostgreSQL) 테스트와 테스트 보고서가 존재한다.
+- [x] `/harness-test-plan` 승인을 받은 정식 테스트 계획이 존재한다.
+      `docs/test-plans/gh-145-TEST-PLAN-GH-145-QUESTION-PROPOSAL-NOTIFICATION.md`
+      (Status: Approved, 2026-08-17). `#144`가 예외 승인으로 남긴 부채를 이
+      계획이 승계했다.
+- [x] 통합(PostgreSQL) 테스트와 테스트 보고서가 존재한다. 단위 4건·통합 8건을
+      추가했고 전체 스위트(단위 442건, 통합 357건)가 통과했다. 보고서는
+      `docs/reports/tests/gh-145-TEST-PLAN-GH-145-QUESTION-PROPOSAL-NOTIFICATION.md`.
+      R9(목록 정렬 동률, P2)는 미실행으로 기록했다.
