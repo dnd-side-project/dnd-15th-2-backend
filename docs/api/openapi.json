@@ -3322,12 +3322,12 @@
       "name" : "방향 위치"
     },
     {
-      "description" : "수신 질문 목록·상세 조회와 넘김 상태 변경",
-      "name" : "방향 수신함"
-    },
-    {
       "description" : "OpenAI moderation snapshot 단위 health 상태와 PERMANENT_CONFIRMED 운영자 승인",
       "name" : "필터링 snapshot health"
+    },
+    {
+      "description" : "수신 질문 목록·상세 조회와 넘김 상태 변경",
+      "name" : "방향 수신함"
     },
     {
       "description" : "사용자 제안을 검수 시작, 승인, 반려하는 운영자 전용 API",
