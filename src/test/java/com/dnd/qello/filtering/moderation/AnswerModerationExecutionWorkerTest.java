@@ -44,6 +44,8 @@ import com.dnd.qello.filtering.domain.FilterReleaseStatus;
 import com.dnd.qello.filtering.domain.FilterTarget;
 import com.dnd.qello.filtering.domain.FilterTargetType;
 import com.dnd.qello.filtering.domain.FilterVerdict;
+import com.dnd.qello.filtering.domain.ManualReviewCase;
+import com.dnd.qello.filtering.domain.ManualReviewPriorityPolicy;
 import com.dnd.qello.filtering.domain.RetryGateConfig;
 import com.dnd.qello.filtering.error.FilteringErrorCode;
 import com.dnd.qello.filtering.error.FilteringException;
@@ -53,6 +55,7 @@ import com.dnd.qello.filtering.repository.FilterJobStatusHistoryRepository;
 import com.dnd.qello.filtering.repository.FilterReleaseRepository;
 import com.dnd.qello.filtering.repository.FilterReleaseRetryGateRepository;
 import com.dnd.qello.filtering.repository.ManualReviewCaseRepository;
+import com.dnd.qello.filtering.repository.ManualReviewPriorityEvaluationRepository;
 import com.dnd.qello.notification.domain.OutboxBackoffStrategy;
 import com.dnd.qello.notification.domain.OutboxEvent;
 import com.dnd.qello.notification.domain.OutboxEventType;
@@ -77,17 +80,35 @@ class AnswerModerationExecutionWorkerTest {
 	private final FilterReleaseRetryGateRepository filterReleaseRetryGateRepository =
 		mock(FilterReleaseRetryGateRepository.class);
 	private final ManualReviewCaseRepository manualReviewCaseRepository = mock(ManualReviewCaseRepository.class);
+	private final ManualReviewPriorityEvaluationRepository manualReviewPriorityEvaluationRepository =
+		mock(ManualReviewPriorityEvaluationRepository.class);
+	private static final ManualReviewPriorityPolicy MANUAL_REVIEW_PRIORITY_POLICY =
+		new ManualReviewPriorityPolicy(3, Duration.ofHours(24), "test-v1");
 	private ExecutorService executor;
 
 	@BeforeEach
 	void setUp() {
 		executor = Executors.newFixedThreadPool(2);
+		// applyVerdict가 findByIdForUpdate로 잠금 재조회한다(#110) — 개별 테스트가
+		// findById만 stub해도 그대로 위임되도록 기본 답변을 연결한다.
+		when(filterJobRepository.findByIdForUpdate(anyLong()))
+			.thenAnswer(inv -> filterJobRepository.findById((Long) inv.getArgument(0)));
 		when(filterReleaseRepository.findById(5L)).thenReturn(Optional.of(release()));
 		when(filterReleaseRetryGateRepository.findOrCreateForUpdate(anyLong(), any()))
 			.thenAnswer(inv -> FilterReleaseRetryGate.healthy(inv.getArgument(0), inv.getArgument(1)));
 		when(filterReleaseRetryGateRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 		when(manualReviewCaseRepository.findByTargetAndFilterReleaseId(any(), anyLong())).thenReturn(Optional.empty());
-		when(manualReviewCaseRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+		when(manualReviewCaseRepository.save(any())).thenAnswer(inv -> {
+			ManualReviewCase saved = inv.getArgument(0);
+			if (saved.id() != null) {
+				return saved;
+			}
+			return ManualReviewCase.restore(1L, saved.target(), saved.filterReleaseId(), saved.filterJobId(),
+				saved.status(), saved.band(), saved.validatedReportSignalCount(), saved.priorityPolicyVersion(),
+				saved.priorityReasonCode(), saved.resolvedAt(), saved.resolvedByOperatorUserId(),
+				saved.resolvedVerdict(), saved.createdAt());
+		});
+		when(manualReviewPriorityEvaluationRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 	}
 
 	@AfterEach
@@ -339,7 +360,8 @@ class AnswerModerationExecutionWorkerTest {
 		when(transactionManager.getTransaction(any())).thenReturn(mock(TransactionStatus.class));
 		return new AnswerModerationExecutionWorker(pipeline, filterJobRepository, filterReleaseRepository,
 			historyRepository, outboxEventRepository, retryPolicy, filterReleaseRetryGateRepository, GATE_CONFIG,
-			manualReviewCaseRepository, Duration.ofSeconds(5), MAPPER, executor, Duration.ofSeconds(1),
+			manualReviewCaseRepository, manualReviewPriorityEvaluationRepository, MANUAL_REVIEW_PRIORITY_POLICY,
+			Duration.ofSeconds(5), MAPPER, executor, Duration.ofSeconds(1),
 			transactionManager, Clock.fixed(NOW, ZoneOffset.UTC));
 	}
 

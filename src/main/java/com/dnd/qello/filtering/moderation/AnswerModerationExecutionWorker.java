@@ -25,7 +25,12 @@ import com.dnd.qello.filtering.domain.FilterRelease;
 import com.dnd.qello.filtering.domain.FilterReleaseRetryGate;
 import com.dnd.qello.filtering.domain.FilterTarget;
 import com.dnd.qello.filtering.domain.FilterVerdict;
+import com.dnd.qello.filtering.domain.ManualReviewBand;
 import com.dnd.qello.filtering.domain.ManualReviewCase;
+import com.dnd.qello.filtering.domain.ManualReviewPriorityDecision;
+import com.dnd.qello.filtering.domain.ManualReviewPriorityEvaluation;
+import com.dnd.qello.filtering.domain.ManualReviewPriorityPolicy;
+import com.dnd.qello.filtering.domain.ManualReviewPriorityReasonCode;
 import com.dnd.qello.filtering.domain.RetryGateConfig;
 import com.dnd.qello.filtering.error.FilteringErrorCode;
 import com.dnd.qello.filtering.error.FilteringException;
@@ -34,6 +39,7 @@ import com.dnd.qello.filtering.repository.FilterJobStatusHistoryRepository;
 import com.dnd.qello.filtering.repository.FilterReleaseRepository;
 import com.dnd.qello.filtering.repository.FilterReleaseRetryGateRepository;
 import com.dnd.qello.filtering.repository.ManualReviewCaseRepository;
+import com.dnd.qello.filtering.repository.ManualReviewPriorityEvaluationRepository;
 import com.dnd.qello.notification.domain.OutboxAggregateType;
 import com.dnd.qello.notification.domain.OutboxEvent;
 import com.dnd.qello.notification.domain.OutboxEventType;
@@ -67,6 +73,8 @@ public class AnswerModerationExecutionWorker {
 	private final FilterReleaseRetryGateRepository filterReleaseRetryGateRepository;
 	private final RetryGateConfig retryGateConfig;
 	private final ManualReviewCaseRepository manualReviewCaseRepository;
+	private final ManualReviewPriorityEvaluationRepository manualReviewPriorityEvaluationRepository;
+	private final ManualReviewPriorityPolicy manualReviewPriorityPolicy;
 	private final Duration gateDeferDelay;
 	private final ObjectMapper objectMapper;
 	private final ExecutorService executor;
@@ -84,6 +92,8 @@ public class AnswerModerationExecutionWorker {
 		FilterReleaseRetryGateRepository filterReleaseRetryGateRepository,
 		RetryGateConfig retryGateConfig,
 		ManualReviewCaseRepository manualReviewCaseRepository,
+		ManualReviewPriorityEvaluationRepository manualReviewPriorityEvaluationRepository,
+		ManualReviewPriorityPolicy manualReviewPriorityPolicy,
 		Duration gateDeferDelay,
 		ObjectMapper objectMapper,
 		ExecutorService executor,
@@ -100,6 +110,8 @@ public class AnswerModerationExecutionWorker {
 		this.filterReleaseRetryGateRepository = filterReleaseRetryGateRepository;
 		this.retryGateConfig = retryGateConfig;
 		this.manualReviewCaseRepository = manualReviewCaseRepository;
+		this.manualReviewPriorityEvaluationRepository = manualReviewPriorityEvaluationRepository;
+		this.manualReviewPriorityPolicy = manualReviewPriorityPolicy;
 		this.gateDeferDelay = gateDeferDelay;
 		this.objectMapper = objectMapper;
 		this.executor = executor;
@@ -225,7 +237,11 @@ public class AnswerModerationExecutionWorker {
 		try {
 			return transactionTemplate.execute(status -> {
 				Instant now = Instant.now(clock);
-				FilterJob current = filterJobRepository.findById(job.id())
+				// findByIdForUpdate로 행을 잠근다(#110) — ManualReviewDecisionService가
+				// 동시에 같은 job에 수동 결정을 적용하려 할 수 있다. 둘 다 잠금 조회를
+				// 쓰지 않으면 나중에 커밋하는 쪽이 먼저 커밋된 결과를 낡은 스냅샷으로
+				// 덮어쓸 수 있다(lost update, INV-MAN-003/004).
+				FilterJob current = filterJobRepository.findByIdForUpdate(job.id())
 					.orElseThrow(() -> new FilteringException(
 						FilteringErrorCode.INVALID_JOB_STATUS, "filterJobId", "job을 찾을 수 없습니다"));
 				FilterJob attempted = current.recordAutomatedAttempt(decisionAttemptGeneration, now);
@@ -281,7 +297,7 @@ public class AnswerModerationExecutionWorker {
 		}
 
 		if (willExhaust) {
-			openManualReviewCaseIfAbsent(job.target(), job.filterReleaseId(), decideAt);
+			openManualReviewCaseIfAbsent(job.target(), job.filterReleaseId(), job.id(), decideAt);
 		}
 
 		try {
@@ -330,15 +346,34 @@ public class AnswerModerationExecutionWorker {
 		}
 	}
 
-	// ManualReviewCaseRepository.save()의 @Transactional이 이 호출만의 독립 트랜잭션을
-	// 연다(현재 스레드에 다른 활성 트랜잭션이 없으므로) — handlePipelineFailure의 메인
-	// 트랜잭션과 의도적으로 분리한다.
-	private void openManualReviewCaseIfAbsent(FilterTarget target, long filterReleaseId, Instant now) {
+	// case 생성과 최초 priority 평가 기록을 이 호출만의 독립 트랜잭션으로 묶는다
+	// (handlePipelineFailure의 메인 트랜잭션과 의도적으로 분리 — case가 먼저 존재해야
+	// 메인 트랜잭션의 job 소진 전이가 크래시 후에도 안전하게 재수렴한다).
+	//
+	// 이 경로는 report signal을 모른다(#110 — safety 패키지 통합은 범위 밖) — 항상
+	// validatedReportSignalCount=0으로 평가하고, 실제 report signal 기반 재평가는
+	// ManualReviewDecisionService/검토자 endpoint가 별도로 수행한다. 평가 자체가
+	// 실패해도(이론상 불가능에 가깝지만) STANDARD+CALCULATION_FAILED로 case 생성을
+	// 계속한다(INV-MAN-009).
+	private void openManualReviewCaseIfAbsent(FilterTarget target, long filterReleaseId, long filterJobId, Instant now) {
 		if (manualReviewCaseRepository.findByTargetAndFilterReleaseId(target, filterReleaseId).isPresent()) {
 			return;
 		}
+		ManualReviewPriorityDecision decision;
 		try {
-			manualReviewCaseRepository.save(ManualReviewCase.open(target, filterReleaseId, now));
+			decision = ManualReviewCase.evaluatePriority(0, manualReviewPriorityPolicy);
+		} catch (FilteringException evaluationFailed) {
+			decision = new ManualReviewPriorityDecision(
+				ManualReviewBand.STANDARD, ManualReviewPriorityReasonCode.CALCULATION_FAILED);
+		}
+		ManualReviewPriorityDecision finalDecision = decision;
+		try {
+			transactionTemplate.executeWithoutResult(status -> {
+				ManualReviewCase opened = manualReviewCaseRepository.save(ManualReviewCase.open(target,
+					filterReleaseId, filterJobId, finalDecision, 0, manualReviewPriorityPolicy.policyVersion(), now));
+				manualReviewPriorityEvaluationRepository.save(ManualReviewPriorityEvaluation.of(opened.id(),
+					finalDecision.band(), finalDecision.reasonCode(), manualReviewPriorityPolicy.policyVersion(), now));
+			});
 		} catch (DataIntegrityViolationException raceAlreadyOpened) {
 			// 이미 다른 경로(동시 claim, 재클레임된 재시도)로 열렸다 — INV-MAN-001
 			// 유일성 제약이 감지한 경쟁을 멱등하게 흡수한다.
@@ -360,10 +395,20 @@ public class AnswerModerationExecutionWorker {
 		});
 	}
 
+	// job이 이미 수동으로 종결된 뒤 도착한 자동 처리 시도를 흡수한다. manuallyResolved인
+	// job이면 감사 기록만 남기고 상태를 바꾸지 않는다(#110, INV-MAN-004) — 이전에는
+	// 이 경로가 outbox claim만 완료하고 어떤 흔적도 남기지 않았다.
 	private Outcome finishSkipped(OutboxEvent event) {
 		try {
 			return transactionTemplate.execute(status -> {
 				Instant now = Instant.now(clock);
+				filterJobRepository.findById(event.aggregateId()).ifPresent(current -> {
+					if (current.manuallyResolved()) {
+						filterJobStatusHistoryRepository.save(FilterJobStatusHistoryEntry.of(current.id(),
+							current.status(), current.status(),
+							"late automated result ignored (already manually resolved)", now));
+					}
+				});
 				completeClaimOrThrow(event, now);
 				return Outcome.SKIPPED_NOT_ELIGIBLE;
 			});
