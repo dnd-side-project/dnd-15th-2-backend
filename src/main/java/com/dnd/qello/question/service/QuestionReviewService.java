@@ -5,6 +5,10 @@ import java.time.Instant;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.dnd.qello.notification.domain.OutboxAggregateType;
+import com.dnd.qello.notification.domain.OutboxEvent;
+import com.dnd.qello.notification.domain.OutboxEventType;
+import com.dnd.qello.notification.repository.OutboxEventRepository;
 import com.dnd.qello.question.domain.AnswerFormat;
 import com.dnd.qello.question.domain.ApprovedQuestion;
 import com.dnd.qello.question.domain.QuestionProposal;
@@ -17,6 +21,11 @@ import com.dnd.qello.question.repository.QuestionProposalReviewRepository;
 
 /**
  * Proposal 상태, append-only review와 사용자 제안 승인 질문을 한 transaction으로 변경한다.
+ *
+ * <p>승인·반려 판정은 같은 transaction에서 {@code QUESTION_PROPOSAL_REVIEWED} outbox
+ * event를 남긴다(producer 측만). 이 event를 실제 인앱 알림·push로 fan-out하는 worker
+ * 배선은 다른 {@code *_REVIEWED}/{@code *_RECEIVED} 계열 event들과 마찬가지로 별도
+ * production gate 이슈에서 다룬다.</p>
  */
 @Service
 public class QuestionReviewService {
@@ -24,15 +33,18 @@ public class QuestionReviewService {
 	private final QuestionProposalRepository proposalRepository;
 	private final QuestionProposalReviewRepository reviewRepository;
 	private final ApprovedQuestionRepository approvedQuestionRepository;
+	private final OutboxEventRepository outboxEventRepository;
 
 	public QuestionReviewService(
 		QuestionProposalRepository proposalRepository,
 		QuestionProposalReviewRepository reviewRepository,
-		ApprovedQuestionRepository approvedQuestionRepository
+		ApprovedQuestionRepository approvedQuestionRepository,
+		OutboxEventRepository outboxEventRepository
 	) {
 		this.proposalRepository = proposalRepository;
 		this.reviewRepository = reviewRepository;
 		this.approvedQuestionRepository = approvedQuestionRepository;
+		this.outboxEventRepository = outboxEventRepository;
 	}
 
 	/**
@@ -67,6 +79,7 @@ public class QuestionReviewService {
 			proposalId, reviewerId, reason, reviewedAt);
 		QuestionProposalReview savedReview = reviewRepository.save(review);
 		proposalRepository.save(rejected);
+		publishReviewed(proposal.getProposerId(), proposalId, "REJECTED", reviewedAt);
 		return savedReview;
 	}
 
@@ -89,11 +102,28 @@ public class QuestionReviewService {
 
 		reviewRepository.save(review);
 		proposalRepository.save(approved);
-		return approvedQuestionRepository.save(approvedQuestion);
+		ApprovedQuestion saved = approvedQuestionRepository.save(approvedQuestion);
+		publishReviewed(proposal.getProposerId(), proposalId, "APPROVED", approvedAt);
+		return saved;
 	}
 
 	private QuestionProposal getProposal(long proposalId) {
 		return proposalRepository.findById(proposalId)
 			.orElseThrow(() -> new QuestionException(QuestionErrorCode.PROPOSAL_NOT_FOUND, "proposalId"));
+	}
+
+	// dedupKey를 proposalId에 고정한다. QuestionProposal은 UNDER_REVIEW에서 APPROVED나
+	// REJECTED로 딱 한 번만 전이하므로(재검토 경로 없음, QuestionProposal#requireStatus),
+	// 같은 제안에 대한 outbox event가 재복제될 수 없다.
+	private void publishReviewed(Long proposerId, long proposalId, String decision, Instant at) {
+		String dedupKey = "question-proposal-reviewed:" + proposalId;
+		if (outboxEventRepository.findByDedupKey(dedupKey).isPresent()) {
+			return;
+		}
+		String payload = String.format(
+			"{\"proposalId\":%d,\"proposerId\":%d,\"decision\":\"%s\"}", proposalId, proposerId, decision);
+		outboxEventRepository.save(OutboxEvent.pending(
+			OutboxAggregateType.QUESTION_PROPOSAL, proposalId,
+			OutboxEventType.QUESTION_PROPOSAL_REVIEWED, dedupKey, payload, at));
 	}
 }
