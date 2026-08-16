@@ -1,50 +1,92 @@
-# GitHub Issue #144 Task Contract
+# GitHub Issue #109 Task Contract
 
-> Generated at: `2026-08-16T00:01:22+09:00`
+> Generated at: `2026-08-15T21:26:19+09:00`
 >
 > 이 파일은 현재 작업 브랜치의 계약이다. 저장소 전역 정책은 `AGENTS.md`를
 > 따른다.
 
 ## Work gate
 
-- Title: `[API] 질문 제안 제출/검토 API 추가`
-- GitHub Issue: `#144`
-- Branch: `feat/gh-144-question-proposal-api`
+- Title: `Snapshot health와 emergency migration`
+- GitHub Issue: `#109`
+- Branch: `feat/gh-109-snapshot-health-migration`
 - Base branch: `main`
+- Test plan: `TEST-PLAN-GH-109-SNAPSHOT-HEALTH-MIGRATION`
+- Test plan approval: `APPROVED` — 사용자가 2026-08-15 구현을 승인했다.
+- Confirmed policy: emergency migration 대상이 되는 "사전 승인 release"는
+  기존 `FilterReleaseStatus`에 새 상태를 추가하지 않고 `CANARY` 또는
+  `ROLLED_BACK`을 재사용한다(사용자 승인, 2026-08-15). `rollback()`과 동일한
+  "이미 한 번 완전히 검증된 release만 재사용" 불변식을 그대로 상속한다.
 
 ## Objective
 
-- 질문 제안(F03)의 도메인·서비스·저장 계층(`QuestionProposal`,
-  `QuestionReviewService`, 관련 Repository)은 `#38`에서 이미 구현되어
-  있으나 이를 호출할 REST API가 없어 사용자가 실제로 질문을 제안할 수
-  없다. 제안 제출·조회, 운영자 검토(승인/반려) API를 추가해 F03을 실제로
-  동작하는 기능으로 완성한다.
+- OpenAI moderation snapshot 단위 장애를 개별 `FilterJob` 실패와 분리해
+  판단하고, 운영자 승인이 있을 때만 사전 검증된 release로 emergency
+  migration하는 안전장치를 구현한다.
+- 429/5xx/timeout/network/알 수 없는 오류가 자동으로 영구 장애를 만들지
+  않게 하고(`INV-HLT-002`, `INV-HLT-004`), 인증·권한·결제·quota·invalid
+  request 같은 우리 측 오류가 target snapshot 장애 증거로 오분류되지 않게
+  한다(`INV-HLT-003`).
+- `PERMANENT_CONFIRMED`와 emergency migration 실행은 운영자의 명시적 확인
+  없이는 어떤 자동 경로로도 도달할 수 없다(`INV-HLT-005`).
+- migration 이후 이전 generation의 늦은 결과가 상태를 바꾸지 못한다
+  (`INV-REL-010` — `#106`/`#107`이 정의만 하고 호출자가 없던
+  `FilterJob.advanceAttemptGeneration`/`STALE_ATTEMPT_GENERATION` fencing을
+  이 이슈가 실제로 소비하는 첫 호출자가 된다).
 
 ## Scope
 
-1. 사용자 질문 제안 제출 API (`QuestionReviewService.submit` 연결) —
-   `POST /api/v1/questions/proposals`.
-2. 내가 제안한 질문 목록 조회 API — `GET /api/v1/questions/proposals/me`.
-3. 운영자 검토(승인/반려) API (`startReview`/`approve`/`reject` 연결,
-   운영자 인증 필요) — 경로는 설계 단계에서 확정한다.
-4. `QUESTION_PROPOSAL_REVIEWED` outbox 알림 이벤트 실제 발행 연결.
-5. 콘텐츠 안전 검사(`filtering` 도메인) 연동 여부 확인 및 필요 시 연결.
-6. `docs/api/openapi.json` 갱신.
-7. 신규 마이그레이션 필요 여부는 구현 중 확인한다(기존
-   `question_proposal`/`question_proposal_review`/`approved_question`
-   테이블 재사용을 우선한다).
-
-`/harness-review` 검토 결과, 4번(알림 발행 연결)과 5번(filtering 연동 확인)은
-이 브랜치에서 구현하지 않고 후속 이슈 `#145`로 이관했다. Issue #144 본문도
-동일하게 갱신했다.
+1. `ModerationFailureClassification`(신규 enum) — HTTP status와 OpenAI
+   응답의 `error.code`로 `RATE_LIMITED`/`SERVER_ERROR`/`TIMEOUT_OR_NETWORK`/
+   `NON_TARGET_CLIENT_ERROR`/`UNKNOWN`으로 분류한다.
+   `OpenAiModerationProviderClient`/`OpenAiModerationResponseMapper`를
+   확장하되 기존 429(`ModerationRateLimitedException`, `#108`)와
+   `FLT-EXT-001`(`MODERATION_PROVIDER_UNAVAILABLE`) 계약은 그대로 유지한다.
+2. `SnapshotHealth`(신규 도메인, `modelSnapshot` 문자열 keyed) —
+   `HEALTHY`/`DEGRADED`/`PERMANENT_SUSPECTED`/`PERMANENT_CONFIRMED`/
+   `RECOVERED` 상태를 갖는다. 개별 job 실패가 아니라 synthetic probe
+   결과로만 전이한다.
+3. Target/control synthetic probe 기록 서비스 메서드 — 실사용자 요청과
+   분리된 별도 진입점. control probe도 실패하면 공급자 전역 장애로 간주해
+   target-only 실패로 집계하지 않는다.
+4. 분류별 반영 규칙 — `NON_TARGET_CLIENT_ERROR`·`UNKNOWN`은 어떤 반복
+   횟수에서도 `PERMANENT_SUSPECTED` 후보 증거로 집계되지 않는다.
+   target-only `SERVER_ERROR`/`TIMEOUT_OR_NETWORK`의 지속(횟수·기간, 정확한
+   임계값은 주입 값)만 증거로 누적한다.
+5. Evidence 축적 — 공식 공지(운영자 수기 플래그), target-only 실패 지속
+   기간·횟수, recovery 신호(target probe 재성공 시 `HEALTHY` 복귀 + 증거
+   초기화)를 `SnapshotHealth`에 보관한다.
+6. `PERMANENT_CONFIRMED` 운영자 승인 — `SnapshotHealthService`가
+   `FilterReleaseRegistryService.promote`/`rollback`과 동일한 패턴
+   (`operatorUserId` 필수, append-only 감사 이력 테이블)으로
+   `PERMANENT_SUSPECTED` → `PERMANENT_CONFIRMED` 전이를 운영자 호출로만
+   허용한다. 이 전이를 노출하는 REST endpoint 1개를 추가한다.
+7. Emergency migration — `PERMANENT_CONFIRMED` snapshot과 status가
+   `CANARY` 또는 `ROLLED_BACK`인 대상 release가 모두 확인될 때만 실행
+   가능하다. 신규 `FilterJob.migrateToRelease(newReleaseId, now)` 도메인
+   메서드로 영향받는 `AUTOMATED` job들의 `filterReleaseId` 재배정과
+   `attemptGeneration + 1`을 한 전이로 처리한다(기존
+   `STALE_ATTEMPT_GENERATION` fencing이 그대로 상속되어 `INV-REL-010`
+   보장, worker 코드 변경 없음). 대상 release는 기존 `promote()`/
+   `rePromote()` 경로로 승격한다. 원본→대상 release·snapshot health
+   id·operator·시각을 별도 감사 테이블에 기록해 lineage를 보존한다.
+8. DB 마이그레이션(V15) — `snapshot_health`, `snapshot_health_probe_result`,
+   `snapshot_emergency_migration_history` 테이블.
+9. 단위·PostgreSQL 통합(동시성 포함) 테스트와 테스트 보고서.
 
 ## Explicit exclusions
 
-- 질문 배정/추천 주기(`question_assignment_cycle`) 로직 변경 — 별도
-  이슈.
-- 콘텐츠 안전 검사 신규 정책 설계 — 기존 `filtering` 도메인 연동 확인
-  까지만.
-- Slack 등 알림 채널 확장 — 기존 outbox 패턴만 사용.
+- 상태별 window, threshold, probe cadence, alert 정책의 실제 운영 수치 —
+  전부 미결정이며 생성자/설정 주입 값으로만 존재한다.
+- 운영자 승인 endpoint의 세부 권한(role) 정책 — 이슈 본문이 미결정으로
+  명시.
+- synthetic probe를 실제로 주기적으로 실행하는 scheduler와 Spring bean
+  배선 — `#105`~`#108`과 동일하게 `#113` production gate로 이연.
+- 공식 공지 수집을 위한 외부 연동(RSS, 웹훅 등) — 운영자가 직접 기록하는
+  수기 플래그만 다룬다.
+- `PERMANENT_CONFIRMED`에서 되돌리는 운영자 번복(un-confirm) 경로와
+  emergency migration의 역방향 — 이슈 범위 밖.
+- Slack 알림(`#111`), `ManualReviewCase` 우선순위/band(`#110`).
 - 인프라 apply, 배포, 프로덕션 변경은 별도 승인 없이는 실행하지 않는다.
 - Secret, 계정 식별자, 토큰, `.env` 값은 기록하지 않는다.
 
@@ -52,22 +94,20 @@
 
 | Area | Owner | Required review |
 | --- | --- | --- |
-| 제안 제출·조회 API, 운영자 검토 API, outbox 알림 발행 연결, `filtering` 연동 확인, `docs/api/openapi.json`, 단위·통합 테스트 | Feature executor | 인증·권한 분리(일반 사용자 vs 운영자), `QuestionProposalReview` append-only 불변식, `#38` 기존 도메인 계약과의 호환성 리뷰 |
+| `ModerationFailureClassification`, `SnapshotHealth`, probe 기록, evidence, 운영자 승인, `FilterJob.migrateToRelease`, emergency migration 서비스, V15 마이그레이션, 단위·통합 테스트 | Feature executor | `INV-HLT-001`~`007`, `INV-REL-010` 검증, `#104`(release registry)·`#106`/`#107`(attempt generation fencing)·`#108`(release retry gate) 기존 계약과의 호환성 리뷰 |
 
 ## Existing user-owned changes
 
-- `main`에서 새로 분기했다(`./harness start --issue 144 --type feat
-  --slug question-proposal-api`). 분기 시점 `git status --short`는 비어
-  있었다.
-- 이전 작업 브랜치 `feat/gh-109-snapshot-health-migration`의 미커밋
-  변경(이슈 #109, snapshot health/emergency migration 구현 중)은 분기
-  전 `git stash`로 보존했다(`stash@{1}`: "WIP: gh-109
-  snapshot-health-migration (before starting gh-144)"). 해당 브랜치로
-  복귀 시 `git stash pop`으로 복원해야 한다.
+- `main`(#143 병합 직후)에서 새로 분기했다(`./harness start --issue 109
+  --type feat --slug snapshot-health-migration`). 분기 시점
+  `git status --short`는 비어 있었다.
 
 ## Validation
 
 ```bash
+./gradlew test --tests "com.dnd.qello.filtering.*" --max-workers=1 --no-daemon
+./gradlew integrationTest --tests "com.dnd.qello.SnapshotHealth*" --tests "com.dnd.qello.*EmergencyMigration*" --max-workers=1 --no-daemon --no-parallel --rerun-tasks
+./harness test-run --id TEST-PLAN-GH-109-SNAPSHOT-HEALTH-MIGRATION
 ./harness check
 ./harness pr-ready --project-tests
 git diff --check
@@ -75,39 +115,33 @@ git diff --check
 
 ## Completion criteria
 
-- [x] 제안 제출 API가 `QuestionProposal`을 생성하고 DRAFT→SUBMITTED로
-      전이한다. `QuestionReviewService.propose()`와
-      `QuestionProposalApiMockMvcTest#submitReturnsCreatedProposal`로 확인했다.
-- [x] 운영자 승인 API 호출 시 `ApprovedQuestion`이 생성되고
-      `QuestionProposalReview`가 append-only로 기록된다. 판정 로직 자체는
-      `#38`에서 구현됐고, 이 브랜치는
-      `OperatorQuestionProposalApiMockMvcTest#approveDelegatesWithExactArguments`로
-      컨트롤러가 `QuestionReviewService.approve`에 정확한 인자를 넘기는지
-      확인했다.
-- [ ] 반려 시 사유가 기록되고 `QUESTION_PROPOSAL_REVIEWED` 알림이
-      제안자에게 발행된다. 사유 기록은
-      `OperatorQuestionProposalApiMockMvcTest#rejectDelegatesWithExactArguments`로
-      확인했지만, 알림 실제 발행 연결은 이 브랜치 범위에서 제외하고 `#145`로
-      이관했다.
-- [x] 인증되지 않은 사용자는 제안 제출·조회를 할 수 없다.
-      `QuestionProposalApiMockMvcTest#submitRequiresAuthentication`,
-      `#findMineRequiresAuthentication`으로 확인했다.
-- [ ] 단위·통합 테스트와 테스트 보고서. 단위·컨트롤러 테스트(Mockito/MockMvc)
-      20건과 `QuestionProposalApiIntegrationTest`(PostgreSQL, 5건 — propose
-      단일 행 생성, application service 제출·조회·부적격 계정 거부, propose로
-      제출한 제안의 승인·반려 흐름)를 추가했다. 정식 `/harness-test-plan`
-      승인과 테스트 보고서는 여전히 없으며 `#145`로 이관했다.
-
-### Test plan exception (사용자 승인, 2026-08-16)
-
-- 결정: 정식 `/harness-test-plan` 승인 없이 이 PR을 병합하는 것을 예외로
-  승인함.
-- 이유: `/harness-review`가 지적한 gap(컨트롤러 인자 wiring, 제출→승인·
-  제출→반려 happy path)은 이후 추가한 단위·MockMvc·PostgreSQL 통합
-  테스트 35건으로 커버됐다. 정식 계획이 주는 값은 주로 엣지 케이스·임계값
-  설계인데, 이 PR 범위(REST wiring)에는 그런 임계값이 없다.
-- 남은 위험: 테스트 범위가 사전에 설계된 계획이 아니라 사후에 리뷰 지적을
-  메우는 방식으로 정해졌다. 놓친 경계 조건이 있어도 계획 문서가 없어
-  드러나지 않을 수 있다.
-- 추적: 정식 계획과 보고서는 `#145`(알림 발행·filtering 연동과 함께)에서
-  작성한다.
+- [x] 429, 5xx, timeout, network 또는 알 수 없는 오류가 자동 영구 장애를
+      만들지 않는다(`INV-HLT-002`, `003`, `004`) —
+      `SnapshotHealthTest#neverAccumulatesNonTargetClientError`,
+      `#neverAccumulatesUnknownClassification`,
+      `OpenAiModerationProviderClientTest`의 분류 테스트 5건으로 검증했다.
+- [x] 인증·권한·결제·quota·invalid request가 영구 snapshot 폐기로
+      오분류되지 않는다(`INV-HLT-003`) — `NON_TARGET_CLIENT_ERROR`
+      분류가 `SnapshotHealth.recordProbe`에서 어떤 반복 횟수에도 증거로
+      집계되지 않음을 확인했다.
+- [x] 운영자 확인 없는 emergency migration이 불가능하다(`INV-HLT-005`) —
+      `SnapshotEmergencyMigrationService`가 `SnapshotHealth`
+      `PERMANENT_CONFIRMED`(운영자 전용 `confirmPermanent` 경로로만 도달)를
+      전제조건으로 강제함을 UNIT-021과 INT-002·INT-003으로 검증했다.
+- [x] 이전 generation의 늦은 결과가 상태를 바꾸지 못한다(`INV-REL-010`) —
+      `FilterJobTest#rejectsStaleResultAfterEmergencyMigration`과
+      `SnapshotHealthMigrationIntegrationTest#staleGenerationResultAfterMigrationIsRejected`로
+      검증했다. `#106`/`#107`이 정의만 하고 호출자가 없던
+      `advanceAttemptGeneration`/`STALE_ATTEMPT_GENERATION` fencing을 이
+      이슈가 실제로 소비하는 첫 호출자가 됐다(`FilterJob.migrateToRelease`).
+- [x] 승인된 P0 테스트와 저장소 필수 검증이 통과하고 테스트 보고서가
+      남는다 — unit 23개(UNIT-001~023), integration 8개(INT-001~008,
+      실제 PostgreSQL 동시성·트랜잭션·REST endpoint 인가 포함) 전부
+      통과. 상세는
+      `docs/reports/tests/gh-109-TEST-PLAN-GH-109-SNAPSHOT-HEALTH-MIGRATION.md`
+      참고. `./harness check`, `./harness pr-ready --project-tests`
+      (전체 unit·integration 스위트, `./gradlew check` 포함) 통과.
+- [x] 실행하지 못한 검증과 남은 위험을 보고서에 기록한다 — 위 보고서
+      6·7절에 synthetic probe scheduler 배선(`#113`), 실제 OpenAI
+      계정 검증, 진짜 mid-transaction 부분 실패 재현(INT-003 범위 축소),
+      운영자 승인 endpoint 세부 권한 정책 등을 명시했다.

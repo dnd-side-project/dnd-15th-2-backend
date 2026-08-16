@@ -1,6 +1,7 @@
 /**
  * Created at: 2026-08-14T23:50:00+09:00
- * Source scenario: TEST-PLAN-GH-108-ANSWER-MODERATION-RETRY-UNIT-009, UNIT-010
+ * Source scenario: TEST-PLAN-GH-108-ANSWER-MODERATION-RETRY-UNIT-009, UNIT-010,
+ * TEST-PLAN-GH-109-SNAPSHOT-HEALTH-MIGRATION-UNIT-001 through UNIT-004, UNIT-007
  */
 package com.dnd.qello.filtering.moderation.openai;
 
@@ -24,8 +25,10 @@ import org.springframework.boot.http.client.ClientHttpRequestFactorySettings;
 import org.springframework.http.client.ClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
 
+import com.dnd.qello.filtering.domain.ModerationFailureClassification;
 import com.dnd.qello.filtering.error.FilteringErrorCode;
 import com.dnd.qello.filtering.error.FilteringException;
+import com.dnd.qello.filtering.moderation.ModerationProviderFailureException;
 import com.dnd.qello.filtering.moderation.ModerationRateLimitedException;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
@@ -91,6 +94,67 @@ class OpenAiModerationProviderClientTest {
 		assertThatThrownBy(() -> client.moderate("content", "model-v1"))
 			.isInstanceOf(FilteringException.class)
 			.hasFieldOrPropertyWithValue("errorCode", FilteringErrorCode.MODERATION_PROVIDER_UNAVAILABLE);
+	}
+
+	@Test
+	@DisplayName("401/403 응답은 NON_TARGET_CLIENT_ERROR로 분류된다")
+	void classifiesAuthAndPermissionErrorsAsNonTargetClientError() {
+		fakeServer.respondWith(401, "{}", null);
+		assertThatThrownBy(() -> client.moderate("content", "model-v1"))
+			.isInstanceOf(ModerationProviderFailureException.class)
+			.satisfies(e -> assertThat(((ModerationProviderFailureException) e).classification())
+				.isEqualTo(ModerationFailureClassification.NON_TARGET_CLIENT_ERROR));
+
+		fakeServer.respondWith(403, "{}", null);
+		assertThatThrownBy(() -> client.moderate("content", "model-v1"))
+			.isInstanceOf(ModerationProviderFailureException.class)
+			.satisfies(e -> assertThat(((ModerationProviderFailureException) e).classification())
+				.isEqualTo(ModerationFailureClassification.NON_TARGET_CLIENT_ERROR));
+	}
+
+	@Test
+	@DisplayName("402(결제) 응답은 NON_TARGET_CLIENT_ERROR로 분류된다")
+	void classifiesBillingErrorAsNonTargetClientError() {
+		fakeServer.respondWith(402, "{\"error\":{\"code\":\"insufficient_quota\"}}", null);
+
+		assertThatThrownBy(() -> client.moderate("content", "model-v1"))
+			.isInstanceOf(ModerationProviderFailureException.class)
+			.satisfies(e -> assertThat(((ModerationProviderFailureException) e).classification())
+				.isEqualTo(ModerationFailureClassification.NON_TARGET_CLIENT_ERROR));
+	}
+
+	@Test
+	@DisplayName("400(invalid request) 응답은 NON_TARGET_CLIENT_ERROR로 분류된다")
+	void classifiesInvalidRequestAsNonTargetClientError() {
+		fakeServer.respondWith(400, "{\"error\":{\"type\":\"invalid_request_error\"}}", null);
+
+		assertThatThrownBy(() -> client.moderate("content", "model-v1"))
+			.isInstanceOf(ModerationProviderFailureException.class)
+			.satisfies(e -> assertThat(((ModerationProviderFailureException) e).classification())
+				.isEqualTo(ModerationFailureClassification.NON_TARGET_CLIENT_ERROR));
+	}
+
+	@Test
+	@DisplayName("5xx 응답은 SERVER_ERROR로 분류된다")
+	void classifiesServerErrorsAsServerError() {
+		for (int status : new int[] {500, 502, 503, 504}) {
+			fakeServer.respondWith(status, "{}", null);
+			assertThatThrownBy(() -> client.moderate("content", "model-v1"))
+				.isInstanceOf(ModerationProviderFailureException.class)
+				.satisfies(e -> assertThat(((ModerationProviderFailureException) e).classification())
+					.isEqualTo(ModerationFailureClassification.SERVER_ERROR));
+		}
+	}
+
+	@Test
+	@DisplayName("응답이 200이지만 결과가 비어 있어 해석할 수 없으면 UNKNOWN으로 분류된다")
+	void classifiesMalformedResponseAsUnknown() {
+		fakeServer.respondWith(200, "{\"id\":\"m1\",\"model\":\"model-v1\",\"results\":[]}", null);
+
+		assertThatThrownBy(() -> client.moderate("content", "model-v1"))
+			.isInstanceOf(ModerationProviderFailureException.class)
+			.satisfies(e -> assertThat(((ModerationProviderFailureException) e).classification())
+				.isEqualTo(ModerationFailureClassification.UNKNOWN));
 	}
 
 	// 실제 OpenAI 계정·네트워크 없이 HTTP 경계(status·헤더)를 검증하기 위한 로컬 fake

@@ -52,4 +52,12 @@ public class JpaFilterJobRepository implements FilterJobRepository {
 			.map(FilterJobJpaMapper::toDomain)
 			.toList();
 	}
+
+	@Override
+	public List<FilterJob> findAutomatedByFilterReleaseId(long filterReleaseId) {
+		return repository.findByFilterReleaseIdAndStatus(filterReleaseId, FilterJobStatus.AUTOMATED)
+			.stream()
+			.map(FilterJobJpaMapper::toDomain)
+			.toList();
+	}
 }

@@ -19,7 +19,8 @@ import com.dnd.qello.filtering.error.FilteringException;
 /**
  * Created at: 2026-08-11T00:00:00+09:00
  * Source scenario: TEST-PLAN-GH-103-FILTERING-FOUNDATION-UNIT-001 through UNIT-010,
- * TEST-PLAN-GH-108-ANSWER-MODERATION-RETRY-UNIT-001
+ * TEST-PLAN-GH-108-ANSWER-MODERATION-RETRY-UNIT-001,
+ * TEST-PLAN-GH-109-SNAPSHOT-HEALTH-MIGRATION-UNIT-018, UNIT-019, UNIT-020
  */
 class FilterJobTest {
 
@@ -203,5 +204,41 @@ class FilterJobTest {
 			"idem-key", DEADLINE, NOW, NOW))
 			.isInstanceOf(FilteringException.class)
 			.hasFieldOrPropertyWithValue("errorCode", FilteringErrorCode.INVALID_JOB_STATUS);
+	}
+
+	@Test
+	@DisplayName("AUTOMATED job을 새 release로 이관하면 filterReleaseId가 바뀌고 attemptGeneration이 증가한다")
+	void migratesToNewReleaseAndAdvancesGeneration() {
+		FilterJob job = FilterJob.create(TARGET, 10L, "idem-key", DEADLINE, NOW);
+
+		FilterJob migrated = job.migrateToRelease(20L, NOW.plusSeconds(1));
+
+		assertThat(migrated.filterReleaseId()).isEqualTo(20L);
+		assertThat(migrated.attemptGeneration()).isEqualTo(2);
+		assertThat(migrated.status()).isEqualTo(FilterJobStatus.AUTOMATED);
+		assertThat(migrated.manuallyResolved()).isFalse();
+	}
+
+	@Test
+	@DisplayName("AUTOMATED 상태가 아닌 job은 emergency migration 대상이 될 수 없다")
+	void rejectsMigrationForNonAutomatedJob() {
+		FilterJob resolved = FilterJob.create(TARGET, 10L, "idem-key", DEADLINE, NOW)
+			.applyAutomatedDecision(1, FilterVerdict.ALLOW, NOW.plusSeconds(1));
+
+		assertThatThrownBy(() -> resolved.migrateToRelease(20L, NOW.plusSeconds(2)))
+			.isInstanceOf(FilteringException.class)
+			.hasFieldOrPropertyWithValue("errorCode", FilteringErrorCode.INVALID_JOB_STATUS);
+	}
+
+	@Test
+	@DisplayName("emergency migration으로 세대가 넘어간 뒤 도착한 낡은 결과는 거절된다")
+	void rejectsStaleResultAfterEmergencyMigration() {
+		FilterJob job = FilterJob.create(TARGET, 10L, "idem-key", DEADLINE, NOW);
+		FilterJob migrated = job.migrateToRelease(20L, NOW.plusSeconds(1));
+
+		assertThat(migrated.attemptGeneration()).isEqualTo(2);
+		assertThatThrownBy(() -> migrated.applyAutomatedDecision(1, FilterVerdict.ALLOW, NOW.plusSeconds(2)))
+			.isInstanceOf(FilteringException.class)
+			.hasFieldOrPropertyWithValue("errorCode", FilteringErrorCode.STALE_ATTEMPT_GENERATION);
 	}
 }

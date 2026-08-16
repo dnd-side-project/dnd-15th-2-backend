@@ -97,6 +97,10 @@ terraform fmt -check && terraform validate && terraform plan
 - `type`은 **브랜치 prefix와 같아야 한다**(`feature` → `feat`).
 - **PR 제목에는 scope를 쓰지 않는다.** 커밋과 달리 `feat(direction): ...`은 통과하지
   못한다.
+- summary는 **한글로** 쓴다. 실제 저장소 PR 이력이 한글 summary가 기본값임을
+  보여준다(예: `feat: 방향 매칭 워커와 원자적 수신자 확정 구현`, `feat: 답변
+  moderation 재시도와 소진 시 수동 검토 인계 추가`) — 영어 summary는 예외로만
+  쓴다.
 - summary는 브랜치 전체 작업을 한 줄로 요약한다.
 
 **본문** — `.github/PULL_REQUEST_TEMPLATE.md` 구조를 그대로 채운다.

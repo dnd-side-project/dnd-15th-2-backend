@@ -148,6 +148,28 @@ public record FilterJob(Long id, FilterTarget target, long filterReleaseId, Filt
 		return transition(FilterJobStatus.AUTOMATED, attemptGeneration + 1, logicalAttemptCount, false, null, now);
 	}
 
+	// emergency migration(#109)이 확정된 대상 release로 job을 재배정한다.
+	// filterReleaseId 재배정과 attemptGeneration 증가를 한 전이로 묶는다 —
+	// AnswerModerationExecutionWorker.callPipelineBounded는 매 처리마다
+	// filterReleaseId로 release를 다시 조회하므로, 이 필드만 바뀌면 다음 처리부터
+	// 새 release의 modelSnapshot을 별도 worker 변경 없이 그대로 쓴다. generation을
+	// 함께 올리는 이유는 advanceAttemptGeneration과 동일하다 — 이 시점 이전에
+	// 발행된 결과를 STALE_ATTEMPT_GENERATION으로 거절해 INV-REL-010을 지킨다.
+	// AUTOMATED 상태에서만 허용한다 — 이미 종결되었거나 수동 검토로 넘어간 job은
+	// 이관 대상이 아니다.
+	public FilterJob migrateToRelease(long newFilterReleaseId, Instant now) {
+		requireStatus(FilterJobStatus.AUTOMATED, "emergency release 이관을");
+		if (newFilterReleaseId <= 0) {
+			throw new FilteringException(
+				FilteringErrorCode.INVALID_VALUE_RANGE, "newFilterReleaseId", "newFilterReleaseId는 양수여야 합니다");
+		}
+		if (now == null) {
+			throw new FilteringException(FilteringErrorCode.REQUIRED_VALUE_MISSING, "now");
+		}
+		return new FilterJob(id, target, newFilterReleaseId, FilterJobStatus.AUTOMATED, attemptGeneration + 1,
+			logicalAttemptCount, false, null, idempotencyKey, deadlineAt, createdAt, now);
+	}
+
 	private FilterJob transition(FilterJobStatus nextStatus, int nextAttemptGeneration, int nextLogicalAttemptCount,
 		boolean nextManuallyResolved, FilterVerdict nextResolvedVerdict, Instant now) {
 		if (now == null) {

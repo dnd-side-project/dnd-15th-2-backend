@@ -62,7 +62,16 @@ public enum FilteringErrorCode implements ErrorCode {
 	// outbox payload JSON 직렬화/역직렬화 실패. 입력값 검증 실패가 아니라 내부 오류이므로
 	// INVALID_TEXT(FLT-VAL-003)와 구분한다
 	PAYLOAD_SERIALIZATION_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "FLT-INFRA-003", ErrorCategory.INFRA,
-		"payload 직렬화 처리에 실패했습니다.");
+		"payload 직렬화 처리에 실패했습니다."),
+
+	// 현재 snapshot health 상태로는 허용되지 않는 전이 시도(#109). 재시도로 해결 불가
+	INVALID_SNAPSHOT_HEALTH_STATUS(HttpStatus.CONFLICT, "FLT-DOM-007", ErrorCategory.DOM,
+		"현재 snapshot health 상태로는 요청을 처리할 수 없습니다."),
+
+	// emergency migration 대상 release가 pre-approved 조건(CANARY 또는 ROLLED_BACK)을
+	// 만족하지 않거나 source release와 동일함(#109)
+	INVALID_MIGRATION_TARGET(HttpStatus.CONFLICT, "FLT-DOM-008", ErrorCategory.DOM,
+		"emergency migration 대상 release가 유효하지 않습니다.");
 
 	private final HttpStatus httpStatus;
 	private final String code;

@@ -103,11 +103,13 @@ class AccountPersistenceIntegrationTest extends PostgisContainerIntegrationTestS
 		// + filter_release/filter_job/filter_job_status_history/filter_decision/manual_review_case/appeal_case(V10)
 		// + release_promotion_history(V11, filter_release는 V11에서 컬럼만 추가)
 		// V12·V13은 기존 테이블만 ALTER한다(신규 테이블 없음).
-		// + filter_release_retry_gate(V14, #108) — 이 count는 flyway_schema_history를
-		// version 1~11로만 필터링하므로 V14 자체는 마이그레이션 성공 여부에 포함되지
-		// 않지만, 애플리케이션 시작 시 전체 migration이 먼저 적용된 뒤 이 테스트가
-		// 실행되므로 V14가 만든 테이블도 이 count에 포함된다.
-		assertThat(applicationTableCount).isEqualTo(40);
+		// + filter_release_retry_gate(V14, #108)
+		// + snapshot_health/snapshot_health_probe_result/snapshot_emergency_migration_history(V15, #109)
+		// — 이 count는 flyway_schema_history를 version 1~11로만 필터링하므로 V14·V15
+		// 자체는 마이그레이션 성공 여부에 포함되지 않지만, 애플리케이션 시작 시 전체
+		// migration이 먼저 적용된 뒤 이 테스트가 실행되므로 V14·V15가 만든 테이블도
+		// 이 count에 포함된다.
+		assertThat(applicationTableCount).isEqualTo(43);
 	}
 
 	@Test
