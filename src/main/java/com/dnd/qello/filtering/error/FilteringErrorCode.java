@@ -71,7 +71,16 @@ public enum FilteringErrorCode implements ErrorCode {
 	// emergency migration 대상 release가 pre-approved 조건(CANARY 또는 ROLLED_BACK)을
 	// 만족하지 않거나 source release와 동일함(#109)
 	INVALID_MIGRATION_TARGET(HttpStatus.CONFLICT, "FLT-DOM-008", ErrorCategory.DOM,
-		"emergency migration 대상 release가 유효하지 않습니다.");
+		"emergency migration 대상 release가 유효하지 않습니다."),
+
+	// 이미 RESOLVED된 manual review case에 재결정을 시도함(#110, INV-MAN-001의
+	// 연장 — case는 한 번만 종결된다)
+	INVALID_MANUAL_REVIEW_CASE_STATUS(HttpStatus.CONFLICT, "FLT-DOM-009", ErrorCategory.DOM,
+		"현재 manual review case 상태로는 요청을 처리할 수 없습니다."),
+
+	// 요청한 manual review case를 찾을 수 없음(#110)
+	MANUAL_REVIEW_CASE_NOT_FOUND(HttpStatus.NOT_FOUND, "FLT-DOM-010", ErrorCategory.DOM,
+		"manual review case를 찾을 수 없습니다.");
 
 	private final HttpStatus httpStatus;
 	private final String code;

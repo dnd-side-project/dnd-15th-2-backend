@@ -13,7 +13,10 @@ import com.dnd.qello.filtering.domain.FilterDecision;
 import com.dnd.qello.filtering.domain.FilterTarget;
 import com.dnd.qello.filtering.domain.FilterTargetType;
 import com.dnd.qello.filtering.domain.FilterVerdict;
+import com.dnd.qello.filtering.domain.ManualReviewBand;
 import com.dnd.qello.filtering.domain.ManualReviewCase;
+import com.dnd.qello.filtering.domain.ManualReviewPriorityDecision;
+import com.dnd.qello.filtering.domain.ManualReviewPriorityReasonCode;
 import com.dnd.qello.filtering.error.FilteringErrorCode;
 import com.dnd.qello.filtering.error.FilteringException;
 
@@ -54,12 +57,17 @@ class FilteringValueObjectsTest {
 	}
 
 	@Test
-	@DisplayName("ManualReviewCase는 target과 filterReleaseId를 필수로 검증한다")
+	@DisplayName("ManualReviewCase는 target·filterReleaseId·filterJobId를 필수로 검증한다")
 	void validatesManualReviewCase() {
 		FilterTarget target = FilterTarget.of(FilterTargetType.ANSWER, 1L);
-		assertThat(ManualReviewCase.open(target, 10L, NOW).target()).isEqualTo(target);
+		ManualReviewPriorityDecision decision =
+			new ManualReviewPriorityDecision(ManualReviewBand.STANDARD, ManualReviewPriorityReasonCode.DEFAULT);
+		assertThat(ManualReviewCase.open(target, 10L, 20L, decision, 0, "v1", NOW).target()).isEqualTo(target);
 
-		assertThatThrownBy(() -> ManualReviewCase.open(target, 0L, NOW))
+		assertThatThrownBy(() -> ManualReviewCase.open(target, 0L, 20L, decision, 0, "v1", NOW))
+			.isInstanceOf(FilteringException.class)
+			.hasFieldOrPropertyWithValue("errorCode", FilteringErrorCode.INVALID_VALUE_RANGE);
+		assertThatThrownBy(() -> ManualReviewCase.open(target, 10L, 0L, decision, 0, "v1", NOW))
 			.isInstanceOf(FilteringException.class)
 			.hasFieldOrPropertyWithValue("errorCode", FilteringErrorCode.INVALID_VALUE_RANGE);
 	}
