@@ -69,7 +69,7 @@
 | --- | --- | --- | --- | --- |
 | R1. `publishReviewed()`가 `findByDedupKey` 후 `save`하는 TOCTOU 구조라, 동시 판정 시 후발 transaction이 `uq_outbox_event_dedup` 위반으로 실패한다. `AnswerModerationJobIntakeService`는 같은 경쟁을 `DataIntegrityViolationException` catch로 처리하지만 이 경로는 처리하지 않는다 | 높음 — 운영자에게 원인 불명 500 | 낮음 — 두 운영자가 같은 제안을 동시 판정 | P0 | 동시 반려/승인 통합 테스트에서 성공 1건·실패 1건의 최종 상태 |
 | R2. `question_proposal_review`에 `proposal_id` unique가 없어, 동시 판정이 append-only 이력에 중복 행을 남길 수 있다 | 중간 — 감사 이력 오염, 판정자 2명 기록 | 낮음 | P0 | 동시 판정 후 `question_proposal_review` 행 수 |
-| R3. outbox 저장 실패가 판정 transaction을 롤백하지 않으면 "알림 없는 판정" 또는 "판정 없는 알림"이 생긴다 | 높음 — 사용자 신뢰 직결 | 낮음 | P0 | dedupKey 선점 상태에서 반려 시도 후 proposal·review·outbox 상태 |
+| R3. outbox 저장 실패가 판정 transaction을 롤백하지 않으면 "알림 없는 판정" 또는 "판정 없는 알림"이 생긴다 | 높음 — 사용자 신뢰 직결 | 낮음 | P0 | outbox 삽입을 실제로 실패시킨 뒤 proposal·review·outbox 상태(INT-009). dedupKey 선점(INT-003)은 조기 반환 경로라 이 위험을 검증하지 못한다 |
 | R4. `findMine`이 제안자 필터를 놓치면 타인의 제안 문구가 노출된다. 단위 테스트는 mock repository라 실제 SQL 필터를 검증하지 못한다 | 높음 — 프라이버시 침해 | 낮음 | P0 | 두 계정 데이터가 있는 DB에서 조회 결과 |
 | R5. `propose()`가 `save(create)` → `save(submit)` 2단계라, 두 번째 실패 시 고아 DRAFT 행이 남을 수 있다 | 중간 — 사용자에게 안 보이는 유령 제안 | 낮음 | P1 | 실패 주입 후 `question_proposal` 행 수 |
 | R6. 이미 판정된 제안을 재판정할 때 상태 기계가 막지 못하면 두 번째 알림이 발행된다 | 중간 — 중복 알림 | 중간 — 운영자 재클릭 | P1 | 순차 재반려 시 예외 코드와 outbox 행 수 |
@@ -112,7 +112,8 @@ exception"), 그때 작성한 테스트는 잠정 식별자
 | --- | --- | --- | --- | --- | --- |
 | `...-NOTIFICATION-INT-001` | `QuestionReviewService`, PostgreSQL, outbox | `UNDER_REVIEW` 제안 1건, 운영자 2명 | 두 스레드가 동시에 `reject()` | 정확히 1건 성공. `question_proposal` = `REJECTED`, `question_proposal_review` 행 **1개**, outbox 행 **1개**. 실패한 쪽은 상태를 오염시키지 않는다 | 테이블 DELETE |
 | `...-NOTIFICATION-INT-002` | `QuestionReviewService`, PostgreSQL, outbox | `UNDER_REVIEW` 제안 1건, 운영자 2명 | 두 스레드가 동시에 `approve()` | 정확히 1건 성공. `approved_question` 행 1개(`uq_approved_question_source_proposal`), review 1개, outbox 1개 | 테이블 DELETE |
-| `...-NOTIFICATION-INT-003` | `QuestionReviewService`, outbox | 같은 dedupKey(`question-proposal-reviewed:{id}`) outbox 행을 미리 삽입 | `reject()` 호출 | 판정 자체는 성공하고 outbox 행은 1개로 유지된다(중복 억제가 DB까지 일관). 만약 실패한다면 proposal·review가 **함께** 롤백된다 | 테이블 DELETE |
+| `...-NOTIFICATION-INT-003` | `QuestionReviewService`, outbox | 같은 dedupKey(`question-proposal-reviewed:{id}`) outbox 행을 미리 삽입 | `reject()` 호출 | 판정 자체는 성공하고 outbox 행은 1개로 유지된다. **중복 억제만 검증하며 롤백은 다루지 않는다** — `publishReviewed()`가 dedupKey 사전 조회에서 조기 반환하므로 이 경로에서는 저장 실패가 발생하지 않는다 | 테이블 DELETE |
+| `...-NOTIFICATION-INT-009` | `QuestionReviewService`, outbox, PostgreSQL | `UNDER_REVIEW` 제안 1건. `outbox_event`에 `QUESTION_PROPOSAL` 삽입을 거부하는 trigger를 설치(ERRCODE `23514`) | `reject()` 호출 | `DataIntegrityViolationException`이 발생하고, 제안은 `UNDER_REVIEW`로, 판정 이력은 0행으로, outbox는 0행으로 **모두 롤백**된다. `reject()`는 review·proposal을 DB에 쓴 뒤 발행하므로 이력이 비어 있다는 사실이 곧 롤백 증거다 | trigger·function DROP 후 테이블 DELETE |
 | `...-NOTIFICATION-INT-004` | `QuestionProposalApplicationService`, PostgreSQL | 서로 다른 계정 2명이 각각 제안 2건·1건 제출 | 계정 A로 `findMine()` | A의 2건만 반환. B의 제안 id·문구가 결과에 없다 | 테이블 DELETE |
 | `...-NOTIFICATION-INT-005` | outbox, `RecipientNotificationFanOutWorker` | 반려로 `QUESTION_PROPOSAL_REVIEWED` event 1건 생성 | 기존 fan-out worker의 `processBatch` 실행 | 이 event는 claim되지 않고 `PENDING`으로 남는다(worker는 `RECIPIENTS_CONFIRMED`만 claim) | 테이블 DELETE |
 | `...-NOTIFICATION-INT-006` | `QuestionReviewService`, PostgreSQL | 정상 계정 | `propose()`가 두 번째 저장에서 실패하도록 유도(문구 길이 초과 등 제약 위반) | `question_proposal`에 고아 DRAFT 행이 남지 않는다(행 수 0) | 테이블 DELETE |
@@ -189,7 +190,7 @@ surrogate id만 사용한다.
 | Order | Executor | Owned files | Scenario IDs | Verification |
 | --- | --- | --- | --- | --- |
 | 1 | Executor 1 (unit) | `src/test/java/com/dnd/qello/question/service/QuestionReviewServiceTest.java` (기존 확장) | UNIT-001 ~ UNIT-004 | `./gradlew test --tests "com.dnd.qello.question.service.QuestionReviewServiceTest"` |
-| 2 | Executor 2 (integration, 단일 스레드) | `src/integrationTest/java/com/dnd/qello/QuestionProposalApiIntegrationTest.java` (기존 확장) | INT-003, INT-004, INT-006, INT-007, INT-008 | `./gradlew integrationTest --tests "com.dnd.qello.QuestionProposalApiIntegrationTest"` |
+| 2 | Executor 2 (integration, 단일 스레드) | `src/integrationTest/java/com/dnd/qello/QuestionProposalApiIntegrationTest.java` (기존 확장) | INT-003, INT-004, INT-006 ~ INT-009 | `./gradlew integrationTest --tests "com.dnd.qello.QuestionProposalApiIntegrationTest"` |
 | 3 | Executor 3 (integration, 동시성) | `src/integrationTest/java/com/dnd/qello/QuestionProposalReviewConcurrencyIntegrationTest.java` (**신규**) | INT-001, INT-002, INT-005 | `./gradlew integrationTest --tests "com.dnd.qello.QuestionProposalReviewConcurrencyIntegrationTest"` |
 
 세 실행자의 소유 파일은 서로 겹치지 않는다. 순서 1 → 2 → 3은 실패 원인을 좁히기
@@ -201,7 +202,7 @@ surrogate id만 사용한다.
 
 ## 10. Completion criteria
 
-- [ ] 모든 P0 시나리오 구현 (UNIT-001, 002 / INT-001, 002, 003, 004)
+- [ ] 모든 P0 시나리오 구현 (UNIT-001, 002 / INT-001, 002, 004, 009)
 - [ ] 모든 테스트 메서드에 `@DisplayName`
 - [ ] 테스트 클래스 헤더의 timestamp와 source scenario 검증
 - [ ] 단위 테스트 통과

@@ -9,9 +9,9 @@
 
 - Result: `PASS`
 - Tested scope: 질문 제안 판정(승인·반려)과 `QUESTION_PROPOSAL_REVIEWED` outbox
-  event 발행의 결합, 동시 판정에서의 최종 상태 수렴, 제안자별 조회 격리,
-  `propose()` 트랜잭션 롤백, payload의 JSONB 유효성. 계획의 P0 6건과 P1 5건을
-  모두 구현·실행했다.
+  event 발행의 결합, outbox 저장 실패 시 판정·이력의 원자적 롤백, 동시 판정에서의
+  최종 상태 수렴, 제안자별 조회 격리, `propose()` 트랜잭션 롤백, payload의 JSONB
+  유효성. 계획의 P0 6건과 P1 5건을 모두 구현·실행했다.
 - Unverified scope: R9(`created_at` 동률 시 목록 정렬 결정성, P2)은 시나리오를
   만들지 않아 **미실행**이다. fan-out worker가 없으므로 알림이 사용자 기기까지
   도달하는 end-to-end 경로는 이 이슈 범위 밖이며 검증하지 않았다.
@@ -32,9 +32,17 @@
 | Command / suite | Result | Tests | Duration | Evidence |
 | --- | --- | --- | --- | --- |
 | Unit (`./harness test-run` 내 `./gradlew test`) | PASS | 442 (실패 0, 오류 0, skip 0) | 8s | `build/test-results/test/TEST-*.xml` |
-| Integration (`./harness test-run` 내 `./gradlew integrationTest`) | PASS | 357 (실패 0, 오류 0, skip 0) | 4m 1s | `build/test-results/integrationTest/TEST-*.xml` |
+| Integration (`./harness test-run` 내 `./gradlew integrationTest`) | PASS | 358 (실패 0, 오류 0, skip 0) | 4m 1s | `build/test-results/integrationTest/TEST-*.xml` |
+| `./harness check` | PASS | — | — | Secret preflight 806 파일, JUnit policy 124 파일, convention·workflow·label·husky 검사 통과 |
+| `npm run hooks:validate` | PASS | — | — | `Husky validation passed.` |
+| `git diff --check` | PASS | — | — | 공백 오류 없음(exit 0) |
+| `./harness pr-ready --project-tests` | PASS | — | 4m 41s | `BUILD SUCCESSFUL`, `Harness checks passed`, `Local PR readiness checks passed` |
 
-이 계획이 새로 추가한 테스트는 단위 4건, 통합 8건이다.
+`AGENTS.md` 10절의 필수 검증 네 가지를 모두 실행했다. `./harness pr-ready`는
+`./harness check`와 `git diff --check`를 포함하지만 증거를 남기기 위해 개별로도
+실행했다.
+
+이 계획이 새로 추가한 테스트는 단위 4건, 통합 9건이다.
 
 ## 4. Scenario results
 
@@ -46,7 +54,8 @@
 | UNIT-004 | PASS | `QuestionReviewServiceTest#approveOnAlreadyApprovedProposalIsBlocked` | 승인 질문·이벤트 미추가 확인 |
 | INT-001 | PASS | `QuestionProposalReviewConcurrencyIntegrationTest#concurrentRejectionCommitsOnlyOnce` | 성공 1건, review 1행, outbox 1행 |
 | INT-002 | PASS | `QuestionProposalReviewConcurrencyIntegrationTest#concurrentApprovalCommitsOnlyOnce` | 성공 1건, `approved_question` 1행 |
-| INT-003 | PASS | `QuestionProposalApiIntegrationTest#reviewKeepsSingleOutboxEventWhenDedupKeyAlreadyTaken` | 선점된 payload가 보존됨 |
+| INT-003 | PASS | `QuestionProposalApiIntegrationTest#reviewKeepsSingleOutboxEventWhenDedupKeyAlreadyTaken` | 중복 억제만 검증. 조기 반환 경로라 롤백은 다루지 않음 |
+| INT-009 | PASS | `QuestionProposalApiIntegrationTest#outboxFailureRollsBackReviewAndProposal` | trigger로 outbox 삽입을 실패시켜 판정·이력 롤백을 확인 |
 | INT-004 | PASS | `QuestionProposalApiIntegrationTest#findMineDoesNotLeakOtherProposals` | 타 계정 id·문구 미노출 |
 | INT-005 | PASS | `QuestionProposalReviewConcurrencyIntegrationTest#fanOutWorkerDoesNotClaimQuestionProposalEvent` | `claimed()==0`, status `PENDING`, lease 없음 |
 | INT-006 | PASS | `QuestionProposalApiIntegrationTest#proposeLeavesNoOrphanDraftWhenSubmitFails` | 고아 DRAFT 0행 |
@@ -112,8 +121,14 @@
 
 ### Transactions and event ordering
 
-- 판정 이력, 제안 상태, 승인 질문, outbox event가 한 커밋 단위임을 UNIT-001/002와
-  INT-003/006/007이 확인했다.
+- 판정 이력, 제안 상태, 승인 질문, outbox event가 한 커밋 단위임을 INT-009가
+  결정적으로 확인했다. `outbox_event` 삽입을 거부하는 trigger를 걸고 `reject()`를
+  호출하면 제안은 `UNDER_REVIEW`로, 판정 이력은 0행으로 되돌아간다. `reject()`는
+  review와 proposal을 DB에 쓴 **뒤** 이벤트를 발행하므로, 이력이 비어 있다는 사실
+  자체가 롤백의 증거다.
+- INT-003(dedupKey 선점)은 이 원자성을 검증하지 못한다. `publishReviewed()`가
+  사전 조회에서 조기 반환하므로 저장 실패가 발생하지 않기 때문이다. 초기 계획은
+  이 둘을 한 시나리오로 묶었으나 코드 리뷰 지적을 받아 INT-009로 분리했다.
 - `approve()`는 `approvedQuestionRepository.save()` **뒤에** 이벤트를 발행하므로,
   승인 질문 생성이 실패하면 이벤트가 발행되지 않는다(기존
   `QuestionPersistenceIntegrationTest#rollsBackApprovalWhenApprovedQuestionInsertFails`
