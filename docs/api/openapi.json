@@ -170,6 +170,63 @@
         },
         "type" : "object"
       },
+      "ApiResponseInboxCommandResponse" : {
+        "properties" : {
+          "data" : {
+            "$ref" : "#/components/schemas/InboxCommandResponse"
+          },
+          "status" : {
+            "enum" : [
+              "success",
+              "error"
+            ],
+            "type" : "string"
+          },
+          "timestamp" : {
+            "format" : "date-time",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "ApiResponseInboxDetailResponse" : {
+        "properties" : {
+          "data" : {
+            "$ref" : "#/components/schemas/InboxDetailResponse"
+          },
+          "status" : {
+            "enum" : [
+              "success",
+              "error"
+            ],
+            "type" : "string"
+          },
+          "timestamp" : {
+            "format" : "date-time",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "ApiResponseInboxListingResponse" : {
+        "properties" : {
+          "data" : {
+            "$ref" : "#/components/schemas/InboxListingResponse"
+          },
+          "status" : {
+            "enum" : [
+              "success",
+              "error"
+            ],
+            "type" : "string"
+          },
+          "timestamp" : {
+            "format" : "date-time",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
       "ApiResponseListFilterReleaseResponse" : {
         "properties" : {
           "data" : {
@@ -433,6 +490,87 @@
         },
         "type" : "object"
       },
+      "Card" : {
+        "properties" : {
+          "answerCount" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "bodyText" : {
+            "type" : "string"
+          },
+          "distanceBand" : {
+            "type" : "string"
+          },
+          "distanceM" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "expiresAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "inboundBearingDegrees" : {
+            "type" : "number"
+          },
+          "matchedAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "mediaIds" : {
+            "items" : {
+              "format" : "int64",
+              "type" : "integer"
+            },
+            "type" : "array"
+          },
+          "postId" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "postRecipientId" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "questionText" : {
+            "type" : "string"
+          },
+          "reactionCount" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "senderCoarseRegionCode" : {
+            "type" : "string"
+          },
+          "status" : {
+            "type" : "string"
+          },
+          "unreadAnswerCount" : {
+            "format" : "int64",
+            "type" : "integer"
+          }
+        },
+        "type" : "object"
+      },
+      "Chip" : {
+        "properties" : {
+          "count" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "displayName" : {
+            "type" : "string"
+          },
+          "segmentKey" : {
+            "type" : "string"
+          },
+          "sortOrder" : {
+            "format" : "int32",
+            "type" : "integer"
+          }
+        },
+        "type" : "object"
+      },
       "CreateFilterReleaseRequest" : {
         "properties" : {
           "categoryMappingRef" : {
@@ -643,6 +781,59 @@
               "ROLLED_BACK"
             ],
             "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "InboxCommandResponse" : {
+        "properties" : {
+          "postRecipientId" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "revertibleUntil" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "skipRequestedAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "status" : {
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "InboxDetailResponse" : {
+        "properties" : {
+          "card" : {
+            "$ref" : "#/components/schemas/Card"
+          },
+          "openedAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "skipRequestedAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "InboxListingResponse" : {
+        "properties" : {
+          "cards" : {
+            "items" : {
+              "$ref" : "#/components/schemas/Card"
+            },
+            "type" : "array"
+          },
+          "chips" : {
+            "items" : {
+              "$ref" : "#/components/schemas/Chip"
+            },
+            "type" : "array"
           }
         },
         "type" : "object"
@@ -2163,6 +2354,404 @@
         ]
       }
     },
+    "/api/v1/direction/inbox" : {
+      "get" : {
+        "description" : "인증 사용자의 수신 질문과 카테고리 전체 방향 칩을 조회합니다. 정확 위치와 내부 사용자 식별자는 반환하지 않습니다.",
+        "operationId" : "list",
+        "parameters" : [
+          {
+            "in" : "query",
+            "name" : "category",
+            "required" : false,
+            "schema" : {
+              "default" : "UNANSWERED",
+              "enum" : [
+                "UNANSWERED",
+                "ANSWERED"
+              ],
+              "type" : "string"
+            }
+          },
+          {
+            "in" : "query",
+            "name" : "directionSegmentKey",
+            "required" : false,
+            "schema" : {
+              "type" : "string"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiResponseInboxListingResponse"
+                }
+              }
+            },
+            "description" : "수신함 목록을 반환합니다."
+          },
+          "400" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "요청 값이 올바르지 않습니다. 오류 코드는 docs/error-codes.md를 따른다."
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "앱 액세스 토큰이 유효하지 않습니다."
+          },
+          "403" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "현재 계정은 수신함을 사용할 수 없습니다. (FED-APP-002)"
+          },
+          "404" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "인증 사용자 계정을 찾을 수 없습니다. (FED-APP-001)"
+          },
+          "500" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "서버 내부 오류가 발생했습니다."
+          }
+        },
+        "security" : [
+          {
+            "appAccessToken" : [ ]
+          }
+        ],
+        "summary" : "수신함 목록 조회",
+        "tags" : [
+          "방향 수신함"
+        ]
+      }
+    },
+    "/api/v1/direction/inbox/{postRecipientId}" : {
+      "get" : {
+        "description" : "인증 사용자가 수신 자격을 가진 질문을 조회하고 최초 열람 상태를 기록합니다.",
+        "operationId" : "detail",
+        "parameters" : [
+          {
+            "description" : "수신함 항목 식별자",
+            "example" : 101,
+            "in" : "path",
+            "name" : "postRecipientId",
+            "required" : true,
+            "schema" : {
+              "format" : "int64",
+              "type" : "integer"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiResponseInboxDetailResponse"
+                }
+              }
+            },
+            "description" : "수신 질문 상세를 반환합니다."
+          },
+          "400" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "요청 값이 올바르지 않습니다. 오류 코드는 docs/error-codes.md를 따른다."
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "앱 액세스 토큰이 유효하지 않습니다."
+          },
+          "403" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "현재 계정은 수신함을 사용할 수 없습니다. (FED-APP-002)"
+          },
+          "404" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "수신 자격이 있는 항목을 찾을 수 없습니다. (FED-DOM-001)"
+          },
+          "409" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "동시 상태 변경으로 상세 열람을 적용할 수 없습니다. (FED-DOM-002)"
+          },
+          "500" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "서버 내부 오류가 발생했습니다."
+          }
+        },
+        "security" : [
+          {
+            "appAccessToken" : [ ]
+          }
+        ],
+        "summary" : "수신함 상세 조회",
+        "tags" : [
+          "방향 수신함"
+        ]
+      }
+    },
+    "/api/v1/direction/inbox/{postRecipientId}/skip" : {
+      "delete" : {
+        "description" : "서버가 정한 유예 마감 전에 넘김 요청을 이전 상태로 되돌립니다.",
+        "operationId" : "revertSkip",
+        "parameters" : [
+          {
+            "description" : "수신함 항목 식별자",
+            "example" : 101,
+            "in" : "path",
+            "name" : "postRecipientId",
+            "required" : true,
+            "schema" : {
+              "format" : "int64",
+              "type" : "integer"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiResponseInboxCommandResponse"
+                }
+              }
+            },
+            "description" : "복원된 수신 상태를 반환합니다."
+          },
+          "400" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "요청 값이 올바르지 않습니다. 오류 코드는 docs/error-codes.md를 따른다."
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "앱 액세스 토큰이 유효하지 않습니다."
+          },
+          "403" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "현재 계정은 수신함을 사용할 수 없습니다. (FED-APP-002)"
+          },
+          "404" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "변경할 수신함 항목을 찾을 수 없습니다. (FED-DOM-001)"
+          },
+          "409" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "되돌리기 유예가 끝났거나 현재 상태에서는 되돌릴 수 없습니다. (FED-DOM-002)"
+          },
+          "500" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "서버 내부 오류가 발생했습니다."
+          }
+        },
+        "security" : [
+          {
+            "appAccessToken" : [ ]
+          }
+        ],
+        "summary" : "수신 질문 넘김 되돌리기",
+        "tags" : [
+          "방향 수신함"
+        ]
+      },
+      "put" : {
+        "description" : "수신 질문의 넘김을 요청하고 서버 정책으로 계산한 되돌리기 마감을 반환합니다. 반복 요청은 최초 마감을 연장하지 않습니다.",
+        "operationId" : "skip",
+        "parameters" : [
+          {
+            "description" : "수신함 항목 식별자",
+            "example" : 101,
+            "in" : "path",
+            "name" : "postRecipientId",
+            "required" : true,
+            "schema" : {
+              "format" : "int64",
+              "type" : "integer"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiResponseInboxCommandResponse"
+                }
+              }
+            },
+            "description" : "넘김 요청 상태를 반환합니다."
+          },
+          "400" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "요청 값이 올바르지 않습니다. 오류 코드는 docs/error-codes.md를 따른다."
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "앱 액세스 토큰이 유효하지 않습니다."
+          },
+          "403" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "현재 계정은 수신함을 사용할 수 없습니다. (FED-APP-002)"
+          },
+          "404" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "변경할 수신함 항목을 찾을 수 없습니다. (FED-DOM-001)"
+          },
+          "409" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "현재 상태에서는 넘김을 요청할 수 없습니다. (FED-DOM-002)"
+          },
+          "500" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "서버 내부 오류가 발생했습니다."
+          }
+        },
+        "security" : [
+          {
+            "appAccessToken" : [ ]
+          }
+        ],
+        "summary" : "수신 질문 넘김 요청",
+        "tags" : [
+          "방향 수신함"
+        ]
+      }
+    },
     "/api/v1/direction/posts" : {
       "post" : {
         "description" : "텍스트만, JPEG/PNG 이미지 한 장만 또는 둘을 조합해 제출합니다. 수신자 확정은 비동기 worker가 수행합니다.",
@@ -2731,6 +3320,10 @@
     {
       "description" : "방향 preview와 매칭에 사용할 최신 위치 갱신",
       "name" : "방향 위치"
+    },
+    {
+      "description" : "수신 질문 목록·상세 조회와 넘김 상태 변경",
+      "name" : "방향 수신함"
     },
     {
       "description" : "OpenAI moderation snapshot 단위 health 상태와 PERMANENT_CONFIRMED 운영자 승인",
