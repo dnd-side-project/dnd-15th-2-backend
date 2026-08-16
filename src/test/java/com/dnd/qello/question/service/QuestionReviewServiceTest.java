@@ -1,7 +1,10 @@
 /**
  * Created at: 2026-08-16T00:25:00+09:00
- * Source scenario: TEST-PLAN-GH-144-QUESTION-PROPOSAL-API-UNIT-005 through UNIT-007
- * (임시 식별자 — /harness-test-plan 승인 전까지 이 시나리오 번호만 사용)
+ * Source scenario: TEST-PLAN-GH-144-QUESTION-PROPOSAL-API-UNIT-005 through UNIT-007,
+ * TEST-PLAN-GH-145-QUESTION-PROPOSAL-NOTIFICATION-UNIT-001 through UNIT-004
+ *
+ * GH-144 식별자는 정식 계획 없이 병합한 예외 승인분이며,
+ * TEST-PLAN-GH-145-QUESTION-PROPOSAL-NOTIFICATION이 승계했다(계획 5.2 참고).
  */
 package com.dnd.qello.question.service;
 
@@ -21,6 +24,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 
 import com.dnd.qello.notification.domain.OutboxAggregateType;
 import com.dnd.qello.notification.domain.OutboxEvent;
@@ -151,6 +155,62 @@ class QuestionReviewServiceTest {
 
 		service.reject(PROPOSAL_ID, 1L, "정책에 맞지 않습니다", SUBMITTED_AT);
 
+		verify(outboxEventRepository, never()).save(any());
+	}
+
+	@Test
+	@DisplayName("반려 중 outbox 저장이 실패하면 예외를 삼키지 않고 그대로 전파한다")
+	void rejectPropagatesOutboxFailure() {
+		when(proposalRepository.findById(PROPOSAL_ID)).thenReturn(Optional.of(underReviewProposal()));
+		when(outboxEventRepository.findByDedupKey(any())).thenReturn(Optional.empty());
+		when(outboxEventRepository.save(any()))
+			.thenThrow(new DataIntegrityViolationException("uq_outbox_event_dedup"));
+
+		assertThatThrownBy(() -> service.reject(PROPOSAL_ID, 1L, "정책에 맞지 않습니다", SUBMITTED_AT))
+			.isInstanceOf(DataIntegrityViolationException.class);
+	}
+
+	@Test
+	@DisplayName("승인 중 outbox 저장이 실패하면 예외를 삼키지 않고 그대로 전파한다")
+	void approvePropagatesOutboxFailure() {
+		when(proposalRepository.findById(PROPOSAL_ID)).thenReturn(Optional.of(underReviewProposal()));
+		when(outboxEventRepository.findByDedupKey(any())).thenReturn(Optional.empty());
+		when(outboxEventRepository.save(any()))
+			.thenThrow(new DataIntegrityViolationException("uq_outbox_event_dedup"));
+
+		assertThatThrownBy(() -> service.approve(
+			PROPOSAL_ID, 1L, AnswerFormat.TEXT, SUBMITTED_AT, SUBMITTED_AT.plusSeconds(3600), SUBMITTED_AT))
+			.isInstanceOf(DataIntegrityViolationException.class);
+	}
+
+	@Test
+	@DisplayName("이미 반려된 제안을 다시 반려하면 INVALID_PROPOSAL_STATUS이고 이력·이벤트를 추가하지 않는다")
+	void rejectOnAlreadyRejectedProposalIsBlocked() {
+		QuestionProposal rejected = QuestionProposal.restore(PROPOSAL_ID, PROPOSER_ID,
+			QuestionProposalStatus.REJECTED, "제안 문구", "먼저 반려된 사유", SUBMITTED_AT, SUBMITTED_AT, SUBMITTED_AT);
+		when(proposalRepository.findById(PROPOSAL_ID)).thenReturn(Optional.of(rejected));
+
+		assertThatThrownBy(() -> service.reject(PROPOSAL_ID, 1L, "두 번째 사유", SUBMITTED_AT))
+			.isInstanceOf(QuestionException.class)
+			.satisfies(exception -> assertThat(((QuestionException) exception).getErrorCode())
+				.isEqualTo(QuestionErrorCode.INVALID_PROPOSAL_STATUS));
+		verify(reviewRepository, never()).save(any());
+		verify(outboxEventRepository, never()).save(any());
+	}
+
+	@Test
+	@DisplayName("이미 승인된 제안을 다시 승인하면 INVALID_PROPOSAL_STATUS이고 승인 질문·이벤트를 추가하지 않는다")
+	void approveOnAlreadyApprovedProposalIsBlocked() {
+		QuestionProposal approved = QuestionProposal.restore(PROPOSAL_ID, PROPOSER_ID,
+			QuestionProposalStatus.APPROVED, "제안 문구", null, SUBMITTED_AT, SUBMITTED_AT, SUBMITTED_AT);
+		when(proposalRepository.findById(PROPOSAL_ID)).thenReturn(Optional.of(approved));
+
+		assertThatThrownBy(() -> service.approve(
+			PROPOSAL_ID, 1L, AnswerFormat.TEXT, SUBMITTED_AT, SUBMITTED_AT.plusSeconds(3600), SUBMITTED_AT))
+			.isInstanceOf(QuestionException.class)
+			.satisfies(exception -> assertThat(((QuestionException) exception).getErrorCode())
+				.isEqualTo(QuestionErrorCode.INVALID_PROPOSAL_STATUS));
+		verify(approvedQuestionRepository, never()).save(any());
 		verify(outboxEventRepository, never()).save(any());
 	}
 }
