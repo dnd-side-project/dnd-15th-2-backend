@@ -1,71 +1,50 @@
-# GitHub Issue #108 Task Contract
+# GitHub Issue #144 Task Contract
 
-> Generated at: `2026-08-14T22:59:04+09:00`
+> Generated at: `2026-08-16T00:01:22+09:00`
 >
 > 이 파일은 현재 작업 브랜치의 계약이다. 저장소 전역 정책은 `AGENTS.md`를
 > 따른다.
 
 ## Work gate
 
-- Title: `답변 moderation job durable retry`
-- GitHub Issue: `#108`
-- Branch: `feat/gh-108-answer-retry-exhaustion`
+- Title: `[API] 질문 제안 제출/검토 API 추가`
+- GitHub Issue: `#144`
+- Branch: `feat/gh-144-question-proposal-api`
 - Base branch: `main`
 
 ## Objective
 
-- `AnswerModerationExecutionWorker`가 `PIPELINE_UNAVAILABLE`을 만났을 때
-  무조건 이벤트를 영구 종결시키는 현재 동작(#107이 남긴 자리 —
-  "retry/backoff는 이 클래스의 책임이 아니다(#108)")을 durable retry로
-  대체한다. `FilterJob.exhaustRetries()`/`openManualReview()`,
-  `ManualReviewCase`는 #107에서 이미 정의됐지만 어디서도 호출되지 않는
-  상태다 — 이 이슈가 실제로 그 훅을 소비하는 첫 호출자가 된다.
-- 재시도 수치(max attempts, lifetime, backoff cap, jitter, cadence, gate
-  임계값·ramp 폭)는 이슈 본문에서 전부 "미결정"으로 명시돼 있으므로,
-  이번 브랜치는 메커니즘과 테스트만 완결하고 값은 생성자/설정 주입으로만
-  존재시킨다. 프로덕션 Spring 배선(`@ConfigurationProperties`, scheduler)은
-  `#105`/`#106`/`#107`과 동일하게 `#113` production gate로 이연한다.
+- 질문 제안(F03)의 도메인·서비스·저장 계층(`QuestionProposal`,
+  `QuestionReviewService`, 관련 Repository)은 `#38`에서 이미 구현되어
+  있으나 이를 호출할 REST API가 없어 사용자가 실제로 질문을 제안할 수
+  없다. 제안 제출·조회, 운영자 검토(승인/반려) API를 추가해 F03을 실제로
+  동작하는 기능으로 완성한다.
 
 ## Scope
 
-1. `FilterJob`에 `logicalAttemptCount` 필드와 자동 시도 기록 전이 메서드를
-   추가한다 — "SDK 호출을 포함한 단일 logical attempt budget"을 outbox
-   `attemptCount`(claim마다 무조건 증가하는 인프라 카운터)와 분리해 실제
-   pipeline 호출 횟수만 정확히 센다.
-2. `max attempts`와 `max retry lifetime`을 함께 강제한다. 둘 다
-   `logicalAttemptCount()`/`createdAt()` 기준으로 계산해 deadline 경과가
-   기준을 초기화하지 않도록 한다(`INV-RTY-006`).
-3. deadline 전 fast cadence / 이후 slow safety-completion cadence를
-   `at`과 `job.deadlineAt()` 비교로 두 개의 주입된 `OutboxBackoffStrategy`
-   중 선택하는 방식으로 구현한다.
-4. `ExponentialJitterBackoffStrategy`(신규, `notification.domain`)로
-   capped exponential backoff + jitter를 구현한다 — #119가 인터페이스만
-   남기고 구현체를 두지 않은 자리를 채운다.
-5. `OpenAiModerationProviderClient`가 429 응답의 `Retry-After` 헤더를
-   감지해 `ModerationRateLimitedException`(신규)으로 던지도록 확장하고,
-   실행 worker가 이를 다음 재시도 지연의 최소 하한으로 사용한다.
-6. 위 cadence/backoff/Retry-After 조합 판단을 `AnswerModerationRetryPolicy`
-   (신규, 순수 도메인)로 분리한다.
-7. 재시도 소진 시 `exhaustRetries().openManualReview()` 저장은 기존 실패
-   트랜잭션에 편입한다(별도 worker 신설 없음). `ManualReviewCase` idempotent
-   생성은 그 앞에서 별도 트랜잭션으로 수행해, 유일성 제약 위반이 `FilterJob`/
-   outbox 전이를 rollback하지 않게 한다.
-8. `FilterReleaseRetryGate`(신규 도메인 + 테이블)로 release(snapshot)
-   단위 상태를 갖는 재시도 게이트를 구현한다 — 연속 실패로 저하, 연속
-   성공으로 단계적 한도 증가. claim SQL 자체는 건드리지 않고 배치 처리
-   루프 안에서 release별 in-batch admitted count로 게이트를 적용한다.
+1. 사용자 질문 제안 제출 API (`QuestionReviewService.submit` 연결) —
+   `POST /api/v1/questions/proposals`.
+2. 내가 제안한 질문 목록 조회 API — `GET /api/v1/questions/proposals/me`.
+3. 운영자 검토(승인/반려) API (`startReview`/`approve`/`reject` 연결,
+   운영자 인증 필요) — 경로는 설계 단계에서 확정한다.
+4. `QUESTION_PROPOSAL_REVIEWED` outbox 알림 이벤트 실제 발행 연결.
+5. 콘텐츠 안전 검사(`filtering` 도메인) 연동 여부 확인 및 필요 시 연결.
+6. `docs/api/openapi.json` 갱신.
+7. 신규 마이그레이션 필요 여부는 구현 중 확인한다(기존
+   `question_proposal`/`question_proposal_review`/`approved_question`
+   테이블 재사용을 우선한다).
+
+`/harness-review` 검토 결과, 4번(알림 발행 연결)과 5번(filtering 연동 확인)은
+이 브랜치에서 구현하지 않고 후속 이슈 `#145`로 이관했다. Issue #144 본문도
+동일하게 갱신했다.
 
 ## Explicit exclusions
 
-- 위 8개 항목의 실제 운영 수치(max attempts, lifetime, backoff base/cap,
-  jitter 비율, gate 임계값·ramp step) 확정 — 전부 미결정이며 주입 값으로만
-  존재한다.
-- 이 워커들을 Spring bean으로 등록하고 `@ConfigurationProperties`/
-  scheduler를 배선하는 것 — `#113` production gate로 이연.
-- `ManualReviewCase`에 우선순위/band/FIFO를 매기는 것(`#110` 범위).
-- Slack 보조 알림(`#111` 범위).
-- 답변 도메인이 이 진입점을 실제로 호출하고 콜백을 받아 상태에 반영하는
-  연결 작업.
+- 질문 배정/추천 주기(`question_assignment_cycle`) 로직 변경 — 별도
+  이슈.
+- 콘텐츠 안전 검사 신규 정책 설계 — 기존 `filtering` 도메인 연동 확인
+  까지만.
+- Slack 등 알림 채널 확장 — 기존 outbox 패턴만 사용.
 - 인프라 apply, 배포, 프로덕션 변경은 별도 승인 없이는 실행하지 않는다.
 - Secret, 계정 식별자, 토큰, `.env` 값은 기록하지 않는다.
 
@@ -73,13 +52,18 @@
 
 | Area | Owner | Required review |
 | --- | --- | --- |
-| `FilterJob.logicalAttemptCount`, `AnswerModerationRetryPolicy`, `FilterReleaseRetryGate`, `AnswerModerationExecutionWorker` 재시도/소진/게이트 분기, Retry-After 캡처 | Feature executor | `INV-RTY-001`~`007`, `INV-MAN-002` 검증, `#107`/`#119` 기존 계약과의 호환성 리뷰 |
+| 제안 제출·조회 API, 운영자 검토 API, outbox 알림 발행 연결, `filtering` 연동 확인, `docs/api/openapi.json`, 단위·통합 테스트 | Feature executor | 인증·권한 분리(일반 사용자 vs 운영자), `QuestionProposalReview` append-only 불변식, `#38` 기존 도메인 계약과의 호환성 리뷰 |
 
 ## Existing user-owned changes
 
-- `main`(#141 병합 직후, `83dbffb`)에서 새로 분기했다
-  (`./harness start --issue 108 --type feat --slug
-  answer-retry-exhaustion`). 분기 시점 `git status --short`는 비어 있었다.
+- `main`에서 새로 분기했다(`./harness start --issue 144 --type feat
+  --slug question-proposal-api`). 분기 시점 `git status --short`는 비어
+  있었다.
+- 이전 작업 브랜치 `feat/gh-109-snapshot-health-migration`의 미커밋
+  변경(이슈 #109, snapshot health/emergency migration 구현 중)은 분기
+  전 `git stash`로 보존했다(`stash@{1}`: "WIP: gh-109
+  snapshot-health-migration (before starting gh-144)"). 해당 브랜치로
+  복귀 시 `git stash pop`으로 복원해야 한다.
 
 ## Validation
 
@@ -91,33 +75,39 @@ git diff --check
 
 ## Completion criteria
 
-- [x] 자동 처리가 무제한 또는 곱셈 형태로 재시도되지 않는다
-      (`INV-RTY-001`~`007`) — `FilterJob.logicalAttemptCount`(실제 pipeline
-      호출만 카운트)와 `AnswerModerationRetryPolicy`의 max attempts/lifetime
-      동시 강제(UNIT-002~003), `ExponentialJitterBackoffStrategy`의 capped
-      exponential+jitter(UNIT-007~008), `FilterReleaseRetryGate`의 snapshot
-      단위 폭주 완화(UNIT-011~013, INT-003)로 검증했다.
-- [x] job 접수 뒤 시스템 부하가 달라져도 최초 고정한 `deadline_at`을
-      연장하지 않는다는 `#107`의 기존 보장(`INV-ANS-002`)은 이번 변경으로
-      건드리지 않았다(`FilterJob`의 어떤 전이 메서드도 `deadlineAt`을
-      바꾸지 않는 구조 유지, `FilterJobTest#logicalAttemptCountSurvivesDeadlineElapse`로
-      재확인).
-- [x] deadline 경과가 release, target reference 또는 retry budget을
-      초기화하지 않는다 (`INV-RTY-006`) — budget 기준을 `deadlineAt`이
-      아닌 `createdAt`/`logicalAttemptCount`로 고정해 만족하며,
-      `FilterJobTest#logicalAttemptCountSurvivesDeadlineElapse`와
-      INT-004(deadline-elapsed와 exhaustion handoff 공존)로 검증했다.
-- [x] manual review case handoff와 관련 실패가 공개 상태를 rollback하지
-      않는다 (`INV-MAN-002`) — 소진 처리 경로가 `MODERATION_VERDICT_READY`를
-      발행하지 않음을
-      `AnswerModerationExecutionWorkerTest#exhaustsRetriesAndOpensManualReviewWithoutPublishingVerdict`로
-      검증했다. `ManualReviewCase` 생성을 별도 트랜잭션으로 분리해
-      PostgreSQL 트랜잭션 abort가 `FilterJob`/outbox 쓰기를 오염시키지
-      않도록 했고, INT-002로 동시 소진 시 중복 생성되지 않음을 확인했다.
-- [x] job 생성·deadline scheduler·worker 간 중복과 순서 역전을 방어하는
-      단위·통합 테스트가 추가된다 — unit 32개 신규(총 385개), integration
-      4개 신규(총 291개, 실제 PostgreSQL 동시성 포함). 상세는
-      `docs/reports/tests/gh-108-TEST-PLAN-GH-108-ANSWER-MODERATION-RETRY.md`
-      참고. `#110`(manual review 우선순위), `#111`(Slack), 이 워커들의
-      Spring 배선(`#113`), 답변 도메인 실제 연결부는 이 이슈 범위 밖이며
-      검증하지 않았다.
+- [x] 제안 제출 API가 `QuestionProposal`을 생성하고 DRAFT→SUBMITTED로
+      전이한다. `QuestionReviewService.propose()`와
+      `QuestionProposalApiMockMvcTest#submitReturnsCreatedProposal`로 확인했다.
+- [x] 운영자 승인 API 호출 시 `ApprovedQuestion`이 생성되고
+      `QuestionProposalReview`가 append-only로 기록된다. 판정 로직 자체는
+      `#38`에서 구현됐고, 이 브랜치는
+      `OperatorQuestionProposalApiMockMvcTest#approveDelegatesWithExactArguments`로
+      컨트롤러가 `QuestionReviewService.approve`에 정확한 인자를 넘기는지
+      확인했다.
+- [ ] 반려 시 사유가 기록되고 `QUESTION_PROPOSAL_REVIEWED` 알림이
+      제안자에게 발행된다. 사유 기록은
+      `OperatorQuestionProposalApiMockMvcTest#rejectDelegatesWithExactArguments`로
+      확인했지만, 알림 실제 발행 연결은 이 브랜치 범위에서 제외하고 `#145`로
+      이관했다.
+- [x] 인증되지 않은 사용자는 제안 제출·조회를 할 수 없다.
+      `QuestionProposalApiMockMvcTest#submitRequiresAuthentication`,
+      `#findMineRequiresAuthentication`으로 확인했다.
+- [ ] 단위·통합 테스트와 테스트 보고서. 단위·컨트롤러 테스트(Mockito/MockMvc)
+      20건과 `QuestionProposalApiIntegrationTest`(PostgreSQL, 5건 — propose
+      단일 행 생성, application service 제출·조회·부적격 계정 거부, propose로
+      제출한 제안의 승인·반려 흐름)를 추가했다. 정식 `/harness-test-plan`
+      승인과 테스트 보고서는 여전히 없으며 `#145`로 이관했다.
+
+### Test plan exception (사용자 승인, 2026-08-16)
+
+- 결정: 정식 `/harness-test-plan` 승인 없이 이 PR을 병합하는 것을 예외로
+  승인함.
+- 이유: `/harness-review`가 지적한 gap(컨트롤러 인자 wiring, 제출→승인·
+  제출→반려 happy path)은 이후 추가한 단위·MockMvc·PostgreSQL 통합
+  테스트 35건으로 커버됐다. 정식 계획이 주는 값은 주로 엣지 케이스·임계값
+  설계인데, 이 PR 범위(REST wiring)에는 그런 임계값이 없다.
+- 남은 위험: 테스트 범위가 사전에 설계된 계획이 아니라 사후에 리뷰 지적을
+  메우는 방식으로 정해졌다. 놓친 경계 조건이 있어도 계획 문서가 없어
+  드러나지 않을 수 있다.
+- 추적: 정식 계획과 보고서는 `#145`(알림 발행·filtering 연동과 함께)에서
+  작성한다.

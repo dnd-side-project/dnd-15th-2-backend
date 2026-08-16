@@ -1,5 +1,6 @@
 package com.dnd.qello.question.repository.jpa;
 
+import java.util.List;
 import java.util.Optional;
 
 import org.springframework.stereotype.Repository;
@@ -45,5 +46,12 @@ public class JpaQuestionProposalRepository implements QuestionProposalRepository
 	@Override
 	public Optional<QuestionProposal> findById(long id) {
 		return repository.findById(id).map(QuestionJpaMapper::toDomain);
+	}
+
+	@Override
+	public List<QuestionProposal> findAllByProposerIdOrderByCreatedAtDesc(long proposerId) {
+		return repository.findAllByProposerIdOrderByCreatedAtDesc(proposerId).stream()
+			.map(QuestionJpaMapper::toDomain)
+			.toList();
 	}
 }
