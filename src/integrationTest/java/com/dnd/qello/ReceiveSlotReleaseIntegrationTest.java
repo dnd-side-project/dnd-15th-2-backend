@@ -181,7 +181,7 @@ class ReceiveSlotReleaseIntegrationTest extends PostgisContainerIntegrationTestS
 		long prId = skipPending(postId, recipientId, NOW);
 		receiveState(recipientId, 1);
 
-		postRecipientService.revertSkip(recipientId, prId);
+		postRecipientService.revertSkip(recipientId, prId, NOW.plusSeconds(1));
 		Optional<PostRecipient> result = receiveSlotReleaseService.confirmSkip(prId, NOW.plusSeconds(60));
 
 		assertThat(result).isEmpty();

@@ -57,6 +57,16 @@ public class JdbcPostRecipientRepository implements PostRecipientRepository {
 			new MapSqlParameterSource().addValue("id", id).addValue("recipientId", recipientId));
 	}
 
+	@Override
+	public Optional<PostRecipient> findInboxItemForUpdate(long id, long recipientId, Instant at) {
+		return one(PostRecipientSql.FIND_INBOX_ITEM_FOR_UPDATE, inboxParams(id, recipientId, at));
+	}
+
+	@Override
+	public Optional<PostRecipient> findInboxCommandItemForUpdate(long id, long recipientId, Instant at) {
+		return one(PostRecipientSql.FIND_INBOX_COMMAND_ITEM_FOR_UPDATE, inboxParams(id, recipientId, at));
+	}
+
 	/**
 	 * 질문글+수신자 조합으로 찾는다. postRecipientId를 모르는 호출자용이다 — 예를 들어
 	 * PostReactionService가 "이 사용자가 이 질문글의 수신 자격이 있는가"를 확인할 때
@@ -144,8 +154,40 @@ public class JdbcPostRecipientRepository implements PostRecipientRepository {
 			rs -> rs.next() ? Optional.of(map(rs)) : Optional.empty());
 	}
 
+	@Override
+	public Optional<PostRecipient> transitionToOpened(PostRecipient opened, PostRecipientStatus previousStatus) {
+		return jdbc.query(PostRecipientSql.TRANSITION_TO_OPENED, new MapSqlParameterSource()
+			.addValue("id", opened.getId()).addValue("status", opened.getStatus().name())
+			.addValue("discoveredAt", timestamp(opened.getDiscoveredAt()))
+			.addValue("openedAt", timestamp(opened.getOpenedAt()))
+			.addValue("previousStatus", previousStatus.name()),
+			rs -> rs.next() ? Optional.of(map(rs)) : Optional.empty());
+	}
+
+	@Override
+	public Optional<PostRecipient> transitionToSkipPending(PostRecipient pending, PostRecipientStatus previousStatus) {
+		return jdbc.query(PostRecipientSql.TRANSITION_TO_SKIP_PENDING, new MapSqlParameterSource()
+			.addValue("id", pending.getId()).addValue("status", pending.getStatus().name())
+			.addValue("skipRequestedAt", timestamp(pending.getSkipRequestedAt()))
+			.addValue("previousStatus", previousStatus.name()),
+			rs -> rs.next() ? Optional.of(map(rs)) : Optional.empty());
+	}
+
+	@Override
+	public Optional<PostRecipient> transitionFromSkipPending(PostRecipient reverted, Instant expectedSkipRequestedAt) {
+		return jdbc.query(PostRecipientSql.TRANSITION_FROM_SKIP_PENDING, new MapSqlParameterSource()
+			.addValue("id", reverted.getId()).addValue("status", reverted.getStatus().name())
+			.addValue("expectedSkipRequestedAt", timestamp(expectedSkipRequestedAt)),
+			rs -> rs.next() ? Optional.of(map(rs)) : Optional.empty());
+	}
+
 	private Optional<PostRecipient> one(String sql, MapSqlParameterSource params) {
 		return jdbc.query(sql, params, rs -> rs.next() ? Optional.of(map(rs)) : Optional.empty());
+	}
+
+	private static MapSqlParameterSource inboxParams(long id, long recipientId, Instant at) {
+		return new MapSqlParameterSource().addValue("id", id).addValue("recipientId", recipientId)
+			.addValue("at", timestamp(at));
 	}
 
 	private static MapSqlParameterSource params(PostRecipient r) {

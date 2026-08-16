@@ -1,5 +1,7 @@
 package com.dnd.qello.direction.repository.jdbc.sql;
 
+import com.dnd.qello.feed.repository.jdbc.sql.FeedScopeSql;
+
 /**
  * JdbcPostRecipientRepository가 쓰는 SQL 상수.
  * INSERT/UPDATE는 id 유무에 따른 upsert 분기의 각 절반이다 — 분기 자체는
@@ -38,6 +40,32 @@ public final class PostRecipientSql {
 		FROM post_recipient
 		WHERE id = :id
 		FOR UPDATE
+		""";
+
+	public static final String FIND_INBOX_ITEM_FOR_UPDATE = """
+		SELECT pr.*
+		FROM post_recipient pr
+		JOIN direction_post dp ON dp.id = pr.post_id
+		WHERE pr.id = :id
+		  AND pr.recipient_id = :recipientId
+		""" + FeedScopeSql.ACTIVE_POST_VISIBILITY + """
+		  AND (pr.status = 'ANSWERED'
+		       OR (pr.status IN ('AVAILABLE', 'DISCOVERED', 'OPENED', 'SKIP_PENDING')
+		           AND dp.expires_at > :at))
+		FOR UPDATE OF pr
+		""";
+
+	public static final String FIND_INBOX_COMMAND_ITEM_FOR_UPDATE = """
+		SELECT pr.*
+		FROM post_recipient pr
+		JOIN direction_post dp ON dp.id = pr.post_id
+		WHERE pr.id = :id
+		  AND pr.recipient_id = :recipientId
+		""" + FeedScopeSql.ACTIVE_POST_VISIBILITY + """
+		  AND pr.status IN ('AVAILABLE', 'DISCOVERED', 'OPENED', 'SKIP_PENDING')
+		  AND dp.expires_at > :at
+		  AND pr.capacity_released_at IS NULL
+		FOR UPDATE OF pr
 		""";
 
 	/**
@@ -97,6 +125,30 @@ public final class PostRecipientSql {
 		SET status = :status, blocked_at = :blockedAt, capacity_released_at = :capacityReleasedAt,
 		    skip_requested_at = NULL
 		WHERE id = :id AND status = :previousStatus
+		RETURNING *
+		""";
+
+	public static final String TRANSITION_TO_OPENED = """
+		UPDATE post_recipient
+		SET status = :status, discovered_at = :discoveredAt, opened_at = :openedAt
+		WHERE id = :id AND status = :previousStatus AND capacity_released_at IS NULL
+		RETURNING *
+		""";
+
+	public static final String TRANSITION_TO_SKIP_PENDING = """
+		UPDATE post_recipient
+		SET status = :status, skip_requested_at = :skipRequestedAt
+		WHERE id = :id AND status = :previousStatus AND capacity_released_at IS NULL
+		RETURNING *
+		""";
+
+	public static final String TRANSITION_FROM_SKIP_PENDING = """
+		UPDATE post_recipient
+		SET status = :status, skip_requested_at = NULL
+		WHERE id = :id
+		  AND status = 'SKIP_PENDING'
+		  AND skip_requested_at = :expectedSkipRequestedAt
+		  AND capacity_released_at IS NULL
 		RETURNING *
 		""";
 }
