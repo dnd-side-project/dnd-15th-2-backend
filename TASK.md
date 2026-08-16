@@ -91,6 +91,7 @@
 ```bash
 ./harness check
 ./harness pr-ready --project-tests
+npm run hooks:validate
 git diff --check
 ```
 
