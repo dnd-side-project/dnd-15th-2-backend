@@ -40,6 +40,11 @@
 
 - 질문 배정/추천 주기(`question_assignment_cycle`) 로직 변경 — 별도 이슈.
 - Slack 등 알림 채널 확장 — 기존 outbox 패턴만 사용.
+- `QUESTION_PROPOSAL_REVIEWED` outbox event를 실제 인앱 알림·push로
+  fan-out하는 worker 배선 — producer(event 발행)까지만 이 이슈에서
+  다룬다. 기존 `RecipientNotificationFanOutWorker`가 `AnswerNotificationService`
+  같은 producer와 별도 클래스로 분리돼 있는 구조를 그대로 따른 결정이며,
+  fan-out worker 자체는 이 이슈 범위 밖이다.
 - 콘텐츠 안전 검사 신규 정책 설계 — 기존 `filtering` 도메인 연동 확인까지만.
 - 인프라 apply, 배포, 프로덕션 변경은 별도 승인 없이는 실행하지 않는다.
 - Secret, 계정 식별자, 토큰, `.env` 값은 기록하지 않는다.
@@ -67,8 +72,12 @@ git diff --check
 
 ## Completion criteria
 
-- [ ] 반려 시 사유가 기록되고 `QUESTION_PROPOSAL_REVIEWED` 알림이 제안자에게
-      실제로 발행된다.
+- [x] 반려 시 사유가 기록되고 `QUESTION_PROPOSAL_REVIEWED` 알림이 제안자에게
+      실제로 발행된다. `QuestionReviewService.reject()`/`approve()`가 같은
+      transaction에서 outbox event를 저장하고, `QuestionProposalApiIntegrationTest`가
+      실제 PostgreSQL `outbox_event` 테이블에서 `decision`/`proposerId`가
+      기록됨을 확인한다. fan-out worker(인앱 알림·push 실제 전달)는 이
+      이슈 범위 밖이다("Explicit exclusions" 참고).
 - [ ] 제안 제출 텍스트의 `filtering` 연동 여부가 확인되고, 필요하면
       연결된다(미연동 결정이면 그 근거를 기록한다).
 - [ ] `/harness-test-plan` 승인을 받은 정식 테스트 계획이 존재한다.
