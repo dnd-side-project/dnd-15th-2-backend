@@ -76,6 +76,7 @@ class QuestionProposalApiIntegrationTest extends PostgisContainerIntegrationTest
 	@BeforeEach
 	void resetDatabaseAndClock() {
 		clock.setInstant(FIRST);
+		jdbcTemplate.update("DELETE FROM outbox_event WHERE aggregate_type = 'QUESTION_PROPOSAL'");
 		jdbcTemplate.update("DELETE FROM approved_question");
 		jdbcTemplate.update("DELETE FROM question_proposal_review");
 		jdbcTemplate.update("DELETE FROM question_proposal");
@@ -148,6 +149,11 @@ class QuestionProposalApiIntegrationTest extends PostgisContainerIntegrationTest
 			.containsExactly(approved.getId());
 		assertThat(proposalRepository.findById(submitted.getId()).orElseThrow().getStatus())
 			.isEqualTo(QuestionProposalStatus.APPROVED);
+		assertThat(jdbcTemplate.queryForObject(
+			"SELECT payload::text FROM outbox_event WHERE dedup_key = ?", String.class,
+			"question-proposal-reviewed:" + submitted.getId()))
+			.contains("\"decision\": \"APPROVED\"")
+			.contains("\"proposerId\": " + proposerId);
 	}
 
 	@Test
@@ -166,6 +172,11 @@ class QuestionProposalApiIntegrationTest extends PostgisContainerIntegrationTest
 			.hasSize(1)
 			.first()
 			.satisfies(review -> assertThat(review.getReason()).isEqualTo("정책에 맞지 않습니다"));
+		assertThat(jdbcTemplate.queryForObject(
+			"SELECT payload::text FROM outbox_event WHERE dedup_key = ?", String.class,
+			"question-proposal-reviewed:" + submitted.getId()))
+			.contains("\"decision\": \"REJECTED\"")
+			.contains("\"proposerId\": " + proposerId);
 	}
 
 	private Account createAccount(String nickname) {
