@@ -8,6 +8,7 @@ package com.dnd.qello.question.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -21,7 +22,17 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import com.dnd.qello.notification.domain.OutboxAggregateType;
+import com.dnd.qello.notification.domain.OutboxEvent;
+import com.dnd.qello.notification.domain.OutboxEventType;
+import com.dnd.qello.notification.repository.OutboxEventRepository;
+import com.dnd.qello.question.domain.AnswerFormat;
+import com.dnd.qello.question.domain.ApprovedQuestion;
+import com.dnd.qello.question.domain.ApprovedQuestionSourceType;
+import com.dnd.qello.question.domain.ApprovedQuestionStatus;
 import com.dnd.qello.question.domain.QuestionProposal;
+import com.dnd.qello.question.domain.QuestionProposalReview;
+import com.dnd.qello.question.domain.QuestionProposalReviewDecision;
 import com.dnd.qello.question.domain.QuestionProposalStatus;
 import com.dnd.qello.question.error.QuestionErrorCode;
 import com.dnd.qello.question.error.QuestionException;
@@ -34,16 +45,24 @@ class QuestionReviewServiceTest {
 
 	private static final Instant SUBMITTED_AT = Instant.parse("2026-08-16T00:00:00Z");
 	private static final long PROPOSER_ID = 5L;
+	private static final long PROPOSAL_ID = 7L;
 
 	@Mock private QuestionProposalRepository proposalRepository;
 	@Mock private QuestionProposalReviewRepository reviewRepository;
 	@Mock private ApprovedQuestionRepository approvedQuestionRepository;
+	@Mock private OutboxEventRepository outboxEventRepository;
 
 	private QuestionReviewService service;
 
 	@org.junit.jupiter.api.BeforeEach
 	void setUp() {
-		service = new QuestionReviewService(proposalRepository, reviewRepository, approvedQuestionRepository);
+		service = new QuestionReviewService(
+			proposalRepository, reviewRepository, approvedQuestionRepository, outboxEventRepository);
+	}
+
+	private QuestionProposal underReviewProposal() {
+		return QuestionProposal.restore(PROPOSAL_ID, PROPOSER_ID, QuestionProposalStatus.UNDER_REVIEW,
+			"제안 문구", null, SUBMITTED_AT, SUBMITTED_AT, SUBMITTED_AT);
 	}
 
 	@Test
@@ -85,5 +104,53 @@ class QuestionReviewServiceTest {
 			.isInstanceOf(QuestionException.class)
 			.satisfies(exception -> assertThat(((QuestionException) exception).getErrorCode())
 				.isEqualTo(QuestionErrorCode.PROPOSAL_NOT_FOUND));
+	}
+
+	@Test
+	@DisplayName("반려하면 제안자에게 보낼 QUESTION_PROPOSAL_REVIEWED outbox event를 발행한다")
+	void rejectPublishesOutboxEventForProposer() {
+		when(proposalRepository.findById(PROPOSAL_ID)).thenReturn(Optional.of(underReviewProposal()));
+		when(outboxEventRepository.findByDedupKey(any())).thenReturn(Optional.empty());
+
+		service.reject(PROPOSAL_ID, 1L, "정책에 맞지 않습니다", SUBMITTED_AT);
+
+		ArgumentCaptor<OutboxEvent> captor = ArgumentCaptor.forClass(OutboxEvent.class);
+		verify(outboxEventRepository).save(captor.capture());
+		OutboxEvent event = captor.getValue();
+		assertThat(event.aggregateType()).isEqualTo(OutboxAggregateType.QUESTION_PROPOSAL);
+		assertThat(event.aggregateId()).isEqualTo(PROPOSAL_ID);
+		assertThat(event.eventType()).isEqualTo(OutboxEventType.QUESTION_PROPOSAL_REVIEWED);
+		assertThat(event.dedupKey()).isEqualTo("question-proposal-reviewed:" + PROPOSAL_ID);
+		assertThat(event.payload()).contains("\"proposerId\":" + PROPOSER_ID).contains("\"decision\":\"REJECTED\"");
+	}
+
+	@Test
+	@DisplayName("승인하면 제안자에게 보낼 QUESTION_PROPOSAL_REVIEWED outbox event를 발행한다")
+	void approvePublishesOutboxEventForProposer() {
+		when(proposalRepository.findById(PROPOSAL_ID)).thenReturn(Optional.of(underReviewProposal()));
+		when(outboxEventRepository.findByDedupKey(any())).thenReturn(Optional.empty());
+		when(approvedQuestionRepository.save(any())).thenAnswer(invocation -> ApprovedQuestion.restore(
+			1L, PROPOSAL_ID, ApprovedQuestionSourceType.USER_PROPOSAL, ApprovedQuestionStatus.ACTIVE,
+			"제안 문구", AnswerFormat.TEXT, SUBMITTED_AT, SUBMITTED_AT.plusSeconds(3600), SUBMITTED_AT, 1L, SUBMITTED_AT));
+
+		service.approve(PROPOSAL_ID, 1L, AnswerFormat.TEXT, SUBMITTED_AT, SUBMITTED_AT.plusSeconds(3600), SUBMITTED_AT);
+
+		ArgumentCaptor<OutboxEvent> captor = ArgumentCaptor.forClass(OutboxEvent.class);
+		verify(outboxEventRepository).save(captor.capture());
+		assertThat(captor.getValue().payload()).contains("\"decision\":\"APPROVED\"");
+	}
+
+	@Test
+	@DisplayName("같은 제안에 대한 outbox event가 이미 있으면 다시 발행하지 않는다")
+	void rejectSkipsPublishingWhenDedupKeyAlreadyExists() {
+		when(proposalRepository.findById(PROPOSAL_ID)).thenReturn(Optional.of(underReviewProposal()));
+		when(outboxEventRepository.findByDedupKey("question-proposal-reviewed:" + PROPOSAL_ID))
+			.thenReturn(Optional.of(OutboxEvent.pending(OutboxAggregateType.QUESTION_PROPOSAL, PROPOSAL_ID,
+				OutboxEventType.QUESTION_PROPOSAL_REVIEWED, "question-proposal-reviewed:" + PROPOSAL_ID,
+				"{}", SUBMITTED_AT)));
+
+		service.reject(PROPOSAL_ID, 1L, "정책에 맞지 않습니다", SUBMITTED_AT);
+
+		verify(outboxEventRepository, never()).save(any());
 	}
 }
