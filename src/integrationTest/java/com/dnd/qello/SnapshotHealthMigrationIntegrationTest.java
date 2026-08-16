@@ -66,6 +66,7 @@ import com.dnd.qello.filtering.repository.FilterJobStatusHistoryRepository;
 import com.dnd.qello.filtering.repository.FilterReleaseRepository;
 import com.dnd.qello.filtering.repository.FilterReleaseRetryGateRepository;
 import com.dnd.qello.filtering.repository.ManualReviewCaseRepository;
+import com.dnd.qello.filtering.repository.ManualReviewPriorityEvaluationRepository;
 import com.dnd.qello.filtering.repository.SnapshotEmergencyMigrationHistoryRepository;
 import com.dnd.qello.filtering.repository.SnapshotHealthProbeResultRepository;
 import com.dnd.qello.filtering.repository.SnapshotHealthRepository;
@@ -122,6 +123,8 @@ class SnapshotHealthMigrationIntegrationTest extends PostgisContainerIntegration
 	@Autowired
 	private ManualReviewCaseRepository manualReviewCaseRepository;
 	@Autowired
+	private ManualReviewPriorityEvaluationRepository manualReviewPriorityEvaluationRepository;
+	@Autowired
 	private FilterReleaseRegistryService releaseRegistryService;
 	@Autowired
 	private SnapshotEmergencyMigrationService emergencyMigrationService;
@@ -139,6 +142,7 @@ class SnapshotHealthMigrationIntegrationTest extends PostgisContainerIntegration
 		jdbc.update("DELETE FROM outbox_event WHERE aggregate_type = 'FILTER_JOB'");
 		jdbc.update("DELETE FROM filter_decision");
 		jdbc.update("DELETE FROM filter_job_status_history");
+		jdbc.update("DELETE FROM manual_review_priority_evaluation");
 		jdbc.update("DELETE FROM manual_review_case");
 		jdbc.update("DELETE FROM filter_release_retry_gate");
 		jdbc.update("DELETE FROM filter_job");
@@ -355,6 +359,8 @@ class SnapshotHealthMigrationIntegrationTest extends PostgisContainerIntegration
 		return new AnswerModerationExecutionWorker(pipeline, filterJobRepository, filterReleaseRepository,
 			historyRepository, outboxEventRepository, retryPolicy, filterReleaseRetryGateRepository,
 			new com.dnd.qello.filtering.domain.RetryGateConfig(3, 2, 2, 2, 6), manualReviewCaseRepository,
+			manualReviewPriorityEvaluationRepository,
+			new com.dnd.qello.filtering.domain.ManualReviewPriorityPolicy(3, Duration.ofHours(24), "test-v1"),
 			Duration.ofSeconds(5), objectMapper, pipelineExecutor, Duration.ofSeconds(5), transactionManager,
 			Clock.fixed(NOW, ZoneOffset.UTC));
 	}
