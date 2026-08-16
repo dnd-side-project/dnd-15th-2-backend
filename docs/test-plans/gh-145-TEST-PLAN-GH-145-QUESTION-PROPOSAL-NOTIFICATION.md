@@ -2,7 +2,7 @@
 
 > Created at: `2026-08-17T00:22:46+09:00`
 > GitHub Issue: `#145`
-> Status: Draft
+> Status: Approved
 
 ## 1. Objective
 
@@ -220,6 +220,6 @@ surrogate id만 사용한다.
 
 ## 11. Human approval
 
-- Reviewer:
-- Decision:
-- Approved at:
+- Reviewer: `tkv00`
+- Decision: Approved — 계획대로 구현·실행한다. 수정 요청 없음.
+- Approved at: `2026-08-17`
