@@ -21,6 +21,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
@@ -80,6 +81,8 @@ class QuestionProposalApiIntegrationTest extends PostgisContainerIntegrationTest
 	@BeforeEach
 	void resetDatabaseAndClock() {
 		clock.setInstant(FIRST);
+		// 이전 테스트가 중간에 실패해 trigger가 남았을 수 있으므로 방어적으로 제거한다.
+		unblockQuestionProposalOutboxInsert();
 		jdbcTemplate.update("DELETE FROM outbox_event WHERE aggregate_type = 'QUESTION_PROPOSAL'");
 		jdbcTemplate.update("DELETE FROM approved_question");
 		jdbcTemplate.update("DELETE FROM question_proposal_review");
@@ -208,6 +211,32 @@ class QuestionProposalApiIntegrationTest extends PostgisContainerIntegrationTest
 	}
 
 	@Test
+	@DisplayName("outbox 저장이 실패하면 판정과 이력 쓰기가 모두 롤백된다")
+	void outboxFailureRollsBackReviewAndProposal() {
+		long proposerId = createAccount("outbox-rollback-proposer").getId();
+		long reviewerId = createAccount("outbox-rollback-reviewer").getId();
+		QuestionProposal submitted = applicationService.submit(proposerId, "롤백 검증 제안");
+		reviewService.startReview(submitted.getId());
+
+		// publishReviewed()는 dedupKey 사전 조회에서 조기 반환하므로, 기존 행을 심는
+		// 방식으로는 저장 실패를 만들 수 없다. 삽입 자체를 거부하는 trigger를 걸어
+		// 사전 조회를 통과한 뒤의 저장 실패를 재현한다.
+		blockQuestionProposalOutboxInsert();
+		try {
+			assertThatThrownBy(() -> reviewService.reject(
+				submitted.getId(), reviewerId, "정책에 맞지 않습니다", FIRST))
+				.isInstanceOf(DataIntegrityViolationException.class);
+		} finally {
+			unblockQuestionProposalOutboxInsert();
+		}
+
+		assertThat(proposalRepository.findById(submitted.getId()).orElseThrow().getStatus())
+			.isEqualTo(QuestionProposalStatus.UNDER_REVIEW);
+		assertThat(reviewRepository.findAllByProposalId(submitted.getId())).isEmpty();
+		assertThat(countOutboxEvents("question-proposal-reviewed:" + submitted.getId())).isEqualTo(0);
+	}
+
+	@Test
 	@DisplayName("내 제안 목록은 다른 사용자의 제안을 반환하지 않는다")
 	void findMineDoesNotLeakOtherProposals() {
 		long mine = createAccount("isolation-mine").getId();
@@ -287,6 +316,32 @@ class QuestionProposalApiIntegrationTest extends PostgisContainerIntegrationTest
 	private Integer countOutboxEvents(String dedupKey) {
 		return jdbcTemplate.queryForObject(
 			"SELECT count(*) FROM outbox_event WHERE dedup_key = ?", Integer.class, dedupKey);
+	}
+
+	// ERRCODE 23514(check_violation)로 올려 Spring이 DataIntegrityViolationException으로
+	// 변환하게 한다. 실제 제약 위반과 같은 경로로 트랜잭션이 실패한다.
+	private void blockQuestionProposalOutboxInsert() {
+		jdbcTemplate.execute("""
+			CREATE OR REPLACE FUNCTION test_block_question_proposal_outbox()
+			RETURNS TRIGGER LANGUAGE plpgsql AS $$
+			BEGIN
+				RAISE EXCEPTION 'test-injected outbox insert failure'
+					USING ERRCODE = '23514';
+			END;
+			$$
+			""");
+		jdbcTemplate.execute("""
+			CREATE TRIGGER tr_test_block_question_proposal_outbox
+			BEFORE INSERT ON outbox_event
+			FOR EACH ROW WHEN (NEW.aggregate_type = 'QUESTION_PROPOSAL')
+			EXECUTE FUNCTION test_block_question_proposal_outbox()
+			""");
+	}
+
+	private void unblockQuestionProposalOutboxInsert() {
+		jdbcTemplate.execute(
+			"DROP TRIGGER IF EXISTS tr_test_block_question_proposal_outbox ON outbox_event");
+		jdbcTemplate.execute("DROP FUNCTION IF EXISTS test_block_question_proposal_outbox()");
 	}
 
 	private Account createAccount(String nickname) {
