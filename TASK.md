@@ -1,118 +1,149 @@
-# GitHub Issue #145 Task Contract
+# GitHub Issue #110 Task Contract
 
-> Generated at: `2026-08-16T18:56:51+09:00`
+> Generated at: `2026-08-16T19:15:18+09:00`
 >
 > 이 파일은 현재 작업 브랜치의 계약이다. 저장소 전역 정책은 `AGENTS.md`를
 > 따른다.
 
 ## Work gate
 
-- Title: `질문 제안 알림 발행·filtering 연동·문서화 마무리`
-- GitHub Issue: `#145`
-- Branch: `feat/gh-145-question-proposal-followup`
-- Base branch: `feat/gh-144-question-proposal-api`
+- Title: `수동 검토 case와 우선순위`
+- GitHub Issue: `#110`
+- Branch: `feat/gh-110-manual-review-priority`
+- Base branch: `main`
+- Test plan: `TEST-PLAN-GH-110-MANUAL-REVIEW-PRIORITY`
+- Test plan approval: `APPROVED` — 사용자가 2026-08-16 구현을 승인했다.
+- Confirmed policy: 검토자 권한은 신규 `REVIEWER` role을 만들지 않고 기존
+  `OPERATOR` role을 재사용한다(`#109`와 동일 패턴, 사용자 승인).
+- Confirmed policy: 위험 band는 `HIGH`/`STANDARD` 2단계만 둔다(정확한 band
+  명칭·개수는 이슈가 미결정으로 남긴 영역이라 최소 모델만 구현). aging 승격은
+  별도 스케줄러 없이 조회 시점에 `now - createdAt >= agingThreshold`를
+  계산하는 순수 함수로 구현하고 DB 행을 갱신하지 않는다(사용자 승인,
+  2026-08-16).
 
 ## Objective
 
-- `#144`에서 질문 제안 제출·조회(사용자)와 검토(운영자) API는 완성했지만,
-  같은 이슈 범위에 있던 알림 발행 연결, `filtering` 도메인 연동 확인,
-  정식 테스트 계획·통합 테스트는 아직 남아 있다(`#144`의 "Test plan
-  exception"에서 이 이슈로 이관하기로 명시했다). API가 실제로 알림을
-  보내고 통합 시나리오로 검증되도록 마저 완성한다.
+- 자동 처리가 소진되거나 결과가 필요한 답변을 수동 검토 case로 인계하고,
+  검증된 report signal 기반 band와 band 내 FIFO+aging 승격으로 검토자 큐
+  처리 순서를 정한다.
+- `FilterJob.applyManualDecision`(`#103`이 정의만 하고 호출자가 없던 hook)을
+  이 이슈가 실제로 소비하는 첫 호출자가 되어, 자동 결과와 수동 결정의
+  authority 순서를 명확히 한다 — 자동 결과가 먼저 도착하면(`INV-MAN-003`)
+  그 결과를 유지하고 case만 종료하며, 수동 결정 뒤 도착하는 늦은 자동
+  결과는 감사 기록만 남기고 상태를 바꾸지 않는다(`INV-MAN-004`).
+- priority 계산 장애가 case 유실이나 검토 중단으로 이어지지 않게
+  한다(`INV-MAN-009`) — 계산 실패 시 `STANDARD` band + FIFO로 계속
+  진행한다.
 
 ## Scope
 
-1. `QuestionProposalReview`의 반려·승인 판정 시 `QUESTION_PROPOSAL_REVIEWED`
-   outbox 알림 이벤트를 실제로 발행하는 연결 작업(제안자에게 전달). 기존
-   `notification.domain.OutboxEvent`/`OutboxEventRepository` 패턴을 그대로
-   따르되, `AnswerNotificationService` 같은 기존 발행 지점의 구조를 먼저
-   확인한다.
-2. 제안 제출 텍스트가 `filtering` 도메인(비속어·선정성 검사)을 거치는지
-   확인한다. 현재 `filtering` intake는 `AnswerModerationJobIntakeService`처럼
-   답변 전용으로 결합돼 있어, 질문 제안에도 적용하려면 신규 연동 경로
-   설계가 필요할 수 있다 — 설계 전 기존 구조를 조사해 필요 여부부터
-   확정한다.
-3. `/harness-test-plan`으로 정식 테스트 계획을 수립하고 승인받은 뒤,
-   통합(PostgreSQL) 테스트와 테스트 보고서를 작성한다. `#144`는 정식 계획
-   없이 예외 승인을 받았으므로, 이 이슈는 그 부채를 갚는 자리다.
+1. `ManualReviewCase`(기존)를 확장한다 — `status`(`OPEN`/`RESOLVED`),
+   `filterJobId`(신규 direct FK — target+release 조합의 모호성을 없애고
+   case가 어느 job에서 열렸는지 명확히 한다), `band`(`HIGH`/`STANDARD`),
+   `validatedReportSignalCount`, `priorityPolicyVersion`,
+   `priorityReasonCode`, `resolvedAt`, `resolvedByOperatorUserId`,
+   `resolvedVerdict`.
+2. `ManualReviewPriorityPolicy`(신규, 주입 config) — `highBandReportSignalThreshold`,
+   `agingThreshold`(`Duration`), `policyVersion`. 실제 운영 수치는 미결정이며
+   생성자 주입 값으로만 존재한다.
+3. Priority 평가 — `ManualReviewCase.evaluatePriority(validatedReportSignalCount, now, policy)`가
+   band와 reason code(`REPORT_SIGNAL`/`DEFAULT`)를 결정한다. 호출 서비스가
+   평가 중 예외를 흡수해 `STANDARD`+`reasonCode=CALCULATION_FAILED`로
+   case 생성을 계속 진행한다(`INV-MAN-009`).
+4. `effectiveBand(now, policy)` — aging을 조회 시점에 계산하는 순수 함수.
+   저장된 `band`가 `HIGH`이거나 `now - createdAt >= agingThreshold`이면
+   `HIGH`로 취급하되 행을 갱신하지 않는다.
+5. `ManualReviewPriorityEvaluation`(신규, append-only 감사 테이블) —
+   caseId·band·reasonCode·policyVersion·evaluatedAt. case open 시와 명시적
+   재평가(report signal 갱신) 호출마다 기록한다("재평가 이력").
+6. `FilterJob.applyManualDecision`에 상태 가드를 추가한다 — 이미 `RESOLVED`인
+   job(자동 결과가 먼저 도착)에는 적용을 거절해, 자동 결과가 수동 결정으로
+   덮어써지지 않게 한다(`INV-MAN-003`의 전제 조건).
+7. `ManualReviewDecisionService`(신규) — 검토자 결정의 유일한 진입점.
+   `filterJobId`로 job을 조회해 이미 `RESOLVED`면 job은 건드리지 않고
+   case만 `RESOLVED`로 종료한다(`INV-MAN-003`). 아니면
+   `applyManualDecision` 호출 + `MODERATION_VERDICT_READY` outbox 발행 +
+   `filter_job_status_history` 기록 + case 종료를 한 트랜잭션으로 묶는다.
+8. `AnswerModerationExecutionWorker`의 `ALREADY_MANUALLY_RESOLVED` race
+   흡수 경로(`finishSkipped`)에 `filter_job_status_history` 감사 기록을
+   추가한다 — 현재는 아무 기록도 남기지 않아 `INV-MAN-004`("감사 기록만
+   남기고")를 만족하지 못한다.
+9. 검토자용 REST endpoint 2개 — 큐 조회(GET, `effectiveBand` 내림차순 +
+   band 내 `case_created_at` FIFO), 결정(POST, `ALLOW`/`BLOCK`). 기존
+   `OPERATOR` 세션 인증(`/admin/**`)을 재사용한다.
+10. DB 마이그레이션(V16) — `manual_review_case` 컬럼 추가,
+    `manual_review_priority_evaluation` 신규 테이블.
+11. 단위·PostgreSQL 통합(동시성 포함) 테스트와 테스트 보고서.
 
 ## Explicit exclusions
 
-- 질문 배정/추천 주기(`question_assignment_cycle`) 로직 변경 — 별도 이슈.
-- Slack 등 알림 채널 확장 — 기존 outbox 패턴만 사용.
-- `QUESTION_PROPOSAL_REVIEWED` outbox event를 실제 인앱 알림·push로
-  fan-out하는 worker 배선 — producer(event 발행)까지만 이 이슈에서
-  다룬다. 기존 `RecipientNotificationFanOutWorker`가 `AnswerNotificationService`
-  같은 producer와 별도 클래스로 분리돼 있는 구조를 그대로 따른 결정이며,
-  fan-out worker 자체는 이 이슈 범위 밖이다.
-- 콘텐츠 안전 검사 신규 정책 설계 — 기존 `filtering` 도메인 연동 확인까지만.
-- 질문 제안을 `filtering`에 실제로 연결하는 구현 — 아래 "Filtering
-  integration decision" 참고. 조사 결과 연결하지 않기로 결정했다.
+- band 명칭, 정확한 aging 시간, band 내 stable tie-breaker, report 신뢰도
+  계산과 reviewer SLA — 전부 미결정이며 이슈가 명시적으로 범위 밖으로
+  뒀다.
+- 기존 `safety` 패키지(`Report`/`ModerationReview`/`UserBlock`)와의 통합 —
+  "검증된 report signal"은 서비스 호출 시 주입받는 순수 `int` 카운트로만
+  다루고, 그 값이 실제로 어디서 오는지(`safety` 패키지 연동 여부)는 이
+  이슈 범위 밖이다.
+- reviewer 전용 role 신설, reviewer 배정, 알림, SLA — 기존 `OPERATOR`
+  role만 재사용한다.
 - 인프라 apply, 배포, 프로덕션 변경은 별도 승인 없이는 실행하지 않는다.
 - Secret, 계정 식별자, 토큰, `.env` 값은 기록하지 않는다.
-
-### Filtering integration decision (사용자 승인, 2026-08-16)
-
-- 조사 결과: `filtering` 파이프라인은 질문 제안뿐 아니라 **어떤 도메인에도
-  아직 실제로 연결되어 있지 않다.**
-  - `AnswerModerationJobIntakeService`(답변 전용 진입점)는 주석에 "의도적으로
-    Spring bean이 아니다"라고 명시돼 있고, `deadlineWindow`(운영값)가
-    미정이라 배선을 보류한 상태다. `grep`으로 확인한 결과 `filtering`
-    패키지 밖 어디에서도 이 서비스를 호출하지 않는다.
-  - `DirectionPost`는 생성 시 `moderationStatus = PENDING`으로 시작하고,
-    `DirectionMatchingWorker`는 PENDING/REVIEW_HELD를 매칭 불가로 취급하는데,
-    이를 `PASSED`로 전이시키는 코드가 어디에도 없다 — 방향 글도 현재
-    상태로는 영구히 매칭되지 않아야 정상이다.
-  - `FilterTargetType`은 `ANSWER`, `NICKNAME` 둘뿐이며 `QUESTION_PROPOSAL`
-    값 자체가 없다.
-- 결정: 질문 제안만 지금 `filtering`에 연결하지 않는다.
-- 이유: 질문 제안만 먼저 연결하면 "어떤 콘텐츠는 검사되고 어떤 콘텐츠(답변·
-  방향 글)는 안 되는" 도메인 간 불일치가 생긴다. `filtering` 프로덕션 배선
-  (운영값 확정, 각 도메인 진입점 연결)은 저장소 전체가 공유하는 별도
-  production-gate 이슈에서 한 번에 다뤄야 한다.
-- 추적: 별도 이슈 없음(아직 생성하지 않음). `filtering` 프로덕션 배선
-  이슈가 생기면 그 범위에 질문 제안도 포함시킨다.
 
 ## Ownership
 
 | Area | Owner | Required review |
 | --- | --- | --- |
-| `QUESTION_PROPOSAL_REVIEWED` 알림 발행, `filtering` 연동 확인, 정식 테스트 계획·통합 테스트·보고서 | Feature executor | 알림 발행이 반려/승인 트랜잭션을 오염시키지 않는지, `filtering` 미연동 결정 시 그 근거가 타당한지 리뷰 |
+| `ManualReviewCase` 확장, `ManualReviewPriorityPolicy`, priority 평가·aging, `FilterJob.applyManualDecision` 가드, `ManualReviewDecisionService`, worker 감사 기록, REST endpoint, V16 마이그레이션, 단위·통합 테스트 | Feature executor | `INV-MAN-001`~`004`, `INV-MAN-009` 검증, `#103`(FilterJob 기존 계약)·`#107`/`#108`(worker exhaustion handoff) 기존 계약과의 호환성 리뷰 |
 
 ## Existing user-owned changes
 
-- `feat/gh-144-question-proposal-api`(origin에 push된 PR #146 상태) 위에서
-  새로 분기했다(`./harness start --issue 145 --type feat --slug
-  question-proposal-followup --base feat/gh-144-question-proposal-api`).
-  분기 시점 `git status --short`는 비어 있었다.
+- `origin/main`(#147 병합 직후, `d99cc78`)에서 새로 분기했다. 분기 시점
+  작업 트리는 clean이었다.
 
 ## Validation
 
 ```bash
+./gradlew test --tests "com.dnd.qello.filtering.*" --max-workers=1 --no-daemon
+./gradlew integrationTest --tests "com.dnd.qello.ManualReview*" --max-workers=1 --no-daemon --no-parallel --rerun-tasks
+./harness test-run --id TEST-PLAN-GH-110-MANUAL-REVIEW-PRIORITY
 ./harness check
 ./harness pr-ready --project-tests
-npm run hooks:validate
 git diff --check
 ```
 
 ## Completion criteria
 
-- [x] 반려 시 사유가 기록되고 `QUESTION_PROPOSAL_REVIEWED` 알림이 제안자에게
-      실제로 발행된다. `QuestionReviewService.reject()`/`approve()`가 같은
-      transaction에서 outbox event를 저장하고, `QuestionProposalApiIntegrationTest`가
-      실제 PostgreSQL `outbox_event` 테이블에서 `decision`/`proposerId`가
-      기록됨을 확인한다. fan-out worker(인앱 알림·push 실제 전달)는 이
-      이슈 범위 밖이다("Explicit exclusions" 참고).
-- [x] 제안 제출 텍스트의 `filtering` 연동 여부가 확인되고, 필요하면
-      연결된다(미연동 결정이면 그 근거를 기록한다). 조사 결과 `filtering`이
-      답변·방향 글을 포함해 어떤 도메인에도 아직 연결되어 있지 않음을
-      확인했고, 질문 제안만 먼저 연결하지 않기로 결정했다(사용자 승인,
-      2026-08-16 — 근거는 "Filtering integration decision" 절 참고).
-- [x] `/harness-test-plan` 승인을 받은 정식 테스트 계획이 존재한다.
-      `docs/test-plans/gh-145-TEST-PLAN-GH-145-QUESTION-PROPOSAL-NOTIFICATION.md`
-      (Status: Approved, 2026-08-17). `#144`가 예외 승인으로 남긴 부채를 이
-      계획이 승계했다.
-- [x] 통합(PostgreSQL) 테스트와 테스트 보고서가 존재한다. 단위 4건·통합 8건을
-      추가했고 전체 스위트(단위 442건, 통합 357건)가 통과했다. 보고서는
-      `docs/reports/tests/gh-145-TEST-PLAN-GH-145-QUESTION-PROPOSAL-NOTIFICATION.md`.
-      R9(목록 정렬 동률, P2)는 미실행으로 기록했다.
+- [x] 자동 결과가 수동 결정 전에 도착하면 유효성을 확인한 뒤 case를
+      종료할 수 있다(`INV-MAN-003`) — `ManualReviewDecisionService.decide`가
+      job이 이미 `RESOLVED`면 job은 건드리지 않고 그 기존 `resolvedVerdict`로
+      case만 종료함을 `ManualReviewDecisionServiceTest#closesCaseWithoutTouchingAlreadyResolvedJob`과
+      `ManualReviewPriorityIntegrationTest#decisionAppliesAtomically`,
+      `#concurrentManualAndAutomatedResolutionConverge`로 검증했다.
+      `FilterJob.applyManualDecision`에 추가한 `RESOLVED` 거절 가드가 이
+      계약의 도메인 측 전제조건이다(`FilterJobTest#rejectsManualDecisionAfterAutomatedResolution`).
+- [x] 수동 결정 뒤 늦은 자동 결과는 감사 기록만 남기고 상태를 바꾸지
+      않는다(`INV-MAN-004`) — `AnswerModerationExecutionWorker.finishSkipped`가
+      `manuallyResolved` job에 한해 `filter_job_status_history`에 기록을
+      남기도록 확장했다.
+      `ManualReviewPriorityIntegrationTest#lateAutomatedAttemptAfterManualResolutionIsAudited`로
+      검증했다.
+- [x] priority 계산 장애가 case 유실이나 검토 중단으로 이어지지
+      않는다(`INV-MAN-009`) — aging은 스케줄러 없이 조회 시점 순수 함수로
+      계산해 계산 장애 여지 자체를 구조적으로 없앴고(`effectiveBand`),
+      report signal 평가 예외는 호출 서비스가 흡수해
+      `STANDARD`+`CALCULATION_FAILED`로 case 생성을 계속한다(worker의
+      `openManualReviewCaseIfAbsent`). 순수 평가 함수의 예외 발생은
+      `ManualReviewCaseTest#evaluatePriorityRejectsNegativeSignalCount`로,
+      fallback 흡수는 코드 리뷰로 확인했다(통합 테스트 미실행 — 보고서
+      6절 참고).
+- [x] 승인된 P0 테스트와 저장소 필수 검증이 통과하고 테스트 보고서가
+      남는다 — unit 12개(UNIT-001~012), integration 8개(INT-001~008,
+      실제 PostgreSQL 동시성·트랜잭션·REST endpoint 인가 포함) 전부
+      통과. 상세는
+      `docs/reports/tests/gh-110-TEST-PLAN-GH-110-MANUAL-REVIEW-PRIORITY.md`
+      참고. `./harness check`, `./harness pr-ready --project-tests`
+      (전체 unit·integration 스위트, `./gradlew check` 포함) 통과.
+- [x] 실행하지 못한 검증과 남은 위험을 보고서에 기록한다 — 위 보고서
+      6·7절에 "명시적 재평가" 서비스 미구현, `CALCULATION_FAILED`
+      fallback 실증 테스트 미실행, `safety` 패키지 미통합, `#113`
+      scheduler 배선 등을 명시했다.
