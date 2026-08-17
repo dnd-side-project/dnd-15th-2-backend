@@ -162,7 +162,7 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 	private JdbcTemplate jdbcTemplate;
 
 	@Test
-	@DisplayName("빈 PostGIS 데이터베이스의 startup에서 V1부터 V16까지 migration을 적용한다")
+	@DisplayName("빈 PostGIS 데이터베이스의 startup에서 V1부터 V17까지 migration을 적용한다")
 	void appliesAllMigrationsOnApplicationStartup() {
 		Integer successfulV1 = jdbcTemplate.queryForObject("""
 			SELECT count(*)
@@ -244,6 +244,11 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 			FROM flyway_schema_history
 			WHERE version = '16' AND success
 			""", Integer.class);
+		Integer successfulV17 = jdbcTemplate.queryForObject("""
+			SELECT count(*)
+			FROM flyway_schema_history
+			WHERE version = '17' AND success
+			""", Integer.class);
 		String postgisVersion = jdbcTemplate.queryForObject(
 			"SELECT PostGIS_Version()", String.class);
 
@@ -263,7 +268,8 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 		assertThat(successfulV14).isEqualTo(1);
 		assertThat(successfulV15).isEqualTo(1);
 		assertThat(successfulV16).isEqualTo(1);
-		assertThat(flyway.info().applied()).hasSize(16);
+		assertThat(successfulV17).isEqualTo(1);
+		assertThat(flyway.info().applied()).hasSize(17);
 		assertThat(postgisVersion).isNotBlank();
 	}
 
@@ -317,6 +323,10 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 			""", (resultSet, rowNumber) -> new ConstraintDescriptor(
 			resultSet.getString(1), resultSet.getString(2)));
 
+		// countConstraints는 EXPECTED_TABLES에 속한 테이블만 센다. notification_event는
+		// manual_review_case·filter_job 등 V10~V16의 filtering 테이블과 마찬가지로
+		// EXPECTED_TABLES에 없으므로(이 매니페스트는 V1~V9 catalog 전용), V17이
+		// 추가한 제약은 아래 총계에 반영되지 않는다.
 		assertThat(countConstraints(constraints, "f")).isEqualTo(52);
 		assertThat(countConstraints(constraints, "u")).isEqualTo(21);
 		// V7(#81, device_credential)이 4개, V8(#78)이 ck_post_recipient_inbound_bearing,
@@ -524,6 +534,34 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 			""", String.class));
 		assertThat(evaluationConstraintNames).contains(
 			"fk_manual_review_priority_evaluation_case", "ck_manual_review_priority_evaluation_band");
+	}
+
+	@Test
+	@DisplayName("V17은 notification_event 테이블과 제약을 생성한다")
+	void v17AddsNotificationEventForSlackManualReview() {
+		Integer notificationEventTableExists = jdbcTemplate.queryForObject("""
+			SELECT count(*)
+			FROM information_schema.tables
+			WHERE table_schema = 'public' AND table_name = 'notification_event'
+			""", Integer.class);
+		assertThat(notificationEventTableExists).isEqualTo(1);
+
+		assertThat(columnExists("notification_event", "case_id")).isTrue();
+		assertThat(columnExists("notification_event", "admin_link_path")).isTrue();
+
+		Set<String> notificationEventConstraintNames = new HashSet<>(jdbcTemplate.queryForList("""
+			SELECT conname
+			FROM pg_constraint
+			WHERE conrelid = 'notification_event'::regclass
+			""", String.class));
+		assertThat(notificationEventConstraintNames).contains(
+			"uq_notification_event_case_id", "fk_notification_event_case", "ck_notification_event_status",
+			"ck_notification_event_attempt_count", "ck_notification_event_processed_at",
+			"ck_notification_event_lease_generation", "ck_notification_event_lease_state");
+
+		String indexDefinition = jdbcTemplate.queryForObject(
+			"SELECT indexdef FROM pg_indexes WHERE indexname = 'notification_event_claim_idx'", String.class);
+		assertThat(indexDefinition).contains("status", "next_attempt_at", "lease_expires_at");
 	}
 
 	@Test

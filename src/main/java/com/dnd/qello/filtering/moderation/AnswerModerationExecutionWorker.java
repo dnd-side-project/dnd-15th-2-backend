@@ -40,10 +40,12 @@ import com.dnd.qello.filtering.repository.FilterReleaseRepository;
 import com.dnd.qello.filtering.repository.FilterReleaseRetryGateRepository;
 import com.dnd.qello.filtering.repository.ManualReviewCaseRepository;
 import com.dnd.qello.filtering.repository.ManualReviewPriorityEvaluationRepository;
+import com.dnd.qello.notification.domain.NotificationEvent;
 import com.dnd.qello.notification.domain.OutboxAggregateType;
 import com.dnd.qello.notification.domain.OutboxEvent;
 import com.dnd.qello.notification.domain.OutboxEventType;
 import com.dnd.qello.notification.domain.OutboxRetryDecision;
+import com.dnd.qello.notification.repository.NotificationEventRepository;
 import com.dnd.qello.notification.repository.OutboxEventRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -75,6 +77,7 @@ public class AnswerModerationExecutionWorker {
 	private final ManualReviewCaseRepository manualReviewCaseRepository;
 	private final ManualReviewPriorityEvaluationRepository manualReviewPriorityEvaluationRepository;
 	private final ManualReviewPriorityPolicy manualReviewPriorityPolicy;
+	private final NotificationEventRepository notificationEventRepository;
 	private final Duration gateDeferDelay;
 	private final ObjectMapper objectMapper;
 	private final ExecutorService executor;
@@ -94,6 +97,7 @@ public class AnswerModerationExecutionWorker {
 		ManualReviewCaseRepository manualReviewCaseRepository,
 		ManualReviewPriorityEvaluationRepository manualReviewPriorityEvaluationRepository,
 		ManualReviewPriorityPolicy manualReviewPriorityPolicy,
+		NotificationEventRepository notificationEventRepository,
 		Duration gateDeferDelay,
 		ObjectMapper objectMapper,
 		ExecutorService executor,
@@ -112,6 +116,7 @@ public class AnswerModerationExecutionWorker {
 		this.manualReviewCaseRepository = manualReviewCaseRepository;
 		this.manualReviewPriorityEvaluationRepository = manualReviewPriorityEvaluationRepository;
 		this.manualReviewPriorityPolicy = manualReviewPriorityPolicy;
+		this.notificationEventRepository = notificationEventRepository;
 		this.gateDeferDelay = gateDeferDelay;
 		this.objectMapper = objectMapper;
 		this.executor = executor;
@@ -373,11 +378,23 @@ public class AnswerModerationExecutionWorker {
 					filterReleaseId, filterJobId, finalDecision, 0, manualReviewPriorityPolicy.policyVersion(), now));
 				manualReviewPriorityEvaluationRepository.save(ManualReviewPriorityEvaluation.of(opened.id(),
 					finalDecision.band(), finalDecision.reasonCode(), manualReviewPriorityPolicy.policyVersion(), now));
+				// case 생성과 같은 트랜잭션으로 묶어 "case 생성 성공 뒤에만 발행"을
+				// 원자적으로 보장한다(#111). 실제 Slack 전송은 별도 dispatch worker가
+				// 트랜잭션 밖에서 처리하므로, 여기서는 PENDING 행만 남긴다.
+				notificationEventRepository.save(NotificationEvent.pending(
+					opened.id(), adminLinkPath(opened.id()), now));
 			});
 		} catch (DataIntegrityViolationException raceAlreadyOpened) {
 			// 이미 다른 경로(동시 claim, 재클레임된 재시도)로 열렸다 — INV-MAN-001
-			// 유일성 제약이 감지한 경쟁을 멱등하게 흡수한다.
+			// 유일성 제약이 감지한 경쟁을 멱등하게 흡수한다. notification_event도
+			// case_id UNIQUE 제약을 공유하므로 같은 트랜잭션 롤백으로 함께 흡수된다.
 		}
+	}
+
+	// 새 REST endpoint를 추가하지 않고(#111 범위 밖) 기존 admin 경로 구조에서
+	// 결정적으로 구성한다.
+	private static String adminLinkPath(long caseId) {
+		return "/admin/filtering/manual-review-cases/" + caseId;
 	}
 
 	private static boolean isJobStateRace(FilteringException e) {

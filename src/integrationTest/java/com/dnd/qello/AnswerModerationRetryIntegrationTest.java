@@ -52,6 +52,7 @@ import com.dnd.qello.filtering.repository.ManualReviewCaseRepository;
 import com.dnd.qello.filtering.repository.ManualReviewPriorityEvaluationRepository;
 import com.dnd.qello.filtering.service.FilterReleaseRegistryService;
 import com.dnd.qello.notification.domain.OutboxBackoffStrategy;
+import com.dnd.qello.notification.repository.NotificationEventRepository;
 import com.dnd.qello.notification.repository.OutboxEventRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -89,6 +90,8 @@ class AnswerModerationRetryIntegrationTest extends PostgisContainerIntegrationTe
 	@Autowired
 	private ManualReviewPriorityEvaluationRepository manualReviewPriorityEvaluationRepository;
 	@Autowired
+	private NotificationEventRepository notificationEventRepository;
+	@Autowired
 	private FilterReleaseRegistryService releaseRegistryService;
 	@Autowired
 	private AnswerModerationDeadlineWorker deadlineWorker;
@@ -107,6 +110,7 @@ class AnswerModerationRetryIntegrationTest extends PostgisContainerIntegrationTe
 		jdbc.update("DELETE FROM filter_decision");
 		jdbc.update("DELETE FROM filter_job_status_history");
 		jdbc.update("DELETE FROM manual_review_priority_evaluation");
+		jdbc.update("DELETE FROM notification_event");
 		jdbc.update("DELETE FROM manual_review_case");
 		jdbc.update("DELETE FROM filter_release_retry_gate");
 		jdbc.update("DELETE FROM filter_job");
@@ -255,7 +259,7 @@ class AnswerModerationRetryIntegrationTest extends PostgisContainerIntegrationTe
 		return new AnswerModerationExecutionWorker(pipeline, filterJobRepository, filterReleaseRepository,
 			historyRepository, outboxEventRepository, retryPolicy, filterReleaseRetryGateRepository, GATE_CONFIG,
 			manualReviewCaseRepository, manualReviewPriorityEvaluationRepository, MANUAL_REVIEW_PRIORITY_POLICY,
-			Duration.ofSeconds(5), objectMapper, pipelineExecutor, Duration.ofSeconds(5),
+			notificationEventRepository, Duration.ofSeconds(5), objectMapper, pipelineExecutor, Duration.ofSeconds(5),
 			transactionManager, Clock.fixed(NOW, ZoneOffset.UTC));
 	}
 

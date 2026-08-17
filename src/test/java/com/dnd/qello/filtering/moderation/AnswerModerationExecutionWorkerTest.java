@@ -56,10 +56,12 @@ import com.dnd.qello.filtering.repository.FilterReleaseRepository;
 import com.dnd.qello.filtering.repository.FilterReleaseRetryGateRepository;
 import com.dnd.qello.filtering.repository.ManualReviewCaseRepository;
 import com.dnd.qello.filtering.repository.ManualReviewPriorityEvaluationRepository;
+import com.dnd.qello.notification.domain.NotificationEvent;
 import com.dnd.qello.notification.domain.OutboxBackoffStrategy;
 import com.dnd.qello.notification.domain.OutboxEvent;
 import com.dnd.qello.notification.domain.OutboxEventType;
 import com.dnd.qello.notification.domain.OutboxRetryDecision;
+import com.dnd.qello.notification.repository.NotificationEventRepository;
 import com.dnd.qello.notification.repository.OutboxEventRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -82,6 +84,8 @@ class AnswerModerationExecutionWorkerTest {
 	private final ManualReviewCaseRepository manualReviewCaseRepository = mock(ManualReviewCaseRepository.class);
 	private final ManualReviewPriorityEvaluationRepository manualReviewPriorityEvaluationRepository =
 		mock(ManualReviewPriorityEvaluationRepository.class);
+	private final NotificationEventRepository notificationEventRepository =
+		mock(NotificationEventRepository.class);
 	private static final ManualReviewPriorityPolicy MANUAL_REVIEW_PRIORITY_POLICY =
 		new ManualReviewPriorityPolicy(3, Duration.ofHours(24), "test-v1");
 	private ExecutorService executor;
@@ -109,6 +113,15 @@ class AnswerModerationExecutionWorkerTest {
 				saved.resolvedVerdict(), saved.createdAt());
 		});
 		when(manualReviewPriorityEvaluationRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+		when(notificationEventRepository.save(any())).thenAnswer(inv -> {
+			NotificationEvent saved = inv.getArgument(0);
+			if (saved.id() != null) {
+				return saved;
+			}
+			return new NotificationEvent(1L, saved.caseId(), saved.adminLinkPath(), saved.status(),
+				saved.attemptCount(), saved.nextAttemptAt(), saved.createdAt(), saved.processedAt(),
+				saved.leaseOwner(), saved.leaseExpiresAt(), saved.leaseGeneration());
+		});
 	}
 
 	@AfterEach
@@ -361,7 +374,7 @@ class AnswerModerationExecutionWorkerTest {
 		return new AnswerModerationExecutionWorker(pipeline, filterJobRepository, filterReleaseRepository,
 			historyRepository, outboxEventRepository, retryPolicy, filterReleaseRetryGateRepository, GATE_CONFIG,
 			manualReviewCaseRepository, manualReviewPriorityEvaluationRepository, MANUAL_REVIEW_PRIORITY_POLICY,
-			Duration.ofSeconds(5), MAPPER, executor, Duration.ofSeconds(1),
+			notificationEventRepository, Duration.ofSeconds(5), MAPPER, executor, Duration.ofSeconds(1),
 			transactionManager, Clock.fixed(NOW, ZoneOffset.UTC));
 	}
 

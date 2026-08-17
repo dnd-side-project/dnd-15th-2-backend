@@ -152,4 +152,56 @@ public final class NotificationSql {
 			enabled = EXCLUDED.enabled, quiet_start = EXCLUDED.quiet_start,
 			quiet_end = EXCLUDED.quiet_end, updated_at = clock_timestamp()
 		""";
+
+	public static final String INSERT_NOTIFICATION_EVENT = """
+		INSERT INTO notification_event
+			(case_id, admin_link_path, status, attempt_count, next_attempt_at, created_at,
+			 processed_at, lease_owner, lease_expires_at, lease_generation)
+		VALUES (:caseId, :adminLinkPath, :status, :attemptCount, :nextAttemptAt, :createdAt,
+			:processedAt, :leaseOwner, :leaseExpiresAt, :leaseGeneration)
+		RETURNING id
+		""";
+
+	public static final String CLAIM_DUE_NOTIFICATION_EVENTS = """
+		WITH due AS MATERIALIZED (
+			SELECT id
+			FROM notification_event
+			WHERE (
+				(status IN ('PENDING', 'FAILED') AND next_attempt_at <= :at)
+				OR (status = 'PROCESSING' AND lease_expires_at <= :at)
+			)
+			ORDER BY next_attempt_at, id
+			LIMIT :limit
+			FOR UPDATE SKIP LOCKED
+		)
+		UPDATE notification_event AS ne
+		SET status = 'PROCESSING', attempt_count = ne.attempt_count + 1, next_attempt_at = :at,
+			lease_owner = :leaseOwner, lease_expires_at = :leaseExpiresAt,
+			lease_generation = ne.lease_generation + 1
+		FROM due
+		WHERE ne.id = due.id
+		RETURNING ne.*
+		""";
+
+	public static final String COMPLETE_NOTIFICATION_EVENT = """
+		UPDATE notification_event
+		SET status = 'PROCESSED', processed_at = :processedAt,
+			lease_owner = NULL, lease_expires_at = NULL
+		WHERE id = :id
+		  AND status = 'PROCESSING'
+		  AND lease_owner = :leaseOwner
+		  AND lease_generation = :leaseGeneration
+		  AND lease_expires_at > :processedAt
+		""";
+
+	public static final String FAIL_NOTIFICATION_EVENT = """
+		UPDATE notification_event
+		SET status = :nextStatus, next_attempt_at = :nextAttemptAt, processed_at = NULL,
+			lease_owner = NULL, lease_expires_at = NULL
+		WHERE id = :id
+		  AND status = 'PROCESSING'
+		  AND lease_owner = :leaseOwner
+		  AND lease_generation = :leaseGeneration
+		  AND lease_expires_at > :at
+		""";
 }

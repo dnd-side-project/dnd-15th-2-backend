@@ -73,6 +73,7 @@ import com.dnd.qello.filtering.repository.SnapshotHealthRepository;
 import com.dnd.qello.filtering.service.FilterReleaseRegistryService;
 import com.dnd.qello.filtering.service.SnapshotEmergencyMigrationService;
 import com.dnd.qello.notification.domain.OutboxBackoffStrategy;
+import com.dnd.qello.notification.repository.NotificationEventRepository;
 import com.dnd.qello.notification.repository.OutboxEventRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -125,6 +126,8 @@ class SnapshotHealthMigrationIntegrationTest extends PostgisContainerIntegration
 	@Autowired
 	private ManualReviewPriorityEvaluationRepository manualReviewPriorityEvaluationRepository;
 	@Autowired
+	private NotificationEventRepository notificationEventRepository;
+	@Autowired
 	private FilterReleaseRegistryService releaseRegistryService;
 	@Autowired
 	private SnapshotEmergencyMigrationService emergencyMigrationService;
@@ -143,6 +146,7 @@ class SnapshotHealthMigrationIntegrationTest extends PostgisContainerIntegration
 		jdbc.update("DELETE FROM filter_decision");
 		jdbc.update("DELETE FROM filter_job_status_history");
 		jdbc.update("DELETE FROM manual_review_priority_evaluation");
+		jdbc.update("DELETE FROM notification_event");
 		jdbc.update("DELETE FROM manual_review_case");
 		jdbc.update("DELETE FROM filter_release_retry_gate");
 		jdbc.update("DELETE FROM filter_job");
@@ -361,6 +365,7 @@ class SnapshotHealthMigrationIntegrationTest extends PostgisContainerIntegration
 			new com.dnd.qello.filtering.domain.RetryGateConfig(3, 2, 2, 2, 6), manualReviewCaseRepository,
 			manualReviewPriorityEvaluationRepository,
 			new com.dnd.qello.filtering.domain.ManualReviewPriorityPolicy(3, Duration.ofHours(24), "test-v1"),
+			notificationEventRepository,
 			Duration.ofSeconds(5), objectMapper, pipelineExecutor, Duration.ofSeconds(5), transactionManager,
 			Clock.fixed(NOW, ZoneOffset.UTC));
 	}
