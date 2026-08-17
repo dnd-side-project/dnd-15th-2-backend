@@ -49,6 +49,11 @@ public class JpaQuestionProposalRepository implements QuestionProposalRepository
 	}
 
 	@Override
+	public Optional<QuestionProposal> findByIdForUpdate(long id) {
+		return repository.findByIdForUpdate(id).map(QuestionJpaMapper::toDomain);
+	}
+
+	@Override
 	public List<QuestionProposal> findAllByProposerIdOrderByCreatedAtDesc(long proposerId) {
 		return repository.findAllByProposerIdOrderByCreatedAtDesc(proposerId).stream()
 			.map(QuestionJpaMapper::toDomain)

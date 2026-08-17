@@ -59,13 +59,13 @@ public class QuestionReviewService {
 
 	@Transactional
 	public QuestionProposal submit(long proposalId, Instant submittedAt) {
-		QuestionProposal proposal = getProposal(proposalId);
+		QuestionProposal proposal = lockProposal(proposalId);
 		return proposalRepository.save(proposal.submit(submittedAt));
 	}
 
 	@Transactional
 	public QuestionProposal startReview(long proposalId) {
-		QuestionProposal proposal = getProposal(proposalId);
+		QuestionProposal proposal = lockProposal(proposalId);
 		return proposalRepository.save(proposal.startReview());
 	}
 
@@ -73,7 +73,7 @@ public class QuestionReviewService {
 	public QuestionProposalReview reject(
 		long proposalId, long reviewerId, String reason, Instant reviewedAt
 	) {
-		QuestionProposal proposal = getProposal(proposalId);
+		QuestionProposal proposal = lockProposal(proposalId);
 		QuestionProposal rejected = proposal.reject(reason);
 		QuestionProposalReview review = QuestionProposalReview.reject(
 			proposalId, reviewerId, reason, reviewedAt);
@@ -92,7 +92,7 @@ public class QuestionReviewService {
 		Instant activeUntil,
 		Instant approvedAt
 	) {
-		QuestionProposal proposal = getProposal(proposalId);
+		QuestionProposal proposal = lockProposal(proposalId);
 		QuestionProposal approved = proposal.approve(null);
 		QuestionProposalReview review = QuestionProposalReview.approve(
 			proposalId, reviewerId, null, approvedAt);
@@ -107,8 +107,17 @@ public class QuestionReviewService {
 		return saved;
 	}
 
-	private QuestionProposal getProposal(long proposalId) {
-		return proposalRepository.findById(proposalId)
+	/**
+	 * 상태 전이 경로 전용 조회. 행 잠금으로 동시 판정을 직렬화한다.
+	 *
+	 * <p>잠금 없이 읽으면 두 운영자의 동시 판정이 모두 `UNDER_REVIEW`를 통과해
+	 * 판정 이력이 두 번 남는다. `publishReviewed()`의 dedupKey 사전 조회는 이
+	 * 상황을 막지 못한다 — 뒤늦은 transaction이 먼저 커밋된 event를 발견하면
+	 * 삽입을 건너뛰고 그대로 성공하기 때문이다. 잠금을 걸면 뒤늦은 transaction이
+	 * 갱신된 상태를 읽고 `INVALID_PROPOSAL_STATUS`로 거절된다.</p>
+	 */
+	private QuestionProposal lockProposal(long proposalId) {
+		return proposalRepository.findByIdForUpdate(proposalId)
 			.orElseThrow(() -> new QuestionException(QuestionErrorCode.PROPOSAL_NOT_FOUND, "proposalId"));
 	}
 
