@@ -8,7 +8,10 @@ import java.time.Instant;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import com.dnd.qello.filtering.domain.AppealAcceptance;
+import com.dnd.qello.filtering.domain.AppealAcceptanceReasonCode;
 import com.dnd.qello.filtering.domain.AppealCase;
+import com.dnd.qello.filtering.domain.AppealWindow;
 import com.dnd.qello.filtering.domain.FilterDecision;
 import com.dnd.qello.filtering.domain.FilterTarget;
 import com.dnd.qello.filtering.domain.FilterTargetType;
@@ -75,10 +78,14 @@ class FilteringValueObjectsTest {
 	@Test
 	@DisplayName("AppealCase는 targetType·targetId·filterDecisionId를 필수로 검증한다")
 	void validatesAppealCase() {
-		AppealCase appeal = AppealCase.file(FilterTargetType.ANSWER, 1L, 99L, NOW);
+		AppealAcceptance acceptance =
+			new AppealAcceptance(true, AppealAcceptanceReasonCode.WITHIN_WINDOW, NOW);
+		AppealCase appeal =
+			AppealCase.file(FilterTargetType.ANSWER, 1L, 99L, 7L, acceptance, AppealWindow.GLOBAL, NOW);
 		assertThat(appeal.filterDecisionId()).isEqualTo(99L);
 
-		assertThatThrownBy(() -> AppealCase.file(FilterTargetType.ANSWER, 1L, 0L, NOW))
+		assertThatThrownBy(() ->
+			AppealCase.file(FilterTargetType.ANSWER, 1L, 0L, 7L, acceptance, AppealWindow.GLOBAL, NOW))
 			.isInstanceOf(FilteringException.class)
 			.hasFieldOrPropertyWithValue("errorCode", FilteringErrorCode.INVALID_VALUE_RANGE);
 	}
