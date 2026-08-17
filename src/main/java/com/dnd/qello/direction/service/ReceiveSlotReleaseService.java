@@ -7,6 +7,7 @@ import java.util.Optional;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.dnd.qello.answer.repository.AnswerRepository;
 import com.dnd.qello.direction.config.SkipConfirmationProperties;
 import com.dnd.qello.direction.domain.PostRecipient;
 import com.dnd.qello.direction.domain.PostRecipientStatus;
@@ -41,6 +42,7 @@ public class ReceiveSlotReleaseService {
 	private final PostRecipientRepository recipientRepository;
 	private final RecipientReceiveStateRepository receiveStateRepository;
 	private final SkipConfirmationProperties skipConfirmationProperties;
+	private final AnswerRepository answerRepository;
 
 	/** 만료 sweep 후보. AVAILABLE/DISCOVERED/OPENED이고 소속 질문글이 at 이전에 만료된 항목이다. */
 	public List<PostRecipient> findExpirable(Instant at) {
@@ -62,11 +64,22 @@ public class ReceiveSlotReleaseService {
 	 * 예외 대신 빈 Optional을 반환한다 — 동시 실행 경쟁의 정상적인 결과다
 	 * (AnswerNotificationService.publish()가 이미 PUBLISHED인 답변을 조기 반환하는
 	 * 것과 같은 판단이다).
+	 *
+	 * findExpirable의 후보 조회는 잠금 없이 SUBMITTED/SAFETY_CHECKING 답변 유무를
+	 * 스냅샷으로 확인한다. 그 조회와 이 메서드 사이에 답변 제출이 커밋되면 후보 목록은
+	 * 낡은 상태가 된다. 답변 제출(findInboxCommandItemForUpdate)이 같은 행에 FOR UPDATE
+	 * 잠금을 거는 것과 동일한 잠금(findByIdForUpdate)을 여기서도 획득해 두 트랜잭션을
+	 * 직렬화하고, 잠금 안에서 검사 중 답변 유무를 다시 확인해야 만료 전 제출된 답변의
+	 * 자격을 보존할 수 있다.
 	 */
 	@Transactional
 	public Optional<PostRecipient> expire(long postRecipientId, Instant at) {
-		PostRecipient candidate = recipientRepository.findById(postRecipientId).orElseThrow(this::recipientNotFound);
+		PostRecipient candidate =
+			recipientRepository.findByIdForUpdate(postRecipientId).orElseThrow(this::recipientNotFound);
 		if (!candidate.isOpenForTransition()) {
+			return Optional.empty();
+		}
+		if (answerRepository.hasPendingAnswerForPostRecipient(postRecipientId)) {
 			return Optional.empty();
 		}
 		PostRecipient expired = candidate.expire(at);

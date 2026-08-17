@@ -1,6 +1,22 @@
 {
   "components" : {
     "schemas" : {
+      "AnswerSubmissionResponse" : {
+        "properties" : {
+          "answerId" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "submissionStatus" : {
+            "type" : "string"
+          },
+          "submittedAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
       "ApiErrorDetail" : {
         "properties" : {
           "code" : {
@@ -22,6 +38,25 @@
           },
           "message" : {
             "type" : "string"
+          },
+          "status" : {
+            "enum" : [
+              "success",
+              "error"
+            ],
+            "type" : "string"
+          },
+          "timestamp" : {
+            "format" : "date-time",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "ApiResponseAnswerSubmissionResponse" : {
+        "properties" : {
+          "data" : {
+            "$ref" : "#/components/schemas/AnswerSubmissionResponse"
           },
           "status" : {
             "enum" : [
@@ -1190,6 +1225,30 @@
             "type" : "string"
           }
         },
+        "type" : "object"
+      },
+      "SubmitAnswerRequest" : {
+        "properties" : {
+          "bodyText" : {
+            "description" : "답변 본문. 정규화 후 최대 300 Unicode code points",
+            "example" : "저도 여기 자주 와요!",
+            "minLength" : 1,
+            "type" : "string"
+          },
+          "mediaIds" : {
+            "description" : "첨부할 READY 이미지 식별자. 0개 또는 1개",
+            "items" : {
+              "format" : "int64",
+              "type" : "integer"
+            },
+            "maxItems" : 1,
+            "minItems" : 0,
+            "type" : "array"
+          }
+        },
+        "required" : [
+          "bodyText"
+        ],
         "type" : "object"
       },
       "SubmitDirectionPostRequest" : {
@@ -2834,6 +2893,134 @@
         ]
       }
     },
+    "/api/v1/direction/inbox/{postRecipientId}/answers" : {
+      "post" : {
+        "description" : "인증 수신자가 자신의 수신 항목에 답변을 제출합니다. 공개는 비동기 안전 검사 결과가 ALLOW일 때만 내부 moderation 결과 처리 경로에서 이루어지며, 이 endpoint는 공개 여부를 반환하지 않습니다.",
+        "operationId" : "submit_2",
+        "parameters" : [
+          {
+            "description" : "수신 항목 식별자",
+            "in" : "path",
+            "name" : "postRecipientId",
+            "required" : true,
+            "schema" : {
+              "format" : "int64",
+              "type" : "integer"
+            }
+          },
+          {
+            "description" : "동일 요청 재시도를 위한 1~200자 멱등 키",
+            "in" : "header",
+            "name" : "Idempotency-Key",
+            "required" : true,
+            "schema" : {
+              "type" : "string"
+            }
+          }
+        ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/SubmitAnswerRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "202" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiResponseAnswerSubmissionResponse"
+                }
+              }
+            },
+            "description" : "답변 제출을 접수했습니다."
+          },
+          "400" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "본문, 미디어 또는 멱등키가 정책에 맞지 않습니다."
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "앱 액세스 토큰이 유효하지 않습니다."
+          },
+          "403" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "미디어 소유권 또는 계정 자격이 없습니다."
+          },
+          "404" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "답변할 수 있는 수신 항목을 찾을 수 없습니다."
+          },
+          "409" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "멱등키가 다른 요청에 재사용됐거나 이미 이 항목에 답변이 등록되었습니다."
+          },
+          "500" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "서버 내부 오류가 발생했습니다."
+          },
+          "503" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "안전 검사 접수 정책이 아직 활성화되지 않았습니다."
+          }
+        },
+        "security" : [
+          {
+            "appAccessToken" : [ ]
+          }
+        ],
+        "summary" : "답변 멱등 제출",
+        "tags" : [
+          "답변"
+        ]
+      }
+    },
     "/api/v1/direction/inbox/{postRecipientId}/skip" : {
       "delete" : {
         "description" : "서버가 정한 유예 마감 전에 넘김 요청을 이전 상태로 되돌립니다.",
@@ -3620,6 +3807,10 @@
     {
       "description" : "moderation release candidate 생성, 평가 단계 전환, 승격과 rollback",
       "name" : "필터링 release registry"
+    },
+    {
+      "description" : "수신함 항목에 대한 답변 제출",
+      "name" : "답변"
     },
     {
       "description" : "운영자 세션 로그인과 로그아웃",

@@ -39,6 +39,10 @@ public class MediaAttachmentService {
 		return mediaAttachmentRepository.findMediaIdsByPostId(postId);
 	}
 
+	public List<Long> findMediaIdsByAnswerId(long answerId) {
+		return mediaAttachmentRepository.findMediaIdsByAnswerId(answerId);
+	}
+
 	@Transactional
 	public MediaAttachment attach(AttachCommand command) {
 		MediaAsset asset = mediaAssetRepository.findByIdAndOwnerId(command.mediaId(), command.requesterId())

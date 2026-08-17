@@ -53,6 +53,16 @@ public class JdbcMediaAttachmentRepository implements MediaAttachmentRepository 
 	}
 
 	@Override
+	public List<Long> findMediaIdsByAnswerId(long answerId) {
+		return jdbc.queryForList("""
+			SELECT media_id
+			FROM media_attachment
+			WHERE answer_id = :answerId
+			ORDER BY display_order, media_id
+			""", new MapSqlParameterSource("answerId", answerId), Long.class);
+	}
+
+	@Override
 	public void deleteByMediaId(long mediaId) {
 		jdbc.update("DELETE FROM media_attachment WHERE media_id = :mediaId",
 			new MapSqlParameterSource("mediaId", mediaId));

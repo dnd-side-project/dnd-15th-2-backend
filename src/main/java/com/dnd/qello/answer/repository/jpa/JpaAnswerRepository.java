@@ -1,11 +1,13 @@
 package com.dnd.qello.answer.repository.jpa;
 
+import java.util.List;
 import java.util.Optional;
 
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.dnd.qello.answer.domain.Answer;
+import com.dnd.qello.answer.domain.AnswerStatus;
 import com.dnd.qello.answer.repository.AnswerRepository;
 
 @Repository
@@ -38,5 +40,11 @@ public class JpaAnswerRepository implements AnswerRepository {
 	@Override
 	public Optional<Answer> findByIdAndAuthorId(long id, long authorId) {
 		return repository.findByIdAndAuthorId(id, authorId).map(AnswerJpaMapper::toDomain);
+	}
+
+	@Override
+	public boolean hasPendingAnswerForPostRecipient(long postRecipientId) {
+		return repository.existsByPostRecipientIdAndStatusIn(
+			postRecipientId, List.of(AnswerStatus.SUBMITTED, AnswerStatus.SAFETY_CHECKING));
 	}
 }

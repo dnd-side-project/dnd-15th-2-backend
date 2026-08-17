@@ -50,8 +50,7 @@ public class AnswerNotificationService {
 	 */
 	@Transactional
 	public Answer publish(long answerId, Instant publishedAt) {
-		Answer answer = answerRepository.findById(answerId)
-			.orElseThrow(() -> new IllegalArgumentException("답변을 찾을 수 없습니다: " + answerId));
+		Answer answer = answerRepository.findById(answerId).orElseThrow(this::answerNotFound);
 		if (answer.getStatus() == AnswerStatus.PUBLISHED) {
 			return answer;
 		}
@@ -59,14 +58,33 @@ public class AnswerNotificationService {
 			throw new AnswerException(AnswerErrorCode.INVALID_ANSWER_STATUS, "postRecipientId",
 				"질문글이 이미 만료되었거나 차단되어 답변을 게시할 수 없습니다");
 		}
-		Answer safetyChecked = answer.getStatus() == AnswerStatus.SUBMITTED ? answer.startSafetyCheck() : answer;
-		Answer published = safetyChecked.markSafetyPassed().publish(publishedAt);
+		Answer published = ensureSafetyChecking(answer).markSafetyPassed().publish(publishedAt);
 		Answer saved = answerRepository.save(published);
 		outboxEventRepository.findByDedupKey("answer-published:" + answerId).orElseGet(() ->
 			outboxEventRepository.save(OutboxEvent.pending(OutboxAggregateType.ANSWER, answerId,
 				OutboxEventType.ANSWER_PUBLISHED, "answer-published:" + answerId,
 				"{\"answerId\":" + answerId + "}", publishedAt)));
 		return saved;
+	}
+
+	/**
+	 * 안전 검사 BLOCK 판정을 반영한다. 이미 REJECTED면(재시도) 아무 부수효과 없이 그대로
+	 * 반환한다(멱등). 슬롯과 수신 자격은 건드리지 않는다 — BLOCK은 콘텐츠 거부일 뿐
+	 * 수신 항목 자체의 자격을 바꾸지 않는다(GitHub #125).
+	 */
+	@Transactional
+	public Answer reject(long answerId, Instant at) {
+		Answer answer = answerRepository.findById(answerId).orElseThrow(this::answerNotFound);
+		if (answer.getStatus() == AnswerStatus.REJECTED) {
+			return answer;
+		}
+		return answerRepository.save(ensureSafetyChecking(answer).rejectSafety());
+	}
+
+	// markSafetyPassed()/rejectSafety()는 SAFETY_CHECKING만 받으므로, 최초 판정(SUBMITTED)이면
+	// 먼저 그 상태로 전이시킨다. 재시도로 이미 SAFETY_CHECKING이면 그대로 둔다.
+	private Answer ensureSafetyChecking(Answer answer) {
+		return answer.getStatus() == AnswerStatus.SUBMITTED ? answer.startSafetyCheck() : answer;
 	}
 
 	/**
@@ -109,5 +127,9 @@ public class AnswerNotificationService {
 			.map(PostRecipient::getStatus)
 			.filter(PostRecipientStatus.ANSWERED::equals)
 			.isPresent();
+	}
+
+	private AnswerException answerNotFound() {
+		return new AnswerException(AnswerErrorCode.ANSWER_NOT_FOUND, "answerId", "답변을 찾을 수 없습니다");
 	}
 }

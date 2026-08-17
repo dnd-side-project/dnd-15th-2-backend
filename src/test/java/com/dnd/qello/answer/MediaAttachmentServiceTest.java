@@ -245,6 +245,15 @@ class MediaAttachmentServiceTest {
 		}
 
 		@Override
+		public List<Long> findMediaIdsByAnswerId(long answerId) {
+			return store.values().stream()
+				.filter(attachment -> attachment.answerId() != null && attachment.answerId() == answerId)
+				.sorted(java.util.Comparator.comparingInt(MediaAttachment::displayOrder))
+				.map(MediaAttachment::mediaId)
+				.toList();
+		}
+
+		@Override
 		public void deleteByMediaId(long mediaId) { store.remove(mediaId); }
 
 		@Override
@@ -302,6 +311,11 @@ class MediaAttachmentServiceTest {
 		@Override
 		public Optional<Answer> findByIdAndAuthorId(long id, long authorId) {
 			return findById(id).filter(answer -> answer.getAuthorId() == authorId);
+		}
+
+		@Override
+		public boolean hasPendingAnswerForPostRecipient(long postRecipientId) {
+			throw new UnsupportedOperationException("not used");
 		}
 	}
 }

@@ -72,12 +72,27 @@ public final class PostRecipientSql {
 	 * 만료 sweep 후보. `SKIP_PENDING`은 제외한다 — 되돌리기 유예 동안은 넘김 확정
 	 * sweep의 전용 레인이며, 두 sweep의 대상 상태 집합이 겹치지 않아야 동시 실행에서
 	 * 경쟁이 생기지 않는다(direction.domain.PostRecipient.expire 참고).
+	 *
+	 * 검사 중(SUBMITTED/SAFETY_CHECKING) 답변이 있는 수신 항목도 제외한다(GitHub #125) —
+	 * 만료 전에 제출된 답변은 제출 시점 자격을 보존해야 하므로, 여기서 먼저 EXPIRED로
+	 * 선점하면 뒤늦게 도착한 ALLOW가 AnswerNotificationService.publish()의
+	 * releaseSlot()에서 거절된다. 이미 PUBLISHED인 답변은 pr.status가 ANSWERED로
+	 * 바뀌어 위 상태 필터에서 자연히 제외되므로 별도 처리가 필요 없다.
+	 *
+	 * 이 조회는 잠금 없는 후보 스냅샷이라 조회 이후 커밋되는 답변 제출을 반영하지
+	 * 못한다. 실제 최종 검증은 ReceiveSlotReleaseService.expire()가 post_recipient
+	 * 행을 잠근 뒤 다시 수행하므로, 여기서의 NOT EXISTS는 sweep 대상을 줄이는
+	 * 최적화일 뿐 정합성의 근거가 아니다.
 	 */
 	public static final String FIND_EXPIRABLE = """
 		SELECT pr.* FROM post_recipient pr
 		JOIN direction_post dp ON dp.id = pr.post_id
 		WHERE pr.status IN ('AVAILABLE', 'DISCOVERED', 'OPENED')
 		  AND dp.expires_at <= :at
+		  AND NOT EXISTS (
+		      SELECT 1 FROM answer a
+		      WHERE a.post_recipient_id = pr.id AND a.status IN ('SUBMITTED', 'SAFETY_CHECKING')
+		  )
 		""";
 
 	/** 되돌리기 유예가 지난 SKIP_PENDING만 확정 대상이다. deadline = 기준 시각 - 유예 시간. */

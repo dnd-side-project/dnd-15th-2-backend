@@ -66,8 +66,33 @@ public enum AnswerErrorCode implements ErrorCode {
 	// 애플리케이션 사전 검증
 	INVALID_EDIT_STATE(HttpStatus.BAD_REQUEST, "ANS-DOM-010", ErrorCategory.DOM, "수정 횟수와 수정 시각이 맞지 않습니다."),
 
+	// 존재하지 않거나, 본인 소유가 아니거나, 만료·차단·넘김확정으로 답변할 수 없는 수신 항목.
+	// 정보 노출을 막기 위해 세 경우를 구분하지 않는다(GitHub #125)
+	RECIPIENT_NOT_FOUND(HttpStatus.NOT_FOUND, "ANS-DOM-011", ErrorCategory.DOM, "답변할 수 있는 수신 항목을 찾을 수 없습니다."),
+
+	// moderation 결과 처리(publish/reject) 시점에 대상 answerId가 존재하지 않음. FilterJob target에서
+	// 유래한 내부 호출이라 사용자 입력 검증이 아니라 상태 불변식 위반이다(GitHub #125)
+	ANSWER_NOT_FOUND(HttpStatus.NOT_FOUND, "ANS-DOM-012", ErrorCategory.DOM, "답변을 찾을 수 없습니다."),
+
+	// 같은 (authorId, Idempotency-Key)로 다른 postRecipientId·본문·미디어 조합을 재사용한 요청
+	IDEMPOTENCY_KEY_REUSED(HttpStatus.CONFLICT, "ANS-APP-001", ErrorCategory.APP, "같은 멱등키로 다른 요청을 재사용할 수 없습니다."),
+
+	// 답변 제출 대상 계정 부재. Account 예외를 기능 경계 밖으로 노출하지 않는다
+	ACCOUNT_NOT_FOUND(HttpStatus.NOT_FOUND, "ANS-APP-002", ErrorCategory.APP, "답변을 제출할 계정을 찾을 수 없습니다."),
+
+	// 차단·삭제 계정 또는 일반 사용자가 아닌 계정의 답변 제출 시도
+	ACCOUNT_NOT_ELIGIBLE(HttpStatus.FORBIDDEN, "ANS-APP-003", ErrorCategory.APP, "답변을 제출할 수 없는 계정입니다."),
+
+	// moderation deadlineWindow 운영값이 아직 결정되지 않아 filtering intake가 활성화되지 않음(TASK.md
+	// 제외 항목). 값이 정해지면 해소된다
+	MODERATION_INTAKE_NOT_CONFIGURED(HttpStatus.SERVICE_UNAVAILABLE, "ANS-APP-004", ErrorCategory.APP,
+		"현재 답변 제출을 처리할 수 없습니다."),
+
 	// 같은 멱등키로 이미 등록된 답변 존재. DB 유일성 제약에서 감지
 	DUPLICATED_ANSWER(HttpStatus.CONFLICT, "ANS-INFRA-001", ErrorCategory.INFRA, "이미 등록된 답변입니다."),
+
+	// 한 수신 항목에 이미 활성(REJECTED가 아닌) 답변이 존재. uq_answer_one_per_recipient에서 감지
+	DUPLICATE_ACTIVE_ANSWER(HttpStatus.CONFLICT, "ANS-INFRA-002", ErrorCategory.INFRA, "이미 이 수신 항목에 답변이 등록되었습니다."),
 
 	// presigned URL 발급/HeadObject 호출 중 객체 존재 여부와 무관한 S3 통신 실패(네트워크, timeout, 5xx). 재시도 후보
 	STORAGE_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "ANS-EXT-001", ErrorCategory.EXT, "미디어 저장소에 연결할 수 없습니다.");

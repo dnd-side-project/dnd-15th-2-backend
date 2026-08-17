@@ -1,105 +1,78 @@
-# GitHub Issue #111 Task Contract
+# GitHub Issue #125 Task Contract
 
-> Generated at: `2026-08-17T14:52:00+09:00`
+> Generated at: `2026-08-17T14:59:06+09:00`
 >
 > 이 파일은 현재 작업 브랜치의 계약이다. 저장소 전역 정책은 `AGENTS.md`를
 > 따른다.
 
 ## Work gate
 
-- Title: `Slack 보조 알림`
-- GitHub Issue: `#111`
-- Branch: `feat/gh-111-slack-manual-review-notification`
+- Title: `답변 제출·공개 API`
+- GitHub Issue: `#125`
+- Branch: `feat/gh-125-direction-answer-api`
 - Base branch: `main`
-- Test plan: `TEST-PLAN-GH-111-SLACK-MANUAL-REVIEW-NOTIFICATION`
-- Test plan approval: `APPROVED` — 사용자가 2026-08-17 구현을 승인했다.
-- Confirmed policy: 전용 `notification_event` 테이블을 새로 만든다(기존
-  `outbox_event` 재사용이 아니다). 이슈 본문이 "DB: notification_event"로
-  명시했고, `case_id`·`admin_link_path`를 컴럼 스키마로 직접 두어 허용목록을
-  타입 수준에서 강제한다(사용자 승인, 2026-08-17). claim/lease/retry 배관은
-  `outbox_event`의 검증된 SQL 패턴과 `OutboxBackoffStrategy`/
-  `OutboxFailureKind`/`OutboxRetryDecision`을 그대로 재사용하고, `decide` 로직만
-  `NotificationEvent` 전용으로 별도 구현한다(중복은 사용자가 인지하고 선택).
-- Confirmed policy: Slack 발송 워커(consumer) 구조까지 이 이슈에서 함께
-  구현한다(사용자 승인, 2026-08-17). `SlackNotifier` port interface만 두고
-  실제 HTTP 구현체·webhook/secret 배선은 만들지 않는다(`#113`로 이연,
-  `AnswerModerationJobIntakeService`/`SnapshotHealthProbeRecorder`와 동일한
-  "hook만 남기는" 패턴).
 
 ## Objective
 
-- manual review case 생성 성공 직후 Slack 알림 발행 대상 event를 outbox
-  성격의 경계로 발행하고, 실제 Slack 전송은 별도 dispatch worker가 처리하게
-  분리한다.
-- Slack 전송 실패가 `manual_review_case`나 `FilterJob` 상태를 되돌리지
-  않는다(`INV-SLK-002`) — dispatch worker는 두 테이블 중 어느 것도 참조·수정
-  하지 않는 구조로 이를 보장한다.
-- 중복 event가 중복 알림 폭주로 이어지지 않는다(`INV-SLK-005`) —
-  `notification_event.case_id` UNIQUE 제약으로 생성 시점 중복을 막고,
-  `FOR UPDATE SKIP LOCKED` 기반 claim으로 동시 dispatch로 인한 중복 전송을
-  막는다.
-- 허용목록 밖 필드가 payload에 들어가지 않는다(`INV-SLK-003`, `INV-SLK-004`)
-  — `SlackNotification` record가 `caseId`·`adminLinkPath` 두 필드만 갖도록
-  타입을 제한해, 답변 원문·user ID·닉네임·이메일·신고 세부가 애초에 표현할
-  방법이 없게 한다.
+- 인증된 수신자가 만료·차단·넘김 상태와 수신 자격을 서버에서 재검증한 뒤
+  답변을 멱등 제출하고, 비동기 안전 검사 결과가 허용한 답변만 공개하면서
+  수신 슬롯과 공개 Outbox를 정확히 한 번 변경할 수 있게 한다.
 
 ## Scope
 
-1. `NotificationEvent`(신규 도메인) + `NotificationEventStatus`(신규 enum:
-   `PENDING`/`PROCESSING`/`PROCESSED`/`FAILED`/`DEAD`) — `notification_event`
-   테이블에 매핑되는 record. `id`, `caseId`, `adminLinkPath`, `status`,
-   `attemptCount`, `nextAttemptAt`, `createdAt`, `processedAt`, `leaseOwner`,
-   `leaseExpiresAt`, `leaseGeneration`. 정적 팩토리 `pending`과 전이 메서드
-   `claimed`/`processed`/`failed`는 `OutboxEvent`와 동일한 shape로 둔다.
-2. `NotificationRetryPolicy`(신규, 주입 config) — `maxAttempts`와 기존
-   `OutboxBackoffStrategy`(재사용)로 `NotificationEvent`용 retry/dead를
-   결정한다. 실제 운영 수치는 미결정이며 생성자 주입 값으로만 존재한다.
-3. `NotificationEventRepository`(신규 interface) + JDBC 구현 — `save`,
-   `findByCaseId`, `claimDue`(limit/leaseOwner/at/leaseExpiresAt),
-   `complete`, `fail`. claim SQL은 `outbox_event`의 `CLAIM_DUE_OUTBOX_EVENTS`
-   (`FOR UPDATE SKIP LOCKED` + `UPDATE ... RETURNING`)와 동일한 패턴을
-   `notification_event`에 적용한다.
-4. Producer — `AnswerModerationExecutionWorker.openManualReviewCaseIfAbsent`
-   (`#110`)의 기존 `transactionTemplate.executeWithoutResult` 블록 안에서,
-   case와 priority evaluation을 저장한 직후 같은 트랜잭션으로
-   `NotificationEvent.pending(caseId, adminLinkPath, now)`를 저장한다. case
-   생성이 경합해 롤백되면(`DataIntegrityViolationException`, 기존
-   catch가 흡수) notification도 함께 롤백되어, "case 생성 성공 뒤에만
-   발행"이 원자적으로 보장된다. `adminLinkPath`는 새 API를 추가하지 않고
-   `/admin/filtering/manual-review-cases/{caseId}`로 결정적으로 구성한다
-   (이슈 본문의 "API: 없음"을 그대로 따른다).
-5. `SlackNotifier`(신규 port interface, 구현체 없음)와
-   `SlackNotification`(신규 record: `caseId`, `adminLinkPath`만 포함) — 이
-   두 필드 외에는 타입에 표현할 방법이 없어 허용목록을 컴파일 타임에
-   강제한다.
-6. `SlackManualReviewNotificationDispatchWorker`(신규, non-Spring-bean) —
-   `NotificationEventRepository.claimDue`로 이벤트를 잠그고, DB 트랜잭션
-   **밖에서** `SlackNotifier.send`를 호출한다(HTTP 호출을 트랜잭션 안에
-   가두지 않는다). 성공 시 `complete`, 실패 시 `NotificationRetryPolicy`로
-   retry/dead를 결정해 `fail`한다. `RecipientNotificationFanOutWorker`와
-   달리 claim·send·complete/fail을 하나의 DB 트랜잭션으로 묶지 않는다 —
-   send는 외부 HTTP 호출이라 DB 트랜잭션을 열어둘 이유가 없고, 각 단계는
-   lease generation 검증으로 이미 개별적으로 안전하다.
-7. DB 마이그레이션(V17) — `notification_event` 테이블 신규 생성(전용 테이블,
-   `outbox_event`와 무관). `case_id BIGINT UNIQUE NOT NULL REFERENCES
-   manual_review_case(id)`.
-8. 단위·PostgreSQL 통합(동시성 포함) 테스트와 테스트 보고서.
+1. `POST /api/v1/direction/inbox/{postRecipientId}/answers` 답변 제출 endpoint.
+2. `Idempotency-Key`와 요청 fingerprint를 이용한 동일 요청 재생 및 다른 요청의
+   키 재사용 거절.
+3. ACTIVE USER 계정, 수신자 소유권, ACTIVE·미삭제 질문글, 제출 시각의 만료,
+   양방향 활성 차단과 `AVAILABLE`·`DISCOVERED`·`OPENED` 상태 검증.
+4. 비동기 텍스트 moderation을 위한 필수 답변 본문과 선택적 미디어의 소유권·준비·안전 상태 검증. 사용자·시각·지역·
+   방위·거리는 요청값이 아니라 인증과 서버 스냅샷에서 결정한다.
+5. 답변·첨부·moderation job·실행 요청 Outbox를 동일한 원자적 제출 경계에 저장.
+6. `MODERATION_VERDICT_READY` 결과의 ALLOW·BLOCK 처리와
+   `MODERATION_DEADLINE_ELAPSED` fail-closed 처리.
+7. ALLOW 시 Answer 공개, `PostRecipient.ANSWERED` 전이, 수신 슬롯 1회 해제와
+   `ANSWER_PUBLISHED` Outbox 생성을 동일 transaction에서 처리.
+8. 만료 전에 제출된 검사 중 답변은 제출 시점 자격을 보존한다. 만료 sweep은
+   해당 수신 항목을 선점하지 않고, 늦게 도착한 유효 ALLOW도 공개할 수 있다.
+9. 한 `PostRecipient`당 활성 답변 1건 제약과 관련 오류 코드·DB 제약 매핑.
+10. Controller·ApiSpec·요청/응답 DTO와 `docs/api/openapi.json` 갱신.
+11. 정식 테스트 계획
+    `TEST-PLAN-GH-125-ANSWER-SUBMISSION-PUBLICATION-API`에 따른 JUnit 5 단위·
+    MockMvc·PostgreSQL/PostGIS 통합·동시성·장애 복구 테스트와 테스트 보고서.
+
+## Approved design decisions
+
+- 외부 HTTP endpoint는 제출만 제공한다. 공개는 내부 moderation 결과 consumer가
+  수행하며 클라이언트가 공개 endpoint를 직접 호출하지 않는다.
+- 안전 검사 결과가 없는 답변은 공개하지 않는 fail-closed 정책을 유지한다.
+- 만료 전에 정상 제출된 검사 중 답변은 제출 시점 자격을 보존하고, 질문글 만료
+  뒤 도착한 ALLOW도 공개할 수 있다.
+- 동일 멱등키의 동일 요청은 기존 결과를 반환한다. 같은 키로 다른 수신 항목·본문·
+  미디어 조합을 보내면 충돌로 거절한다.
+- 정확 좌표, 내부 사용자 식별자와 자유 텍스트 본문을 공개 응답·로그·알림 Outbox
+  payload에 포함하지 않는다. moderation 실행 payload의 원문은 해당 내부 경계에서만
+  사용하고 로그에 기록하지 않는다.
+- `deadlineWindow`는 5분(`PT5M`)으로 승인됐다(사용자 승인, `2026-08-17`,
+  현재 Claude Code 대화). `qello.filtering.answer-moderation.deadline-window`로
+  설정하고 `filtering.config.AnswerModerationIntakeConfig`에서
+  `AnswerModerationJobIntakeService`를 빈으로 등록한다.
+- moderation 언어는 우선 `ModerationLanguage.KO`로 고정한다(사용자 승인,
+  `2026-08-17`, 현재 Claude Code 대화). 다국어 판정 로직 자체는 이 이슈 범위 밖이며,
+  필요해지면 별도 이슈에서 재검토한다.
 
 ## Explicit exclusions
 
-- Incoming Webhook/Bot API 선택, 실제 Slack HTTP 클라이언트 구현, webhook
-  URL·secret 관리 — 이슈가 명시적으로 미결정.
-- Slack 채널 선택, secret rotation, 실제 retry·집계(aggregation)·throttling
-  수치 — 생성자 주입 지점만 만들고 값은 정하지 않는다.
-- retention·residency·DPA 정책.
-- `notification_event`를 실제로 주기적으로 polling하는 scheduler와 Spring
-  bean 배선, `SlackNotifier`의 실제 구현체 — `#105`~`#110`과 동일하게
-  `#113` production gate로 이연.
-- 기존 `outbox_event` 테이블과 그 소비자(`RecipientNotificationFanOutWorker`
-  등) 변경 — 이 이슈는 별도 전용 테이블만 추가하며 기존 outbox 배관을
-  건드리지 않는다.
-- API 변경 — 이슈 본문이 "API: 없음"으로 명시. 새 REST endpoint를 추가하지
-  않는다.
+- 답변 편집·삭제 및 수정 재검사 흐름.
+- 답변 공감과 답변 목록·상세 조회 계약 변경.
+- `ANSWER_PUBLISHED`를 실제 인앱 알림이나 FCM/APNs로 fan-out하는 worker.
+- moderation 공급자, retry/backoff, manual review 정책 자체의 변경.
+- `AnswerFormat`별 TEXT/PHOTO/BOTH 조합을 임의로 기본값으로 고정하는 변경(구현
+  전에 별도 사람 결정을 받는다 — `deadlineWindow`는 위 "Approved design decisions"에서
+  이미 결정됐으므로 이 항목에서 제외한다).
+- 본문 없는 사진 전용 답변. 현재 text pipeline은 공백 원문을 거절하므로 사진 전용
+  공개 흐름은 `AnswerFormat` 정책과 함께 별도 승인 전까지 구현하지 않는다.
+- Flyway migration. 기존 상태와 unique/FK/constraint로 구현할 수 없다고 확인되면
+  범위를 넓히지 않고 별도 승인을 받는다.
 - 인프라 apply, 배포, 프로덕션 변경은 별도 승인 없이는 실행하지 않는다.
 - Secret, 계정 식별자, 토큰, `.env` 값은 기록하지 않는다.
 
@@ -107,53 +80,61 @@
 
 | Area | Owner | Required review |
 | --- | --- | --- |
-| `NotificationEvent`/`NotificationEventStatus`, `NotificationRetryPolicy`, `NotificationEventRepository`(+JDBC), producer 연동, `SlackNotifier`/`SlackNotification`, `SlackManualReviewNotificationDispatchWorker`, V17 마이그레이션, 단위·통합 테스트 | Feature executor | `INV-SLK-002`~`005` 검증, `#110`(manual review case 생성 지점) 기존 계약과의 호환성 리뷰 |
+| Answer 제출 인터페이스·도메인·HTTP 계약 | Answer/API executor | 요청 fingerprint, 인증 subject, 응답 privacy와 오류 코드 리뷰 |
+| 수신 자격 잠금·답변 저장·슬롯·Outbox transaction | Persistence executor | 만료·차단·넘김 경합, 잠금 순서, unique/rollback 리뷰 |
+| Filtering intake seam·moderation 결과 consumer | Moderation executor | ALLOW/BLOCK/deadline, lease fencing, fail-closed·재처리 리뷰 |
+| 단위·MockMvc·PostgreSQL/PostGIS·동시성 테스트 | Test executor | 시나리오 추적성, 실제 DB 제약, 픽스처 격리와 실패 판정 리뷰 |
+| 전체 변경 및 검증 증거 | Independent verifier | 구현 설명이 아닌 diff·실행 결과 기반 독립 검증 |
 
 ## Existing user-owned changes
 
-- `origin/main`(#150 병합 직후, `3acbc4a`)에서 새로 분기했다
-  (`git worktree add -b feat/gh-111-slack-manual-review-notification`).
-  분기 시점 작업 트리는 clean이었다.
+- 작업 시작 시 `main`의 `git status --short`는 비어 있었다.
+- `./harness start`가 최신 `origin/main`을 fetch했고 fast-forward 대상이 없어
+  `main`이 최신 상태임을 확인한 뒤 `feat/gh-125-direction-answer-api`를 생성했다.
+- 브랜치 생성 전에 보존해야 할 기존 사용자 변경은 없었다.
+- 브랜치 생성 후 이 계약과 정식 테스트 계획만 새 변경으로 만들었다.
 
 ## Validation
 
 ```bash
-./gradlew test --tests "com.dnd.qello.notification.*" --max-workers=1 --no-daemon
-./gradlew integrationTest --tests "com.dnd.qello.*SlackManualReview*" --tests "com.dnd.qello.*NotificationEvent*" --max-workers=1 --no-daemon --no-parallel --rerun-tasks
-./harness test-run --id TEST-PLAN-GH-111-SLACK-MANUAL-REVIEW-NOTIFICATION
 ./harness check
 ./harness pr-ready --project-tests
+npm run hooks:validate
 git diff --check
 ```
 
+- Test plan: `TEST-PLAN-GH-125-ANSWER-SUBMISSION-PUBLICATION-API`
+- Design approval evidence: user approval in the current Codex conversation before
+  test-plan generation on `2026-08-17`.
+- Test-plan approval: approved in the current Claude Code conversation on
+  `2026-08-17`.
+
 ## Completion criteria
 
-- [x] Slack 장애가 case, workflow 또는 공개 상태를 rollback하지 않는다
-      (`INV-SLK-002`) — `SlackManualReviewNotificationDispatchWorker`가
-      `manual_review_case`/`filter_job` 어느 것도 참조·수정하지 않는 구조로
-      보장한다. `NotificationEventIntegrationTest#dispatchFailureNeverTouchesCaseOrJob`이
-      Slack 전송 실패로 `notification_event`가 DEAD가 된 뒤에도 두 테이블의
-      전체 행이 실행 전후 완전히 동일함을 실제 PostgreSQL로 검증했다. PR
-      리뷰에서 `processClaimedEvent`가 `SlackDeliveryException`만 잡아 다른
-      `RuntimeException`이 batch 전체를 중단시킬 수 있던 결함을 발견해
-      `RuntimeException`을 넓게 잡도록 고쳤다(`SlackManualReviewNotificationDispatchWorkerTest#isolatesUnexpectedRuntimeExceptionFromSend`).
-- [x] 중복 event가 중복 알림 폭주로 이어지지 않는다(`INV-SLK-005`) —
-      생성 시점은 `notification_event.case_id` UNIQUE 제약(`concurrentCaseCreationRaceProducesExactlyOneNotificationEvent`),
-      전송 시점은 `FOR UPDATE SKIP LOCKED` 기반 claim(`concurrentClaimDueGrantsExactlyOneWorker`)
-      두 지점에서 각각 실제 동시성 아래 검증했다.
-- [x] 허용 목록 밖의 필드가 payload에 들어가지 않는다(`INV-SLK-003`,
-      `INV-SLK-004`) — `SlackNotification` record가 `caseId`·`adminLinkPath`
-      두 필드만 갖도록 타입을 제한했다. `SlackNotificationTest#exposesOnlyAllowlistedFields`가
-      reflection으로 필드 목록을 검증했다.
-- [x] 승인된 P0 테스트와 저장소 필수 검증이 통과하고 테스트 보고서가
-      남는다 — unit 20개(UNIT-001~010, 일부 세부 케이스 포함), integration
-      6개(INT-001~006, 실제 PostgreSQL 동시성·원자성 포함) 전부 통과.
-      상세는
-      `docs/reports/tests/gh-111-TEST-PLAN-GH-111-SLACK-MANUAL-REVIEW-NOTIFICATION.md`
-      참고. 영향받은 기존 통합 테스트(FlywayMigrationIntegrationTest,
-      AnswerModerationJobIntegrationTest, AnswerModerationRetryIntegrationTest,
-      ManualReviewPriorityIntegrationTest, SnapshotHealthMigrationIntegrationTest)
-      회귀 없음을 재실행으로 확인했다.
-- [x] 실행하지 못한 검증과 남은 위험을 보고서에 기록한다 — 위 보고서
-      6·7절에 실제 Slack HTTP 클라이언트·webhook/secret 미구현,
-      scheduler 배선(`#113`) 등을 명시했다.
+- [x] 인증된 수신자만 자신에게 열린 수신 항목에 답변을 제출할 수 있다.
+      (UNIT-004/005, INT-007)
+- [x] 동일 멱등 요청은 기존 답변을 반환하고 답변·첨부·filter job·Outbox 수가
+      증가하지 않으며, 다른 요청의 키 재사용은 거절된다. (UNIT-007/008,
+      INT-003/004/005/006)
+- [x] 만료·차단·넘김 확정 뒤의 새 답변과 한 수신 항목의 중복 활성 답변이
+      기능 오류 코드로 거절된다. (UNIT-005/009, INT-007/008/009)
+- [x] 제출 transaction은 답변과 moderation 작업을 모두 commit하거나 모두
+      rollback하며 외부 moderation 호출을 요청 thread에서 실행하지 않는다.
+      (INT-001/002)
+- [x] ALLOW만 답변을 공개하고 BLOCK/deadline은 공개하지 않는다.
+      (UNIT-011/012/013, INT-010/011/017/018)
+- [x] 만료 전 제출된 검사 중 답변의 자격은 보존되고 늦은 ALLOW도 공개된다.
+      (INT-009/010)
+- [x] 공개 시 `PostRecipient`가 ANSWERED로 전이하고 수신 슬롯과
+      `ANSWER_PUBLISHED` Outbox가 정확히 한 번 변경된다. (INT-011/013/014)
+- [x] 정확 좌표, 내부 사용자 식별자와 답변 본문이 공개 응답·로그·알림 Outbox에
+      노출되지 않는다. (UNIT-019, INT-022)
+- [x] OpenAPI와 오류 코드 문서가 실제 Controller 계약과 일치한다.
+      `docs/api/openapi.json` 재생성, `docs/error-codes.md`에 신규
+      `ANS-DOM-011`/`ANS-APP-001~004`/`ANS-INFRA-002` 6건 반영.
+- [x] 승인된 테스트 계획의 모든 P0 시나리오와 필수 회귀 검증이 통과하고
+      `templates/test-report.md` 기반 보고서가 남는다.
+      `docs/reports/tests/gh-125-TEST-PLAN-GH-125-ANSWER-SUBMISSION-PUBLICATION-API.md`
+      (Result: PASS, unit 536건·integration 405건 실패 0건). 테스트 실행 중
+      발견한 `AnswerModerationVerdictWorker` batch 격리 결함은 사용자 승인 후
+      즉시 수정하고 회귀 재확인했다.
