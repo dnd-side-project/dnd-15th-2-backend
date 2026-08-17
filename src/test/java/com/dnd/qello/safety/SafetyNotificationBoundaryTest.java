@@ -52,7 +52,7 @@ class SafetyNotificationBoundaryTest {
 		assertThat(report.status()).isEqualTo(ReportStatus.RECEIVED);
 		assertThat(report.resolve(ReportStatus.ACTIONED, NOW.plusSeconds(1)).resolvedAt()).isEqualTo(NOW.plusSeconds(1));
 		assertThatThrownBy(() -> new Report(null, 1L, 2L, 3L, null, "ABUSE", null,
-			ReportStatus.RECEIVED, NOW, null))
+			ReportStatus.RECEIVED, NOW, null, null, null))
 			.isInstanceOf(SafetyException.class)
 			.hasFieldOrPropertyWithValue("errorCode", SafetyErrorCode.INVALID_REPORT_TARGET);
 	}
