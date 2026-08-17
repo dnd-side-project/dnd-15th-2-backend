@@ -93,21 +93,30 @@ public class AnswerModerationVerdictWorker {
         }
     }
 
+    // publish()/reject() 적용과 completeClaimOrThrow를 의도적으로 별도 물리 transaction으로
+    // 나눈다. publish()·reject()는 그 자체로 @Transactional이라 여기서 호출하면 각자 자신의
+    // transaction을 소유한다(REQUIRED로 참여할 활성 transaction이 없다). 두 호출을 하나의
+    // TransactionTemplate.execute 블록에 함께 묶으면, publish()가 정책상 예상된
+    // INVALID_ANSWER_STATUS로 실패했을 때 그 예외가 @Transactional 프록시 경계를 넘는 순간
+    // Spring이 참여 transaction을 rollback-only로 표시한다 — applyAllow가 그 예외를 캐치해도
+    // 이미 rollback-only가 된 뒤라 이어지는 completeClaimOrThrow의 commit이
+    // UnexpectedRollbackException으로 실패하고, 이벤트는 완료되지 않은 채 lease 만료마다
+    // 무한 재처리된다. publish()/reject()가 자신의 transaction을 스스로 소유하게 하면 그
+    // 실패는 그 transaction 안에서만 정상적으로 rollback되고, 이후 completeClaimOrThrow는
+    // 영향받지 않는 새 transaction에서 실행된다.
     private Outcome processVerdictReady(OutboxEvent event) {
         AnswerModerationEventPayloads.VerdictReady payload = AnswerModerationEventPayloads.fromJson(
                 objectMapper, event.payload(), AnswerModerationEventPayloads.VerdictReady.class);
         if (payload.targetType() != FilterTargetType.ANSWER) {
             return finishWithoutStateChange(event);
         }
-        return transactionTemplate.execute(status -> {
-            Instant now = Instant.now(clock);
-            if (payload.verdict() == FilterVerdict.ALLOW) {
-                applyAllow(payload.targetId(), now);
-            } else {
-                answerNotificationService.reject(payload.targetId(), now);
-            }
-            return completeClaimOrThrow(event, now);
-        });
+        Instant now = Instant.now(clock);
+        if (payload.verdict() == FilterVerdict.ALLOW) {
+            applyAllow(payload.targetId(), now);
+        } else {
+            answerNotificationService.reject(payload.targetId(), now);
+        }
+        return transactionTemplate.execute(status -> completeClaimOrThrow(event, now));
     }
 
     // releaseSlot 실패(post_recipient가 이미 EXPIRED/BLOCKED/SKIPPED로 선점됨)는 재시도로

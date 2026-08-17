@@ -119,11 +119,12 @@ class AnswerModerationPublicationIntegrationTest extends PostgisContainerIntegra
 		seedVerdictReady(filterJobId, submitted.getId(), FilterVerdict.ALLOW, 2L);
 		FaultInjectingOutboxEventRepository.failNextSaveOfType(OutboxEventType.ANSWER_PUBLISHED);
 
-		// AnswerModerationVerdictWorker.processVerdictReady는 applyAllow(publish 포함)와
-		// completeClaimOrThrow를 한 TransactionTemplate.execute 블록에 함께 묶는다(REQUIRED
-		// 전파로 publish()가 같은 물리 transaction에 참여). outbox 저장 실패로 이 블록이 rollback되고,
-		// processClaimed가 이벤트별로 예외를 격리하므로(GitHub #125에서 수정) processBatch 자체는
-		// 예외 없이 반환하며 이 이벤트의 outcome만 FAILED로 남는다.
+		// publish()는 그 자체로 @Transactional이라 자신의 answer/recipient/slot/outbox 변경을
+		// 하나의 물리 transaction으로 소유한다. ANSWER_PUBLISHED outbox 저장 실패로 이 transaction이
+		// rollback되면 publish()가 던진 예외가 completeClaimOrThrow 호출 전에 processVerdictReady를
+		// 벗어나 completeClaimOrThrow는 아예 실행되지 않는다. processClaimed가 이벤트별로 예외를
+		// 격리하므로(GitHub #125에서 수정) processBatch 자체는 예외 없이 반환하며 이 이벤트의
+		// outcome만 FAILED로 남는다.
 		AnswerModerationVerdictWorker.BatchResult result = verdictWorker.processBatch(workerCommand("worker-1", 2));
 		assertThat(result.outcomes()).containsExactly(AnswerModerationVerdictWorker.Outcome.FAILED);
 
@@ -253,6 +254,40 @@ class AnswerModerationPublicationIntegrationTest extends PostgisContainerIntegra
 	}
 
 	@Test
+	@DisplayName("검사 중 recipient가 다른 전이(BLOCKED)로 먼저 선점된 뒤 도착한 ALLOW는 무한 재시도 없이 완료 처리되고 답변은 공개되지 않는다")
+	void lateAllowForPreemptedRecipientCompletesWithoutRetryLoop() {
+		long postId = fixtures.post(senderId, "int-preempt", NOW.plusSeconds(3600), "ACTIVE", null);
+		long postRecipientId = fixtures.available(postId, recipientId, NOW.minusSeconds(10), 0);
+		fixtures.receiveState(recipientId, 1);
+		Answer submitted = submissionApplicationService.submit(recipientId, "int-preempt-key", postRecipientId, "본문", List.of());
+		long filterJobId = fixtures.filterJobIdFor(submitted.getId());
+		long eventId = seedVerdictReady(filterJobId, submitted.getId(), FilterVerdict.ALLOW, 11L);
+
+		// 검사 중(SUBMITTED) 답변이 있는 상태에서 다른 전이(차단)가 먼저 recipient를 선점한다.
+		// AnswerNotificationService.releaseSlot()은 이 경우 isOpenForTransition()이 false라 슬롯을
+		// 확보하지 못하고 publish()가 INVALID_ANSWER_STATUS를 던진다 — applyAllow가 의도적으로
+		// 흡수하는 "정책상 예상된 실패" 경로다(processVerdictReady 주석 참고).
+		jdbc.update(
+			"UPDATE post_recipient SET status = 'BLOCKED', blocked_at = ?, capacity_released_at = ? WHERE id = ?",
+			java.sql.Timestamp.from(NOW), java.sql.Timestamp.from(NOW), postRecipientId);
+
+		AnswerModerationVerdictWorker.BatchResult result = verdictWorker.processBatch(workerCommand("worker-1", 1));
+
+		// publish()가 이 transaction 안에서 실패해도 completeClaimOrThrow는 별도 transaction이라
+		// rollback-only로 오염되지 않는다 — 이벤트는 RESOLVED로 완료되고 lease 만료마다 재시도되지
+		// 않는다. 답변은 REJECTED가 아니라 SUBMITTED로 남는다 — publish()의 실패는 콘텐츠 거부가
+		// 아니라 수신 자격 상실이므로 answer 자체는 건드리지 않는다.
+		assertThat(result.outcomes()).containsExactly(AnswerModerationVerdictWorker.Outcome.RESOLVED);
+		assertThat(fixtures.answerStatus(submitted.getId())).isEqualTo("SUBMITTED");
+		assertThat(fixtures.status(postRecipientId)).isEqualTo("BLOCKED");
+		assertThat(jdbc.queryForObject(
+			"SELECT count(*) FROM outbox_event WHERE event_type = 'ANSWER_PUBLISHED'", Integer.class)).isEqualTo(0);
+		assertThat(jdbc.queryForObject(
+			"SELECT status FROM outbox_event WHERE id = ?", String.class, eventId))
+			.isEqualTo("PROCESSED");
+	}
+
+	@Test
 	@DisplayName("INT-021: 배치의 첫 이벤트 완료 처리가 예외로 실패해도 같은 호출에서 뒤 이벤트가 즉시 처리되고, 실패한 원본 이벤트는 lease 만료 후 재수집돼 중복 공개 없이 정확히 한 번만 공개된다")
 	void batchIsolatesFailingEventFromLaterEventsInTheSameClaim() {
 		long postA = fixtures.post(senderId, "int021-a", NOW.plusSeconds(3600), "ACTIVE", null);
@@ -277,11 +312,14 @@ class AnswerModerationPublicationIntegrationTest extends PostgisContainerIntegra
 			AnswerModerationVerdictWorker.Outcome.FAILED, AnswerModerationVerdictWorker.Outcome.RESOLVED);
 		assertThat(fixtures.answerStatus(answerB.getId())).isEqualTo("PUBLISHED");
 
-		// A는 completeClaimOrThrow가 실패하며 같은 transaction의 publish()도 rollback됐으므로 아직
-		// SUBMITTED다. claimDue가 부여한 PROCESSING lease(NOW+60s)는 그 실패한 transaction 밖에서
-		// 이미 커밋됐으므로 worker-1이 그대로 들고 있다 — lease가 실제로 만료되는 시점(NOW+120s) 이후로
-		// 재시도해야 진짜 reclaim 경로를 태워 A를 공개할 수 있다.
-		assertThat(fixtures.answerStatus(answerA.getId())).isEqualTo("SUBMITTED");
+		// A의 publish()는 completeClaimOrThrow와 별도 물리 transaction으로 실행되므로(rollback-only
+		// 전파를 막기 위한 설계, AnswerModerationVerdictWorker.processVerdictReady 참고) 완료 처리
+		// 실패와 무관하게 이미 커밋됐다 — A는 이 시점에 이미 PUBLISHED다. claimDue가 부여한 PROCESSING
+		// lease(NOW+60s)는 실패한 completeClaimOrThrow transaction 밖에서 이미 커밋됐으므로 worker-1이
+		// 그대로 들고 있다 — lease가 실제로 만료되는 시점(NOW+120s) 이후 재시도해야 reclaim 경로로
+		// completeClaimOrThrow를 재시도해 이벤트를 완료 처리할 수 있다. publish()는 이미 PUBLISHED에
+		// 조기 반환하는 멱등 동작이므로 재시도해도 중복 공개는 일어나지 않는다.
+		assertThat(fixtures.answerStatus(answerA.getId())).isEqualTo("PUBLISHED");
 		verdictWorker.processBatch(workerCommand("worker-1", 5, NOW.plusSeconds(120)));
 
 		assertThat(fixtures.answerStatus(answerA.getId())).isEqualTo("PUBLISHED");
