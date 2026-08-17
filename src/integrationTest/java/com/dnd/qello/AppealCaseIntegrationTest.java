@@ -177,24 +177,40 @@ class AppealCaseIntegrationTest extends PostgisContainerIntegrationTestSupport {
 			"SELECT count(*) FROM pg_indexes WHERE indexname IN ('appeal_case_appellant_idx', 'appeal_case_queue_idx')",
 			Integer.class)).isEqualTo(2);
 
-		// 기존 event type이 CHECK 재생성에서 빠지지 않았는지 확인한다. 하나라도
-		// 빠지면 그 기능의 outbox 발행이 전면 중단된다.
+		// V18은 outbox_event의 두 CHECK를 drop 후 재생성한다. 재생성 목록에서 기존
+		// 값이 하나라도 빠지면 그 기능의 outbox 발행이 전면 중단되므로, event type과
+		// aggregate type 양쪽 모두 기존 값을 다시 삽입해 회귀를 막는다.
 		List<String> eventTypes = List.of("RECIPIENT_MATCH_REQUESTED", "RECIPIENTS_CONFIRMED",
 			"DIRECTION_POST_EXPIRED", "ANSWER_PUBLISHED", "ANSWER_REACTED", "SKIP_CONFIRMATION_DUE",
 			"QUESTION_RECOMMENDED", "QUESTION_PROPOSAL_REVIEWED", "REPORT_RESOLVED",
 			"MODERATION_EXECUTION_REQUESTED", "MODERATION_VERDICT_READY", "MODERATION_DEADLINE_ELAPSED",
 			"MODERATION_APPEAL_RESOLVED");
 		for (String eventType : eventTypes) {
-			jdbc.update("""
-				INSERT INTO outbox_event
-					(aggregate_type, aggregate_id, event_type, dedup_key, payload, status, attempt_count,
-					 next_attempt_at, created_at)
-				VALUES ('APPEAL_CASE', 1, ?, ?, '{}', 'PENDING', 0, ?, ?)
-				""", eventType, "schema-check:" + eventType, Timestamp.from(now), Timestamp.from(now));
+			insertOutboxProbe("APPEAL_CASE", eventType, "schema-check-event:" + eventType);
 		}
 		assertThat(jdbc.queryForObject(
-			"SELECT count(*) FROM outbox_event WHERE dedup_key LIKE 'schema-check:%'", Integer.class))
+			"SELECT count(*) FROM outbox_event WHERE dedup_key LIKE 'schema-check-event:%'", Integer.class))
 			.isEqualTo(eventTypes.size());
+
+		List<String> aggregateTypes = List.of("DIRECTION_POST", "POST_RECIPIENT", "ANSWER",
+			"QUESTION_ASSIGNMENT", "QUESTION_PROPOSAL", "REPORT", "FILTER_JOB", "APPEAL_CASE");
+		for (String aggregateType : aggregateTypes) {
+			// RECIPIENT_MATCH_REQUESTED는 DIRECTION_POST에서만 match_round 유일
+			// 인덱스에 걸리므로, aggregate type 확인에는 그 조합을 피한다.
+			insertOutboxProbe(aggregateType, "REPORT_RESOLVED", "schema-check-aggregate:" + aggregateType);
+		}
+		assertThat(jdbc.queryForObject(
+			"SELECT count(*) FROM outbox_event WHERE dedup_key LIKE 'schema-check-aggregate:%'", Integer.class))
+			.isEqualTo(aggregateTypes.size());
+	}
+
+	private void insertOutboxProbe(String aggregateType, String eventType, String dedupKey) {
+		jdbc.update("""
+			INSERT INTO outbox_event
+				(aggregate_type, aggregate_id, event_type, dedup_key, payload, status, attempt_count,
+				 next_attempt_at, created_at)
+			VALUES (?, 1, ?, ?, '{}', 'PENDING', 0, ?, ?)
+			""", aggregateType, eventType, dedupKey, Timestamp.from(now), Timestamp.from(now));
 	}
 
 	@Test

@@ -543,8 +543,7 @@
           "acceptanceReasonCode" : {
             "enum" : [
               "WITHIN_WINDOW",
-              "WINDOW_UNVERIFIABLE",
-              "WINDOW_ELAPSED"
+              "WINDOW_UNVERIFIABLE"
             ],
             "type" : "string"
           },
@@ -981,6 +980,8 @@
           }
         },
         "required" : [
+          "filterDecisionId",
+          "targetId",
           "targetType"
         ],
         "type" : "object"

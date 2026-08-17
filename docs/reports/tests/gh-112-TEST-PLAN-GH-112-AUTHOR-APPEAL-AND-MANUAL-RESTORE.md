@@ -59,7 +59,7 @@ rebase 전후 모두 통과했다.
 | UNIT-005 | PASS | `AppealCaseTest.acceptsFilingWhenWindowStartIsInTheFuture` | fallback |
 | UNIT-006 | PASS | `AppealCaseTest.fixesExpiryAtFilingTime` | |
 | UNIT-007 | PASS | `AppealCaseTest.fixesExpiryFromFilingTimeOnFallback` | |
-| UNIT-008 | PASS | `AppealCaseTest.refusesToFileRejectedAcceptance` | 계획의 "거절된 접수는 case가 되지 않는다" |
+| UNIT-008 | PASS | `AppealCaseTest.refusesToFileRejectedAcceptance` | 거절된 접수는 case가 되지 않는다 |
 | UNIT-009 | PASS | `AppealCaseTest.refusesToDecideResolvedCase` | |
 | UNIT-010 | PASS | `AppealCaseTest.resolvesWithUpholdDecision` | |
 | UNIT-011 | PASS | `AppealCaseTest.requiresRestoreCallbackOnlyWhenNotBlocked` | |
@@ -91,7 +91,7 @@ rebase 전후 모두 통과했다.
 
 ## 5. Failures and diagnostics
 
-최종 실행에서 실패한 테스트는 없다. 구현 도중 발생했다가 해결한 실패는 셋이다.
+최종 실행에서 실패한 테스트는 없다. 구현 도중 발생했다가 해결한 실패는 넷이다.
 
 1. **정적 import 충돌.** 통합 테스트의 헬퍼 메서드 `post(long)`이
    `MockMvcRequestBuilders.post`를 가려 컴파일이 깨졌다. 인스턴스 메서드가 정적

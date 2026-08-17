@@ -109,12 +109,12 @@
 | ...-UNIT-005 | 기산점이 현재보다 미래(정합성 파손) | `evaluate(future, now)` | `accepted=true`, `WINDOW_UNVERIFIABLE` | P0 | Feature executor |
 | ...-UNIT-006 | 기산점과 `GLOBAL` 창 | `AppealCase.file(...)` | `expiresAt == startedAt + 184일`로 고정된다 | P0 | Feature executor |
 | ...-UNIT-007 | `WINDOW_UNVERIFIABLE`로 접수한 case | `AppealCase.file(...)` | 기산점을 접수 시각으로 두고 만료를 그 기준으로 고정한다 | P1 | Feature executor |
-| ...-UNIT-008 | 이미 `RESOLVED`인 case | `decide(...)` | `INVALID_APPEAL_CASE_STATUS`로 거절한다 | P0 | Feature executor |
-| ...-UNIT-009 | `OPEN` case | `decide(UPHOLD_HIDDEN, operatorId, now)` | `RESOLVED`, `decision`/`decidedAt`/`decidedByOperatorUserId` 동시 설정 | P0 | Feature executor |
-| ...-UNIT-010 | `OPEN` case | `decide(UPHOLD_HIDDEN, ..., restoreBlockedReasonCode="X")` | `UPHOLD_HIDDEN`에는 복원 차단 사유를 붙일 수 없다 | P1 | Feature executor |
-| ...-UNIT-011 | 만료 `T`인 case | `extendExpiry(T - 1일)` | 단축을 거절한다 (`INV-APL-008`) | P0 | Feature executor |
-| ...-UNIT-012 | 만료 `T`인 case | `extendExpiry(T + 30일)` | 연장을 허용한다 | P0 | Feature executor |
-| ...-UNIT-013 | 만료 `T`인 case | `extendExpiry(T)` | 동일 시각은 변화가 없으므로 거절한다 | P2 | Feature executor |
+| ...-UNIT-008 | 기간이 지나 거절된 `AppealAcceptance` | `AppealCase.file(...)` | `APPEAL_WINDOW_ELAPSED`로 거절해 거절된 접수가 case가 되지 않게 한다 | P0 | Feature executor |
+| ...-UNIT-009 | 이미 `RESOLVED`인 case | `decide(...)` | `INVALID_APPEAL_CASE_STATUS`로 거절한다 | P0 | Feature executor |
+| ...-UNIT-010 | `OPEN` case | `decide(UPHOLD_HIDDEN, operatorId, now)` | `RESOLVED`, `decision`/`decidedAt`/`decidedByOperatorUserId` 동시 설정, 복원 콜백 대상 아님 | P0 | Feature executor |
+| ...-UNIT-011 | `OPEN` case 2건 | `decide(OVERTURN_HIDDEN, ...)`을 차단 사유 유무로 각각 | 차단 사유가 없을 때만 `requiresRestoreCallback()`이 참이다 | P0 | Feature executor |
+| ...-UNIT-012 | `OPEN` case | `decide(UPHOLD_HIDDEN, ..., restoreBlockedReasonCode="X")` | `UPHOLD_HIDDEN`에는 복원 차단 사유를 붙일 수 없다 | P1 | Feature executor |
+| ...-UNIT-013 | 만료 `T`인 case | `extendExpiry(T - 1일)`, `extendExpiry(T)`, `extendExpiry(T + 30일)` | 앞의 둘은 `APPEAL_EXPIRY_NOT_EXTENDABLE`로 거절하고 연장만 허용한다 (`INV-APL-008`) | P0 | Feature executor |
 | ...-UNIT-014 | 잘못된 필수값(`appellantUserId <= 0` 등) | 생성자 호출 | 각각 `REQUIRED_VALUE_MISSING`/`INVALID_VALUE_RANGE` | P2 | Feature executor |
 | ...-UNIT-015 | `RESOLVED`가 아닌데 `decidedAt`만 설정 | `restore(...)` | 상태와 결정 필드의 동반 조건을 강제한다 | P1 | Feature executor |
 | ...-UNIT-016 | `NICKNAME` 대상 | `AppealCaseService.file(...)` | `UNSUPPORTED_APPEAL_TARGET`으로 거절한다 | P1 | Feature executor |
@@ -123,6 +123,13 @@
 | ...-UNIT-019 | 공개 금지 사유가 없는 대상 | `decide(OVERTURN_HIDDEN, ...)` | `APPEAL_CASE` aggregate로 `MODERATION_APPEAL_RESOLVED`를 발행한다 | P0 | Feature executor |
 | ...-UNIT-020 | `OPEN` case | `decide(UPHOLD_HIDDEN, ...)` | 공개 금지 사유를 조회하지도, 콜백을 내지도 않는다 | P1 | Feature executor |
 
+> UNIT-008 ~ UNIT-013은 구현 후 실제 테스트 메서드에 맞춰 번호를 다시 매겼다.
+> 초안은 만료 연장 판정을 세 시나리오로 쪼개 두었는데, 구현에서는 "연장만
+> 허용한다"는 하나의 불변식을 한 메서드가 세 경계값으로 검증하는 편이 자연스러워
+> UNIT-013으로 합쳤고, 그 자리에 초안에 없던 "거절된 접수는 case가 되지 않는다"와
+> "복원 콜백 대상 판정"을 UNIT-008·UNIT-011로 넣었다. 계획·테스트·보고서의 ID가
+> 서로 어긋나지 않도록 세 곳을 같은 번호로 맞춘 결과다.
+>
 > UNIT-017 ~ UNIT-020은 구현 중에 추가했다. 서비스 계층의 검사 순서와 콜백
 > 발행 조건은 통합 시나리오(INT-005, INT-008 ~ INT-010)로도 덮이지만, 포트를
 > 스텁으로 갈아끼우면 컨테이너 없이 수 초 만에 회귀를 잡을 수 있어 단위로도
