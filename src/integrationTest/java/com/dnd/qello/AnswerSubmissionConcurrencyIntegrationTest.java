@@ -199,7 +199,7 @@ class AnswerSubmissionConcurrencyIntegrationTest extends PostgisContainerIntegra
 		try {
 			Future<Attempt<A>> firstFuture = executor.submit(() -> attempt(first, ready, start));
 			Future<Attempt<B>> secondFuture = executor.submit(() -> attempt(second, ready, start));
-			assertThat(ready.await(5, TimeUnit.SECONDS)).as("both transactions became ready").isTrue();
+			assertThat(ready.await(5, TimeUnit.SECONDS)).as("both threads reached the start latch").isTrue();
 			start.countDown();
 			Attempt<A> firstResult = firstFuture.get(15, TimeUnit.SECONDS);
 			Attempt<B> secondResult = secondFuture.get(15, TimeUnit.SECONDS);
