@@ -67,6 +67,7 @@ import com.dnd.qello.filtering.repository.ManualReviewCaseRepository;
 import com.dnd.qello.filtering.repository.ManualReviewPriorityEvaluationRepository;
 import com.dnd.qello.filtering.service.FilterReleaseRegistryService;
 import com.dnd.qello.notification.domain.OutboxBackoffStrategy;
+import com.dnd.qello.notification.repository.NotificationEventRepository;
 import com.dnd.qello.notification.repository.OutboxEventRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -114,6 +115,8 @@ class ManualReviewPriorityIntegrationTest extends PostgisContainerIntegrationTes
 	@Autowired
 	private ManualReviewPriorityEvaluationRepository manualReviewPriorityEvaluationRepository;
 	@Autowired
+	private NotificationEventRepository notificationEventRepository;
+	@Autowired
 	private FilterReleaseRegistryService releaseRegistryService;
 	@Autowired
 	private ManualReviewDecisionService manualReviewDecisionService;
@@ -127,6 +130,7 @@ class ManualReviewPriorityIntegrationTest extends PostgisContainerIntegrationTes
 	@BeforeEach
 	void setUp() {
 		jdbc.update("DELETE FROM manual_review_priority_evaluation");
+		jdbc.update("DELETE FROM notification_event");
 		jdbc.update("DELETE FROM outbox_event WHERE aggregate_type = 'FILTER_JOB'");
 		jdbc.update("DELETE FROM filter_decision");
 		jdbc.update("DELETE FROM filter_job_status_history");
@@ -377,8 +381,8 @@ class ManualReviewPriorityIntegrationTest extends PostgisContainerIntegrationTes
 			attempt -> Duration.ofSeconds(60), attempt -> Duration.ofSeconds(120), 1, Duration.ofHours(1));
 		return new AnswerModerationExecutionWorker(pipeline, filterJobRepository, filterReleaseRepository,
 			historyRepository, outboxEventRepository, retryPolicy, filterReleaseRetryGateRepository, GATE_CONFIG,
-			manualReviewCaseRepository, manualReviewPriorityEvaluationRepository, POLICY, Duration.ofSeconds(5),
-			objectMapper, pipelineExecutor, Duration.ofSeconds(5), transactionManager,
+			manualReviewCaseRepository, manualReviewPriorityEvaluationRepository, POLICY, notificationEventRepository,
+			Duration.ofSeconds(5), objectMapper, pipelineExecutor, Duration.ofSeconds(5), transactionManager,
 			Clock.fixed(NOW, ZoneOffset.UTC));
 	}
 
