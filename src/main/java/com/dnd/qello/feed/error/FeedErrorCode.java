@@ -11,6 +11,18 @@ import com.dnd.qello.common.error.ErrorCode;
 // 값 단위 검증은 코드를 늘리지 않고 예외의 field와 reason으로 구분.
 public enum FeedErrorCode implements ErrorCode {
 
+	// 존재하지 않음, 타인 소유와 현재 열람 자격 상실을 구분하지 않아 수신 항목의 존재를 숨긴다.
+	INBOX_ITEM_NOT_FOUND(HttpStatus.NOT_FOUND, "FED-DOM-001", ErrorCategory.DOM, "수신함 항목을 찾을 수 없습니다."),
+
+	// 유예 마감 이후 되돌리기처럼 대상은 유효하지만 요청한 상태 전이를 더는 적용할 수 없다.
+	INBOX_TRANSITION_CONFLICT(HttpStatus.CONFLICT, "FED-DOM-002", ErrorCategory.DOM, "수신함 상태를 변경할 수 없습니다."),
+
+	// 인증 subject에 대응하는 계정이 없다.
+	INBOX_ACCOUNT_NOT_FOUND(HttpStatus.NOT_FOUND, "FED-APP-001", ErrorCategory.APP, "계정을 찾을 수 없습니다."),
+
+	// 수신함은 ACTIVE USER 계정만 사용할 수 있다.
+	INBOX_ACCOUNT_NOT_ELIGIBLE(HttpStatus.FORBIDDEN, "FED-APP-002", ErrorCategory.APP, "수신함을 사용할 수 없는 계정입니다."),
+
 	// 방향 칩 segmentKey, displayName의 공백 또는 누락.
 	// 두 값 모두 클라이언트 입력이 아니라 SQL 조회 결과(JdbcInboxQueryRepository)에서
 	// 채워지므로, 위반은 direction_segment 데이터나 행 매핑의 결함을 뜻한다.

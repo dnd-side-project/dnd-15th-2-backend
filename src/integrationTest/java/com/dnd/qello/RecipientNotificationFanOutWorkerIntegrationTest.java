@@ -244,8 +244,8 @@ class RecipientNotificationFanOutWorkerIntegrationTest extends PostgisContainerI
 	}
 
 	@Test
-	@DisplayName("양방향 active block은 알림을 억제하고 released block과 기존 inbox 한 방향 권한은 보존한다")
-	void appliesBilateralNotificationBlockWithoutWideningInboxBlockScope() {
+	@DisplayName("양방향 active block은 알림과 inbox 상세를 숨기고 released block은 둘 다 다시 허용한다")
+	void appliesBilateralBlockToNotificationAndInboxVisibility() {
 		Fixture recipientBlocks = fixture("int006-recipient-blocks", PostRecipientStatus.AVAILABLE);
 		block(recipientBlocks.recipientId(), recipientBlocks.senderId(), null);
 		Fixture senderBlocks = fixture("int006-sender-blocks", PostRecipientStatus.AVAILABLE);
@@ -265,7 +265,7 @@ class RecipientNotificationFanOutWorkerIntegrationTest extends PostgisContainerI
 		assertThat(notificationCount(released)).isEqualTo(1);
 		assertThat(notificationCount(senderReleased)).isEqualTo(1);
 		assertThat(inbox.detail(recipientBlocks.recipientId(), recipientBlocks.postRecipientId(), NOW)).isEmpty();
-		assertThat(inbox.detail(senderBlocks.recipientId(), senderBlocks.postRecipientId(), NOW)).isPresent();
+		assertThat(inbox.detail(senderBlocks.recipientId(), senderBlocks.postRecipientId(), NOW)).isEmpty();
 		assertThat(inbox.detail(released.recipientId(), released.postRecipientId(), NOW)).isPresent();
 		assertThat(inbox.detail(senderReleased.recipientId(), senderReleased.postRecipientId(), NOW)).isPresent();
 	}

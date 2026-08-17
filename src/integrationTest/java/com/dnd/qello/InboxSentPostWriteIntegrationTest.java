@@ -252,7 +252,7 @@ class InboxSentPostWriteIntegrationTest extends PostgisContainerIntegrationTestS
 		postRecipientService.open(recipientId, postRecipientId, NOW.plusSeconds(10));
 		postRecipientService.requestSkip(recipientId, postRecipientId, NOW.plusSeconds(20));
 
-		PostRecipient reverted = postRecipientService.revertSkip(recipientId, postRecipientId);
+		PostRecipient reverted = postRecipientService.revertSkip(recipientId, postRecipientId, NOW.plusSeconds(21));
 
 		assertThat(reverted.getStatus()).isEqualTo(PostRecipientStatus.OPENED);
 		assertThat(reverted.getSkipRequestedAt()).isNull();

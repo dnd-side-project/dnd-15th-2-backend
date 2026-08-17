@@ -5,7 +5,9 @@ import java.time.Instant;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.dnd.qello.direction.config.SkipConfirmationProperties;
 import com.dnd.qello.direction.domain.PostRecipient;
+import com.dnd.qello.direction.domain.PostRecipientStatus;
 import com.dnd.qello.direction.error.DirectionErrorCode;
 import com.dnd.qello.direction.error.DirectionException;
 import com.dnd.qello.direction.repository.PostRecipientRepository;
@@ -23,6 +25,7 @@ import lombok.RequiredArgsConstructor;
 public class PostRecipientService {
 
 	private final PostRecipientRepository recipientRepository;
+	private final SkipConfirmationProperties skipConfirmationProperties;
 
 	/**
 	 * 소유권을 검증한 뒤 도메인의 open()을 호출한다. 이미 OPENED라 도메인이 자기 자신을
@@ -31,25 +34,53 @@ public class PostRecipientService {
 	 */
 	@Transactional
 	public PostRecipient open(long recipientId, long postRecipientId, Instant at) {
-		PostRecipient recipient = load(recipientId, postRecipientId);
+		PostRecipient recipient = loadInboxItem(recipientId, postRecipientId, at);
+		if (recipient.getStatus() == PostRecipientStatus.OPENED
+			|| recipient.getStatus() == PostRecipientStatus.ANSWERED
+			|| recipient.getStatus() == PostRecipientStatus.SKIP_PENDING) {
+			return recipient;
+		}
 		PostRecipient opened = recipient.open(at);
-		return opened == recipient ? recipient : recipientRepository.save(opened);
+		return recipientRepository.transitionToOpened(opened, recipient.getStatus())
+			.orElseThrow(this::recipientNotFound);
 	}
 
 	/** SKIP_PENDING은 되돌리기 시간 동안 수신 용량을 계속 붙잡는다. 여기서 슬롯을 해제하지 않는다. */
 	@Transactional
 	public PostRecipient requestSkip(long recipientId, long postRecipientId, Instant at) {
-		return recipientRepository.save(load(recipientId, postRecipientId).requestSkip(at));
+		PostRecipient recipient = loadInboxCommandItem(recipientId, postRecipientId, at);
+		if (recipient.getStatus() == PostRecipientStatus.SKIP_PENDING) {
+			return recipient;
+		}
+		PostRecipient pending = recipient.requestSkip(at);
+		return recipientRepository.transitionToSkipPending(pending, recipient.getStatus())
+			.orElseThrow(this::recipientNotFound);
+	}
+
+	/** 애플리케이션 경계가 동일 transaction에서 deadline을 선판정할 수 있도록 잠긴 후보를 반환한다. */
+	@Transactional
+	public PostRecipient findRevertCandidate(long recipientId, long postRecipientId, Instant at) {
+		return loadInboxCommandItem(recipientId, postRecipientId, at);
 	}
 
 	/**
-	 * 넘김 요청(SKIP_PENDING)을 취소하고 열람 이력에 따라 이전 상태로 되돌린다.
-	 * 확정된(SKIPPED) 넘김은 되돌릴 수 없다 — 도메인의 revertSkip()이 그 경우
-	 * INVALID_RECIPIENT_STATE를 던진다.
+	 * 서버 시각이 유예 마감보다 엄격히 빠를 때만 되돌린다. 정확히 마감에 도달한
+	 * 항목은 #126 confirm lane의 소유이므로 상태를 바꾸지 않는다.
 	 */
 	@Transactional
-	public PostRecipient revertSkip(long recipientId, long postRecipientId) {
-		return recipientRepository.save(load(recipientId, postRecipientId).revertSkip());
+	public PostRecipient revertSkip(long recipientId, long postRecipientId, Instant at) {
+		PostRecipient recipient = loadInboxCommandItem(recipientId, postRecipientId, at);
+		if (recipient.getStatus() != PostRecipientStatus.SKIP_PENDING) {
+			throw transitionConflict();
+		}
+		Instant requestedAt = recipient.getSkipRequestedAt();
+		Instant revertibleUntil = requestedAt.plusSeconds(skipConfirmationProperties.skipConfirmationGraceSeconds());
+		if (!at.isBefore(revertibleUntil)) {
+			throw transitionConflict();
+		}
+		PostRecipient reverted = recipient.revertSkip();
+		return recipientRepository.transitionFromSkipPending(reverted, requestedAt)
+			.orElseThrow(this::transitionConflict);
 	}
 
 	/**
@@ -71,5 +102,25 @@ public class PostRecipientService {
 		return recipientRepository.findByIdAndRecipientId(postRecipientId, recipientId)
 			.orElseThrow(() -> new DirectionException(
 				DirectionErrorCode.RECIPIENT_NOT_FOUND, "postRecipientId", "수신 항목을 찾을 수 없습니다"));
+	}
+
+	private PostRecipient loadInboxItem(long recipientId, long postRecipientId, Instant at) {
+		return recipientRepository.findInboxItemForUpdate(postRecipientId, recipientId, at)
+			.orElseThrow(this::recipientNotFound);
+	}
+
+	private PostRecipient loadInboxCommandItem(long recipientId, long postRecipientId, Instant at) {
+		return recipientRepository.findInboxCommandItemForUpdate(postRecipientId, recipientId, at)
+			.orElseThrow(this::recipientNotFound);
+	}
+
+	private DirectionException recipientNotFound() {
+		return new DirectionException(
+			DirectionErrorCode.RECIPIENT_NOT_FOUND, "postRecipientId", "수신 항목을 찾을 수 없습니다");
+	}
+
+	private DirectionException transitionConflict() {
+		return new DirectionException(
+			DirectionErrorCode.INVALID_RECIPIENT_STATE, "status", "수신 상태를 변경할 수 없습니다");
 	}
 }

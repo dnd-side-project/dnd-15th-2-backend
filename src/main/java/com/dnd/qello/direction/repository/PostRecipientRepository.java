@@ -33,6 +33,19 @@ public interface PostRecipientRepository {
 	/** 소유권을 쿼리 조건에 포함한다. 남의 항목이면 빈 결과이며 예외를 던지지 않는다. */
 	Optional<PostRecipient> findByIdAndRecipientId(long id, long recipientId);
 
+	/**
+	 * 상세 열람 자격(ACTIVE·미삭제 질문글, 상태·만료, 양방향 활성 차단)을 포함해
+	 * 수신 행을 잠근다. ANSWERED는 만료 후에도, SKIP_PENDING은 유예 중 상세 자격을
+	 * 유지한다.
+	 */
+	Optional<PostRecipient> findInboxItemForUpdate(long id, long recipientId, Instant at);
+
+	/**
+	 * 사용자 상태 명령이 가능한 미종결 수신 행만 동일한 visibility 조건으로 잠근다.
+	 * 슬롯을 해제한 terminal 행은 반환하지 않는다.
+	 */
+	Optional<PostRecipient> findInboxCommandItemForUpdate(long id, long recipientId, Instant at);
+
 	Optional<PostRecipient> findByPostIdAndRecipientId(long postId, long recipientId);
 
 	/**
@@ -60,4 +73,13 @@ public interface PostRecipientRepository {
 
 	/** status가 여전히 previousStatus일 때만 BLOCKED로 전이한다. */
 	Optional<PostRecipient> transitionToBlocked(PostRecipient blocked, PostRecipientStatus previousStatus);
+
+	/** 최초 상세 열람을 previousStatus 조건으로 OPENED로 전이한다. */
+	Optional<PostRecipient> transitionToOpened(PostRecipient opened, PostRecipientStatus previousStatus);
+
+	/** 최초 넘김 요청만 SKIP_PENDING으로 전이한다. 반복 요청은 호출자가 기존 행을 반환한다. */
+	Optional<PostRecipient> transitionToSkipPending(PostRecipient pending, PostRecipientStatus previousStatus);
+
+	/** 같은 최초 요청 시각을 가진 SKIP_PENDING일 때만 이전 상태로 복원한다. */
+	Optional<PostRecipient> transitionFromSkipPending(PostRecipient reverted, Instant expectedSkipRequestedAt);
 }

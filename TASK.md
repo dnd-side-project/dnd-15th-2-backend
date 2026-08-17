@@ -1,92 +1,52 @@
-# GitHub Issue #109 Task Contract
+# GitHub Issue #124 Task Contract
 
-> Generated at: `2026-08-15T21:26:19+09:00`
+> Generated at: `2026-08-16T14:09:58+09:00`
 >
 > 이 파일은 현재 작업 브랜치의 계약이다. 저장소 전역 정책은 `AGENTS.md`를
 > 따른다.
 
 ## Work gate
 
-- Title: `Snapshot health와 emergency migration`
-- GitHub Issue: `#109`
-- Branch: `feat/gh-109-snapshot-health-migration`
+- Title: `수신함·열람·넘김 API`
+- GitHub Issue: `#124`
+- Branch: `feat/gh-124-direction-inbox-api`
 - Base branch: `main`
-- Test plan: `TEST-PLAN-GH-109-SNAPSHOT-HEALTH-MIGRATION`
-- Test plan approval: `APPROVED` — 사용자가 2026-08-15 구현을 승인했다.
-- Confirmed policy: emergency migration 대상이 되는 "사전 승인 release"는
-  기존 `FilterReleaseStatus`에 새 상태를 추가하지 않고 `CANARY` 또는
-  `ROLLED_BACK`을 재사용한다(사용자 승인, 2026-08-15). `rollback()`과 동일한
-  "이미 한 번 완전히 검증된 release만 재사용" 불변식을 그대로 상속한다.
 
 ## Objective
 
-- OpenAI moderation snapshot 단위 장애를 개별 `FilterJob` 실패와 분리해
-  판단하고, 운영자 승인이 있을 때만 사전 검증된 release로 emergency
-  migration하는 안전장치를 구현한다.
-- 429/5xx/timeout/network/알 수 없는 오류가 자동으로 영구 장애를 만들지
-  않게 하고(`INV-HLT-002`, `INV-HLT-004`), 인증·권한·결제·quota·invalid
-  request 같은 우리 측 오류가 target snapshot 장애 증거로 오분류되지 않게
-  한다(`INV-HLT-003`).
-- `PERMANENT_CONFIRMED`와 emergency migration 실행은 운영자의 명시적 확인
-  없이는 어떤 자동 경로로도 도달할 수 없다(`INV-HLT-005`).
-- migration 이후 이전 generation의 늦은 결과가 상태를 바꾸지 못한다
-  (`INV-REL-010` — `#106`/`#107`이 정의만 하고 호출자가 없던
-  `FilterJob.advanceAttemptGeneration`/`STALE_ATTEMPT_GENERATION` fencing을
-  이 이슈가 실제로 소비하는 첫 호출자가 된다).
+- 수신자가 확정된 방향 질문글을 인증된 수신함 API에서 목록·상세로 조회하고,
+  열람과 넘김 요청·되돌리기 상태를 수신 자격 및 동시 전이 규칙을 지키며
+  안전하게 변경할 수 있게 한다.
 
 ## Scope
 
-1. `ModerationFailureClassification`(신규 enum) — HTTP status와 OpenAI
-   응답의 `error.code`로 `RATE_LIMITED`/`SERVER_ERROR`/`TIMEOUT_OR_NETWORK`/
-   `NON_TARGET_CLIENT_ERROR`/`UNKNOWN`으로 분류한다.
-   `OpenAiModerationProviderClient`/`OpenAiModerationResponseMapper`를
-   확장하되 기존 429(`ModerationRateLimitedException`, `#108`)와
-   `FLT-EXT-001`(`MODERATION_PROVIDER_UNAVAILABLE`) 계약은 그대로 유지한다.
-2. `SnapshotHealth`(신규 도메인, `modelSnapshot` 문자열 keyed) —
-   `HEALTHY`/`DEGRADED`/`PERMANENT_SUSPECTED`/`PERMANENT_CONFIRMED`/
-   `RECOVERED` 상태를 갖는다. 개별 job 실패가 아니라 synthetic probe
-   결과로만 전이한다.
-3. Target/control synthetic probe 기록 서비스 메서드 — 실사용자 요청과
-   분리된 별도 진입점. control probe도 실패하면 공급자 전역 장애로 간주해
-   target-only 실패로 집계하지 않는다.
-4. 분류별 반영 규칙 — `NON_TARGET_CLIENT_ERROR`·`UNKNOWN`은 어떤 반복
-   횟수에서도 `PERMANENT_SUSPECTED` 후보 증거로 집계되지 않는다.
-   target-only `SERVER_ERROR`/`TIMEOUT_OR_NETWORK`의 지속(횟수·기간, 정확한
-   임계값은 주입 값)만 증거로 누적한다.
-5. Evidence 축적 — 공식 공지(운영자 수기 플래그), target-only 실패 지속
-   기간·횟수, recovery 신호(target probe 재성공 시 `HEALTHY` 복귀 + 증거
-   초기화)를 `SnapshotHealth`에 보관한다.
-6. `PERMANENT_CONFIRMED` 운영자 승인 — `SnapshotHealthService`가
-   `FilterReleaseRegistryService.promote`/`rollback`과 동일한 패턴
-   (`operatorUserId` 필수, append-only 감사 이력 테이블)으로
-   `PERMANENT_SUSPECTED` → `PERMANENT_CONFIRMED` 전이를 운영자 호출로만
-   허용한다. 이 전이를 노출하는 REST endpoint 1개를 추가한다.
-7. Emergency migration — `PERMANENT_CONFIRMED` snapshot과 status가
-   `CANARY` 또는 `ROLLED_BACK`인 대상 release가 모두 확인될 때만 실행
-   가능하다. 신규 `FilterJob.migrateToRelease(newReleaseId, now)` 도메인
-   메서드로 영향받는 `AUTOMATED` job들의 `filterReleaseId` 재배정과
-   `attemptGeneration + 1`을 한 전이로 처리한다(기존
-   `STALE_ATTEMPT_GENERATION` fencing이 그대로 상속되어 `INV-REL-010`
-   보장, worker 코드 변경 없음). 대상 release는 기존 `promote()`/
-   `rePromote()` 경로로 승격한다. 원본→대상 release·snapshot health
-   id·operator·시각을 별도 감사 테이블에 기록해 lineage를 보존한다.
-8. DB 마이그레이션(V15) — `snapshot_health`, `snapshot_health_probe_result`,
-   `snapshot_emergency_migration_history` 테이블.
-9. 단위·PostgreSQL 통합(동시성 포함) 테스트와 테스트 보고서.
+1. `GET /api/v1/direction/inbox` 수신함 목록·방향 칩 조회 API.
+2. `GET /api/v1/direction/inbox/{postRecipientId}` 상세 조회와 최초 열람
+   `OPENED` 전이.
+3. `PUT /api/v1/direction/inbox/{postRecipientId}/skip` 넘김 요청 API.
+4. `DELETE /api/v1/direction/inbox/{postRecipientId}/skip` 유예 내 되돌리기 API.
+5. ACTIVE USER 계정, 수신자 소유권, 질문글 상태·삭제·만료, 양방향 활성
+   차단과 `PostRecipient` 상태 스코프 검증.
+6. 열람·넘김·되돌리기와 답변·차단·만료 전이 사이의 stale write 방지를 위한
+   행 잠금 또는 이전 상태 조건부 전이.
+7. 반복 넘김 요청이 최초 `skip_requested_at`과 유예 종료 시각을 연장하지 않는
+   멱등 계약.
+8. `InboxQueryService`, 방향 칩 집계와 기존 `PostRecipient` 도메인 전이 재사용.
+9. `docs/api/openapi.json` 갱신.
+10. 정식 테스트 계획
+    `TEST-PLAN-GH-124-INBOX-READ-SKIP-API`에 따른 JUnit 5 단위·MockMvc·
+    PostgreSQL/PostGIS 통합·동시성 테스트와 테스트 보고서.
 
 ## Explicit exclusions
 
-- 상태별 window, threshold, probe cadence, alert 정책의 실제 운영 수치 —
-  전부 미결정이며 생성자/설정 주입 값으로만 존재한다.
-- 운영자 승인 endpoint의 세부 권한(role) 정책 — 이슈 본문이 미결정으로
-  명시.
-- synthetic probe를 실제로 주기적으로 실행하는 scheduler와 Spring bean
-  배선 — `#105`~`#108`과 동일하게 `#113` production gate로 이연.
-- 공식 공지 수집을 위한 외부 연동(RSS, 웹훅 등) — 운영자가 직접 기록하는
-  수기 플래그만 다룬다.
-- `PERMANENT_CONFIRMED`에서 되돌리는 운영자 번복(un-confirm) 경로와
-  emergency migration의 역방향 — 이슈 범위 밖.
-- Slack 알림(`#111`), `ManualReviewCase` 우선순위/band(`#110`).
+- 답변 작성·공개 endpoint와 답변 moderation 흐름.
+- 방향 칩 집계 알고리즘 또는 지도·방향 구간 정책 변경.
+- 만료·넘김 확정 sweep 실행기와 슬롯 해제(`#126`).
+- `SKIP_CONFIRMATION_DUE` Outbox 생산·취소·소비. #124는 기존 batch 조회 기반의
+  후속 #126 실행 계약을 변경하지 않는다.
+- FCM/APNs 등 외부 푸시 Provider와 알림 fan-out 변경.
+- Flyway migration과 운영 데이터 백필. 구현 중 스키마 변경 필요성이 발견되면
+  범위를 임의로 넓히지 않고 별도 승인을 받는다.
 - 인프라 apply, 배포, 프로덕션 변경은 별도 승인 없이는 실행하지 않는다.
 - Secret, 계정 식별자, 토큰, `.env` 값은 기록하지 않는다.
 
@@ -94,54 +54,48 @@
 
 | Area | Owner | Required review |
 | --- | --- | --- |
-| `ModerationFailureClassification`, `SnapshotHealth`, probe 기록, evidence, 운영자 승인, `FilterJob.migrateToRelease`, emergency migration 서비스, V15 마이그레이션, 단위·통합 테스트 | Feature executor | `INV-HLT-001`~`007`, `INV-REL-010` 검증, `#104`(release registry)·`#106`/`#107`(attempt generation fencing)·`#108`(release retry gate) 기존 계약과의 호환성 리뷰 |
+| 수신함 권한·상태 전이 application/persistence 경계 | Feature executor | 양방향 차단, 시간 경계, 행 잠금·조건부 전이, 슬롯 불변식 리뷰 |
+| Controller·ApiSpec·응답 DTO·OpenAPI | API executor | 인증, HTTP 상태·오류 코드, 응답 privacy와 API 문서 리뷰 |
+| 단위·MockMvc·PostgreSQL/PostGIS·동시성 테스트 | Test executor | 계획 시나리오 추적성, 픽스처 격리, 실패 판정 리뷰 |
+| 전체 변경 및 검증 증거 | Independent verifier | 구현 설명이 아닌 diff·실행 결과 기반 독립 검증 |
 
 ## Existing user-owned changes
 
-- `main`(#143 병합 직후)에서 새로 분기했다(`./harness start --issue 109
-  --type feat --slug snapshot-health-migration`). 분기 시점
-  `git status --short`는 비어 있었다.
+- 작업 시작 시 `main`의 `git status --short`는 비어 있었다.
+- `main`과 `origin/main`은 `dcfec08`로 일치했고, 최신 `origin/main`에서
+  `feat/gh-124-direction-inbox-api`를 생성했다.
+- #124 브랜치 생성 전에 보존해야 할 기존 사용자 변경은 없었다.
 
 ## Validation
 
 ```bash
-./gradlew test --tests "com.dnd.qello.filtering.*" --max-workers=1 --no-daemon
-./gradlew integrationTest --tests "com.dnd.qello.SnapshotHealth*" --tests "com.dnd.qello.*EmergencyMigration*" --max-workers=1 --no-daemon --no-parallel --rerun-tasks
-./harness test-run --id TEST-PLAN-GH-109-SNAPSHOT-HEALTH-MIGRATION
 ./harness check
 ./harness pr-ready --project-tests
 git diff --check
 ```
 
+- Approved test plan: `TEST-PLAN-GH-124-INBOX-READ-SKIP-API`
+- Approval evidence: user approval in Codex conversation at
+  `2026-08-16T14:20:01+09:00`
+
 ## Completion criteria
 
-- [x] 429, 5xx, timeout, network 또는 알 수 없는 오류가 자동 영구 장애를
-      만들지 않는다(`INV-HLT-002`, `003`, `004`) —
-      `SnapshotHealthTest#neverAccumulatesNonTargetClientError`,
-      `#neverAccumulatesUnknownClassification`,
-      `OpenAiModerationProviderClientTest`의 분류 테스트 5건으로 검증했다.
-- [x] 인증·권한·결제·quota·invalid request가 영구 snapshot 폐기로
-      오분류되지 않는다(`INV-HLT-003`) — `NON_TARGET_CLIENT_ERROR`
-      분류가 `SnapshotHealth.recordProbe`에서 어떤 반복 횟수에도 증거로
-      집계되지 않음을 확인했다.
-- [x] 운영자 확인 없는 emergency migration이 불가능하다(`INV-HLT-005`) —
-      `SnapshotEmergencyMigrationService`가 `SnapshotHealth`
-      `PERMANENT_CONFIRMED`(운영자 전용 `confirmPermanent` 경로로만 도달)를
-      전제조건으로 강제함을 UNIT-021과 INT-002·INT-003으로 검증했다.
-- [x] 이전 generation의 늦은 결과가 상태를 바꾸지 못한다(`INV-REL-010`) —
-      `FilterJobTest#rejectsStaleResultAfterEmergencyMigration`과
-      `SnapshotHealthMigrationIntegrationTest#staleGenerationResultAfterMigrationIsRejected`로
-      검증했다. `#106`/`#107`이 정의만 하고 호출자가 없던
-      `advanceAttemptGeneration`/`STALE_ATTEMPT_GENERATION` fencing을 이
-      이슈가 실제로 소비하는 첫 호출자가 됐다(`FilterJob.migrateToRelease`).
-- [x] 승인된 P0 테스트와 저장소 필수 검증이 통과하고 테스트 보고서가
-      남는다 — unit 23개(UNIT-001~023), integration 8개(INT-001~008,
-      실제 PostgreSQL 동시성·트랜잭션·REST endpoint 인가 포함) 전부
-      통과. 상세는
-      `docs/reports/tests/gh-109-TEST-PLAN-GH-109-SNAPSHOT-HEALTH-MIGRATION.md`
-      참고. `./harness check`, `./harness pr-ready --project-tests`
-      (전체 unit·integration 스위트, `./gradlew check` 포함) 통과.
-- [x] 실행하지 못한 검증과 남은 위험을 보고서에 기록한다 — 위 보고서
-      6·7절에 synthetic probe scheduler 배선(`#113`), 실제 OpenAI
-      계정 검증, 진짜 mid-transaction 부분 실패 재현(INT-003 범위 축소),
-      운영자 승인 endpoint 세부 권한 정책 등을 명시했다.
+- [x] 인증된 수신자는 카테고리와 선택적 방향 필터로 자신의 수신함 목록·칩을
+      조회할 수 있다.
+- [x] 자격 있는 상세 조회는 최초 한 번만 `OPENED`를 기록하고 반복 조회가 최초
+      `opened_at`을 바꾸지 않는다.
+- [x] 존재하지 않는 항목, 타인의 항목과 차단·만료·종결로 자격을 잃은 항목은
+      존재 여부를 구분할 수 없는 동일한 404 계약을 따른다.
+- [x] `ANSWERED`는 상세 열람 자격을 유지하고, `SKIP_PENDING`은 유예 중 목록·상세
+      자격과 슬롯을 유지하며, `SKIPPED`·미답변 `EXPIRED`·`BLOCKED`는 다시 열리지
+      않는다.
+- [x] 양방향 활성 차단이 목록·상세·상태 변경에 일관되게 적용되고 해제된 차단은
+      접근을 막지 않는다.
+- [x] 반복 넘김 요청은 최초 요청 시각과 유예 종료 시각을 연장하지 않는다.
+- [x] 유예 종료 전 되돌리기는 이전 상태로 복원하고, 유예 종료 시각 이상에서는
+      되돌리지 않는다.
+- [x] 열람·넘김·되돌리기가 동시 답변·차단·만료 전이를 stale write로 덮어쓰지
+      않으며 슬롯 카운터를 직접 변경하지 않는다.
+- [x] 정확 좌표, 내부 사용자 식별자와 저장소 내부 값이 API 응답에 노출되지 않는다.
+- [x] 승인된 테스트 계획의 모든 P0 시나리오와 필수 회귀 검증이 통과하고
+      `templates/test-report.md` 기반 보고서가 남는다.

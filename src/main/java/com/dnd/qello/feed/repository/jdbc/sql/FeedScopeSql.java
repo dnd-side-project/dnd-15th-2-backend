@@ -23,8 +23,10 @@ public final class FeedScopeSql {
 		  AND dp.status = 'ACTIVE'
 		  AND dp.deleted_at IS NULL
 		  AND NOT EXISTS (SELECT 1 FROM user_block ub
-		                  WHERE ub.blocker_id = :recipientId
-		                    AND ub.blocked_id = dp.sender_id
+		                  WHERE ((ub.blocker_id = :recipientId
+		                          AND ub.blocked_id = dp.sender_id)
+		                     OR (ub.blocker_id = dp.sender_id
+		                          AND ub.blocked_id = :recipientId))
 		                    AND ub.released_at IS NULL)
 		""";
 
