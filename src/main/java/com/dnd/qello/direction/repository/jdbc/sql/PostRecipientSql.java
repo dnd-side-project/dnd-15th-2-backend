@@ -83,6 +83,11 @@ public final class PostRecipientSql {
 	 * 못한다. 실제 최종 검증은 ReceiveSlotReleaseService.expire()가 post_recipient
 	 * 행을 잠근 뒤 다시 수행하므로, 여기서의 NOT EXISTS는 sweep 대상을 줄이는
 	 * 최적화일 뿐 정합성의 근거가 아니다.
+	 *
+	 * (dp.expires_at, pr.id) 순으로 최대 :limit건만 반환한다 — 이 정렬이 반복 실행에서
+	 * 같은 행이 먼저 뽑히는 순서를 보장해, 대량 만료 상황에서도 특정 행이 영구히 뒤로
+	 * 밀리지 않게 한다. 처리량 제한이 필요 없는 호출자는 JdbcPostRecipientRepository가
+	 * limit에 매우 큰 값을 넘겨 이 쿼리를 그대로 재사용한다.
 	 */
 	public static final String FIND_EXPIRABLE = """
 		SELECT pr.* FROM post_recipient pr
@@ -93,12 +98,21 @@ public final class PostRecipientSql {
 		      SELECT 1 FROM answer a
 		      WHERE a.post_recipient_id = pr.id AND a.status IN ('SUBMITTED', 'SAFETY_CHECKING')
 		  )
+		ORDER BY dp.expires_at, pr.id
+		LIMIT :limit
 		""";
 
-	/** 되돌리기 유예가 지난 SKIP_PENDING만 확정 대상이다. deadline = 기준 시각 - 유예 시간. */
+	/**
+	 * 되돌리기 유예가 지난 SKIP_PENDING만 확정 대상이다. deadline = 기준 시각 - 유예 시간.
+	 * (skip_requested_at, id) 순으로 최대 :limit건만 반환한다. 처리량 제한이 필요 없는
+	 * 호출자는 JdbcPostRecipientRepository가 limit에 매우 큰 값을 넘겨 이 쿼리를 그대로
+	 * 재사용한다.
+	 */
 	public static final String FIND_CONFIRMABLE_SKIPS = """
 		SELECT * FROM post_recipient
 		WHERE status = 'SKIP_PENDING' AND skip_requested_at <= :deadline
+		ORDER BY skip_requested_at, id
+		LIMIT :limit
 		""";
 
 	/**

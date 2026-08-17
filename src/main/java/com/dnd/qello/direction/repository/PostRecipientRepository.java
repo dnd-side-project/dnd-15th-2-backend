@@ -59,8 +59,20 @@ public interface PostRecipientRepository {
 	/** 만료 sweep 후보(AVAILABLE/DISCOVERED/OPENED이고 소속 질문글이 at 이전에 만료됨). */
 	List<PostRecipient> findExpirableAsOf(Instant at);
 
+	/**
+	 * 처리량이 제한된 만료 sweep 후보. (dp.expires_at, pr.id) 순으로 정렬해 최대 limit건만
+	 * 반환한다 — 반복 실행이 특정 행을 영구히 건너뛰지 않도록 결정적 순서를 보장한다.
+	 */
+	List<PostRecipient> findExpirableAsOf(Instant at, int limit);
+
 	/** 되돌리기 유예가 지난 SKIP_PENDING 후보. deadline은 호출자가 유예 시간을 뺀 값을 넘긴다. */
 	List<PostRecipient> findConfirmableSkips(Instant deadline);
+
+	/**
+	 * 처리량이 제한된 넘김확정 sweep 후보. (skip_requested_at, id) 순으로 정렬해 최대
+	 * limit건만 반환한다.
+	 */
+	List<PostRecipient> findConfirmableSkips(Instant deadline, int limit);
 
 	/** blockerId 자신의 수신 항목 중 blockedSenderId가 보낸 질문글에 대한 미종결 항목. */
 	List<PostRecipient> findBlockableFor(long blockerId, long blockedSenderId);
