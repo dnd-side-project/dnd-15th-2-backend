@@ -72,6 +72,25 @@
         },
         "type" : "object"
       },
+      "ApiResponseAppealCaseResponse" : {
+        "properties" : {
+          "data" : {
+            "$ref" : "#/components/schemas/AppealCaseResponse"
+          },
+          "status" : {
+            "enum" : [
+              "success",
+              "error"
+            ],
+            "type" : "string"
+          },
+          "timestamp" : {
+            "format" : "date-time",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
       "ApiResponseApprovedQuestionResponse" : {
         "properties" : {
           "data" : {
@@ -247,6 +266,28 @@
         "properties" : {
           "data" : {
             "$ref" : "#/components/schemas/InboxListingResponse"
+          },
+          "status" : {
+            "enum" : [
+              "success",
+              "error"
+            ],
+            "type" : "string"
+          },
+          "timestamp" : {
+            "format" : "date-time",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "ApiResponseListAppealCaseResponse" : {
+        "properties" : {
+          "data" : {
+            "items" : {
+              "$ref" : "#/components/schemas/AppealCaseResponse"
+            },
+            "type" : "array"
           },
           "status" : {
             "enum" : [
@@ -495,6 +536,94 @@
             "type" : "string"
           }
         },
+        "type" : "object"
+      },
+      "AppealCaseResponse" : {
+        "properties" : {
+          "acceptanceReasonCode" : {
+            "enum" : [
+              "WITHIN_WINDOW",
+              "WINDOW_UNVERIFIABLE",
+              "WINDOW_ELAPSED"
+            ],
+            "type" : "string"
+          },
+          "appellantUserId" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "createdAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "decidedAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "decidedByOperatorUserId" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "decision" : {
+            "enum" : [
+              "UPHOLD_HIDDEN",
+              "OVERTURN_HIDDEN"
+            ],
+            "type" : "string"
+          },
+          "expiresAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "filterDecisionId" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "id" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "restoreBlockedReasonCode" : {
+            "type" : "string"
+          },
+          "status" : {
+            "enum" : [
+              "OPEN",
+              "RESOLVED"
+            ],
+            "type" : "string"
+          },
+          "targetId" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "targetType" : {
+            "enum" : [
+              "ANSWER",
+              "NICKNAME"
+            ],
+            "type" : "string"
+          },
+          "windowStartedAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "AppealDecisionRequest" : {
+        "properties" : {
+          "decision" : {
+            "enum" : [
+              "UPHOLD_HIDDEN",
+              "OVERTURN_HIDDEN"
+            ],
+            "type" : "string"
+          }
+        },
+        "required" : [
+          "decision"
+        ],
         "type" : "object"
       },
       "ApproveQuestionProposalRequest" : {
@@ -819,6 +948,41 @@
             "type" : "array"
           }
         },
+        "type" : "object"
+      },
+      "ExtendAppealExpiryRequest" : {
+        "properties" : {
+          "expiresAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          }
+        },
+        "required" : [
+          "expiresAt"
+        ],
+        "type" : "object"
+      },
+      "FileAppealRequest" : {
+        "properties" : {
+          "filterDecisionId" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "targetId" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "targetType" : {
+            "enum" : [
+              "ANSWER",
+              "NICKNAME"
+            ],
+            "type" : "string"
+          }
+        },
+        "required" : [
+          "targetType"
+        ],
         "type" : "object"
       },
       "FilterReleaseResponse" : {
@@ -1414,6 +1578,244 @@
         "summary" : "CSRF 토큰 발급",
         "tags" : [
           "백오피스 인증"
+        ]
+      }
+    },
+    "/admin/filtering/appeal-cases" : {
+      "get" : {
+        "description" : "OPEN 상태의 이의제기를 접수 순서(FIFO)로 반환합니다.",
+        "operationId" : "findQueue_1",
+        "parameters" : [
+          {
+            "description" : "최대 반환 개수",
+            "in" : "query",
+            "name" : "limit",
+            "required" : false,
+            "schema" : {
+              "default" : 50,
+              "format" : "int32",
+              "type" : "integer"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiResponseListAppealCaseResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          },
+          "400" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "요청 값이 올바르지 않습니다. 오류 코드는 docs/error-codes.md를 따른다."
+          },
+          "500" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "서버 내부 오류가 발생했습니다."
+          }
+        },
+        "security" : [
+          {
+            "operatorSession" : [ ]
+          }
+        ],
+        "summary" : "이의제기 검토 큐 조회",
+        "tags" : [
+          "필터링 이의제기 검토"
+        ]
+      }
+    },
+    "/admin/filtering/appeal-cases/{appealCaseId}/decide" : {
+      "post" : {
+        "description" : "이의제기를 UPHOLD_HIDDEN(비공개 유지) 또는 OVERTURN_HIDDEN(비공개 취소)으로 종결합니다.\n\nOVERTURN_HIDDEN이면 복원 콜백을 내보내기 전에 다른 공개 금지 사유(계정 차단·삭제 등)를\n다시 확인합니다. 남아 있는 사유가 있으면 결정은 그대로 기록하되 복원 콜백을 내보내지 않고\n         restoreBlockedReasonCode에 사유를 남깁니다.\n\n답변의 공개 상태를 실제로 되돌리는 것은 이 API가 아니라 콜백을 받는 답변 담당 코드입니다.",
+        "operationId" : "decide_1",
+        "parameters" : [
+          {
+            "description" : "appeal case id",
+            "in" : "path",
+            "name" : "appealCaseId",
+            "required" : true,
+            "schema" : {
+              "format" : "int64",
+              "type" : "integer"
+            }
+          }
+        ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/AppealDecisionRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiResponseAppealCaseResponse"
+                }
+              }
+            },
+            "description" : "이의제기를 종결했습니다."
+          },
+          "400" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "요청 값이 올바르지 않습니다. 오류 코드는 docs/error-codes.md를 따른다."
+          },
+          "404" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "appeal case를 찾을 수 없습니다. (FLT-DOM-011)"
+          },
+          "409" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "이미 종료된 appeal case입니다. (FLT-DOM-012)"
+          },
+          "500" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "서버 내부 오류가 발생했습니다."
+          }
+        },
+        "security" : [
+          {
+            "operatorSession" : [ ]
+          }
+        ],
+        "summary" : "이의제기 결정 적용",
+        "tags" : [
+          "필터링 이의제기 검토"
+        ]
+      }
+    },
+    "/admin/filtering/appeal-cases/{appealCaseId}/extend" : {
+      "post" : {
+        "description" : "법률·정책상 필요한 경우 접수 기간을 연장합니다. 현재 만료 시각보다 늦은 값만 받습니다 —\n기간을 줄이는 경로는 이 API에도, 도메인에도, 스키마에도 없습니다.",
+        "operationId" : "extendExpiry",
+        "parameters" : [
+          {
+            "description" : "appeal case id",
+            "in" : "path",
+            "name" : "appealCaseId",
+            "required" : true,
+            "schema" : {
+              "format" : "int64",
+              "type" : "integer"
+            }
+          }
+        ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/ExtendAppealExpiryRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiResponseAppealCaseResponse"
+                }
+              }
+            },
+            "description" : "접수 기간을 연장했습니다."
+          },
+          "400" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "요청 값이 올바르지 않습니다. 오류 코드는 docs/error-codes.md를 따른다."
+          },
+          "404" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "appeal case를 찾을 수 없습니다. (FLT-DOM-011)"
+          },
+          "409" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "만료 시각을 앞당길 수 없습니다. (FLT-DOM-016)"
+          },
+          "500" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "서버 내부 오류가 발생했습니다."
+          }
+        },
+        "security" : [
+          {
+            "operatorSession" : [ ]
+          }
+        ],
+        "summary" : "접수 기간 연장",
+        "tags" : [
+          "필터링 이의제기 검토"
         ]
       }
     },
@@ -3481,6 +3883,158 @@
         ]
       }
     },
+    "/api/v1/filtering/appeals" : {
+      "get" : {
+        "description" : "본인이 접수한 이의제기를 최신순으로 반환합니다.",
+        "operationId" : "findMine",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiResponseListAppealCaseResponse"
+                }
+              }
+            },
+            "description" : "조회했습니다."
+          },
+          "400" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "요청 값이 올바르지 않습니다. 오류 코드는 docs/error-codes.md를 따른다."
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "앱 액세스 토큰이 유효하지 않습니다."
+          },
+          "500" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "서버 내부 오류가 발생했습니다."
+          }
+        },
+        "security" : [
+          {
+            "appAccessToken" : [ ]
+          }
+        ],
+        "summary" : "내 이의제기 목록 조회",
+        "tags" : [
+          "콘텐츠 이의제기"
+        ]
+      },
+      "post" : {
+        "description" : "BLOCK 판정으로 비공개 처리된 자신의 답변에 대해 이의를 제기합니다.\n접수는 콘텐츠의 공개 상태를 바꾸지 않습니다 — 검토가 끝날 때까지 비공개로 남습니다.\n\n접수 기간은 판정 시각으로부터 6개월입니다. 판정 시각을 신뢰할 수 없는 경우에는\n거절하지 않고 접수하며, 그 사실을 acceptanceReasonCode=WINDOW_UNVERIFIABLE로 남깁니다.",
+        "operationId" : "file",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/FileAppealRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "201" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiResponseAppealCaseResponse"
+                }
+              }
+            },
+            "description" : "이의제기를 접수했습니다."
+          },
+          "400" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "이의제기를 지원하지 않는 대상 유형입니다. (FLT-VAL-005)"
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "앱 액세스 토큰이 유효하지 않습니다."
+          },
+          "403" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "본인이 작성한 콘텐츠가 아닙니다. (FLT-DOM-015)"
+          },
+          "404" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "filter decision을 찾을 수 없습니다. (FLT-DOM-017)"
+          },
+          "409" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "이미 접수됐거나(FLT-INFRA-001), 접수 기간이 지났거나(FLT-DOM-013), 비공개 대상이 아닙니다(FLT-DOM-014)."
+          },
+          "500" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "서버 내부 오류가 발생했습니다."
+          }
+        },
+        "security" : [
+          {
+            "appAccessToken" : [ ]
+          }
+        ],
+        "summary" : "이의제기 접수",
+        "tags" : [
+          "콘텐츠 이의제기"
+        ]
+      }
+    },
     "/api/v1/media-assets/upload-requests" : {
       "post" : {
         "description" : "인증 사용자 소유의 JPEG/JPG 또는 PNG 한 건에 대한 presigned PUT URL을 발급합니다. storage key는 반환하지 않습니다.",
@@ -3718,7 +4272,7 @@
     "/api/v1/questions/proposals/me" : {
       "get" : {
         "description" : "인증 사용자가 제출한 모든 제안을 최신 제출 순으로 반환합니다.",
-        "operationId" : "findMine",
+        "operationId" : "findMine_1",
         "responses" : {
           "200" : {
             "content" : {
@@ -3781,6 +4335,34 @@
   ],
   "tags" : [
     {
+      "description" : "비공개 처리된 자신의 답변에 대한 이의제기 접수와 조회 (#112)",
+      "name" : "콘텐츠 이의제기"
+    },
+    {
+      "description" : "OpenAI moderation snapshot 단위 health 상태와 PERMANENT_CONFIRMED 운영자 승인",
+      "name" : "필터링 snapshot health"
+    },
+    {
+      "description" : "사용자 제안을 검수 시작, 승인, 반려하는 운영자 전용 API",
+      "name" : "질문 제안 검토"
+    },
+    {
+      "description" : "moderation release candidate 생성, 평가 단계 전환, 승격과 rollback",
+      "name" : "필터링 release registry"
+    },
+    {
+      "description" : "이의제기 큐 조회, 수동 결정과 접수 기간 연장 (#112)",
+      "name" : "필터링 이의제기 검토"
+    },
+    {
+      "description" : "운영자 세션 로그인과 로그아웃",
+      "name" : "백오피스 인증"
+    },
+    {
+      "description" : "방향별 후보 미리보기와 비동기 질문글 제출",
+      "name" : "방향 질문글"
+    },
+    {
       "description" : "앱 기기 등록과 액세스 토큰 재발급",
       "name" : "앱 기기 인증"
     },
@@ -3793,36 +4375,16 @@
       "name" : "방향 위치"
     },
     {
-      "description" : "OpenAI moderation snapshot 단위 health 상태와 PERMANENT_CONFIRMED 운영자 승인",
-      "name" : "필터링 snapshot health"
-    },
-    {
       "description" : "수신 질문 목록·상세 조회와 넘김 상태 변경",
       "name" : "방향 수신함"
-    },
-    {
-      "description" : "사용자 제안을 검수 시작, 승인, 반려하는 운영자 전용 API",
-      "name" : "질문 제안 검토"
-    },
-    {
-      "description" : "moderation release candidate 생성, 평가 단계 전환, 승격과 rollback",
-      "name" : "필터링 release registry"
     },
     {
       "description" : "수신함 항목에 대한 답변 제출",
       "name" : "답변"
     },
     {
-      "description" : "운영자 세션 로그인과 로그아웃",
-      "name" : "백오피스 인증"
-    },
-    {
       "description" : "질문글 이미지 업로드 예약과 완료 확인",
       "name" : "미디어"
-    },
-    {
-      "description" : "방향별 후보 미리보기와 비동기 질문글 제출",
-      "name" : "방향 질문글"
     },
     {
       "description" : "사용자가 질문 문구를 제안하고 자신의 제안 이력을 조회",

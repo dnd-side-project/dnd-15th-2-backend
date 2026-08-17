@@ -34,10 +34,15 @@
 
 | Command / suite | Result | Tests | Duration | Evidence |
 | --- | --- | --- | --- | --- |
-| `./gradlew test` | PASS | 537 (실패 0, 건너뜀 0) | 약 17초 | `build/test-results/test` |
-| `./gradlew integrationTest` | PASS | 415 (실패 0, 건너뜀 0) | 약 5분 39초 | `build/test-results/integrationTest` |
-| `./harness check` | PASS | 민감정보 873파일·JUnit 정책 141파일·컨벤션·workflow·label·Husky | — | 명령 출력 |
+| `./gradlew test` | PASS | 588 (실패 0, 건너뜀 0) | 약 12초 | `build/test-results/test` |
+| `./gradlew integrationTest` | PASS | 437 (실패 0, 건너뜀 0) | 약 5분 55초 | `build/test-results/integrationTest` |
+| `./harness check` | PASS | 민감정보·JUnit 정책·컨벤션·workflow·label·Husky | — | 명령 출력 |
 | `git diff --check` | PASS | — | — | 공백 오류 없음 |
+
+위 수치는 `origin/main`(`#152` 병합 후) 위로 rebase한 뒤 다시 측정한 값이다.
+rebase 전 측정값은 단위 537건·통합 415건이었고, 늘어난 건수는 전부 `#125`가
+가져온 답변 제출·공개 테스트다. 이번 이슈가 추가한 단위 20건·통합 15건은
+rebase 전후 모두 통과했다.
 
 이번 이슈가 추가한 테스트는 단위 20건(`AppealCaseTest` 15,
 `AppealCaseServiceTest` 5), 통합 15건(`AppealCaseIntegrationTest`)이다. 기존
@@ -96,7 +101,13 @@
    번째 답변을 만들려 했다. 답변은 slot당 하나라는 기존 제약을 몰랐던 것이며,
    "만료 뒤 새 콘텐츠 제출"을 새 slot에서 확인하도록 고쳤다. 제품 코드의
    결함이 아니라 테스트 fixture의 문제였다.
-3. **값 집합 계약 테스트 2건.** `FlywayMigrationContractTest`(마이그레이션 파일
+3. **`origin/main` rebase 충돌 2건.** `#152`(답변 제출·공개 API) 병합 후
+   rebase에서 `docs/api/openapi.json`과 `TASK.md`가 충돌했다. 전자는 생성
+   산출물이라 main 쪽을 취한 뒤 통합 테스트로 재생성해 양쪽 endpoint를 모두
+   담게 했고(`#110`의 "sync openapi spec after main rebase"와 같은 처리),
+   후자는 브랜치별 계약 파일이라 `#112` 버전을 그대로 유지했다. rebase 후
+   전체 스위트를 다시 실행해 회귀가 없음을 확인했다.
+4. **값 집합 계약 테스트 2건.** `FlywayMigrationContractTest`(마이그레이션 파일
    목록)와 `SafetyNotificationBoundaryTest`(`OutboxEventType` 값 집합)가 신규
    V18과 `MODERATION_APPEAL_RESOLVED`를 몰라 실패했다. 두 테스트는 "값이 늘어난
    것을 사람이 인지했는가"를 묻는 장치이므로, 값을 추가하는 방향으로 갱신했다.
