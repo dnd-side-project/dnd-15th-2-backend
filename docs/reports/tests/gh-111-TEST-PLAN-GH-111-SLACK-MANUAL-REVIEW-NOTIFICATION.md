@@ -33,7 +33,7 @@
 
 | Command / suite | Result | Tests | Duration | Evidence |
 | --- | --- | --- | --- | --- |
-| `./gradlew test --tests "com.dnd.qello.notification.*" --tests "com.dnd.qello.filtering.*"` | PASS | 193 | ~8s | 로컬 실행 로그 |
+| `./gradlew test --tests "com.dnd.qello.notification.*" --tests "com.dnd.qello.filtering.*"` | PASS | 194 | ~8s | 로컬 실행 로그 |
 | `./gradlew integrationTest --tests "com.dnd.qello.NotificationEventIntegrationTest"` | PASS | 6 | ~20s | 로컬 실행 로그 |
 | `./gradlew integrationTest` (영향받은 기존 스위트 5개 회귀 재실행: FlywayMigrationIntegrationTest, AnswerModerationJobIntegrationTest, AnswerModerationRetryIntegrationTest, ManualReviewPriorityIntegrationTest, SnapshotHealthMigrationIntegrationTest) | PASS | 해당 스위트 전체 | ~47s | 로컬 실행 로그 |
 
@@ -53,6 +53,7 @@
 | UNIT-008 | PASS | `SlackManualReviewNotificationDispatchWorkerTest#completesEventOnSuccessfulSend` | |
 | UNIT-009 | PASS | `SlackManualReviewNotificationDispatchWorkerTest#failsEventOnRetryableSendFailure` | 계획엔 없던 `marksDeadOnPermanentSendFailure` 케이스도 함께 검증 |
 | UNIT-010 | PASS | `SlackManualReviewNotificationDispatchWorkerTest#classifiesMissingLeaseIdentityAsStale` | |
+| UNIT-011 | PASS | `SlackManualReviewNotificationDispatchWorkerTest#isolatesUnexpectedRuntimeExceptionFromSend` | 계획엔 없던 케이스. PR 리뷰에서 발견한 결함(5절 3항) 회귀 방지 |
 | INT-001 | PASS | `NotificationEventIntegrationTest#producerCreatesNotificationEventAtomicallyWithCase` | |
 | INT-002 | PASS | `NotificationEventIntegrationTest#concurrentCaseCreationRaceProducesExactlyOneNotificationEvent` | |
 | INT-003 | PASS | `NotificationEventIntegrationTest#concurrentClaimDueGrantsExactlyOneWorker` | |
@@ -64,7 +65,7 @@
 
 ## 5. Failures and diagnostics
 
-작업 중 발견해 수정한 이슈 두 가지를 기록한다(최종 실행에서는 모두 통과).
+작업 중 발견해 수정한 이슈 세 가지를 기록한다(최종 실행에서는 모두 통과).
 
 1. **JDBC 메서드 시그니처 충돌**: `NotificationEventRepository.complete`/`fail`이
    기존 `OutboxEventRepository.complete`/`fail`과 완전히 동일한 시그니처라
@@ -81,6 +82,14 @@
    filtering 테이블과 마찬가지로 그 목록에 없었기 때문이다(이 매니페스트는
    원래 V1~V9 catalog 전용). 디버그 출력으로 원인을 확인한 뒤 기존 값
    (52/21/116)을 그대로 유지하는 것으로 정정했다.
+3. **PR 리뷰에서 발견한 예외 처리 결함**: `SlackManualReviewNotificationDispatchWorker.processClaimedEvent`가
+   `SlackDeliveryException`만 잡고 있어, `SlackNotifier` 구현체가 그 외의
+   `RuntimeException`(네트워크 예외 래핑, 직렬화 오류 등)을 던지면 해당
+   batch의 나머지 event 처리까지 함께 중단되는 결함이었다. 이 worker가
+   모델로 삼은 `RecipientNotificationFanOutWorker`는 `RuntimeException`을
+   넓게 잡아 개별 event 단위로 격리하는데, 이 부분만 좁게 구현돼 있었다.
+   `RuntimeException`을 넓게 잡고 `SlackDeliveryException`이 아니면
+   `RETRYABLE`로 기본 처리하도록 고쳤다(`UNIT-011`).
 
 ## 6. Potential issues
 

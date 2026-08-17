@@ -94,6 +94,24 @@ class SlackManualReviewNotificationDispatchWorkerTest {
 	}
 
 	@Test
+	@DisplayName("SlackDeliveryException이 아닌 다른 RuntimeException도 격리해 RETRYABLE로 처리하고 batch를 중단시키지 않는다")
+	void isolatesUnexpectedRuntimeExceptionFromSend() {
+		NotificationEvent claimed = claimedEvent(1L, 0);
+		when(notificationEventRepository.claimDue(10, "slack-worker-1", NOW, NOW.plusSeconds(30)))
+			.thenReturn(List.of(claimed));
+		org.mockito.Mockito.doThrow(new IllegalStateException("unexpected client bug"))
+			.when(slackNotifier).send(any());
+		when(notificationEventRepository.fail(eq(1L), eq("slack-worker-1"), eq(1L), eq(NOW), any()))
+			.thenReturn(true);
+
+		SlackManualReviewNotificationDispatchWorker.BatchResult result = worker.processBatch(command());
+
+		assertThat(result.outcomes())
+			.containsExactly(SlackManualReviewNotificationDispatchWorker.Outcome.RETRYABLE);
+		verify(notificationEventRepository).fail(eq(1L), eq("slack-worker-1"), eq(1L), eq(NOW), any());
+	}
+
+	@Test
 	@DisplayName("leaseGeneration이 0인 claim 결과는 fencing identity가 없는 것으로 보고 STALE_LEASE로 분류한다")
 	void classifiesMissingLeaseIdentityAsStale() {
 		NotificationEvent withoutLeaseGeneration = new NotificationEvent(1L, 7L, ADMIN_LINK_PATH,

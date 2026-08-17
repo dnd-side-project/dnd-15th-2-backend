@@ -57,9 +57,15 @@ public class SlackManualReviewNotificationDispatchWorker {
 		try {
 			slackNotifier.send(new SlackNotification(event.caseId(), event.adminLinkPath()));
 			return complete(event, processingAt);
-		} catch (SlackDeliveryException failure) {
-			return recordFailure(event, command, processingAt,
-				failure.retryable() ? OutboxFailureKind.RETRYABLE : OutboxFailureKind.PERMANENT);
+		} catch (RuntimeException failure) {
+			// SlackDeliveryException만 잡으면 구현체가 다른 RuntimeException(네트워크
+			// 예외 래핑, 직렬화 오류 등)을 던졌을 때 이 batch의 나머지 event 처리까지
+			// 함께 중단된다. SlackDeliveryException이 아니면 재시도 정책이 maxAttempts로
+			// 상한을 잡아주므로 RETRYABLE로 안전하게 처리한다.
+			OutboxFailureKind failureKind = failure instanceof SlackDeliveryException slackFailure
+				? (slackFailure.retryable() ? OutboxFailureKind.RETRYABLE : OutboxFailureKind.PERMANENT)
+				: OutboxFailureKind.RETRYABLE;
+			return recordFailure(event, command, processingAt, failureKind);
 		}
 	}
 

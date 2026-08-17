@@ -133,7 +133,10 @@ git diff --check
       `manual_review_case`/`filter_job` 어느 것도 참조·수정하지 않는 구조로
       보장한다. `NotificationEventIntegrationTest#dispatchFailureNeverTouchesCaseOrJob`이
       Slack 전송 실패로 `notification_event`가 DEAD가 된 뒤에도 두 테이블의
-      전체 행이 실행 전후 완전히 동일함을 실제 PostgreSQL로 검증했다.
+      전체 행이 실행 전후 완전히 동일함을 실제 PostgreSQL로 검증했다. PR
+      리뷰에서 `processClaimedEvent`가 `SlackDeliveryException`만 잡아 다른
+      `RuntimeException`이 batch 전체를 중단시킬 수 있던 결함을 발견해
+      `RuntimeException`을 넓게 잡도록 고쳤다(`SlackManualReviewNotificationDispatchWorkerTest#isolatesUnexpectedRuntimeExceptionFromSend`).
 - [x] 중복 event가 중복 알림 폭주로 이어지지 않는다(`INV-SLK-005`) —
       생성 시점은 `notification_event.case_id` UNIQUE 제약(`concurrentCaseCreationRaceProducesExactlyOneNotificationEvent`),
       전송 시점은 `FOR UPDATE SKIP LOCKED` 기반 claim(`concurrentClaimDueGrantsExactlyOneWorker`)
