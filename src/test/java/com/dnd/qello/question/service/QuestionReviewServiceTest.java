@@ -91,7 +91,7 @@ class QuestionReviewServiceTest {
 	@Test
 	@DisplayName("존재하지 않는 proposalId로 검수를 시작하면 PROPOSAL_NOT_FOUND를 던진다")
 	void startReviewOnMissingProposalThrowsNotFound() {
-		when(proposalRepository.findById(404L)).thenReturn(Optional.empty());
+		when(proposalRepository.findByIdForUpdate(404L)).thenReturn(Optional.empty());
 
 		assertThatThrownBy(() -> service.startReview(404L))
 			.isInstanceOf(QuestionException.class)
@@ -102,7 +102,7 @@ class QuestionReviewServiceTest {
 	@Test
 	@DisplayName("존재하지 않는 proposalId를 반려하려 하면 PROPOSAL_NOT_FOUND를 던진다")
 	void rejectOnMissingProposalThrowsNotFound() {
-		when(proposalRepository.findById(404L)).thenReturn(Optional.empty());
+		when(proposalRepository.findByIdForUpdate(404L)).thenReturn(Optional.empty());
 
 		assertThatThrownBy(() -> service.reject(404L, 1L, "사유", SUBMITTED_AT))
 			.isInstanceOf(QuestionException.class)
@@ -113,7 +113,7 @@ class QuestionReviewServiceTest {
 	@Test
 	@DisplayName("반려하면 제안자에게 보낼 QUESTION_PROPOSAL_REVIEWED outbox event를 발행한다")
 	void rejectPublishesOutboxEventForProposer() {
-		when(proposalRepository.findById(PROPOSAL_ID)).thenReturn(Optional.of(underReviewProposal()));
+		when(proposalRepository.findByIdForUpdate(PROPOSAL_ID)).thenReturn(Optional.of(underReviewProposal()));
 		when(outboxEventRepository.findByDedupKey(any())).thenReturn(Optional.empty());
 
 		service.reject(PROPOSAL_ID, 1L, "정책에 맞지 않습니다", SUBMITTED_AT);
@@ -131,7 +131,7 @@ class QuestionReviewServiceTest {
 	@Test
 	@DisplayName("승인하면 제안자에게 보낼 QUESTION_PROPOSAL_REVIEWED outbox event를 발행한다")
 	void approvePublishesOutboxEventForProposer() {
-		when(proposalRepository.findById(PROPOSAL_ID)).thenReturn(Optional.of(underReviewProposal()));
+		when(proposalRepository.findByIdForUpdate(PROPOSAL_ID)).thenReturn(Optional.of(underReviewProposal()));
 		when(outboxEventRepository.findByDedupKey(any())).thenReturn(Optional.empty());
 		when(approvedQuestionRepository.save(any())).thenAnswer(invocation -> ApprovedQuestion.restore(
 			1L, PROPOSAL_ID, ApprovedQuestionSourceType.USER_PROPOSAL, ApprovedQuestionStatus.ACTIVE,
@@ -147,7 +147,7 @@ class QuestionReviewServiceTest {
 	@Test
 	@DisplayName("같은 제안에 대한 outbox event가 이미 있으면 다시 발행하지 않는다")
 	void rejectSkipsPublishingWhenDedupKeyAlreadyExists() {
-		when(proposalRepository.findById(PROPOSAL_ID)).thenReturn(Optional.of(underReviewProposal()));
+		when(proposalRepository.findByIdForUpdate(PROPOSAL_ID)).thenReturn(Optional.of(underReviewProposal()));
 		when(outboxEventRepository.findByDedupKey("question-proposal-reviewed:" + PROPOSAL_ID))
 			.thenReturn(Optional.of(OutboxEvent.pending(OutboxAggregateType.QUESTION_PROPOSAL, PROPOSAL_ID,
 				OutboxEventType.QUESTION_PROPOSAL_REVIEWED, "question-proposal-reviewed:" + PROPOSAL_ID,
@@ -161,7 +161,7 @@ class QuestionReviewServiceTest {
 	@Test
 	@DisplayName("반려 중 outbox 저장이 실패하면 예외를 삼키지 않고 그대로 전파한다")
 	void rejectPropagatesOutboxFailure() {
-		when(proposalRepository.findById(PROPOSAL_ID)).thenReturn(Optional.of(underReviewProposal()));
+		when(proposalRepository.findByIdForUpdate(PROPOSAL_ID)).thenReturn(Optional.of(underReviewProposal()));
 		when(outboxEventRepository.findByDedupKey(any())).thenReturn(Optional.empty());
 		when(outboxEventRepository.save(any()))
 			.thenThrow(new DataIntegrityViolationException("uq_outbox_event_dedup"));
@@ -173,7 +173,7 @@ class QuestionReviewServiceTest {
 	@Test
 	@DisplayName("승인 중 outbox 저장이 실패하면 예외를 삼키지 않고 그대로 전파한다")
 	void approvePropagatesOutboxFailure() {
-		when(proposalRepository.findById(PROPOSAL_ID)).thenReturn(Optional.of(underReviewProposal()));
+		when(proposalRepository.findByIdForUpdate(PROPOSAL_ID)).thenReturn(Optional.of(underReviewProposal()));
 		when(outboxEventRepository.findByDedupKey(any())).thenReturn(Optional.empty());
 		when(outboxEventRepository.save(any()))
 			.thenThrow(new DataIntegrityViolationException("uq_outbox_event_dedup"));
@@ -188,7 +188,7 @@ class QuestionReviewServiceTest {
 	void rejectOnAlreadyRejectedProposalIsBlocked() {
 		QuestionProposal rejected = QuestionProposal.restore(PROPOSAL_ID, PROPOSER_ID,
 			QuestionProposalStatus.REJECTED, "제안 문구", "먼저 반려된 사유", SUBMITTED_AT, SUBMITTED_AT, SUBMITTED_AT);
-		when(proposalRepository.findById(PROPOSAL_ID)).thenReturn(Optional.of(rejected));
+		when(proposalRepository.findByIdForUpdate(PROPOSAL_ID)).thenReturn(Optional.of(rejected));
 
 		assertThatThrownBy(() -> service.reject(PROPOSAL_ID, 1L, "두 번째 사유", SUBMITTED_AT))
 			.isInstanceOf(QuestionException.class)
@@ -203,7 +203,7 @@ class QuestionReviewServiceTest {
 	void approveOnAlreadyApprovedProposalIsBlocked() {
 		QuestionProposal approved = QuestionProposal.restore(PROPOSAL_ID, PROPOSER_ID,
 			QuestionProposalStatus.APPROVED, "제안 문구", null, SUBMITTED_AT, SUBMITTED_AT, SUBMITTED_AT);
-		when(proposalRepository.findById(PROPOSAL_ID)).thenReturn(Optional.of(approved));
+		when(proposalRepository.findByIdForUpdate(PROPOSAL_ID)).thenReturn(Optional.of(approved));
 
 		assertThatThrownBy(() -> service.approve(
 			PROPOSAL_ID, 1L, AnswerFormat.TEXT, SUBMITTED_AT, SUBMITTED_AT.plusSeconds(3600), SUBMITTED_AT))

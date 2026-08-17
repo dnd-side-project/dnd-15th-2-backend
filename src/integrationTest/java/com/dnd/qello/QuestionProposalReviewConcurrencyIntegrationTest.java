@@ -10,7 +10,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -33,6 +35,8 @@ import com.dnd.qello.notification.fanout.RecipientNotificationFanOutWorker;
 import com.dnd.qello.question.domain.AnswerFormat;
 import com.dnd.qello.question.domain.QuestionProposal;
 import com.dnd.qello.question.domain.QuestionProposalStatus;
+import com.dnd.qello.question.error.QuestionErrorCode;
+import com.dnd.qello.question.error.QuestionException;
 import com.dnd.qello.question.repository.QuestionProposalRepository;
 import com.dnd.qello.question.service.QuestionReviewService;
 
@@ -89,11 +93,16 @@ class QuestionProposalReviewConcurrencyIntegrationTest extends PostgisContainerI
 		long firstReviewer = createAccount("concurrent-reject-a").getId();
 		long secondReviewer = createAccount("concurrent-reject-b").getId();
 
-		int succeeded = runConcurrently(
+		Outcome outcome = runConcurrently(
 			() -> reviewService.reject(proposalId, firstReviewer, "먼저 도착한 사유", NOW),
 			() -> reviewService.reject(proposalId, secondReviewer, "나중에 도착한 사유", NOW));
 
-		assertThat(succeeded).isEqualTo(1);
+		assertThat(outcome.succeeded()).as("동시 반려 성공 건수").isEqualTo(1);
+		assertThat(outcome.failures()).as("진 쪽은 잠금 대기 후 갱신된 상태를 읽어 거절된다")
+			.singleElement()
+			.isInstanceOf(QuestionException.class)
+			.satisfies(failure -> assertThat(((QuestionException) failure).getErrorCode())
+				.isEqualTo(QuestionErrorCode.INVALID_PROPOSAL_STATUS));
 		assertThat(proposalRepository.findById(proposalId).orElseThrow().getStatus())
 			.isEqualTo(QuestionProposalStatus.REJECTED);
 		assertThat(countReviews(proposalId)).isEqualTo(1);
@@ -109,11 +118,16 @@ class QuestionProposalReviewConcurrencyIntegrationTest extends PostgisContainerI
 		Instant activeFrom = NOW.plusSeconds(3600);
 		Instant activeUntil = NOW.plusSeconds(7200);
 
-		int succeeded = runConcurrently(
+		Outcome outcome = runConcurrently(
 			() -> reviewService.approve(proposalId, firstReviewer, AnswerFormat.TEXT, activeFrom, activeUntil, NOW),
 			() -> reviewService.approve(proposalId, secondReviewer, AnswerFormat.TEXT, activeFrom, activeUntil, NOW));
 
-		assertThat(succeeded).isEqualTo(1);
+		assertThat(outcome.succeeded()).as("동시 승인 성공 건수").isEqualTo(1);
+		assertThat(outcome.failures()).as("진 쪽은 잠금 대기 후 갱신된 상태를 읽어 거절된다")
+			.singleElement()
+			.isInstanceOf(QuestionException.class)
+			.satisfies(failure -> assertThat(((QuestionException) failure).getErrorCode())
+				.isEqualTo(QuestionErrorCode.INVALID_PROPOSAL_STATUS));
 		assertThat(proposalRepository.findById(proposalId).orElseThrow().getStatus())
 			.isEqualTo(QuestionProposalStatus.APPROVED);
 		assertThat(jdbc.queryForObject(
@@ -146,41 +160,52 @@ class QuestionProposalReviewConcurrencyIntegrationTest extends PostgisContainerI
 	}
 
 	/**
-	 * 두 작업을 같은 시점에 출발시키고 성공한 개수를 센다. 실패한 쪽의 예외는
-	 * 삼키지 않고 개수 판정에만 사용한다 — 어느 예외가 나오는지는 시나리오마다
-	 * 다르므로(도메인 충돌 또는 DB 제약 위반) 여기서 타입을 고정하지 않는다.
+	 * 두 작업을 같은 시점에 출발시키고 성공 건수와 실패 예외를 함께 돌려준다.
+	 *
+	 * <p>예외를 삼키지 않고 수집하는 이유는 "몇 건이 성공했는가"만으로는 방어선이
+	 * 무엇이었는지 알 수 없기 때문이다. 판정 경로는 제안 행을 잠그므로 뒤늦은
+	 * transaction은 갱신된 상태를 읽고 도메인 오류로 거절되어야 한다. 예외 타입을
+	 * 확인해야 잠금이 실제로 직렬화했는지 검증할 수 있다.</p>
 	 */
-	private int runConcurrently(Runnable first, Runnable second) throws Exception {
+	private Outcome runConcurrently(Runnable first, Runnable second) throws Exception {
 		ExecutorService executor = Executors.newFixedThreadPool(2);
 		CountDownLatch ready = new CountDownLatch(2);
 		CountDownLatch start = new CountDownLatch(1);
 		try {
-			List<Future<Boolean>> futures = List.of(
+			List<Future<Optional<RuntimeException>>> futures = List.of(
 				executor.submit(afterSignal(first, ready, start)),
 				executor.submit(afterSignal(second, ready, start)));
 			assertThat(ready.await(5, TimeUnit.SECONDS)).isTrue();
 			start.countDown();
 			int succeeded = 0;
-			for (Future<Boolean> future : futures) {
-				if (future.get(10, TimeUnit.SECONDS)) {
+			List<RuntimeException> failures = new ArrayList<>();
+			for (Future<Optional<RuntimeException>> future : futures) {
+				Optional<RuntimeException> failure = future.get(10, TimeUnit.SECONDS);
+				if (failure.isPresent()) {
+					failures.add(failure.get());
+				} else {
 					succeeded++;
 				}
 			}
-			return succeeded;
+			return new Outcome(succeeded, failures);
 		} finally {
 			executor.shutdownNow();
 		}
 	}
 
-	private Callable<Boolean> afterSignal(Runnable action, CountDownLatch ready, CountDownLatch start) {
+	private record Outcome(int succeeded, List<RuntimeException> failures) {
+	}
+
+	private Callable<Optional<RuntimeException>> afterSignal(
+		Runnable action, CountDownLatch ready, CountDownLatch start) {
 		return () -> {
 			ready.countDown();
 			start.await(5, TimeUnit.SECONDS);
 			try {
 				action.run();
-				return true;
-			} catch (RuntimeException expectedUnderContention) {
-				return false;
+				return Optional.empty();
+			} catch (RuntimeException failure) {
+				return Optional.of(failure);
 			}
 		};
 	}
