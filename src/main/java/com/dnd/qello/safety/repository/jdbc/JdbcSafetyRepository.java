@@ -63,14 +63,14 @@ public class JdbcSafetyRepository implements SafetyRepository {
 	public Report saveReport(Report report) {
 		Long id = jdbc.queryForObject("""
 			INSERT INTO report (reporter_id, target_user_id, direction_post_id, answer_id,
-				reason_code, detail, status, created_at, resolved_at)
+				reason_code, sub_reason_code, detail, status, created_at, resolved_at, case_id)
 			VALUES (:reporterId, :targetUserId, :directionPostId, :answerId,
-				:reasonCode, :detail, :status, :createdAt, :resolvedAt)
+				:reasonCode, :subReasonCode, :detail, :status, :createdAt, :resolvedAt, :caseId)
 			RETURNING id
 			""", reportParams(report), Long.class);
 		return new Report(id, report.reporterId(), report.targetUserId(), report.directionPostId(),
 			report.answerId(), report.reasonCode(), report.detail(), report.status(),
-			report.createdAt(), report.resolvedAt());
+			report.createdAt(), report.resolvedAt(), report.caseId(), report.subReasonCode());
 	}
 
 	@Override
@@ -87,7 +87,7 @@ public class JdbcSafetyRepository implements SafetyRepository {
 			  AND target_user_id IS NOT DISTINCT FROM :targetUserId
 			  AND direction_post_id IS NOT DISTINCT FROM :directionPostId
 			  AND answer_id IS NOT DISTINCT FROM :answerId
-			  AND status IN ('RECEIVED', 'AUTO_HIDDEN', 'UNDER_REVIEW')
+			  AND status IN ('RECEIVED', 'AUTO_HIDDEN', 'UNDER_REVIEW', 'MORE_INFO_REQUIRED')
 			ORDER BY id DESC LIMIT 1
 			""", reportParams(reporterId, targetUserId, directionPostId, answerId),
 			(rs, row) -> mapReport(rs)).stream().findFirst();
@@ -99,9 +99,10 @@ public class JdbcSafetyRepository implements SafetyRepository {
 			throw new SafetyException(SafetyErrorCode.REQUIRED_VALUE_MISSING, "id", "수정에는 report id가 필요합니다");
 		}
 		jdbc.update("""
-			UPDATE report SET status = :status, resolved_at = :resolvedAt WHERE id = :id
+			UPDATE report SET status = :status, resolved_at = :resolvedAt, case_id = :caseId WHERE id = :id
 			""", new MapSqlParameterSource().addValue("id", report.id())
-			.addValue("status", report.status().name()).addValue("resolvedAt", timestamp(report.resolvedAt())));
+			.addValue("status", report.status().name()).addValue("resolvedAt", timestamp(report.resolvedAt()))
+			.addValue("caseId", report.caseId()));
 		return report;
 	}
 
@@ -122,9 +123,10 @@ public class JdbcSafetyRepository implements SafetyRepository {
 
 	private static MapSqlParameterSource reportParams(Report r) {
 		return reportParams(r.reporterId(), r.targetUserId(), r.directionPostId(), r.answerId())
-			.addValue("reasonCode", r.reasonCode()).addValue("detail", r.detail())
+			.addValue("reasonCode", r.reasonCode()).addValue("subReasonCode", r.subReasonCode())
+			.addValue("detail", r.detail())
 			.addValue("status", r.status().name()).addValue("createdAt", timestamp(r.createdAt()))
-			.addValue("resolvedAt", timestamp(r.resolvedAt()));
+			.addValue("resolvedAt", timestamp(r.resolvedAt())).addValue("caseId", r.caseId());
 	}
 
 	private static MapSqlParameterSource reportParams(long reporterId, Long targetUserId, Long directionPostId, Long answerId) {
@@ -136,7 +138,8 @@ public class JdbcSafetyRepository implements SafetyRepository {
 	private static Report mapReport(ResultSet rs) throws SQLException {
 		return new Report(rs.getLong("id"), rs.getLong("reporter_id"), nullableLong(rs, "target_user_id"),
 			nullableLong(rs, "direction_post_id"), nullableLong(rs, "answer_id"), rs.getString("reason_code"),
-			rs.getString("detail"), ReportStatus.valueOf(rs.getString("status")), instant(rs, "created_at"), instant(rs, "resolved_at"));
+			rs.getString("detail"), ReportStatus.valueOf(rs.getString("status")), instant(rs, "created_at"),
+			instant(rs, "resolved_at"), nullableLong(rs, "case_id"), rs.getString("sub_reason_code"));
 	}
 
 	private static Long nullableLong(ResultSet rs, String column) throws SQLException {
