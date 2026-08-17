@@ -50,8 +50,7 @@ public class AnswerNotificationService {
 	 */
 	@Transactional
 	public Answer publish(long answerId, Instant publishedAt) {
-		Answer answer = answerRepository.findById(answerId)
-			.orElseThrow(() -> new IllegalArgumentException("답변을 찾을 수 없습니다: " + answerId));
+		Answer answer = answerRepository.findById(answerId).orElseThrow(this::answerNotFound);
 		if (answer.getStatus() == AnswerStatus.PUBLISHED) {
 			return answer;
 		}
