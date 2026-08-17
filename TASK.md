@@ -1,101 +1,118 @@
-# GitHub Issue #124 Task Contract
+# GitHub Issue #145 Task Contract
 
-> Generated at: `2026-08-16T14:09:58+09:00`
+> Generated at: `2026-08-16T18:56:51+09:00`
 >
 > 이 파일은 현재 작업 브랜치의 계약이다. 저장소 전역 정책은 `AGENTS.md`를
 > 따른다.
 
 ## Work gate
 
-- Title: `수신함·열람·넘김 API`
-- GitHub Issue: `#124`
-- Branch: `feat/gh-124-direction-inbox-api`
-- Base branch: `main`
+- Title: `질문 제안 알림 발행·filtering 연동·문서화 마무리`
+- GitHub Issue: `#145`
+- Branch: `feat/gh-145-question-proposal-followup`
+- Base branch: `feat/gh-144-question-proposal-api`
 
 ## Objective
 
-- 수신자가 확정된 방향 질문글을 인증된 수신함 API에서 목록·상세로 조회하고,
-  열람과 넘김 요청·되돌리기 상태를 수신 자격 및 동시 전이 규칙을 지키며
-  안전하게 변경할 수 있게 한다.
+- `#144`에서 질문 제안 제출·조회(사용자)와 검토(운영자) API는 완성했지만,
+  같은 이슈 범위에 있던 알림 발행 연결, `filtering` 도메인 연동 확인,
+  정식 테스트 계획·통합 테스트는 아직 남아 있다(`#144`의 "Test plan
+  exception"에서 이 이슈로 이관하기로 명시했다). API가 실제로 알림을
+  보내고 통합 시나리오로 검증되도록 마저 완성한다.
 
 ## Scope
 
-1. `GET /api/v1/direction/inbox` 수신함 목록·방향 칩 조회 API.
-2. `GET /api/v1/direction/inbox/{postRecipientId}` 상세 조회와 최초 열람
-   `OPENED` 전이.
-3. `PUT /api/v1/direction/inbox/{postRecipientId}/skip` 넘김 요청 API.
-4. `DELETE /api/v1/direction/inbox/{postRecipientId}/skip` 유예 내 되돌리기 API.
-5. ACTIVE USER 계정, 수신자 소유권, 질문글 상태·삭제·만료, 양방향 활성
-   차단과 `PostRecipient` 상태 스코프 검증.
-6. 열람·넘김·되돌리기와 답변·차단·만료 전이 사이의 stale write 방지를 위한
-   행 잠금 또는 이전 상태 조건부 전이.
-7. 반복 넘김 요청이 최초 `skip_requested_at`과 유예 종료 시각을 연장하지 않는
-   멱등 계약.
-8. `InboxQueryService`, 방향 칩 집계와 기존 `PostRecipient` 도메인 전이 재사용.
-9. `docs/api/openapi.json` 갱신.
-10. 정식 테스트 계획
-    `TEST-PLAN-GH-124-INBOX-READ-SKIP-API`에 따른 JUnit 5 단위·MockMvc·
-    PostgreSQL/PostGIS 통합·동시성 테스트와 테스트 보고서.
+1. `QuestionProposalReview`의 반려·승인 판정 시 `QUESTION_PROPOSAL_REVIEWED`
+   outbox 알림 이벤트를 실제로 발행하는 연결 작업(제안자에게 전달). 기존
+   `notification.domain.OutboxEvent`/`OutboxEventRepository` 패턴을 그대로
+   따르되, `AnswerNotificationService` 같은 기존 발행 지점의 구조를 먼저
+   확인한다.
+2. 제안 제출 텍스트가 `filtering` 도메인(비속어·선정성 검사)을 거치는지
+   확인한다. 현재 `filtering` intake는 `AnswerModerationJobIntakeService`처럼
+   답변 전용으로 결합돼 있어, 질문 제안에도 적용하려면 신규 연동 경로
+   설계가 필요할 수 있다 — 설계 전 기존 구조를 조사해 필요 여부부터
+   확정한다.
+3. `/harness-test-plan`으로 정식 테스트 계획을 수립하고 승인받은 뒤,
+   통합(PostgreSQL) 테스트와 테스트 보고서를 작성한다. `#144`는 정식 계획
+   없이 예외 승인을 받았으므로, 이 이슈는 그 부채를 갚는 자리다.
 
 ## Explicit exclusions
 
-- 답변 작성·공개 endpoint와 답변 moderation 흐름.
-- 방향 칩 집계 알고리즘 또는 지도·방향 구간 정책 변경.
-- 만료·넘김 확정 sweep 실행기와 슬롯 해제(`#126`).
-- `SKIP_CONFIRMATION_DUE` Outbox 생산·취소·소비. #124는 기존 batch 조회 기반의
-  후속 #126 실행 계약을 변경하지 않는다.
-- FCM/APNs 등 외부 푸시 Provider와 알림 fan-out 변경.
-- Flyway migration과 운영 데이터 백필. 구현 중 스키마 변경 필요성이 발견되면
-  범위를 임의로 넓히지 않고 별도 승인을 받는다.
+- 질문 배정/추천 주기(`question_assignment_cycle`) 로직 변경 — 별도 이슈.
+- Slack 등 알림 채널 확장 — 기존 outbox 패턴만 사용.
+- `QUESTION_PROPOSAL_REVIEWED` outbox event를 실제 인앱 알림·push로
+  fan-out하는 worker 배선 — producer(event 발행)까지만 이 이슈에서
+  다룬다. 기존 `RecipientNotificationFanOutWorker`가 `AnswerNotificationService`
+  같은 producer와 별도 클래스로 분리돼 있는 구조를 그대로 따른 결정이며,
+  fan-out worker 자체는 이 이슈 범위 밖이다.
+- 콘텐츠 안전 검사 신규 정책 설계 — 기존 `filtering` 도메인 연동 확인까지만.
+- 질문 제안을 `filtering`에 실제로 연결하는 구현 — 아래 "Filtering
+  integration decision" 참고. 조사 결과 연결하지 않기로 결정했다.
 - 인프라 apply, 배포, 프로덕션 변경은 별도 승인 없이는 실행하지 않는다.
 - Secret, 계정 식별자, 토큰, `.env` 값은 기록하지 않는다.
+
+### Filtering integration decision (사용자 승인, 2026-08-16)
+
+- 조사 결과: `filtering` 파이프라인은 질문 제안뿐 아니라 **어떤 도메인에도
+  아직 실제로 연결되어 있지 않다.**
+  - `AnswerModerationJobIntakeService`(답변 전용 진입점)는 주석에 "의도적으로
+    Spring bean이 아니다"라고 명시돼 있고, `deadlineWindow`(운영값)가
+    미정이라 배선을 보류한 상태다. `grep`으로 확인한 결과 `filtering`
+    패키지 밖 어디에서도 이 서비스를 호출하지 않는다.
+  - `DirectionPost`는 생성 시 `moderationStatus = PENDING`으로 시작하고,
+    `DirectionMatchingWorker`는 PENDING/REVIEW_HELD를 매칭 불가로 취급하는데,
+    이를 `PASSED`로 전이시키는 코드가 어디에도 없다 — 방향 글도 현재
+    상태로는 영구히 매칭되지 않아야 정상이다.
+  - `FilterTargetType`은 `ANSWER`, `NICKNAME` 둘뿐이며 `QUESTION_PROPOSAL`
+    값 자체가 없다.
+- 결정: 질문 제안만 지금 `filtering`에 연결하지 않는다.
+- 이유: 질문 제안만 먼저 연결하면 "어떤 콘텐츠는 검사되고 어떤 콘텐츠(답변·
+  방향 글)는 안 되는" 도메인 간 불일치가 생긴다. `filtering` 프로덕션 배선
+  (운영값 확정, 각 도메인 진입점 연결)은 저장소 전체가 공유하는 별도
+  production-gate 이슈에서 한 번에 다뤄야 한다.
+- 추적: 별도 이슈 없음(아직 생성하지 않음). `filtering` 프로덕션 배선
+  이슈가 생기면 그 범위에 질문 제안도 포함시킨다.
 
 ## Ownership
 
 | Area | Owner | Required review |
 | --- | --- | --- |
-| 수신함 권한·상태 전이 application/persistence 경계 | Feature executor | 양방향 차단, 시간 경계, 행 잠금·조건부 전이, 슬롯 불변식 리뷰 |
-| Controller·ApiSpec·응답 DTO·OpenAPI | API executor | 인증, HTTP 상태·오류 코드, 응답 privacy와 API 문서 리뷰 |
-| 단위·MockMvc·PostgreSQL/PostGIS·동시성 테스트 | Test executor | 계획 시나리오 추적성, 픽스처 격리, 실패 판정 리뷰 |
-| 전체 변경 및 검증 증거 | Independent verifier | 구현 설명이 아닌 diff·실행 결과 기반 독립 검증 |
+| `QUESTION_PROPOSAL_REVIEWED` 알림 발행, `filtering` 연동 확인, 정식 테스트 계획·통합 테스트·보고서 | Feature executor | 알림 발행이 반려/승인 트랜잭션을 오염시키지 않는지, `filtering` 미연동 결정 시 그 근거가 타당한지 리뷰 |
 
 ## Existing user-owned changes
 
-- 작업 시작 시 `main`의 `git status --short`는 비어 있었다.
-- `main`과 `origin/main`은 `dcfec08`로 일치했고, 최신 `origin/main`에서
-  `feat/gh-124-direction-inbox-api`를 생성했다.
-- #124 브랜치 생성 전에 보존해야 할 기존 사용자 변경은 없었다.
+- `feat/gh-144-question-proposal-api`(origin에 push된 PR #146 상태) 위에서
+  새로 분기했다(`./harness start --issue 145 --type feat --slug
+  question-proposal-followup --base feat/gh-144-question-proposal-api`).
+  분기 시점 `git status --short`는 비어 있었다.
 
 ## Validation
 
 ```bash
 ./harness check
 ./harness pr-ready --project-tests
+npm run hooks:validate
 git diff --check
 ```
 
-- Approved test plan: `TEST-PLAN-GH-124-INBOX-READ-SKIP-API`
-- Approval evidence: user approval in Codex conversation at
-  `2026-08-16T14:20:01+09:00`
-
 ## Completion criteria
 
-- [x] 인증된 수신자는 카테고리와 선택적 방향 필터로 자신의 수신함 목록·칩을
-      조회할 수 있다.
-- [x] 자격 있는 상세 조회는 최초 한 번만 `OPENED`를 기록하고 반복 조회가 최초
-      `opened_at`을 바꾸지 않는다.
-- [x] 존재하지 않는 항목, 타인의 항목과 차단·만료·종결로 자격을 잃은 항목은
-      존재 여부를 구분할 수 없는 동일한 404 계약을 따른다.
-- [x] `ANSWERED`는 상세 열람 자격을 유지하고, `SKIP_PENDING`은 유예 중 목록·상세
-      자격과 슬롯을 유지하며, `SKIPPED`·미답변 `EXPIRED`·`BLOCKED`는 다시 열리지
-      않는다.
-- [x] 양방향 활성 차단이 목록·상세·상태 변경에 일관되게 적용되고 해제된 차단은
-      접근을 막지 않는다.
-- [x] 반복 넘김 요청은 최초 요청 시각과 유예 종료 시각을 연장하지 않는다.
-- [x] 유예 종료 전 되돌리기는 이전 상태로 복원하고, 유예 종료 시각 이상에서는
-      되돌리지 않는다.
-- [x] 열람·넘김·되돌리기가 동시 답변·차단·만료 전이를 stale write로 덮어쓰지
-      않으며 슬롯 카운터를 직접 변경하지 않는다.
-- [x] 정확 좌표, 내부 사용자 식별자와 저장소 내부 값이 API 응답에 노출되지 않는다.
-- [x] 승인된 테스트 계획의 모든 P0 시나리오와 필수 회귀 검증이 통과하고
-      `templates/test-report.md` 기반 보고서가 남는다.
+- [x] 반려 시 사유가 기록되고 `QUESTION_PROPOSAL_REVIEWED` 알림이 제안자에게
+      실제로 발행된다. `QuestionReviewService.reject()`/`approve()`가 같은
+      transaction에서 outbox event를 저장하고, `QuestionProposalApiIntegrationTest`가
+      실제 PostgreSQL `outbox_event` 테이블에서 `decision`/`proposerId`가
+      기록됨을 확인한다. fan-out worker(인앱 알림·push 실제 전달)는 이
+      이슈 범위 밖이다("Explicit exclusions" 참고).
+- [x] 제안 제출 텍스트의 `filtering` 연동 여부가 확인되고, 필요하면
+      연결된다(미연동 결정이면 그 근거를 기록한다). 조사 결과 `filtering`이
+      답변·방향 글을 포함해 어떤 도메인에도 아직 연결되어 있지 않음을
+      확인했고, 질문 제안만 먼저 연결하지 않기로 결정했다(사용자 승인,
+      2026-08-16 — 근거는 "Filtering integration decision" 절 참고).
+- [x] `/harness-test-plan` 승인을 받은 정식 테스트 계획이 존재한다.
+      `docs/test-plans/gh-145-TEST-PLAN-GH-145-QUESTION-PROPOSAL-NOTIFICATION.md`
+      (Status: Approved, 2026-08-17). `#144`가 예외 승인으로 남긴 부채를 이
+      계획이 승계했다.
+- [x] 통합(PostgreSQL) 테스트와 테스트 보고서가 존재한다. 단위 4건·통합 8건을
+      추가했고 전체 스위트(단위 442건, 통합 357건)가 통과했다. 보고서는
+      `docs/reports/tests/gh-145-TEST-PLAN-GH-145-QUESTION-PROPOSAL-NOTIFICATION.md`.
+      R9(목록 정렬 동률, P2)는 미실행으로 기록했다.
