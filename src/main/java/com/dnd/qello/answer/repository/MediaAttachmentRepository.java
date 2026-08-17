@@ -17,6 +17,9 @@ public interface MediaAttachmentRepository {
 	/** 질문글에 저장된 첨부 ID를 display order 순서로 반환한다. */
 	List<Long> findMediaIdsByPostId(long postId);
 
+	/** 답변에 저장된 첨부 ID를 display order 순서로 반환한다. */
+	List<Long> findMediaIdsByAnswerId(long answerId);
+
 	void deleteByMediaId(long mediaId);
 
 	/** excludingMediaId를 제외하고 이 질문글에 READY 상태로 첨부된 다른 미디어가 있는지 확인한다. */

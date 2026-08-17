@@ -245,6 +245,15 @@ class MediaAttachmentServiceTest {
 		}
 
 		@Override
+		public List<Long> findMediaIdsByAnswerId(long answerId) {
+			return store.values().stream()
+				.filter(attachment -> attachment.answerId() != null && attachment.answerId() == answerId)
+				.sorted(java.util.Comparator.comparingInt(MediaAttachment::displayOrder))
+				.map(MediaAttachment::mediaId)
+				.toList();
+		}
+
+		@Override
 		public void deleteByMediaId(long mediaId) { store.remove(mediaId); }
 
 		@Override
