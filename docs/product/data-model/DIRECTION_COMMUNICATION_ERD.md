@@ -1263,11 +1263,26 @@ WHERE pr.id = :post_recipient_id
 FOR UPDATE OF pr, p;
 ```
 
-조건을 통과하면 `answer`와 안전 검사 Outbox를 저장하고, `post_recipient.status`를 `ANSWERED`로 바꾼 뒤 `capacity_released_at IS NULL`인 경우에만 이를 설정하고 `recipient_receive_state.active_unhandled_count`를 1 감소시킨다. 통과하지 못하면 `EXPIRED`, `BLOCKED`, `FORBIDDEN` 중 현재 서버 상태에 맞는 도메인 오류를 반환한다.
+조건을 통과하면 `answer`(`SUBMITTED`)와 첨부, 안전 검사 job·Outbox를 저장한다(GitHub #125). 이 transaction은
+`post_recipient.status`를 바꾸지 않는다 — `ANSWERED` 전이와 슬롯 해제는 **제출이 아니라 비동기 안전 검사가
+ALLOW를 반환한 시점**에 일어난다(아래 T6-PUBLISH). 통과하지 못하면 `EXPIRED`, `BLOCKED`, `FORBIDDEN` 중 현재
+서버 상태에 맞는 도메인 오류를 반환한다.
 
 - 잠금: 대상 `post_recipient`, `direction_post` 각 한 행.
 - 클라이언트 시각을 사용하지 않는다.
-- 한 수신자당 답변 개수가 확정되지 않았으므로 현재는 멱등 키만 중복 생성을 막는다.
+- 한 수신자당 활성(`REJECTED`가 아닌) 답변은 `uq_answer_one_per_recipient` partial unique index가 강제한다.
+- 만료 전에 제출된 검사 중(`SUBMITTED`/`SAFETY_CHECKING`) 답변이 있는 수신 항목은 만료 sweep 후보에서
+  제외된다 — 늦게 도착한 ALLOW도 공개할 수 있어야 하기 때문이다.
+
+**T6-PUBLISH. 안전 검사 ALLOW 반영 (비동기)**
+
+`MODERATION_VERDICT_READY`(ALLOW)를 소비하는 시점에 별도 transaction에서 `post_recipient.status`를
+`ANSWERED`로 바꾸고, `capacity_released_at IS NULL`인 경우에만 이를 설정하고
+`recipient_receive_state.active_unhandled_count`를 1 감소시킨 뒤 답변을 `PUBLISHED`로 전환한다.
+그 사이 `post_recipient`가 이미 다른 경로(만료·차단·넘김확정)로 종결됐으면 슬롯을 다시 해제하지
+않고 답변도 공개하지 않는다. BLOCK과 `MODERATION_DEADLINE_ELAPSED`는 `post_recipient` 상태를
+바꾸지 않는다.
+
 - **`status = 'ANSWERED'` 전이를 빠뜨리면 안 된다.** `ct_post_recipient_capacity_release`가 종결 상태와 `capacity_released_at`의 동치를 커밋 시점에 검사하므로, 해제만 하고 상태를 그대로 두면 트랜잭션이 커밋되지 않는다. 두 갱신을 서로 다른 문장으로 나누는 것은 괜찮다. 트리거는 지연 실행되고 최종 상태를 다시 읽어 판정한다.
 
 ### T6A. 스와이프 넘김 (요청 → 유예 → 확정)
