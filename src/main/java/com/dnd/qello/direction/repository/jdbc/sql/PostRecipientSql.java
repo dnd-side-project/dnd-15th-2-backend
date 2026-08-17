@@ -78,6 +78,11 @@ public final class PostRecipientSql {
 	 * 선점하면 뒤늦게 도착한 ALLOW가 AnswerNotificationService.publish()의
 	 * releaseSlot()에서 거절된다. 이미 PUBLISHED인 답변은 pr.status가 ANSWERED로
 	 * 바뀌어 위 상태 필터에서 자연히 제외되므로 별도 처리가 필요 없다.
+	 *
+	 * 이 조회는 잠금 없는 후보 스냅샷이라 조회 이후 커밋되는 답변 제출을 반영하지
+	 * 못한다. 실제 최종 검증은 ReceiveSlotReleaseService.expire()가 post_recipient
+	 * 행을 잠근 뒤 다시 수행하므로, 여기서의 NOT EXISTS는 sweep 대상을 줄이는
+	 * 최적화일 뿐 정합성의 근거가 아니다.
 	 */
 	public static final String FIND_EXPIRABLE = """
 		SELECT pr.* FROM post_recipient pr

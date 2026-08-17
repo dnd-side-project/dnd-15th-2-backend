@@ -312,5 +312,10 @@ class MediaAttachmentServiceTest {
 		public Optional<Answer> findByIdAndAuthorId(long id, long authorId) {
 			return findById(id).filter(answer -> answer.getAuthorId() == authorId);
 		}
+
+		@Override
+		public boolean hasPendingAnswerForPostRecipient(long postRecipientId) {
+			throw new UnsupportedOperationException("not used");
+		}
 	}
 }

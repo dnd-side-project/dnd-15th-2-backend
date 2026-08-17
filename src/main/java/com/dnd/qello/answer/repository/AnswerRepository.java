@@ -14,4 +14,7 @@ public interface AnswerRepository {
 
 	/** 소유권을 쿼리 조건에 포함한다. 남의 답변이면 빈 결과이며 예외를 던지지 않는다. */
 	Optional<Answer> findByIdAndAuthorId(long id, long authorId);
+
+	/** postRecipientId에 아직 종결(PUBLISHED/REJECTED)되지 않은 검사 중 답변이 있는지 확인한다. */
+	boolean hasPendingAnswerForPostRecipient(long postRecipientId);
 }
