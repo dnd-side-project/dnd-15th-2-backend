@@ -162,7 +162,7 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 	private JdbcTemplate jdbcTemplate;
 
 	@Test
-	@DisplayName("빈 PostGIS 데이터베이스의 startup에서 V1부터 V15까지 migration을 적용한다")
+	@DisplayName("빈 PostGIS 데이터베이스의 startup에서 V1부터 V16까지 migration을 적용한다")
 	void appliesAllMigrationsOnApplicationStartup() {
 		Integer successfulV1 = jdbcTemplate.queryForObject("""
 			SELECT count(*)
@@ -239,6 +239,11 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 			FROM flyway_schema_history
 			WHERE version = '15' AND success
 			""", Integer.class);
+		Integer successfulV16 = jdbcTemplate.queryForObject("""
+			SELECT count(*)
+			FROM flyway_schema_history
+			WHERE version = '16' AND success
+			""", Integer.class);
 		String postgisVersion = jdbcTemplate.queryForObject(
 			"SELECT PostGIS_Version()", String.class);
 
@@ -257,7 +262,8 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 		assertThat(successfulV13).isEqualTo(1);
 		assertThat(successfulV14).isEqualTo(1);
 		assertThat(successfulV15).isEqualTo(1);
-		assertThat(flyway.info().applied()).hasSize(15);
+		assertThat(successfulV16).isEqualTo(1);
+		assertThat(flyway.info().applied()).hasSize(16);
 		assertThat(postgisVersion).isNotBlank();
 	}
 
@@ -485,6 +491,39 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 			"fk_snapshot_emergency_migration_history_target_release",
 			"ck_snapshot_emergency_migration_history_job_count",
 			"ck_snapshot_emergency_migration_history_different_release");
+	}
+
+	@Test
+	@DisplayName("V16은 manual_review_case 확장 컬럼과 manual_review_priority_evaluation 테이블·제약을 생성한다")
+	void v16AddsManualReviewPriorityAndAuthorityCatalog() {
+		assertThat(columnExists("manual_review_case", "filter_job_id")).isTrue();
+		assertThat(columnExists("manual_review_case", "band")).isTrue();
+		assertThat(columnExists("manual_review_case", "status")).isTrue();
+
+		Set<String> manualReviewCaseConstraintNames = new HashSet<>(jdbcTemplate.queryForList("""
+			SELECT conname
+			FROM pg_constraint
+			WHERE conrelid = 'manual_review_case'::regclass
+			""", String.class));
+		assertThat(manualReviewCaseConstraintNames).contains(
+			"fk_manual_review_case_job", "ck_manual_review_case_status", "ck_manual_review_case_band",
+			"ck_manual_review_case_report_signal_count", "ck_manual_review_case_resolved_verdict",
+			"ck_manual_review_case_resolved_fields");
+
+		Integer evaluationTableExists = jdbcTemplate.queryForObject("""
+			SELECT count(*)
+			FROM information_schema.tables
+			WHERE table_schema = 'public' AND table_name = 'manual_review_priority_evaluation'
+			""", Integer.class);
+		assertThat(evaluationTableExists).isEqualTo(1);
+
+		Set<String> evaluationConstraintNames = new HashSet<>(jdbcTemplate.queryForList("""
+			SELECT conname
+			FROM pg_constraint
+			WHERE conrelid = 'manual_review_priority_evaluation'::regclass
+			""", String.class));
+		assertThat(evaluationConstraintNames).contains(
+			"fk_manual_review_priority_evaluation_case", "ck_manual_review_priority_evaluation_band");
 	}
 
 	@Test

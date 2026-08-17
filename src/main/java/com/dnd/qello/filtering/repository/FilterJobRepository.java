@@ -28,4 +28,14 @@ public interface FilterJobRepository {
 	 * 이관 대상이 아니다.
 	 */
 	List<FilterJob> findAutomatedByFilterReleaseId(long filterReleaseId);
+
+	/**
+	 * 행 잠금(`SELECT ... FOR UPDATE`)을 건 조회(#110). 자동 결과 적용
+	 * (AnswerModerationExecutionWorker.applyVerdict)과 수동 결정 적용
+	 * (ManualReviewDecisionService)이 같은 job을 동시에 읽고 쓸 수 있어, 둘 다 이
+	 * 메서드로 조회해야 한쪽이 커밋할 때까지 다른 쪽이 블록되어 오래된 스냅샷으로
+	 * 결정하지 않는다 — 단순 재조회만으로는 두 트랜잭션이 같은 시점의 낡은 값을
+	 * 읽고 서로를 덮어쓸 수 있다(lost update).
+	 */
+	Optional<FilterJob> findByIdForUpdate(long id);
 }

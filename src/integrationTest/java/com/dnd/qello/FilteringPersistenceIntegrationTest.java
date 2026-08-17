@@ -25,7 +25,10 @@ import com.dnd.qello.filtering.domain.FilterRelease;
 import com.dnd.qello.filtering.domain.FilterTarget;
 import com.dnd.qello.filtering.domain.FilterTargetType;
 import com.dnd.qello.filtering.domain.FilterVerdict;
+import com.dnd.qello.filtering.domain.ManualReviewBand;
 import com.dnd.qello.filtering.domain.ManualReviewCase;
+import com.dnd.qello.filtering.domain.ManualReviewPriorityDecision;
+import com.dnd.qello.filtering.domain.ManualReviewPriorityReasonCode;
 import com.dnd.qello.filtering.repository.AppealCaseRepository;
 import com.dnd.qello.filtering.repository.FilterDecisionRepository;
 import com.dnd.qello.filtering.repository.FilterJobRepository;
@@ -58,6 +61,7 @@ class FilteringPersistenceIntegrationTest extends PostgisContainerIntegrationTes
 	@BeforeEach
 	void resetSchemaFixtures() {
 		jdbc.update("DELETE FROM appeal_case");
+		jdbc.update("DELETE FROM manual_review_priority_evaluation");
 		jdbc.update("DELETE FROM manual_review_case");
 		jdbc.update("DELETE FROM filter_decision");
 		jdbc.update("DELETE FROM filter_job_status_history");
@@ -132,9 +136,15 @@ class FilteringPersistenceIntegrationTest extends PostgisContainerIntegrationTes
 	@Test
 	@DisplayName("동일 대상·release의 ManualReviewCase는 하나만 만들 수 있고 기존 case를 조회로 찾을 수 있다")
 	void enforcesManualReviewCaseUniquenessAndIdempotentLookup() {
-		ManualReviewCase opened = manualReviewCaseRepository.save(ManualReviewCase.open(TARGET, releaseId, NOW));
+		FilterJob job = filterJobRepository.save(
+			FilterJob.create(TARGET, releaseId, "manual-review-case-key", DEADLINE, NOW));
+		ManualReviewPriorityDecision decision =
+			new ManualReviewPriorityDecision(ManualReviewBand.STANDARD, ManualReviewPriorityReasonCode.DEFAULT);
+		ManualReviewCase opened = manualReviewCaseRepository.save(
+			ManualReviewCase.open(TARGET, releaseId, job.id(), decision, 0, "v1", NOW));
 
-		assertThatThrownBy(() -> manualReviewCaseRepository.save(ManualReviewCase.open(TARGET, releaseId, NOW)))
+		assertThatThrownBy(() -> manualReviewCaseRepository.save(
+			ManualReviewCase.open(TARGET, releaseId, job.id(), decision, 0, "v1", NOW)))
 			.isInstanceOf(DataIntegrityViolationException.class);
 
 		assertThat(manualReviewCaseRepository.findByTargetAndFilterReleaseId(TARGET, releaseId))

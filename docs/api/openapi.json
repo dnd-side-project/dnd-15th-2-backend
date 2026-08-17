@@ -249,6 +249,28 @@
         },
         "type" : "object"
       },
+      "ApiResponseListManualReviewCaseResponse" : {
+        "properties" : {
+          "data" : {
+            "items" : {
+              "$ref" : "#/components/schemas/ManualReviewCaseResponse"
+            },
+            "type" : "array"
+          },
+          "status" : {
+            "enum" : [
+              "success",
+              "error"
+            ],
+            "type" : "string"
+          },
+          "timestamp" : {
+            "format" : "date-time",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
       "ApiResponseListQuestionProposalResponse" : {
         "properties" : {
           "data" : {
@@ -256,6 +278,25 @@
               "$ref" : "#/components/schemas/QuestionProposalResponse"
             },
             "type" : "array"
+          },
+          "status" : {
+            "enum" : [
+              "success",
+              "error"
+            ],
+            "type" : "string"
+          },
+          "timestamp" : {
+            "format" : "date-time",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "ApiResponseManualReviewCaseResponse" : {
+        "properties" : {
+          "data" : {
+            "$ref" : "#/components/schemas/ManualReviewCaseResponse"
           },
           "status" : {
             "enum" : [
@@ -838,6 +879,86 @@
         },
         "type" : "object"
       },
+      "ManualReviewCaseResponse" : {
+        "properties" : {
+          "band" : {
+            "enum" : [
+              "HIGH",
+              "STANDARD"
+            ],
+            "type" : "string"
+          },
+          "createdAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "filterJobId" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "filterReleaseId" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "id" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "priorityPolicyVersion" : {
+            "type" : "string"
+          },
+          "priorityReasonCode" : {
+            "enum" : [
+              "REPORT_SIGNAL",
+              "DEFAULT",
+              "CALCULATION_FAILED"
+            ],
+            "type" : "string"
+          },
+          "resolvedAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "resolvedByOperatorUserId" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "resolvedVerdict" : {
+            "enum" : [
+              "ALLOW",
+              "BLOCK"
+            ],
+            "type" : "string"
+          },
+          "status" : {
+            "enum" : [
+              "OPEN",
+              "RESOLVED"
+            ],
+            "type" : "string"
+          },
+          "validatedReportSignalCount" : {
+            "format" : "int32",
+            "type" : "integer"
+          }
+        },
+        "type" : "object"
+      },
+      "ManualReviewDecisionRequest" : {
+        "properties" : {
+          "verdict" : {
+            "enum" : [
+              "ALLOW",
+              "BLOCK"
+            ],
+            "type" : "string"
+          }
+        },
+        "required" : [
+          "verdict"
+        ],
+        "type" : "object"
+      },
       "MediaConfirmResponse" : {
         "properties" : {
           "mediaId" : {
@@ -1234,6 +1355,165 @@
         "summary" : "CSRF 토큰 발급",
         "tags" : [
           "백오피스 인증"
+        ]
+      }
+    },
+    "/admin/filtering/manual-review-cases" : {
+      "get" : {
+        "description" : "OPEN case를 effectiveBand 내림차순 + band 내 created_at 오름차순(FIFO)으로 반환한다.\nagingThresholdSeconds는 저장된 band가 STANDARD인 case를 얼마나 오래 대기하면 HIGH로\n취급할지를 호출자가 명시한다 — 실제 운영 aging 시간이 미결정이라 서버가 값을 고정하지\n않는다.",
+        "operationId" : "findQueue",
+        "parameters" : [
+          {
+            "description" : "aging 임계값(초)",
+            "in" : "query",
+            "name" : "agingThresholdSeconds",
+            "required" : true,
+            "schema" : {
+              "format" : "int64",
+              "type" : "integer"
+            }
+          },
+          {
+            "description" : "최대 반환 개수",
+            "in" : "query",
+            "name" : "limit",
+            "required" : false,
+            "schema" : {
+              "default" : 50,
+              "format" : "int32",
+              "type" : "integer"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiResponseListManualReviewCaseResponse"
+                }
+              }
+            },
+            "description" : "OK"
+          },
+          "400" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "요청 값이 올바르지 않습니다. 오류 코드는 docs/error-codes.md를 따른다."
+          },
+          "500" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "서버 내부 오류가 발생했습니다."
+          }
+        },
+        "security" : [
+          {
+            "operatorSession" : [ ]
+          }
+        ],
+        "summary" : "검토자 큐 조회",
+        "tags" : [
+          "필터링 수동 검토 case"
+        ]
+      }
+    },
+    "/admin/filtering/manual-review-cases/{caseId}/decide" : {
+      "post" : {
+        "description" : "case를 ALLOW 또는 BLOCK으로 종결한다. 자동 결과가 이미 도착해 job이 RESOLVED라면\njob은 건드리지 않고 그 기존 판정으로 case만 종료한다(INV-MAN-003).",
+        "operationId" : "decide",
+        "parameters" : [
+          {
+            "description" : "manual review case id",
+            "in" : "path",
+            "name" : "caseId",
+            "required" : true,
+            "schema" : {
+              "format" : "int64",
+              "type" : "integer"
+            }
+          }
+        ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/ManualReviewDecisionRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiResponseManualReviewCaseResponse"
+                }
+              }
+            },
+            "description" : "case가 종료됐습니다."
+          },
+          "400" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "요청 값이 올바르지 않습니다. 오류 코드는 docs/error-codes.md를 따른다."
+          },
+          "404" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "case를 찾을 수 없습니다. (FLT-DOM-010)"
+          },
+          "409" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "이미 종료된 case입니다. (FLT-DOM-009)"
+          },
+          "500" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "서버 내부 오류가 발생했습니다."
+          }
+        },
+        "security" : [
+          {
+            "operatorSession" : [ ]
+          }
+        ],
+        "summary" : "검토자 결정 적용",
+        "tags" : [
+          "필터링 수동 검토 case"
         ]
       }
     },
@@ -3316,6 +3596,10 @@
     {
       "description" : "앱 기기 등록과 액세스 토큰 재발급",
       "name" : "앱 기기 인증"
+    },
+    {
+      "description" : "검토자 큐 조회와 결정. band·aging·FIFO 우선순위(#110)",
+      "name" : "필터링 수동 검토 case"
     },
     {
       "description" : "방향 preview와 매칭에 사용할 최신 위치 갱신",

@@ -20,7 +20,8 @@ import com.dnd.qello.filtering.error.FilteringException;
  * Created at: 2026-08-11T00:00:00+09:00
  * Source scenario: TEST-PLAN-GH-103-FILTERING-FOUNDATION-UNIT-001 through UNIT-010,
  * TEST-PLAN-GH-108-ANSWER-MODERATION-RETRY-UNIT-001,
- * TEST-PLAN-GH-109-SNAPSHOT-HEALTH-MIGRATION-UNIT-018, UNIT-019, UNIT-020
+ * TEST-PLAN-GH-109-SNAPSHOT-HEALTH-MIGRATION-UNIT-018, UNIT-019, UNIT-020,
+ * TEST-PLAN-GH-110-MANUAL-REVIEW-PRIORITY-UNIT-007, UNIT-008
  */
 class FilterJobTest {
 
@@ -128,7 +129,7 @@ class FilterJobTest {
 	}
 
 	@Test
-	@DisplayName("수동 결정은 현재 job 상태와 무관하게 authoritative하게 적용되지만 중복 적용은 거절된다")
+	@DisplayName("수동 결정은 attemptGeneration과 무관하게 authoritative하게 적용되지만 중복 적용은 거절된다")
 	void manualDecisionIsAuthoritativeButNotDuplicated() {
 		FilterJob resolved = FilterJob.create(TARGET, 10L, "idem-key", DEADLINE, NOW)
 			.exhaustRetries(NOW.plusSeconds(1))
@@ -240,5 +241,38 @@ class FilterJobTest {
 		assertThatThrownBy(() -> migrated.applyAutomatedDecision(1, FilterVerdict.ALLOW, NOW.plusSeconds(2)))
 			.isInstanceOf(FilteringException.class)
 			.hasFieldOrPropertyWithValue("errorCode", FilteringErrorCode.STALE_ATTEMPT_GENERATION);
+	}
+
+	@Test
+	@DisplayName("이미 자동 결과로 RESOLVED된 job에는 수동 결정이 거절된다")
+	void rejectsManualDecisionAfterAutomatedResolution() {
+		FilterJob resolvedByAutomation = FilterJob.create(TARGET, 10L, "idem-key", DEADLINE, NOW)
+			.applyAutomatedDecision(1, FilterVerdict.ALLOW, NOW.plusSeconds(1));
+
+		assertThatThrownBy(() -> resolvedByAutomation.applyManualDecision(FilterVerdict.BLOCK, NOW.plusSeconds(2)))
+			.isInstanceOf(FilteringException.class)
+			.hasFieldOrPropertyWithValue("errorCode", FilteringErrorCode.INVALID_JOB_STATUS);
+		assertThat(resolvedByAutomation.resolvedVerdict()).isEqualTo(FilterVerdict.ALLOW);
+		assertThat(resolvedByAutomation.manuallyResolved()).isFalse();
+	}
+
+	@Test
+	@DisplayName("AUTOMATED·RETRY_EXHAUSTED·MANUAL_REVIEW_REQUIRED 상태의 job에는 수동 결정이 허용된다")
+	void allowsManualDecisionFromNonResolvedStatuses() {
+		FilterJob automated = FilterJob.create(TARGET, 10L, "idem-key", DEADLINE, NOW);
+		FilterJob fromAutomated = automated.applyManualDecision(FilterVerdict.BLOCK, NOW.plusSeconds(1));
+		assertThat(fromAutomated.status()).isEqualTo(FilterJobStatus.RESOLVED);
+
+		FilterJob exhausted = FilterJob.create(TARGET, 10L, "idem-key-2", DEADLINE, NOW)
+			.exhaustRetries(NOW.plusSeconds(1));
+		FilterJob fromExhausted = exhausted.applyManualDecision(FilterVerdict.ALLOW, NOW.plusSeconds(2));
+		assertThat(fromExhausted.status()).isEqualTo(FilterJobStatus.RESOLVED);
+
+		FilterJob manualReviewRequired = FilterJob.create(TARGET, 10L, "idem-key-3", DEADLINE, NOW)
+			.exhaustRetries(NOW.plusSeconds(1))
+			.openManualReview(NOW.plusSeconds(2));
+		FilterJob fromManualReviewRequired =
+			manualReviewRequired.applyManualDecision(FilterVerdict.BLOCK, NOW.plusSeconds(3));
+		assertThat(fromManualReviewRequired.status()).isEqualTo(FilterJobStatus.RESOLVED);
 	}
 }

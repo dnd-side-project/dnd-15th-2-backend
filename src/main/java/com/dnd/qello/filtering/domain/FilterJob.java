@@ -133,10 +133,18 @@ public record FilterJob(Long id, FilterTarget target, long filterReleaseId, Filt
 
 	// reviewer의 수동 결정. 항상 authoritative하며 attemptGeneration과 무관하게 적용된다.
 	// 이미 수동으로 종결된 job에는 적용할 수 없다(재심은 이 시스템의 appeal 흐름이 다룬다).
+	//
+	// RESOLVED 상태(자동 결과가 먼저 도착해 이미 종결)에도 거절한다(#110, INV-MAN-003).
+	// manuallyResolved만으로는 이 경우를 막지 못한다 — 자동 종결은 이 플래그를 세우지
+	// 않으므로, status 자체를 함께 검사해야 자동 결과가 수동 결정으로 덮어써지지 않는다.
 	public FilterJob applyManualDecision(FilterVerdict verdict, Instant now) {
 		requireVerdict(verdict);
 		if (manuallyResolved) {
 			throw new FilteringException(FilteringErrorCode.ALREADY_MANUALLY_RESOLVED, "status");
+		}
+		if (status == FilterJobStatus.RESOLVED) {
+			throw new FilteringException(FilteringErrorCode.INVALID_JOB_STATUS, "status",
+				"이미 자동 결과로 종결된 job에는 수동 결정을 적용할 수 없습니다");
 		}
 		return transition(FilterJobStatus.RESOLVED, attemptGeneration, logicalAttemptCount, true, verdict, now);
 	}

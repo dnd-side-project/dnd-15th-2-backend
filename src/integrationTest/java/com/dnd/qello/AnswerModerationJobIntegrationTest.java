@@ -34,6 +34,7 @@ import com.dnd.qello.filtering.domain.FilterRelease;
 import com.dnd.qello.filtering.domain.FilterTarget;
 import com.dnd.qello.filtering.domain.FilterTargetType;
 import com.dnd.qello.filtering.domain.FilterVerdict;
+import com.dnd.qello.filtering.domain.ManualReviewPriorityPolicy;
 import com.dnd.qello.filtering.domain.RetryGateConfig;
 import com.dnd.qello.filtering.moderation.AnswerModerationDeadlineWorker;
 import com.dnd.qello.filtering.moderation.AnswerModerationExecutionWorker;
@@ -49,6 +50,7 @@ import com.dnd.qello.filtering.repository.FilterJobStatusHistoryRepository;
 import com.dnd.qello.filtering.repository.FilterReleaseRepository;
 import com.dnd.qello.filtering.repository.FilterReleaseRetryGateRepository;
 import com.dnd.qello.filtering.repository.ManualReviewCaseRepository;
+import com.dnd.qello.filtering.repository.ManualReviewPriorityEvaluationRepository;
 import com.dnd.qello.filtering.service.FilterReleaseRegistryService;
 import com.dnd.qello.notification.domain.OutboxBackoffStrategy;
 import com.dnd.qello.notification.repository.OutboxEventRepository;
@@ -64,6 +66,8 @@ class AnswerModerationJobIntegrationTest extends PostgisContainerIntegrationTest
 	private static final RetryGateConfig GATE_CONFIG = new RetryGateConfig(3, 2, 2, 2, 6);
 	private static final OutboxBackoffStrategy FAST_BACKOFF = attempt -> Duration.ofSeconds(1);
 	private static final OutboxBackoffStrategy SLOW_BACKOFF = attempt -> Duration.ofSeconds(60);
+	private static final ManualReviewPriorityPolicy MANUAL_REVIEW_PRIORITY_POLICY =
+		new ManualReviewPriorityPolicy(3, Duration.ofHours(24), "test-v1");
 
 	@Autowired
 	private JdbcTemplate jdbc;
@@ -82,6 +86,8 @@ class AnswerModerationJobIntegrationTest extends PostgisContainerIntegrationTest
 	@Autowired
 	private ManualReviewCaseRepository manualReviewCaseRepository;
 	@Autowired
+	private ManualReviewPriorityEvaluationRepository manualReviewPriorityEvaluationRepository;
+	@Autowired
 	private FilterReleaseRegistryService releaseRegistryService;
 	@Autowired
 	private AnswerModerationDeadlineWorker deadlineWorker;
@@ -99,6 +105,7 @@ class AnswerModerationJobIntegrationTest extends PostgisContainerIntegrationTest
 		jdbc.update("DELETE FROM outbox_event WHERE aggregate_type = 'FILTER_JOB'");
 		jdbc.update("DELETE FROM filter_decision");
 		jdbc.update("DELETE FROM filter_job_status_history");
+		jdbc.update("DELETE FROM manual_review_priority_evaluation");
 		jdbc.update("DELETE FROM manual_review_case");
 		jdbc.update("DELETE FROM filter_release_retry_gate");
 		jdbc.update("DELETE FROM filter_job");
@@ -273,7 +280,8 @@ class AnswerModerationJobIntegrationTest extends PostgisContainerIntegrationTest
 			new AnswerModerationRetryPolicy(FAST_BACKOFF, SLOW_BACKOFF, 100, Duration.ofHours(1));
 		return new AnswerModerationExecutionWorker(pipeline, filterJobRepository, filterReleaseRepository,
 			historyRepository, outboxEventRepository, retryPolicy, filterReleaseRetryGateRepository, GATE_CONFIG,
-			manualReviewCaseRepository, Duration.ofSeconds(5), objectMapper, pipelineExecutor, Duration.ofSeconds(5),
+			manualReviewCaseRepository, manualReviewPriorityEvaluationRepository, MANUAL_REVIEW_PRIORITY_POLICY,
+			Duration.ofSeconds(5), objectMapper, pipelineExecutor, Duration.ofSeconds(5),
 			transactionManager, Clock.fixed(NOW, ZoneOffset.UTC));
 	}
 
