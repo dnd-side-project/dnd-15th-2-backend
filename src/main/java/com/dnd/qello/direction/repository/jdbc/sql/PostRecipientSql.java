@@ -86,8 +86,7 @@ public final class PostRecipientSql {
 	 *
 	 * (dp.expires_at, pr.id) 순으로 최대 :limit건만 반환한다 — 이 정렬이 반복 실행에서
 	 * 같은 행이 먼저 뽑히는 순서를 보장해, 대량 만료 상황에서도 특정 행이 영구히 뒤로
-	 * 밀리지 않게 한다. 처리량 제한이 필요 없는 호출자는 JdbcPostRecipientRepository가
-	 * limit에 매우 큰 값을 넘겨 이 쿼리를 그대로 재사용한다.
+	 * 밀리지 않게 한다.
 	 */
 	public static final String FIND_EXPIRABLE = """
 		SELECT pr.* FROM post_recipient pr
@@ -103,16 +102,39 @@ public final class PostRecipientSql {
 		""";
 
 	/**
+	 * 처리량 제한이 없는 호출자용. FIND_EXPIRABLE과 조건은 같지만 ORDER BY가 없다 —
+	 * limit이 없는 호출은 정렬 결과를 쓰지 않으므로, DB가 전체 후보를 정렬하는 비용을
+	 * 지불하지 않게 별도 SQL로 둔다.
+	 */
+	public static final String FIND_EXPIRABLE_UNLIMITED = """
+		SELECT pr.* FROM post_recipient pr
+		JOIN direction_post dp ON dp.id = pr.post_id
+		WHERE pr.status IN ('AVAILABLE', 'DISCOVERED', 'OPENED')
+		  AND dp.expires_at <= :at
+		  AND NOT EXISTS (
+		      SELECT 1 FROM answer a
+		      WHERE a.post_recipient_id = pr.id AND a.status IN ('SUBMITTED', 'SAFETY_CHECKING')
+		  )
+		""";
+
+	/**
 	 * 되돌리기 유예가 지난 SKIP_PENDING만 확정 대상이다. deadline = 기준 시각 - 유예 시간.
-	 * (skip_requested_at, id) 순으로 최대 :limit건만 반환한다. 처리량 제한이 필요 없는
-	 * 호출자는 JdbcPostRecipientRepository가 limit에 매우 큰 값을 넘겨 이 쿼리를 그대로
-	 * 재사용한다.
+	 * (skip_requested_at, id) 순으로 최대 :limit건만 반환한다.
 	 */
 	public static final String FIND_CONFIRMABLE_SKIPS = """
 		SELECT * FROM post_recipient
 		WHERE status = 'SKIP_PENDING' AND skip_requested_at <= :deadline
 		ORDER BY skip_requested_at, id
 		LIMIT :limit
+		""";
+
+	/**
+	 * 처리량 제한이 없는 호출자용. FIND_CONFIRMABLE_SKIPS와 조건은 같지만 ORDER BY가
+	 * 없다 — 정렬 결과를 쓰지 않는 호출이 정렬 비용을 지불하지 않게 별도 SQL로 둔다.
+	 */
+	public static final String FIND_CONFIRMABLE_SKIPS_UNLIMITED = """
+		SELECT * FROM post_recipient
+		WHERE status = 'SKIP_PENDING' AND skip_requested_at <= :deadline
 		""";
 
 	/**

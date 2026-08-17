@@ -106,13 +106,10 @@ public class JdbcPostRecipientRepository implements PostRecipientRepository {
 			rs -> { rs.next(); return map(rs); });
 	}
 
-	// 정렬·LIMIT을 포함한 단일 SQL 템플릿을 무제한 조회와 공유한다 — Integer.MAX_VALUE는
-	// 사실상 무제한이며, 두 갈래 SQL을 유지하는 대신 이 한 상수만 두 메서드가 같이 쓴다.
-	private static final int UNLIMITED = Integer.MAX_VALUE;
-
 	@Override
 	public List<PostRecipient> findExpirableAsOf(Instant at) {
-		return findExpirableAsOf(at, UNLIMITED);
+		return jdbc.query(PostRecipientSql.FIND_EXPIRABLE_UNLIMITED,
+			new MapSqlParameterSource().addValue("at", timestamp(at)), (rs, rowNum) -> map(rs));
 	}
 
 	@Override
@@ -124,7 +121,8 @@ public class JdbcPostRecipientRepository implements PostRecipientRepository {
 
 	@Override
 	public List<PostRecipient> findConfirmableSkips(Instant deadline) {
-		return findConfirmableSkips(deadline, UNLIMITED);
+		return jdbc.query(PostRecipientSql.FIND_CONFIRMABLE_SKIPS_UNLIMITED,
+			new MapSqlParameterSource().addValue("deadline", timestamp(deadline)), (rs, rowNum) -> map(rs));
 	}
 
 	@Override
