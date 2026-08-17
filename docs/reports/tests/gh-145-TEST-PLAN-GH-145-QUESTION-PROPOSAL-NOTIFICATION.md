@@ -33,8 +33,8 @@
 
 | Command / suite | Result | Tests | Duration | Evidence |
 | --- | --- | --- | --- | --- |
-| Unit (`./harness test-run` 내 `./gradlew test`) | PASS | 442 (실패 0, 오류 0, skip 0) | 8s | `build/test-results/test/TEST-*.xml` |
-| Integration (`./harness test-run` 내 `./gradlew integrationTest`) | PASS | 358 (실패 0, 오류 0, skip 0) | 4m 1s | `build/test-results/integrationTest/TEST-*.xml` |
+| Unit (`./gradlew test`) | PASS | 465 (실패 0, 오류 0, skip 0) | — | `build/test-results/test/TEST-*.xml` |
+| Integration (`./gradlew integrationTest`) | PASS | 368 (실패 0, 오류 0, skip 0) | — | `build/test-results/integrationTest/TEST-*.xml` |
 | `./harness check` | PASS | — | — | Secret preflight 806 파일, JUnit policy 124 파일, convention·workflow·label·husky 검사 통과 |
 | `npm run hooks:validate` | PASS | — | — | `Husky validation passed.` |
 | `git diff --check` | PASS | — | — | 공백 오류 없음(exit 0) |
@@ -44,7 +44,8 @@
 `./harness check`와 `git diff --check`를 포함하지만 증거를 남기기 위해 개별로도
 실행했다.
 
-이 계획이 새로 추가한 테스트는 단위 4건, 통합 9건이다.
+이 계획이 새로 추가한 테스트는 단위 4건, 통합 10건이다. 위 수치는 `#109`(PR #147)
+병합분을 반영해 `main`에 rebase한 뒤의 전체 스위트 기준이다.
 
 ## 4. Scenario results
 
@@ -58,6 +59,7 @@
 | INT-002 | PASS | `QuestionProposalReviewConcurrencyIntegrationTest#concurrentApprovalCommitsOnlyOnce` | 성공 1건, `approved_question` 1행. 진 쪽 예외 타입 단정 포함 |
 | INT-003 | PASS | `QuestionProposalApiIntegrationTest#reviewKeepsSingleOutboxEventWhenDedupKeyAlreadyTaken` | 중복 억제만 검증. 조기 반환 경로라 롤백은 다루지 않음 |
 | INT-009 | PASS | `QuestionProposalApiIntegrationTest#outboxFailureRollsBackReviewAndProposal` | trigger로 outbox 삽입을 실패시켜 판정·이력 롤백을 확인 |
+| INT-010 | PASS | `QuestionProposalReviewConcurrencyIntegrationTest#lateReviewBlocksOnRowLockAndIsRejectedAfterRelease` | 잠금 보유 상태에서 뒤늦은 판정이 대기함을 확인. 잠금 제거 시 실패하는 회귀 가드 |
 | INT-004 | PASS | `QuestionProposalApiIntegrationTest#findMineDoesNotLeakOtherProposals` | 타 계정 id·문구 미노출 |
 | INT-005 | PASS | `QuestionProposalReviewConcurrencyIntegrationTest#fanOutWorkerDoesNotClaimQuestionProposalEvent` | `claimed()==0`, status `PENDING`, lease 없음 |
 | INT-006 | PASS | `QuestionProposalApiIntegrationTest#proposeLeavesNoOrphanDraftWhenSubmitFails` | 고아 DRAFT 0행 |
@@ -96,9 +98,25 @@ dedup 제약이 중복을 막아준다고 보았으나, 그 방어는 뒤늦은 
 조치: 판정 경로(`submit`/`startReview`/`reject`/`approve`)가 제안 행을
 `PESSIMISTIC_WRITE`로 잠그고 읽도록 바꿨다(`findByIdForUpdate`). 뒤늦은
 transaction은 잠금 대기 후 갱신된 상태를 읽어 `INVALID_PROPOSAL_STATUS`로
-거절된다. INT-001/002에 "진 쪽의 예외가 도메인 오류인지" 단정을 추가해 잠금이
-실제로 직렬화했음을 검증한다 — 수정 전이라면 진 쪽이 성공하거나 DB 제약 위반으로
-실패하므로 이 단정이 회귀 가드가 된다.
+거절된다.
+
+### 회귀 가드 검증 (INT-010)
+
+INT-001/002는 두 스레드의 출발만 맞추므로, 실행이 우연히 직렬화되면 잠금이 없어도
+통과할 수 있다. 코드 리뷰가 이 한계를 지적해 잠금 자체를 결정적으로 검증하는
+INT-010을 추가했다. 선행 transaction이 `reject()`로 행을 잠근 뒤 commit을 미루고,
+그 사이 뒤늦은 판정이 진행하지 못함을 확인한 다음 잠금을 풀어 최종 결과를 단정한다.
+
+가드가 실제로 작동하는지 확인하기 위해 `findByIdForUpdate`를 일반 조회로 되돌려
+실행했고, 예상대로 실패했다. 이때 드러난 사실이 결함의 성격을 정확히 보여준다.
+
+| 경로 | 잠금 제거 시 뒤늦은 판정의 결과 |
+| --- | --- |
+| 반려 | **예외 없이 성공한다.** INT-010이 `Expecting Optional to contain a value but it was empty`로 실패했다. 판정 이력이 2행 남는 경로가 이것이다 |
+| 승인 | `uq_approved_question_source_proposal` 위반으로 실패한다. 이중 커밋은 막히지만 오류가 도메인 오류가 아니다 |
+
+즉 승인 경로에는 우연한 DB 제약 보호가 있었고 **반려 경로에는 그마저 없었다.**
+검증 후 잠금을 복원했으며 커밋된 구현과 diff가 없음을 확인했다.
 
 ### 그 밖에 구현 중 발견해 수정한 사항
 
@@ -152,12 +170,11 @@ transaction은 잠금 대기 후 갱신된 상태를 읽어 `INVALID_PROPOSAL_ST
   `INVALID_PROPOSAL_STATUS`로 거절된다. INT-001/002가 성공 건수뿐 아니라 진 쪽의
   예외 타입까지 단정해 이 경로를 고정한다.
 - 잠금 도입 전에는 이 수렴이 보장되지 않았다. 상세는 5절을 참고한다.
-- **테스트가 특정 인터리빙을 강제하지 못한다.** `CountDownLatch`는 두 스레드의
-  출발만 맞추고, 실제로 두 트랜잭션이 겹쳤는지는 관측하지 않는다. 이 한계가 초기
-  구현에서 결함을 놓치게 한 원인이다 — 로컬은 항상 한쪽 순서만 재현했고 CI가
-  반대 순서를 만들어서야 드러났다. 지금은 진 쪽의 예외 타입까지 단정해 "어느
-  방어선이 작동했는지"를 구분하지만, 인터리빙 자체를 강제하지 못한다는 한계는
-  남는다. 잔여 위험으로 7절에 기록한다.
+- INT-001/002는 두 스레드의 출발만 맞추므로 실행이 우연히 직렬화되면 잠금이
+  없어도 통과할 수 있다. 이 한계가 초기 구현에서 결함을 놓치게 한 원인이다 —
+  로컬은 항상 한쪽 순서만 재현했고 CI가 반대 순서를 만들어서야 드러났다.
+  INT-010이 선행 트랜잭션의 잠금을 명시적으로 붙들어 인터리빙을 **강제**하므로
+  이제 잠금 제거가 곧 테스트 실패로 이어진다(5절 검증표).
 - dedupKey가 `proposalId`에 고정돼 재시도는 멱등이다. 제안은 `UNDER_REVIEW`에서
   한 번만 전이하므로(재검토 경로 없음) 정상 흐름에서 키 충돌이 발생하지 않는다.
 
@@ -197,12 +214,15 @@ transaction은 잠금 대기 후 갱신된 상태를 읽어 `INVALID_PROPOSAL_ST
   때의 순서는 확인하지 않았다. INT-004는 시각을 60초씩 벌려 두었으므로 동률
   상황을 만들지 않는다. 실제로는 같은 초에 두 건을 제출하면 목록 순서가 흔들릴 수
   있다. 영향은 목록 표시 순서에 한정된다(P2).
-- **인터리빙 비결정성**: 위 6절 참고. 동시성 테스트가 통과했다고 해서 TOCTOU
-  경로가 실제로 실행됐다는 뜻은 아니다.
+- **인터리빙 비결정성(부분 해소)**: INT-001/002는 여전히 스레드 스케줄링에
+  의존하므로 단독으로는 잠금 회귀를 잡지 못한다. INT-010이 잠금을 명시적으로
+  붙들어 이 구멍을 메웠고, 잠금 제거 시 실제로 실패함을 확인했다(5절). 다만
+  INT-010이 검증하는 것은 판정 경로 하나이며, 다른 상태 전이 경로가 추가되면
+  같은 방식의 가드를 별도로 붙여야 한다.
 - **end-to-end 알림 미검증**: producer까지만 다뤘다. 사용자가 실제로 알림을 받는
   경로는 fan-out worker 배선 이후에 검증할 수 있다.
-- **기존 테스트 회귀 없음**: 단위 442건, 통합 357건 전량 통과. `#144`에서 추가한
-  테스트도 그대로 통과한다.
+- **기존 테스트 회귀 없음**: 단위 465건, 통합 368건 전량 통과. `#144`에서 추가한
+  테스트와 `#109`(PR #147) 병합분도 그대로 통과한다.
 
 ## 8. Artifacts
 

@@ -115,6 +115,7 @@ exception"), 그때 작성한 테스트는 잠정 식별자
 | `...-NOTIFICATION-INT-003` | `QuestionReviewService`, outbox | 같은 dedupKey(`question-proposal-reviewed:{id}`) outbox 행을 미리 삽입 | `reject()` 호출 | 판정 자체는 성공하고 outbox 행은 1개로 유지된다. **중복 억제만 검증하며 롤백은 다루지 않는다** — `publishReviewed()`가 dedupKey 사전 조회에서 조기 반환하므로 이 경로에서는 저장 실패가 발생하지 않는다 | 테이블 DELETE |
 | `...-NOTIFICATION-INT-009` | `QuestionReviewService`, outbox, PostgreSQL | `UNDER_REVIEW` 제안 1건. `outbox_event`에 `QUESTION_PROPOSAL` 삽입을 거부하는 trigger를 설치(ERRCODE `23514`) | `reject()` 호출 | `DataIntegrityViolationException`이 발생하고, 제안은 `UNDER_REVIEW`로, 판정 이력은 0행으로, outbox는 0행으로 **모두 롤백**된다. `reject()`는 review·proposal을 DB에 쓴 뒤 발행하므로 이력이 비어 있다는 사실이 곧 롤백 증거다 | trigger·function DROP 후 테이블 DELETE |
 | `...-NOTIFICATION-INT-004` | `QuestionProposalApplicationService`, PostgreSQL | 서로 다른 계정 2명이 각각 제안 2건·1건 제출 | 계정 A로 `findMine()` | A의 2건만 반환. B의 제안 id·문구가 결과에 없다 | 테이블 DELETE |
+| `...-NOTIFICATION-INT-010` | `QuestionReviewService`, PostgreSQL 행 잠금 | 선행 transaction이 `reject()`로 제안 행을 잠근 뒤 commit을 보류 | 뒤늦은 `reject()` 호출 | 선행 transaction이 commit하기 전에는 진행하지 못한다. commit 후 갱신된 상태를 읽어 `INVALID_PROPOSAL_STATUS`로 거절되고 판정 이력은 1행으로 남는다. **잠금을 제거하면 실패하는 회귀 가드다** | 잠금 해제 후 테이블 DELETE |
 | `...-NOTIFICATION-INT-005` | outbox, `RecipientNotificationFanOutWorker` | 반려로 `QUESTION_PROPOSAL_REVIEWED` event 1건 생성 | 기존 fan-out worker의 `processBatch` 실행 | 이 event는 claim되지 않고 `PENDING`으로 남는다(worker는 `RECIPIENTS_CONFIRMED`만 claim) | 테이블 DELETE |
 | `...-NOTIFICATION-INT-006` | `QuestionReviewService`, PostgreSQL | 정상 계정 | `propose()`가 두 번째 저장에서 실패하도록 유도(문구 길이 초과 등 제약 위반) | `question_proposal`에 고아 DRAFT 행이 남지 않는다(행 수 0) | 테이블 DELETE |
 | `...-NOTIFICATION-INT-007` | `QuestionReviewService`, PostgreSQL, outbox | 이미 반려된 제안 | `reject()` 재호출 | `INVALID_PROPOSAL_STATUS`(409). review 행과 outbox 행이 각각 1개로 유지된다 | 테이블 DELETE |
@@ -191,7 +192,7 @@ surrogate id만 사용한다.
 | --- | --- | --- | --- | --- |
 | 1 | Executor 1 (unit) | `src/test/java/com/dnd/qello/question/service/QuestionReviewServiceTest.java` (기존 확장) | UNIT-001 ~ UNIT-004 | `./gradlew test --tests "com.dnd.qello.question.service.QuestionReviewServiceTest"` |
 | 2 | Executor 2 (integration, 단일 스레드) | `src/integrationTest/java/com/dnd/qello/QuestionProposalApiIntegrationTest.java` (기존 확장) | INT-003, INT-004, INT-006 ~ INT-009 | `./gradlew integrationTest --tests "com.dnd.qello.QuestionProposalApiIntegrationTest"` |
-| 3 | Executor 3 (integration, 동시성) | `src/integrationTest/java/com/dnd/qello/QuestionProposalReviewConcurrencyIntegrationTest.java` (**신규**) | INT-001, INT-002, INT-005 | `./gradlew integrationTest --tests "com.dnd.qello.QuestionProposalReviewConcurrencyIntegrationTest"` |
+| 3 | Executor 3 (integration, 동시성) | `src/integrationTest/java/com/dnd/qello/QuestionProposalReviewConcurrencyIntegrationTest.java` (**신규**) | INT-001, INT-002, INT-005, INT-010 | `./gradlew integrationTest --tests "com.dnd.qello.QuestionProposalReviewConcurrencyIntegrationTest"` |
 
 세 실행자의 소유 파일은 서로 겹치지 않는다. 순서 1 → 2 → 3은 실패 원인을 좁히기
 위한 권장 순서이며, 파일이 분리돼 있으므로 병렬 실행도 가능하다.
