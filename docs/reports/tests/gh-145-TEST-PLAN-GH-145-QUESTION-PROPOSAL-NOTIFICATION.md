@@ -15,8 +15,10 @@
 - Unverified scope: R9(`created_at` 동률 시 목록 정렬 결정성, P2)은 시나리오를
   만들지 않아 **미실행**이다. fan-out worker가 없으므로 알림이 사용자 기기까지
   도달하는 end-to-end 경로는 이 이슈 범위 밖이며 검증하지 않았다.
-- Release recommendation: 병합 가능. 다만 아래 6절의 "우연한 방어" 항목은
-  후속 이슈로 추적할 가치가 있다.
+- Release recommendation: 병합 가능. 단, 이 보고서는 **한 차례 정정됐다.** 초기
+  판정은 동시 판정 위험(R1·R2)을 "결함 아님"으로 기록했으나 CI가 반례를 잡았고,
+  판정 경로에 행 잠금을 도입해 수정했다. 상세는 5절에 있다. `question_proposal_review`의
+  DB 차원 중복 방지 부재는 후속 이슈로 남는다.
 
 ## 2. Environment
 
@@ -52,8 +54,8 @@
 | UNIT-002 | PASS | `QuestionReviewServiceTest#approvePropagatesOutboxFailure` | 동일 |
 | UNIT-003 | PASS | `QuestionReviewServiceTest#rejectOnAlreadyRejectedProposalIsBlocked` | 이력·이벤트 미추가 확인 |
 | UNIT-004 | PASS | `QuestionReviewServiceTest#approveOnAlreadyApprovedProposalIsBlocked` | 승인 질문·이벤트 미추가 확인 |
-| INT-001 | PASS | `QuestionProposalReviewConcurrencyIntegrationTest#concurrentRejectionCommitsOnlyOnce` | 성공 1건, review 1행, outbox 1행 |
-| INT-002 | PASS | `QuestionProposalReviewConcurrencyIntegrationTest#concurrentApprovalCommitsOnlyOnce` | 성공 1건, `approved_question` 1행 |
+| INT-001 | PASS (최초 CI 실패 → 결함 수정 후 통과) | `QuestionProposalReviewConcurrencyIntegrationTest#concurrentRejectionCommitsOnlyOnce` | 성공 1건, review 1행, outbox 1행. 진 쪽이 `INVALID_PROPOSAL_STATUS`인지까지 단정 |
+| INT-002 | PASS | `QuestionProposalReviewConcurrencyIntegrationTest#concurrentApprovalCommitsOnlyOnce` | 성공 1건, `approved_question` 1행. 진 쪽 예외 타입 단정 포함 |
 | INT-003 | PASS | `QuestionProposalApiIntegrationTest#reviewKeepsSingleOutboxEventWhenDedupKeyAlreadyTaken` | 중복 억제만 검증. 조기 반환 경로라 롤백은 다루지 않음 |
 | INT-009 | PASS | `QuestionProposalApiIntegrationTest#outboxFailureRollsBackReviewAndProposal` | trigger로 outbox 삽입을 실패시켜 판정·이력 롤백을 확인 |
 | INT-004 | PASS | `QuestionProposalApiIntegrationTest#findMineDoesNotLeakOtherProposals` | 타 계정 id·문구 미노출 |
@@ -65,7 +67,40 @@
 
 ## 5. Failures and diagnostics
 
-실패한 테스트가 없다. 구현 중 발견해 수정한 사항은 다음 하나다.
+### CI에서 드러난 동시성 결함 (수정 완료)
+
+로컬 실행은 전부 통과했으나 **GitHub Actions에서 INT-001이 실패했다**
+(`QuestionProposalReviewConcurrencyIntegrationTest:96`, 성공 건수 단정). 로컬은
+두 transaction이 일관되게 직렬화되어 결함을 드러내지 못했고, CI의 다른 타이밍이
+반대 순서를 만들었다. **테스트가 불안정한 것이 아니라 실제 결함을 찾은 것이다.**
+
+원인은 판정 경로의 read-then-write가 무방비라는 점이다. `QuestionProposal`에는
+version column이 없어 낙관적 잠금이 없고, 행 잠금도 걸지 않았다. 여기에
+`publishReviewed()`의 dedupKey 조기 반환이 겹치면 다음 순서가 성립한다.
+
+```
+T1 조회 → UNDER_REVIEW
+T2 조회 → UNDER_REVIEW          (둘 다 상태 기계를 통과)
+T1 review 저장 → proposal REJECTED → dedup 없음 → outbox 삽입 → COMMIT
+T2 review 저장 → proposal REJECTED (version 검사가 없어 통과)
+   → dedup 조회에서 T1이 커밋한 행 발견 → 조기 반환(삽입 생략) → COMMIT 성공
+```
+
+두 transaction이 모두 성공해 `question_proposal_review`에 판정 이력이 2행 남고,
+반려 사유가 나중 transaction 값으로 덮인다. 감사 이력 오염이다.
+
+**초기 보고서가 "R1·R2는 결함이 아니다"라고 기록했던 결론은 틀렸다.** outbox
+dedup 제약이 중복을 막아준다고 보았으나, 그 방어는 뒤늦은 transaction의 dedup
+조회가 먼저 커밋된 행을 **발견하는 순간 조기 반환으로 무력화**된다.
+
+조치: 판정 경로(`submit`/`startReview`/`reject`/`approve`)가 제안 행을
+`PESSIMISTIC_WRITE`로 잠그고 읽도록 바꿨다(`findByIdForUpdate`). 뒤늦은
+transaction은 잠금 대기 후 갱신된 상태를 읽어 `INVALID_PROPOSAL_STATUS`로
+거절된다. INT-001/002에 "진 쪽의 예외가 도메인 오류인지" 단정을 추가해 잠금이
+실제로 직렬화했음을 검증한다 — 수정 전이라면 진 쪽이 성공하거나 DB 제약 위반으로
+실패하므로 이 단정이 회귀 가드가 된다.
+
+### 그 밖에 구현 중 발견해 수정한 사항
 
 - 통합 테스트 최초 작성 시 outbox payload 단정을 `"decision":"APPROVED"`(공백 없음)로
   적었으나 실제 저장 값은 PostgreSQL JSONB 정규화를 거쳐 `"decision": "APPROVED"`
@@ -82,10 +117,11 @@
   같은 사용자 입력이 payload에 들어가면 따옴표·역슬래시가 JSON을 깨뜨린다. 같은
   저장소의 `AnswerModerationJobIntakeService`는 `ObjectMapper`로 직렬화한다 —
   사용자 입력을 넣기 전에 그 패턴으로 옮겨야 한다.
-- **경쟁에서 진 운영자가 받는 메시지가 상황과 어긋난다.** `uq_outbox_event_dedup`
-  위반은 `ConstraintExceptionMapper`가 `DUPLICATED_EVENT`(409, "이미 처리된
-  알림입니다.")로 매핑한다. 상태 코드는 적절하지만 문구는 "다른 운영자가 먼저
-  판정했다"는 실제 상황을 전달하지 못한다. 운영 UX 관점의 개선 여지다(P2).
+- 경쟁에서 진 운영자는 이제 `INVALID_PROPOSAL_STATUS`(409, "현재 제안 상태로는
+  요청을 처리할 수 없습니다.")를 받는다. 행 잠금 도입 전에는 `uq_outbox_event_dedup`
+  위반이 `DUPLICATED_EVENT`("이미 처리된 알림입니다.")로 매핑되어 상황과 어긋난
+  문구가 나갔다. 잠금 도입으로 도메인 오류 경로로 수렴해 문구도 실제 상황에
+  맞게 됐다.
 - `question` 도메인이 `notification` 도메인을 직접 참조하게 됐다. `answer` 도메인도
   같은 방식이므로 저장소 관례에는 부합하지만, producer가 늘수록 이 결합이
   누적된다는 점은 기록해둔다.
@@ -99,23 +135,29 @@
 ### Database and migrations
 
 - **신규 마이그레이션 없음.** 기존 V1 스키마만 사용한다.
-- **`question_proposal_review`에 `proposal_id` unique 제약이 없다(계획 R2).**
-  INT-001에서 판정 이력이 1행으로 수렴한 것은 이 테이블의 제약 때문이 **아니라**,
-  같은 트랜잭션의 outbox 삽입이 `uq_outbox_event_dedup`에 걸려 트랜잭션 전체가
-  롤백됐기 때문이다. 즉 판정 이력의 중복 방지가 **알림 발행에 우연히 얹혀 있는
-  구조**다. 앞으로 "알림을 발행하지 않는 판정 경로"(예: 자동 만료, 일괄 정리)가
-  추가되면 이 보호가 사라지고 중복 이력이 남을 수 있다. 후속 이슈에서
-  `question_proposal_review`에 부분 unique 제약을 추가하거나 판정 시 제안 행을
-  잠그는 방식을 검토할 가치가 있다.
+- **`question_proposal_review`에 `proposal_id` unique 제약이 없다(계획 R2).** 이
+  결함이 CI에서 실제로 발현했다(5절 참고). 중복 방지를 outbox dedup 제약에 기대는
+  구조였고 그 기대는 성립하지 않았다 — 뒤늦은 트랜잭션이 먼저 커밋된 event를
+  발견하면 삽입을 건너뛰고 그대로 성공하기 때문이다. 이번 변경에서 판정 경로에
+  행 잠금을 도입해 애플리케이션 계층에서 직렬화하도록 고쳤다.
+- 다만 **DB 차원의 보호는 여전히 없다.** 잠금은 `QuestionReviewService`를 거치는
+  경로만 보호하므로, 다른 코드가 `question_proposal_review`에 직접 쓰거나 잠금 없이
+  상태를 전이시키면 중복 이력이 다시 가능해진다. `question_proposal_review`에 부분
+  unique 제약을 추가하는 마이그레이션을 후속 이슈로 검토할 가치가 있다.
 
 ### Concurrency and idempotency
 
-- 동시 판정의 최종 상태는 두 경로 모두에서 동일하게 수렴한다: 도메인 상태 기계가
-  후발 호출을 `INVALID_PROPOSAL_STATUS`로 막거나, DB 제약이 트랜잭션을 롤백한다.
+- 판정 경로가 제안 행을 `PESSIMISTIC_WRITE`로 잠그므로 동시 판정은 DB 수준에서
+  직렬화된다. 뒤늦은 트랜잭션은 잠금 대기 후 갱신된 상태를 읽어
+  `INVALID_PROPOSAL_STATUS`로 거절된다. INT-001/002가 성공 건수뿐 아니라 진 쪽의
+  예외 타입까지 단정해 이 경로를 고정한다.
+- 잠금 도입 전에는 이 수렴이 보장되지 않았다. 상세는 5절을 참고한다.
 - **테스트가 특정 인터리빙을 강제하지 못한다.** `CountDownLatch`는 두 스레드의
-  출발만 맞추고, 실제로 두 트랜잭션이 겹쳤는지는 관측하지 않는다. 두 방어선이
-  같은 최종 상태를 만들기 때문에 불변식은 검증되지만 "어느 방어선이 작동했는지"는
-  구분되지 않는다. 잔여 위험으로 7절에 기록한다.
+  출발만 맞추고, 실제로 두 트랜잭션이 겹쳤는지는 관측하지 않는다. 이 한계가 초기
+  구현에서 결함을 놓치게 한 원인이다 — 로컬은 항상 한쪽 순서만 재현했고 CI가
+  반대 순서를 만들어서야 드러났다. 지금은 진 쪽의 예외 타입까지 단정해 "어느
+  방어선이 작동했는지"를 구분하지만, 인터리빙 자체를 강제하지 못한다는 한계는
+  남는다. 잔여 위험으로 7절에 기록한다.
 - dedupKey가 `proposalId`에 고정돼 재시도는 멱등이다. 제안은 `UNDER_REVIEW`에서
   한 번만 전이하므로(재검토 경로 없음) 정상 흐름에서 키 충돌이 발생하지 않는다.
 

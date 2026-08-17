@@ -68,7 +68,7 @@
 | Risk | Impact | Likelihood | Priority | Evidence needed |
 | --- | --- | --- | --- | --- |
 | R1. `publishReviewed()`가 `findByDedupKey` 후 `save`하는 TOCTOU 구조라, 동시 판정 시 후발 transaction이 `uq_outbox_event_dedup` 위반으로 실패한다. `AnswerModerationJobIntakeService`는 같은 경쟁을 `DataIntegrityViolationException` catch로 처리하지만 이 경로는 처리하지 않는다 | 높음 — 운영자에게 원인 불명 500 | 낮음 — 두 운영자가 같은 제안을 동시 판정 | P0 | 동시 반려/승인 통합 테스트에서 성공 1건·실패 1건의 최종 상태 |
-| R2. `question_proposal_review`에 `proposal_id` unique가 없어, 동시 판정이 append-only 이력에 중복 행을 남길 수 있다 | 중간 — 감사 이력 오염, 판정자 2명 기록 | 낮음 | P0 | 동시 판정 후 `question_proposal_review` 행 수 |
+| R2. `question_proposal_review`에 `proposal_id` unique가 없어, 동시 판정이 append-only 이력에 중복 행을 남길 수 있다 | 중간 — 감사 이력 오염, 판정자 2명 기록 | 낮음 | P0 | 동시 판정 후 `question_proposal_review` 행 수. **CI에서 실제로 발현했다**(보고서 5절) — 판정 경로에 행 잠금을 도입해 수정했다 |
 | R3. outbox 저장 실패가 판정 transaction을 롤백하지 않으면 "알림 없는 판정" 또는 "판정 없는 알림"이 생긴다 | 높음 — 사용자 신뢰 직결 | 낮음 | P0 | outbox 삽입을 실제로 실패시킨 뒤 proposal·review·outbox 상태(INT-009). dedupKey 선점(INT-003)은 조기 반환 경로라 이 위험을 검증하지 못한다 |
 | R4. `findMine`이 제안자 필터를 놓치면 타인의 제안 문구가 노출된다. 단위 테스트는 mock repository라 실제 SQL 필터를 검증하지 못한다 | 높음 — 프라이버시 침해 | 낮음 | P0 | 두 계정 데이터가 있는 DB에서 조회 결과 |
 | R5. `propose()`가 `save(create)` → `save(submit)` 2단계라, 두 번째 실패 시 고아 DRAFT 행이 남을 수 있다 | 중간 — 사용자에게 안 보이는 유령 제안 | 낮음 | P1 | 실패 주입 후 `question_proposal` 행 수 |
