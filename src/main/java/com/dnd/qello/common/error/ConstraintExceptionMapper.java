@@ -30,6 +30,8 @@ public class ConstraintExceptionMapper {
 				new ConstraintMapping(DirectionErrorCode.INELIGIBLE_REACTOR, "reactorId");
 			case "uq_answer_idempotency" ->
 				new ConstraintMapping(AnswerErrorCode.DUPLICATED_ANSWER, "idempotencyKey");
+			case "uq_answer_one_per_recipient" ->
+				new ConstraintMapping(AnswerErrorCode.DUPLICATE_ACTIVE_ANSWER, "postRecipientId");
 			case "ct_answer_reaction_reactor_is_sender" ->
 				new ConstraintMapping(AnswerErrorCode.INELIGIBLE_REACTOR, "reactorId");
 			case "uq_notification_recipient_dedup", "uq_outbox_event_dedup" ->
@@ -55,6 +57,7 @@ public class ConstraintExceptionMapper {
 			"uq_post_recipient_post_user",
 			"fk_post_reaction_recipient",
 			"uq_answer_idempotency",
+			"uq_answer_one_per_recipient",
 			"ct_answer_reaction_reactor_is_sender",
 			"uq_notification_recipient_dedup",
 			"uq_outbox_event_dedup",

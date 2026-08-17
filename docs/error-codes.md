@@ -193,7 +193,14 @@
 | `ANS-DOM-008` | MEDIA_OWNER_MISMATCH | 403 | DOM | 본인 소유의 미디어만 사용할 수 있습니다. |
 | `ANS-DOM-009` | MEDIA_CONTENT_REQUIRED | 409 | DOM | 공개된 콘텐츠는 본문 또는 미디어가 있어야 합니다. |
 | `ANS-DOM-010` | INVALID_EDIT_STATE | 400 | DOM | 수정 횟수와 수정 시각이 맞지 않습니다. |
+| `ANS-DOM-011` | RECIPIENT_NOT_FOUND | 404 | DOM | 답변할 수 있는 수신 항목을 찾을 수 없습니다. |
+| `ANS-DOM-012` | ANSWER_NOT_FOUND | 404 | DOM | 답변을 찾을 수 없습니다. |
+| `ANS-APP-001` | IDEMPOTENCY_KEY_REUSED | 409 | APP | 같은 멱등키로 다른 요청을 재사용할 수 없습니다. |
+| `ANS-APP-002` | ACCOUNT_NOT_FOUND | 404 | APP | 답변을 제출할 계정을 찾을 수 없습니다. |
+| `ANS-APP-003` | ACCOUNT_NOT_ELIGIBLE | 403 | APP | 답변을 제출할 수 없는 계정입니다. |
+| `ANS-APP-004` | MODERATION_INTAKE_NOT_CONFIGURED | 503 | APP | 현재 답변 제출을 처리할 수 없습니다. |
 | `ANS-INFRA-001` | DUPLICATED_ANSWER | 409 | INFRA | 이미 등록된 답변입니다. |
+| `ANS-INFRA-002` | DUPLICATE_ACTIVE_ANSWER | 409 | INFRA | 이미 이 수신 항목에 답변이 등록되었습니다. |
 | `ANS-EXT-001` | STORAGE_UNAVAILABLE | 503 | EXT | 미디어 저장소에 연결할 수 없습니다. |
 
 ## 10. safety (SAF)
