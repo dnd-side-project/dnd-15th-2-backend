@@ -5,6 +5,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 
 import com.dnd.qello.common.web.response.ApiErrorResponse;
 import com.dnd.qello.common.web.response.ApiResponse;
@@ -16,6 +17,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 
 // SnapshotHealthController의 문서 계약. 모든 endpoint는 운영자 세션 인증이 필요하다.
 @Tag(name = "필터링 snapshot health",
@@ -42,5 +44,6 @@ public interface SnapshotHealthApiSpec {
 	@PostMapping("/{modelSnapshot}/confirm-permanent")
 	ResponseEntity<ApiResponse<SnapshotHealthResponse>> confirmPermanent(
 		@Parameter(description = "OpenAI moderation model snapshot 식별자") @PathVariable String modelSnapshot,
-		Authentication authentication);
+		@RequestBody @Valid OperatorReasonRequest request,
+		@Parameter(hidden = true) Authentication authentication);
 }

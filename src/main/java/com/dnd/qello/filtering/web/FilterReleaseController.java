@@ -54,32 +54,47 @@ public class FilterReleaseController implements FilterReleaseApiSpec {
 	}
 
 	@Override
-	public ResponseEntity<ApiResponse<FilterReleaseResponse>> markOfflineEvaluated(long releaseId) {
-		FilterRelease release = registryService.markOfflineEvaluated(releaseId);
+	public ResponseEntity<ApiResponse<FilterReleaseResponse>> markOfflineEvaluated(
+		long releaseId, OperatorReasonRequest request, Authentication authentication
+	) {
+		FilterRelease release = registryService.markOfflineEvaluated(
+			releaseId, operatorUserId(authentication), request.toDomain());
 		return ResponseEntity.ok(responseFactory.success(FilterReleaseResponse.from(release)));
 	}
 
 	@Override
-	public ResponseEntity<ApiResponse<FilterReleaseResponse>> designateShadow(long releaseId) {
-		FilterRelease release = registryService.designateShadow(releaseId);
+	public ResponseEntity<ApiResponse<FilterReleaseResponse>> designateShadow(
+		long releaseId, OperatorReasonRequest request, Authentication authentication
+	) {
+		FilterRelease release = registryService.designateShadow(
+			releaseId, operatorUserId(authentication), request.toDomain());
 		return ResponseEntity.ok(responseFactory.success(FilterReleaseResponse.from(release)));
 	}
 
 	@Override
-	public ResponseEntity<ApiResponse<FilterReleaseResponse>> designateCanary(long releaseId) {
-		FilterRelease release = registryService.designateCanary(releaseId);
+	public ResponseEntity<ApiResponse<FilterReleaseResponse>> designateCanary(
+		long releaseId, OperatorReasonRequest request, Authentication authentication
+	) {
+		FilterRelease release = registryService.designateCanary(
+			releaseId, operatorUserId(authentication), request.toDomain());
 		return ResponseEntity.ok(responseFactory.success(FilterReleaseResponse.from(release)));
 	}
 
 	@Override
-	public ResponseEntity<ApiResponse<FilterReleaseResponse>> promote(long releaseId, Authentication authentication) {
-		FilterRelease release = registryService.promote(releaseId, operatorUserId(authentication));
+	public ResponseEntity<ApiResponse<FilterReleaseResponse>> promote(
+		long releaseId, OperatorReasonRequest request, Authentication authentication
+	) {
+		FilterRelease release = registryService.promote(
+			releaseId, operatorUserId(authentication), request.toDomain());
 		return ResponseEntity.ok(responseFactory.success(FilterReleaseResponse.from(release)));
 	}
 
 	@Override
-	public ResponseEntity<ApiResponse<FilterReleaseResponse>> rollback(long releaseId, Authentication authentication) {
-		FilterRelease release = registryService.rollback(releaseId, operatorUserId(authentication));
+	public ResponseEntity<ApiResponse<FilterReleaseResponse>> rollback(
+		long releaseId, OperatorReasonRequest request, Authentication authentication
+	) {
+		FilterRelease release = registryService.rollback(
+			releaseId, operatorUserId(authentication), request.toDomain());
 		return ResponseEntity.ok(responseFactory.success(FilterReleaseResponse.from(release)));
 	}
 
