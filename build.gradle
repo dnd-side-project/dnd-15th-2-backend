@@ -54,6 +54,14 @@ dependencies {
 	// Spring Boot BOM이 springdoc을 관리하지 않으므로 버전을 직접 고정한다.
 	// 3.x는 Spring Boot 4 계열 대상이라 현재 3.5.x에는 2.8 라인을 쓴다.
 	implementation 'org.springdoc:springdoc-openapi-starter-webmvc-api:2.8.17'
+	// Micrometer의 MeterRegistry만 쓴다(#113). exporter를 붙이지 않는 이유는
+	// 관측·경보 도구가 아직 미결정이기 때문이다 — Micrometer는 vendor-neutral
+	// 추상이라 지금 계측해 두고 backend는 나중에 고를 수 있다.
+	//
+	// actuator의 web endpoint는 application.yml에서 전부 닫는다. springdoc을
+	// 운영 기본 api-docs.enabled=false로 둔 것과 같은 처리이며, 열린 관리
+	// endpoint 자체가 공격면이 된다.
+	implementation 'org.springframework.boot:spring-boot-starter-actuator'
 	runtimeOnly 'org.flywaydb:flyway-database-postgresql'
 	runtimeOnly 'org.postgresql:postgresql'
 
