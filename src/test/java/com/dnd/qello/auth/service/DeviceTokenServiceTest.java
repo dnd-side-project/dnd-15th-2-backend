@@ -194,6 +194,11 @@ class DeviceTokenServiceTest {
 			return Optional.ofNullable(accounts.get(id));
 		}
 
+		@Override
+		public boolean existsActiveNickname(String nickname) {
+			throw new UnsupportedOperationException();
+		}
+
 	}
 
 	private static final class FakeDeviceCredentialRepository implements DeviceCredentialRepository {

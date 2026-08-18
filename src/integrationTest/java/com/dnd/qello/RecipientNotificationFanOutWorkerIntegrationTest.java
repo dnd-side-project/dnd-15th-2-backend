@@ -1032,6 +1032,11 @@ class RecipientNotificationFanOutWorkerIntegrationTest extends PostgisContainerI
 				}
 				return snapshot;
 			}
+
+			@Override
+			public boolean existsActiveNickname(String nickname) {
+				return accounts.existsActiveNickname(nickname);
+			}
 		};
 	}
 

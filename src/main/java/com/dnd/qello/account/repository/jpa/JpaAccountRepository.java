@@ -62,6 +62,11 @@ public class JpaAccountRepository implements AccountRepository {
 		return repository.findById(id).map(AccountJpaMapper::toDomain);
 	}
 
+	@Override
+	public boolean existsActiveNickname(String nickname) {
+		return repository.existsActiveByNicknameIgnoreCase(nickname);
+	}
+
 	/**
 	 * 현재 트랜잭션의 Persistence Context가 관리하는 엔티티를 조회한다.
 	 * 새 엔티티를 만들어 merge하지 않고 Dirty Checking에 위임한다.
