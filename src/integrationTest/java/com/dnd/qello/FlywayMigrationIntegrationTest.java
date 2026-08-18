@@ -162,7 +162,7 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 	private JdbcTemplate jdbcTemplate;
 
 	@Test
-	@DisplayName("빈 PostGIS 데이터베이스의 startup에서 V1부터 V18까지 migration을 적용한다")
+	@DisplayName("빈 PostGIS 데이터베이스의 startup에서 V1부터 V19까지 migration을 적용한다")
 	void appliesAllMigrationsOnApplicationStartup() {
 		Integer successfulV1 = jdbcTemplate.queryForObject("""
 			SELECT count(*)
@@ -254,6 +254,11 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 			FROM flyway_schema_history
 			WHERE version = '18' AND success
 			""", Integer.class);
+		Integer successfulV19 = jdbcTemplate.queryForObject("""
+			SELECT count(*)
+			FROM flyway_schema_history
+			WHERE version = '19' AND success
+			""", Integer.class);
 		String postgisVersion = jdbcTemplate.queryForObject(
 			"SELECT PostGIS_Version()", String.class);
 
@@ -275,7 +280,8 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 		assertThat(successfulV16).isEqualTo(1);
 		assertThat(successfulV17).isEqualTo(1);
 		assertThat(successfulV18).isEqualTo(1);
-		assertThat(flyway.info().applied()).hasSize(18);
+		assertThat(successfulV19).isEqualTo(1);
+		assertThat(flyway.info().applied()).hasSize(19);
 		assertThat(postgisVersion).isNotBlank();
 	}
 
@@ -329,17 +335,24 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 			""", (resultSet, rowNumber) -> new ConstraintDescriptor(
 			resultSet.getString(1), resultSet.getString(2)));
 
-		// countConstraints는 EXPECTED_TABLES에 속한 테이블만 센다. notification_event는
-		// manual_review_case·filter_job 등 V10~V16의 filtering 테이블과 마찬가지로
-		// EXPECTED_TABLES에 없으므로(이 매니페스트는 V1~V9 catalog 전용), V17이
-		// 추가한 제약은 아래 총계에 반영되지 않는다.
-		assertThat(countConstraints(constraints, "f")).isEqualTo(52);
+		// countConstraints는 EXPECTED_TABLES에 속한 테이블만 센다. notification_event
+		// (V17, #111)는 manual_review_case·filter_job 등 V10~V16의 filtering
+		// 테이블과 마찬가지로 EXPECTED_TABLES에 없어(이 매니페스트는 V1~V9 catalog
+		// 전용) 그 제약은 총계에 반영되지 않는다. V19(#153)이 report.case_id·
+		// notification.report_id FK 2개를 추가했다(report_case/
+		// report_content_snapshot/report_case_event 자체의 FK도 EXPECTED_TABLES
+		// 밖이라 잡히지 않는다). V18(#112)의 appeal_case·outbox_event ALTER도
+		// EXPECTED_TABLES 밖이라 총계에 반영되지 않는다.
+		assertThat(countConstraints(constraints, "f")).isEqualTo(54);
 		assertThat(countConstraints(constraints, "u")).isEqualTo(21);
 		// V7(#81, device_credential)이 4개, V8(#78)이 ck_post_recipient_inbound_bearing,
 		// ck_post_recipient_distance_m, ck_post_recipient_answers_read_at,
 		// ck_answer_distance_m, ck_answer_edit_count, ck_answer_edit_count_edited_at
 		// 6개를 추가해 101에서 111이 됐고, V9(#88)이 국가 CHECK 2개를 추가했다.
-		assertThat(countConstraints(constraints, "c")).isEqualTo(116);
+		// V19(#153)이 report.ck_report_sub_reason 1개를 추가해 116에서 117이 됐다
+		// (ck_report_reason·ck_notification_target은 같은 이름으로 교체돼 순증가는
+		// 없다).
+		assertThat(countConstraints(constraints, "c")).isEqualTo(117);
 		assertThat(EXPECTED_INDEXES).hasSize(62);
 		assertThat(EXPECTED_FUNCTIONS).hasSize(11);
 		assertThat(EXPECTED_TRIGGERS).hasSize(10);
@@ -568,6 +581,56 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 		String indexDefinition = jdbcTemplate.queryForObject(
 			"SELECT indexdef FROM pg_indexes WHERE indexname = 'notification_event_claim_idx'", String.class);
 		assertThat(indexDefinition).contains("status", "next_attempt_at", "lease_expires_at");
+	}
+
+	@Test
+	@DisplayName("V19는 report_case·report_content_snapshot·report_case_event 테이블과 제약을 생성한다")
+	void v19AddsReportCaseAndEvidenceSnapshotCatalog() {
+		Set<String> newTableNames = new HashSet<>(jdbcTemplate.queryForList("""
+			SELECT table_name
+			FROM information_schema.tables
+			WHERE table_schema = 'public'
+			  AND table_name IN ('report_case', 'report_content_snapshot', 'report_case_event')
+			""", String.class));
+		assertThat(newTableNames).containsExactlyInAnyOrder(
+			"report_case", "report_content_snapshot", "report_case_event");
+
+		Set<String> reportCaseConstraintNames = new HashSet<>(jdbcTemplate.queryForList("""
+			SELECT conname
+			FROM pg_constraint
+			WHERE conrelid = 'report_case'::regclass
+			""", String.class));
+		assertThat(reportCaseConstraintNames).contains(
+			"ck_report_case_exactly_one_target", "ck_report_case_status", "ck_report_case_severity",
+			"ck_report_case_queue", "ck_report_case_decision", "ck_report_case_resolution");
+
+		Set<String> snapshotConstraintNames = new HashSet<>(jdbcTemplate.queryForList("""
+			SELECT conname
+			FROM pg_constraint
+			WHERE conrelid = 'report_content_snapshot'::regclass
+			""", String.class));
+		assertThat(snapshotConstraintNames).contains(
+			"fk_report_content_snapshot_report", "ck_report_content_snapshot_target_type",
+			"ck_report_content_snapshot_target_id", "ck_report_content_snapshot_author_id",
+			"ck_report_content_snapshot_edit_count");
+
+		Set<String> caseEventConstraintNames = new HashSet<>(jdbcTemplate.queryForList("""
+			SELECT conname
+			FROM pg_constraint
+			WHERE conrelid = 'report_case_event'::regclass
+			""", String.class));
+		assertThat(caseEventConstraintNames).contains("fk_report_case_event_case", "ck_report_case_event_type");
+
+		assertThat(columnExists("report", "case_id")).isTrue();
+		assertThat(columnExists("report", "sub_reason_code")).isTrue();
+		assertThat(columnExists("notification", "report_id")).isTrue();
+
+		Set<String> reportIndexNames = new HashSet<>(jdbcTemplate.queryForList("""
+			SELECT indexname FROM pg_indexes WHERE tablename IN ('report', 'report_case')
+			""", String.class));
+		assertThat(reportIndexNames).contains(
+			"uq_open_case_user", "uq_open_case_post", "uq_open_case_answer",
+			"uq_open_report_user", "uq_open_report_post", "uq_open_report_answer");
 	}
 
 	@Test

@@ -60,6 +60,7 @@ class FlywayMigrationContractTest {
 			"V16__add_manual_review_priority_and_authority.sql",
 			"V17__add_notification_event_for_slack_manual_review.sql",
 			"V18__add_appeal_case_decision_and_window.sql",
+			"V19__add_report_case_and_evidence_snapshot.sql",
 			"V1__create_direction_communication_schema.sql",
 			"V2__add_reactions_and_skip_pending.sql",
 			"V3__add_user_account_password_hash.sql",

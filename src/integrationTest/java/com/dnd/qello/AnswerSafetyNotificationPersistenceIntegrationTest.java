@@ -153,9 +153,11 @@ class AnswerSafetyNotificationPersistenceIntegrationTest extends PostgisContaine
 	@Test
 	@DisplayName("open report와 block은 DB unique/check 제약 및 idempotent command를 적용한다")
 	void persistsSafetyAndDeduplicatesOpenReport() {
-		Report report = safetyRepository.saveReport(Report.forUser(recipientId, authorId, "ABUSE", "detail", NOW));
+		Report report = safetyRepository.saveReport(
+			Report.forUser(recipientId, authorId, "HATE_OR_HARASSMENT", "detail", NOW));
 		assertThat(safetyRepository.findOpenReport(recipientId, authorId, null, null)).contains(report);
-		assertThatThrownBy(() -> safetyRepository.saveReport(Report.forUser(recipientId, authorId, "ABUSE", "again", NOW)))
+		assertThatThrownBy(() -> safetyRepository.saveReport(
+			Report.forUser(recipientId, authorId, "HATE_OR_HARASSMENT", "again", NOW)))
 			.isInstanceOf(DataIntegrityViolationException.class);
 		assertThatThrownBy(() -> safetyRepository.block(com.dnd.qello.safety.domain.UserBlock.create(authorId, authorId, NOW)))
 			.isInstanceOf(com.dnd.qello.safety.error.SafetyException.class)

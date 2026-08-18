@@ -6,9 +6,11 @@ import com.dnd.qello.safety.error.SafetyErrorCode;
 import com.dnd.qello.safety.error.SafetyException;
 
 public record Report(Long id, long reporterId, Long targetUserId, Long directionPostId, Long answerId,
-	String reasonCode, String detail, ReportStatus status, Instant createdAt, Instant resolvedAt) {
+	String reasonCode, String detail, ReportStatus status, Instant createdAt, Instant resolvedAt,
+	Long caseId, String subReasonCode) {
 
 	private static final int REASON_CODE_MAX_LENGTH = 50;
+	private static final int SUB_REASON_CODE_MAX_LENGTH = 50;
 
 	public Report {
 		if (id != null && id <= 0) {
@@ -35,36 +37,68 @@ public record Report(Long id, long reporterId, Long targetUserId, Long direction
 			throw new SafetyException(
 				SafetyErrorCode.INVALID_TIME_ORDER, "resolvedAt", "resolvedAt은 createdAt보다 빠를 수 없습니다");
 		}
+		requirePositiveOrNull(caseId, "caseId");
+		if (subReasonCode != null
+			&& (subReasonCode.isBlank() || subReasonCode.length() > SUB_REASON_CODE_MAX_LENGTH)) {
+			throw new SafetyException(
+				SafetyErrorCode.INVALID_REASON_CODE, "subReasonCode", "subReasonCode가 유효하지 않습니다");
+		}
 	}
 
 	public static Report forUser(long reporterId, long targetUserId, String reasonCode, String detail, Instant at) {
 		return new Report(null, reporterId, targetUserId, null, null, reasonCode, detail,
-			ReportStatus.RECEIVED, at, null);
+			ReportStatus.RECEIVED, at, null, null, null);
 	}
 
 	public static Report forPost(long reporterId, long directionPostId, String reasonCode, String detail, Instant at) {
 		return new Report(null, reporterId, null, directionPostId, null, reasonCode, detail,
-			ReportStatus.RECEIVED, at, null);
+			ReportStatus.RECEIVED, at, null, null, null);
 	}
 
 	public static Report forAnswer(long reporterId, long answerId, String reasonCode, String detail, Instant at) {
 		return new Report(null, reporterId, null, null, answerId, reasonCode, detail,
-			ReportStatus.RECEIVED, at, null);
+			ReportStatus.RECEIVED, at, null, null, null);
 	}
 
 	public Report startReview() { return transition(ReportStatus.UNDER_REVIEW, null); }
 
+	/**
+	 * 종결이 아니다 — resolvedAt을 설정하지 않는다. 현재 uq_open_report_* 세 인덱스의
+	 * 열린 상태 술어에 MORE_INFO_REQUIRED가 포함돼 있어야 이 전이 이후에도 같은
+	 * 신고자의 중복 신고 차단이 유지된다(INV-RPT-002).
+	 */
+	public Report requestMoreInfo(Instant at) {
+		if (status != ReportStatus.RECEIVED && status != ReportStatus.UNDER_REVIEW) {
+			throw new SafetyException(SafetyErrorCode.INVALID_REPORT_STATUS,
+				"status", "추가 정보 요청은 RECEIVED 또는 UNDER_REVIEW 상태에서만 가능합니다");
+		}
+		return transition(ReportStatus.MORE_INFO_REQUIRED, null);
+	}
+
 	public Report resolve(ReportStatus nextStatus, Instant at) {
-		if (nextStatus != ReportStatus.ACTIONED && nextStatus != ReportStatus.NO_VIOLATION
-			&& nextStatus != ReportStatus.MORE_INFO_REQUIRED) {
+		if (nextStatus != ReportStatus.ACTIONED && nextStatus != ReportStatus.NO_VIOLATION) {
 			throw new SafetyException(SafetyErrorCode.INVALID_REPORT_STATUS, "status", "종결 상태가 아닙니다");
 		}
 		return transition(nextStatus, requireValue(at, "resolvedAt"));
 	}
 
+	/** 같은 사건으로 재시도돼도 멱등하다. 다른 사건으로의 재연결만 거절한다. */
+	public Report attachToCase(long newCaseId) {
+		requirePositive(newCaseId, "caseId");
+		if (caseId != null && caseId != newCaseId) {
+			throw new SafetyException(
+				SafetyErrorCode.REPORT_ALREADY_LINKED_TO_CASE, "caseId", "이미 다른 사건에 연결된 신고입니다");
+		}
+		if (caseId != null) {
+			return this;
+		}
+		return new Report(id, reporterId, targetUserId, directionPostId, answerId, reasonCode, detail,
+			status, createdAt, resolvedAt, newCaseId, subReasonCode);
+	}
+
 	private Report transition(ReportStatus nextStatus, Instant nextResolvedAt) {
 		return new Report(id, reporterId, targetUserId, directionPostId, answerId, reasonCode,
-			detail, nextStatus, createdAt, nextResolvedAt);
+			detail, nextStatus, createdAt, nextResolvedAt, caseId, subReasonCode);
 	}
 
 	private static <T> T requireValue(T value, String field) {

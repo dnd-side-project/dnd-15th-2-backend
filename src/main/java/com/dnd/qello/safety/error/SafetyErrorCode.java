@@ -27,11 +27,25 @@ public enum SafetyErrorCode implements ErrorCode {
 	// 종결 시각이 접수 시각보다 앞선 순서 역전
 	INVALID_TIME_ORDER(HttpStatus.BAD_REQUEST, "SAF-VAL-005", ErrorCategory.VAL, "신고 시각 순서가 올바르지 않습니다."),
 
+	// SAF-VAL-006(INVALID_REPORT_DETAIL), SAF-VAL-007(INVALID_REPORT_SUB_REASON)은
+	// #154(신고 접수 API)가 예약한 번호다. 여기서 건너뛴다.
+
+	// 증거 스냅샷의 편집 횟수가 음수
+	INVALID_SNAPSHOT_EDIT_COUNT(HttpStatus.BAD_REQUEST, "SAF-VAL-008", ErrorCategory.VAL, "스냅샷 편집 횟수가 올바르지 않습니다."),
+
 	// 자기 자신에 대한 차단 시도
 	SELF_BLOCK_NOT_ALLOWED(HttpStatus.BAD_REQUEST, "SAF-DOM-001", ErrorCategory.DOM, "자기 자신을 차단할 수 없습니다."),
 
 	// 종결 상태가 아닌 값으로의 신고 종결 시도
 	INVALID_REPORT_STATUS(HttpStatus.BAD_REQUEST, "SAF-DOM-002", ErrorCategory.DOM, "신고 종결 상태가 올바르지 않습니다."),
+
+	// SAF-DOM-003(SELF_REPORT_NOT_ALLOWED)은 #154가 예약한 번호다. 여기서 건너뛴다.
+
+	// 이미 다른 사건에 연결된 신고를 다른 사건에 재연결 시도
+	REPORT_ALREADY_LINKED_TO_CASE(HttpStatus.BAD_REQUEST, "SAF-DOM-004", ErrorCategory.DOM, "이미 다른 사건에 연결된 신고입니다."),
+
+	// 이미 종결된 사건에 대한 재검토·재종결 시도
+	REPORT_CASE_ALREADY_RESOLVED(HttpStatus.BAD_REQUEST, "SAF-DOM-005", ErrorCategory.DOM, "이미 종결된 사건입니다."),
 
 	// 해제할 활성 차단 부재. 이미 해제됐거나 존재하지 않는 상태
 	ACTIVE_BLOCK_NOT_FOUND(HttpStatus.NOT_FOUND, "SAF-APP-001", ErrorCategory.APP, "활성 차단을 찾을 수 없습니다."),
