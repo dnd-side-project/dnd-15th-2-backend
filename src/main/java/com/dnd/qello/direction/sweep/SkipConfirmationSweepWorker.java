@@ -38,6 +38,8 @@ public class SkipConfirmationSweepWorker {
 		int released = 0;
 		int ineligible = 0;
 		int failed = 0;
+		Long firstFailedId = null;
+		RuntimeException firstFailure = null;
 		for (PostRecipient candidate : candidates) {
 			try {
 				if (receiveSlotReleaseService.confirmSkip(candidate.getId(), at).isPresent()) {
@@ -47,14 +49,32 @@ public class SkipConfirmationSweepWorker {
 				}
 			} catch (RuntimeException failure) {
 				failed++;
-				log.warn("넘김확정 sweep 행 처리 실패: postRecipientId={}", candidate.getId(), failure);
+				// 행마다 stack trace를 남기면 광범위한 장애에서 batch 크기만큼 같은 trace가
+				// 반복 수집된다. 실패는 카운터로 집계하고 원인 파악용 sample은 첫 실패 하나로
+				// 제한해 batch당 stack trace를 최대 한 개로 유지한다.
+				if (firstFailure == null) {
+					firstFailedId = candidate.getId();
+					firstFailure = failure;
+				}
 			}
 		}
 
 		SweepBatchResult result = new SweepBatchResult(candidates.size(), released, ineligible, failed);
-		log.info("넘김확정 sweep 완료: scanned={} released={} ineligible={} failed={}",
-			result.scanned(), result.released(), result.ineligible(), result.failed());
+		logSummary(result, firstFailedId, firstFailure);
 		return result;
+	}
+
+	// 실패한 행은 다음 sweep에서 다시 후보가 되므로 행 단위 알림 대신 batch 요약 한 줄로만
+	// 남긴다. 실패가 있으면 같은 줄을 WARN으로 올리고 첫 실패의 예외만 첨부한다.
+	private void logSummary(SweepBatchResult result, Long firstFailedId, RuntimeException firstFailure) {
+		if (result.failed() == 0) {
+			log.info("넘김확정 sweep 완료: scanned={} released={} ineligible={} failed=0",
+				result.scanned(), result.released(), result.ineligible());
+			return;
+		}
+		log.warn("넘김확정 sweep 완료: scanned={} released={} ineligible={} failed={} firstFailedPostRecipientId={}",
+			result.scanned(), result.released(), result.ineligible(), result.failed(), firstFailedId,
+			firstFailure);
 	}
 
 	private Instant resolveAt(BatchCommand command) {
