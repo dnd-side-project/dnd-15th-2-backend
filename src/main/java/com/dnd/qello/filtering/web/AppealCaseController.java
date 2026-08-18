@@ -41,15 +41,16 @@ public class AppealCaseController implements AppealCaseApiSpec {
 		long appealCaseId, AppealDecisionRequest request, Authentication authentication
 	) {
 		AppealCase resolved = appealCaseService.decide(appealCaseId, request.decision(),
-			operatorUserId(authentication));
+			operatorUserId(authentication), request.reason().toDomain());
 		return ResponseEntity.ok(responseFactory.success(AppealCaseResponse.from(resolved)));
 	}
 
 	@Override
 	public ResponseEntity<ApiResponse<AppealCaseResponse>> extendExpiry(
-		long appealCaseId, ExtendAppealExpiryRequest request
+		long appealCaseId, ExtendAppealExpiryRequest request, Authentication authentication
 	) {
-		AppealCase extended = appealCaseService.extendExpiry(appealCaseId, request.expiresAt());
+		AppealCase extended = appealCaseService.extendExpiry(appealCaseId, request.expiresAt(),
+			operatorUserId(authentication), request.reason().toDomain());
 		return ResponseEntity.ok(responseFactory.success(AppealCaseResponse.from(extended)));
 	}
 

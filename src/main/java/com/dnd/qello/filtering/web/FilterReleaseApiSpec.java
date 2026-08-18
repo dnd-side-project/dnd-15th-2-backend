@@ -77,7 +77,10 @@ public interface FilterReleaseApiSpec {
 				schema = @Schema(implementation = ApiErrorResponse.class)))
 	})
 	@PostMapping("/{releaseId}/offline-evaluation")
-	ResponseEntity<ApiResponse<FilterReleaseResponse>> markOfflineEvaluated(@PathVariable long releaseId);
+	ResponseEntity<ApiResponse<FilterReleaseResponse>> markOfflineEvaluated(
+		@PathVariable long releaseId,
+		@RequestBody @Valid OperatorReasonRequest request,
+		@Parameter(hidden = true) Authentication authentication);
 
 	@Operation(
 		summary = "shadow 지정",
@@ -92,7 +95,10 @@ public interface FilterReleaseApiSpec {
 				schema = @Schema(implementation = ApiErrorResponse.class)))
 	})
 	@PostMapping("/{releaseId}/shadow")
-	ResponseEntity<ApiResponse<FilterReleaseResponse>> designateShadow(@PathVariable long releaseId);
+	ResponseEntity<ApiResponse<FilterReleaseResponse>> designateShadow(
+		@PathVariable long releaseId,
+		@RequestBody @Valid OperatorReasonRequest request,
+		@Parameter(hidden = true) Authentication authentication);
 
 	@Operation(
 		summary = "canary 지정",
@@ -107,7 +113,10 @@ public interface FilterReleaseApiSpec {
 				schema = @Schema(implementation = ApiErrorResponse.class)))
 	})
 	@PostMapping("/{releaseId}/canary")
-	ResponseEntity<ApiResponse<FilterReleaseResponse>> designateCanary(@PathVariable long releaseId);
+	ResponseEntity<ApiResponse<FilterReleaseResponse>> designateCanary(
+		@PathVariable long releaseId,
+		@RequestBody @Valid OperatorReasonRequest request,
+		@Parameter(hidden = true) Authentication authentication);
 
 	@Operation(
 		summary = "release 승격",
@@ -126,7 +135,9 @@ public interface FilterReleaseApiSpec {
 	})
 	@PostMapping("/{releaseId}/promote")
 	ResponseEntity<ApiResponse<FilterReleaseResponse>> promote(
-		@PathVariable long releaseId, Authentication authentication);
+		@PathVariable long releaseId,
+		@RequestBody @Valid OperatorReasonRequest request,
+		@Parameter(hidden = true) Authentication authentication);
 
 	@Operation(
 		summary = "release rollback",
@@ -142,6 +153,8 @@ public interface FilterReleaseApiSpec {
 	})
 	@PostMapping("/{releaseId}/rollback")
 	ResponseEntity<ApiResponse<FilterReleaseResponse>> rollback(
-		@PathVariable long releaseId, Authentication authentication);
+		@PathVariable long releaseId,
+		@RequestBody @Valid OperatorReasonRequest request,
+		@Parameter(hidden = true) Authentication authentication);
 
 }

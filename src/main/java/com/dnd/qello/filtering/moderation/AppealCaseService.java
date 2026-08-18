@@ -11,7 +11,11 @@ import org.springframework.transaction.annotation.Transactional;
 import com.dnd.qello.filtering.domain.AppealAcceptance;
 import com.dnd.qello.filtering.domain.AppealCase;
 import com.dnd.qello.filtering.domain.AppealDecision;
+import com.dnd.qello.filtering.audit.OperatorActionAuditRecorder;
 import com.dnd.qello.filtering.domain.AppealWindow;
+import com.dnd.qello.filtering.domain.OperatorActionTargetType;
+import com.dnd.qello.filtering.domain.OperatorActionType;
+import com.dnd.qello.filtering.domain.OperatorReason;
 import com.dnd.qello.filtering.domain.FilterDecision;
 import com.dnd.qello.filtering.domain.FilterJob;
 import com.dnd.qello.filtering.domain.FilterTarget;
@@ -48,6 +52,7 @@ public class AppealCaseService {
 	private final OutboxEventRepository outboxEventRepository;
 	private final AppealTargetOwnershipChecker ownershipChecker;
 	private final PublicationBlockChecker publicationBlockChecker;
+	private final OperatorActionAuditRecorder auditRecorder;
 	private final ObjectMapper objectMapper;
 	private final Clock clock;
 
@@ -58,9 +63,11 @@ public class AppealCaseService {
 		OutboxEventRepository outboxEventRepository,
 		AppealTargetOwnershipChecker ownershipChecker,
 		PublicationBlockChecker publicationBlockChecker,
+		OperatorActionAuditRecorder auditRecorder,
 		ObjectMapper objectMapper,
 		Clock clock
 	) {
+		this.auditRecorder = auditRecorder;
 		this.appealCaseRepository = appealCaseRepository;
 		this.filterDecisionRepository = filterDecisionRepository;
 		this.filterJobRepository = filterJobRepository;
@@ -126,10 +133,13 @@ public class AppealCaseService {
 	// OVERTURN_HIDDEN일 때만, 그리고 다른 공개 금지 사유가 없을 때만 복원 콜백을
 	// 낸다. 차단 사유가 있으면 결정은 그대로 기록하되 콜백을 내지 않고 사유를 남긴다.
 	@Transactional
-	public AppealCase decide(long appealCaseId, AppealDecision decision, long operatorUserId) {
+	public AppealCase decide(long appealCaseId, AppealDecision decision, long operatorUserId,
+		OperatorReason reason) {
 		Instant now = Instant.now(clock);
 		AppealCase appealCase = appealCaseRepository.findByIdForUpdate(appealCaseId)
 			.orElseThrow(() -> new FilteringException(FilteringErrorCode.APPEAL_CASE_NOT_FOUND, "appealCaseId"));
+		auditRecorder.record(operatorUserId, OperatorActionType.APPEAL_DECIDE,
+			OperatorActionTargetType.APPEAL_CASE, String.valueOf(appealCaseId), reason, AppealWindow.POLICY_VERSION);
 
 		String restoreBlockedReasonCode = null;
 		if (decision == AppealDecision.OVERTURN_HIDDEN) {
@@ -151,10 +161,14 @@ public class AppealCaseService {
 	// 법률·정책상 접수 기간을 연장한다. 도메인이 현재 만료보다 이르거나 같은 값을
 	// 거절하므로 이 경로로 기간이 줄어들 수 없다(INV-APL-008, INV-APL-009).
 	@Transactional
-	public AppealCase extendExpiry(long appealCaseId, Instant newExpiresAt) {
+	public AppealCase extendExpiry(long appealCaseId, Instant newExpiresAt, long operatorUserId,
+		OperatorReason reason) {
 		AppealCase appealCase = appealCaseRepository.findByIdForUpdate(appealCaseId)
 			.orElseThrow(() -> new FilteringException(FilteringErrorCode.APPEAL_CASE_NOT_FOUND, "appealCaseId"));
-		return appealCaseRepository.save(appealCase.extendExpiry(newExpiresAt));
+		AppealCase extended = appealCaseRepository.save(appealCase.extendExpiry(newExpiresAt));
+		auditRecorder.record(operatorUserId, OperatorActionType.APPEAL_EXTEND_EXPIRY,
+			OperatorActionTargetType.APPEAL_CASE, String.valueOf(appealCaseId), reason, AppealWindow.POLICY_VERSION);
+		return extended;
 	}
 
 	public List<AppealCase> findMine(long appellantUserId) {

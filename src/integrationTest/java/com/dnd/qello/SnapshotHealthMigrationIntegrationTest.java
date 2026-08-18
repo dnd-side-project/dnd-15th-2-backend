@@ -47,6 +47,7 @@ import com.dnd.qello.filtering.domain.FilterJob;
 import com.dnd.qello.filtering.domain.FilterRelease;
 import com.dnd.qello.filtering.domain.FilterTarget;
 import com.dnd.qello.filtering.domain.FilterTargetType;
+import com.dnd.qello.filtering.domain.OperatorReason;
 import com.dnd.qello.filtering.domain.ModerationFailureClassification;
 import com.dnd.qello.filtering.domain.SnapshotHealth;
 import com.dnd.qello.filtering.domain.SnapshotHealthPolicy;
@@ -196,7 +197,7 @@ class SnapshotHealthMigrationIntegrationTest extends PostgisContainerIntegration
 		filterJobRepository.save(resolved);
 		confirmPermanent(sourceReleaseId);
 
-		var history = emergencyMigrationService.emergencyMigrate(sourceReleaseId, targetReleaseId, 1L);
+		var history = emergencyMigrationService.emergencyMigrate(sourceReleaseId, targetReleaseId, 1L, new OperatorReason("TEST", "테스트 근거"));
 
 		assertThat(history.migratedJobCount()).isEqualTo(1);
 		FilterJob migratedAutomated = filterJobRepository.findById(automated.id()).orElseThrow();
@@ -215,7 +216,7 @@ class SnapshotHealthMigrationIntegrationTest extends PostgisContainerIntegration
 		FilterJob automated = createJob(sourceReleaseId, target(3L), "migrate-missing-target-1");
 		confirmPermanent(sourceReleaseId);
 
-		assertThatThrownBy(() -> emergencyMigrationService.emergencyMigrate(sourceReleaseId, 999_999L, 1L))
+		assertThatThrownBy(() -> emergencyMigrationService.emergencyMigrate(sourceReleaseId, 999_999L, 1L, new OperatorReason("TEST", "테스트 근거")))
 			.isInstanceOf(FilteringException.class)
 			.hasFieldOrPropertyWithValue("errorCode", FilteringErrorCode.RELEASE_NOT_FOUND);
 
@@ -234,10 +235,10 @@ class SnapshotHealthMigrationIntegrationTest extends PostgisContainerIntegration
 		FilterJob automated = createJob(sourceReleaseId, target(4L), "migrate-duplicate-1");
 		confirmPermanent(sourceReleaseId);
 
-		emergencyMigrationService.emergencyMigrate(sourceReleaseId, targetReleaseId, 1L);
+		emergencyMigrationService.emergencyMigrate(sourceReleaseId, targetReleaseId, 1L, new OperatorReason("TEST", "테스트 근거"));
 		// 두 번째 호출 시점에는 source release에 남은 AUTOMATED job이 없어 대상
 		// release도 이미 PROMOTED라 재승격 시도가 거절된다 — 이중 이관이 되지 않는다.
-		assertThatThrownBy(() -> emergencyMigrationService.emergencyMigrate(sourceReleaseId, targetReleaseId, 1L))
+		assertThatThrownBy(() -> emergencyMigrationService.emergencyMigrate(sourceReleaseId, targetReleaseId, 1L, new OperatorReason("TEST", "테스트 근거")))
 			.isInstanceOf(FilteringException.class);
 
 		FilterJob afterSecondAttempt = filterJobRepository.findById(automated.id()).orElseThrow();
@@ -254,7 +255,7 @@ class SnapshotHealthMigrationIntegrationTest extends PostgisContainerIntegration
 		AnswerModerationJobIntakeService intake = intakeService();
 		FilterJob job = intake.submit(target(5L), "migration worker 연동 답변", ModerationLanguage.KO, "migrate-worker-1");
 		confirmPermanent(sourceReleaseId);
-		emergencyMigrationService.emergencyMigrate(sourceReleaseId, targetReleaseId, 1L);
+		emergencyMigrationService.emergencyMigrate(sourceReleaseId, targetReleaseId, 1L, new OperatorReason("TEST", "테스트 근거"));
 
 		AtomicReference<String> calledWithModelSnapshot = new AtomicReference<>();
 		AnswerModerationExecutionWorker worker = executionWorker(recordingPipeline(calledWithModelSnapshot));
@@ -273,7 +274,7 @@ class SnapshotHealthMigrationIntegrationTest extends PostgisContainerIntegration
 		long targetReleaseId = canaryRelease(TARGET_MODEL_SNAPSHOT);
 		FilterJob job = createJob(sourceReleaseId, target(6L), "migrate-stale-1");
 		confirmPermanent(sourceReleaseId);
-		emergencyMigrationService.emergencyMigrate(sourceReleaseId, targetReleaseId, 1L);
+		emergencyMigrationService.emergencyMigrate(sourceReleaseId, targetReleaseId, 1L, new OperatorReason("TEST", "테스트 근거"));
 
 		FilterJob migrated = filterJobRepository.findById(job.id()).orElseThrow();
 		assertThat(migrated.attemptGeneration()).isEqualTo(2);
@@ -290,7 +291,9 @@ class SnapshotHealthMigrationIntegrationTest extends PostgisContainerIntegration
 		OperatorSession session = login();
 
 		mockMvc.perform(withSession(withCsrf(post(
-				"/admin/filtering/snapshot-health/%s/confirm-permanent".formatted(SOURCE_MODEL_SNAPSHOT)), session), session))
+				"/admin/filtering/snapshot-health/%s/confirm-permanent".formatted(SOURCE_MODEL_SNAPSHOT)), session), session)
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"reasonCode\":\"TEST\",\"reasonText\":\"통합 테스트 근거\"}"))
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.data.status").value("PERMANENT_CONFIRMED"))
 			.andExpect(jsonPath("$.data.confirmedByOperatorUserId").exists());
@@ -397,18 +400,19 @@ class SnapshotHealthMigrationIntegrationTest extends PostgisContainerIntegration
 	private long promotedRelease(String modelSnapshot) {
 		FilterRelease candidate = releaseRegistryService.createCandidate(
 			"norm-" + modelSnapshot, "ruleset-" + modelSnapshot, "category-" + modelSnapshot, modelSnapshot);
-		releaseRegistryService.markOfflineEvaluated(candidate.id());
-		releaseRegistryService.designateShadow(candidate.id());
-		releaseRegistryService.designateCanary(candidate.id());
-		return releaseRegistryService.promote(candidate.id(), 1L).id();
+		releaseRegistryService.markOfflineEvaluated(candidate.id(), 1L, new OperatorReason("TEST", "테스트 근거"));
+		releaseRegistryService.designateShadow(candidate.id(), 1L, new OperatorReason("TEST", "테스트 근거"));
+		releaseRegistryService.designateCanary(candidate.id(), 1L, new OperatorReason("TEST", "테스트 근거"));
+		return releaseRegistryService.promote(candidate.id(), 1L, new OperatorReason("TEST", "테스트 근거")).id();
 	}
 
 	private long canaryRelease(String modelSnapshot) {
 		FilterRelease candidate = releaseRegistryService.createCandidate(
 			"norm-" + modelSnapshot, "ruleset-" + modelSnapshot, "category-" + modelSnapshot, modelSnapshot);
-		releaseRegistryService.markOfflineEvaluated(candidate.id());
-		releaseRegistryService.designateShadow(candidate.id());
-		return releaseRegistryService.designateCanary(candidate.id()).id();
+		releaseRegistryService.markOfflineEvaluated(candidate.id(), 1L, new OperatorReason("TEST", "테스트 근거"));
+		releaseRegistryService.designateShadow(candidate.id(), 1L, new OperatorReason("TEST", "테스트 근거"));
+		return releaseRegistryService.designateCanary(
+			candidate.id(), 1L, new OperatorReason("TEST", "테스트 근거")).id();
 	}
 
 	private OperatorSession login() throws Exception {

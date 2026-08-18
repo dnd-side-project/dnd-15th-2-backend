@@ -618,10 +618,14 @@
               "OVERTURN_HIDDEN"
             ],
             "type" : "string"
+          },
+          "reason" : {
+            "$ref" : "#/components/schemas/OperatorReasonRequest"
           }
         },
         "required" : [
-          "decision"
+          "decision",
+          "reason"
         ],
         "type" : "object"
       },
@@ -954,10 +958,14 @@
           "expiresAt" : {
             "format" : "date-time",
             "type" : "string"
+          },
+          "reason" : {
+            "$ref" : "#/components/schemas/OperatorReasonRequest"
           }
         },
         "required" : [
-          "expiresAt"
+          "expiresAt",
+          "reason"
         ],
         "type" : "object"
       },
@@ -1146,6 +1154,9 @@
       },
       "ManualReviewDecisionRequest" : {
         "properties" : {
+          "reason" : {
+            "$ref" : "#/components/schemas/OperatorReasonRequest"
+          },
           "verdict" : {
             "enum" : [
               "ALLOW",
@@ -1155,6 +1166,7 @@
           }
         },
         "required" : [
+          "reason",
           "verdict"
         ],
         "type" : "object"
@@ -1240,6 +1252,28 @@
         "required" : [
           "loginId",
           "password"
+        ],
+        "type" : "object"
+      },
+      "OperatorReasonRequest" : {
+        "properties" : {
+          "reasonCode" : {
+            "description" : "집계용 분류 코드",
+            "example" : "POLICY_VIOLATION",
+            "maxLength" : 30,
+            "minLength" : 0,
+            "type" : "string"
+          },
+          "reasonText" : {
+            "description" : "운영자가 직접 입력한 근거",
+            "maxLength" : 500,
+            "minLength" : 0,
+            "type" : "string"
+          }
+        },
+        "required" : [
+          "reasonCode",
+          "reasonText"
         ],
         "type" : "object"
       },
@@ -2163,6 +2197,16 @@
             }
           }
         ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/OperatorReasonRequest"
+              }
+            }
+          },
+          "required" : true
+        },
         "responses" : {
           "200" : {
             "content" : {
@@ -2231,6 +2275,16 @@
             }
           }
         ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/OperatorReasonRequest"
+              }
+            }
+          },
+          "required" : true
+        },
         "responses" : {
           "200" : {
             "content" : {
@@ -2299,6 +2353,16 @@
             }
           }
         ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/OperatorReasonRequest"
+              }
+            }
+          },
+          "required" : true
+        },
         "responses" : {
           "200" : {
             "content" : {
@@ -2367,6 +2431,16 @@
             }
           }
         ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/OperatorReasonRequest"
+              }
+            }
+          },
+          "required" : true
+        },
         "responses" : {
           "200" : {
             "content" : {
@@ -2435,6 +2509,16 @@
             }
           }
         ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/OperatorReasonRequest"
+              }
+            }
+          },
+          "required" : true
+        },
         "responses" : {
           "200" : {
             "content" : {
@@ -2503,6 +2587,16 @@
             }
           }
         ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/OperatorReasonRequest"
+              }
+            }
+          },
+          "required" : true
+        },
         "responses" : {
           "200" : {
             "content" : {

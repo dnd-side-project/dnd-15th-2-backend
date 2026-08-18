@@ -55,6 +55,7 @@ import com.dnd.qello.filtering.domain.FilterJob;
 import com.dnd.qello.filtering.domain.FilterRelease;
 import com.dnd.qello.filtering.domain.FilterTarget;
 import com.dnd.qello.filtering.domain.FilterTargetType;
+import com.dnd.qello.filtering.domain.OperatorReason;
 import com.dnd.qello.filtering.domain.FilterVerdict;
 import com.dnd.qello.filtering.error.FilteringErrorCode;
 import com.dnd.qello.filtering.error.FilteringException;
@@ -311,7 +312,7 @@ class AppealCaseIntegrationTest extends PostgisContainerIntegrationTestSupport {
 	void overturnEmitsRestoreCallback() {
 		AppealCase filed = fileAppeal("decide-overturn");
 
-		AppealCase resolved = appealCaseService.decide(filed.id(), AppealDecision.OVERTURN_HIDDEN, 1L);
+		AppealCase resolved = appealCaseService.decide(filed.id(), AppealDecision.OVERTURN_HIDDEN, 1L, new OperatorReason("TEST", "테스트 근거"));
 
 		assertThat(resolved.status()).isEqualTo(AppealCaseStatus.RESOLVED);
 		assertThat(resolved.restoreBlockedReasonCode()).isNull();
@@ -327,7 +328,7 @@ class AppealCaseIntegrationTest extends PostgisContainerIntegrationTestSupport {
 		AppealCase filed = fileAppeal("decide-blocked");
 		jdbc.update("UPDATE user_account SET status = 'BLOCKED' WHERE id = ?", authorId);
 
-		AppealCase resolved = appealCaseService.decide(filed.id(), AppealDecision.OVERTURN_HIDDEN, 1L);
+		AppealCase resolved = appealCaseService.decide(filed.id(), AppealDecision.OVERTURN_HIDDEN, 1L, new OperatorReason("TEST", "테스트 근거"));
 
 		assertThat(resolved.status()).isEqualTo(AppealCaseStatus.RESOLVED);
 		assertThat(resolved.decision()).isEqualTo(AppealDecision.OVERTURN_HIDDEN);
@@ -340,7 +341,7 @@ class AppealCaseIntegrationTest extends PostgisContainerIntegrationTestSupport {
 	void upholdEmitsNoCallback() {
 		AppealCase filed = fileAppeal("decide-uphold");
 
-		AppealCase resolved = appealCaseService.decide(filed.id(), AppealDecision.UPHOLD_HIDDEN, 1L);
+		AppealCase resolved = appealCaseService.decide(filed.id(), AppealDecision.UPHOLD_HIDDEN, 1L, new OperatorReason("TEST", "테스트 근거"));
 
 		assertThat(resolved.decision()).isEqualTo(AppealDecision.UPHOLD_HIDDEN);
 		assertThat(countOutboxEvents()).isZero();
@@ -356,7 +357,7 @@ class AppealCaseIntegrationTest extends PostgisContainerIntegrationTestSupport {
 			ready.countDown();
 			start.await(5, TimeUnit.SECONDS);
 			try {
-				appealCaseService.decide(filed.id(), AppealDecision.OVERTURN_HIDDEN, 1L);
+				appealCaseService.decide(filed.id(), AppealDecision.OVERTURN_HIDDEN, 1L, new OperatorReason("TEST", "테스트 근거"));
 				return true;
 			} catch (FilteringException expected) {
 				return false;
@@ -382,7 +383,8 @@ class AppealCaseIntegrationTest extends PostgisContainerIntegrationTestSupport {
 		AppealCase filed = fileAppeal("extend-guard");
 		Instant current = filed.expiresAt();
 
-		assertThatThrownBy(() -> appealCaseService.extendExpiry(filed.id(), current.minus(Duration.ofDays(1))))
+		assertThatThrownBy(() -> appealCaseService.extendExpiry(
+			filed.id(), current.minus(Duration.ofDays(1)), 1L, new OperatorReason("TEST", "테스트 근거")))
 			.isInstanceOf(FilteringException.class)
 			.hasFieldOrPropertyWithValue("errorCode", FilteringErrorCode.APPEAL_EXPIRY_NOT_EXTENDABLE);
 
@@ -390,7 +392,8 @@ class AppealCaseIntegrationTest extends PostgisContainerIntegrationTestSupport {
 			Timestamp.from(filed.windowStartedAt().plus(Duration.ofDays(183))), filed.id()))
 			.isInstanceOf(DataIntegrityViolationException.class);
 
-		AppealCase extended = appealCaseService.extendExpiry(filed.id(), current.plus(Duration.ofDays(30)));
+		AppealCase extended = appealCaseService.extendExpiry(
+			filed.id(), current.plus(Duration.ofDays(30)), 1L, new OperatorReason("TEST", "테스트 근거"));
 		assertThat(extended.expiresAt()).isEqualTo(current.plus(Duration.ofDays(30)));
 	}
 
@@ -437,7 +440,7 @@ class AppealCaseIntegrationTest extends PostgisContainerIntegrationTestSupport {
 				.header(csrfData.get("headerName").asText(), csrfData.get("token").asText())
 				.cookie(issued.getResponse().getCookies())
 				.contentType(MediaType.APPLICATION_JSON)
-				.content("{\"decision\":\"UPHOLD_HIDDEN\"}"))
+				.content("{\"decision\":\"UPHOLD_HIDDEN\",\"reason\":{\"reasonCode\":\"TEST\",\"reasonText\":\"검토 결과 유지\"}}"))
 			.andExpect(status().isUnauthorized());
 		assertThat(appealCaseRepository.findById(filed.id()).orElseThrow().status())
 			.isEqualTo(AppealCaseStatus.OPEN);
@@ -446,7 +449,7 @@ class AppealCaseIntegrationTest extends PostgisContainerIntegrationTestSupport {
 		mockMvc.perform(withCsrf(withSession(
 				post("/admin/filtering/appeal-cases/%d/decide".formatted(filed.id())), session), session)
 				.contentType(MediaType.APPLICATION_JSON)
-				.content("{\"decision\":\"UPHOLD_HIDDEN\"}"))
+				.content("{\"decision\":\"UPHOLD_HIDDEN\",\"reason\":{\"reasonCode\":\"TEST\",\"reasonText\":\"검토 결과 유지\"}}"))
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.data.status").value("RESOLVED"))
 			.andExpect(jsonPath("$.data.decision").value("UPHOLD_HIDDEN"));
@@ -480,10 +483,10 @@ class AppealCaseIntegrationTest extends PostgisContainerIntegrationTestSupport {
 	private long promotedRelease() {
 		FilterRelease candidate = releaseRegistryService.createCandidate(
 			"norm-v1", "ruleset-v1", "category-map-v1", MODEL_SNAPSHOT);
-		releaseRegistryService.markOfflineEvaluated(candidate.id());
-		releaseRegistryService.designateShadow(candidate.id());
-		releaseRegistryService.designateCanary(candidate.id());
-		return releaseRegistryService.promote(candidate.id(), 1L).id();
+		releaseRegistryService.markOfflineEvaluated(candidate.id(), 1L, new OperatorReason("TEST", "테스트 근거"));
+		releaseRegistryService.designateShadow(candidate.id(), 1L, new OperatorReason("TEST", "테스트 근거"));
+		releaseRegistryService.designateCanary(candidate.id(), 1L, new OperatorReason("TEST", "테스트 근거"));
+		return releaseRegistryService.promote(candidate.id(), 1L, new OperatorReason("TEST", "테스트 근거")).id();
 	}
 
 	private long account(String nickname) {

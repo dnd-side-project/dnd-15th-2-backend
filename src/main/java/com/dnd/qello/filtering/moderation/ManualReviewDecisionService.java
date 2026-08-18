@@ -13,7 +13,11 @@ import com.dnd.qello.filtering.domain.FilterJobStatus;
 import com.dnd.qello.filtering.domain.FilterJobStatusHistoryEntry;
 import com.dnd.qello.filtering.domain.FilterTarget;
 import com.dnd.qello.filtering.domain.FilterVerdict;
+import com.dnd.qello.filtering.audit.OperatorActionAuditRecorder;
 import com.dnd.qello.filtering.domain.ManualReviewCase;
+import com.dnd.qello.filtering.domain.OperatorActionTargetType;
+import com.dnd.qello.filtering.domain.OperatorActionType;
+import com.dnd.qello.filtering.domain.OperatorReason;
 import com.dnd.qello.filtering.error.FilteringErrorCode;
 import com.dnd.qello.filtering.error.FilteringException;
 import com.dnd.qello.filtering.repository.FilterJobRepository;
@@ -38,6 +42,7 @@ public class ManualReviewDecisionService {
 	private final FilterJobRepository filterJobRepository;
 	private final FilterJobStatusHistoryRepository filterJobStatusHistoryRepository;
 	private final OutboxEventRepository outboxEventRepository;
+	private final OperatorActionAuditRecorder auditRecorder;
 	private final ObjectMapper objectMapper;
 	private final Clock clock;
 
@@ -46,9 +51,11 @@ public class ManualReviewDecisionService {
 		FilterJobRepository filterJobRepository,
 		FilterJobStatusHistoryRepository filterJobStatusHistoryRepository,
 		OutboxEventRepository outboxEventRepository,
+		OperatorActionAuditRecorder auditRecorder,
 		ObjectMapper objectMapper,
 		Clock clock
 	) {
+		this.auditRecorder = auditRecorder;
 		this.manualReviewCaseRepository = manualReviewCaseRepository;
 		this.filterJobRepository = filterJobRepository;
 		this.filterJobStatusHistoryRepository = filterJobStatusHistoryRepository;
@@ -76,10 +83,15 @@ public class ManualReviewDecisionService {
 	// resolvedVerdict로 case만 종료한다(INV-MAN-003) — 검토자가 제출한 verdict로
 	// 자동 판정을 덮어쓰지 않는다.
 	@Transactional
-	public ManualReviewCase decide(long caseId, FilterVerdict operatorVerdict, long operatorUserId) {
+	public ManualReviewCase decide(long caseId, FilterVerdict operatorVerdict, long operatorUserId,
+		OperatorReason reason) {
 		Instant now = Instant.now(clock);
 		ManualReviewCase reviewCase = manualReviewCaseRepository.findById(caseId)
 			.orElseThrow(() -> new FilteringException(FilteringErrorCode.MANUAL_REVIEW_CASE_NOT_FOUND, "caseId"));
+		// case가 열릴 때 적용된 우선순위 정책이 이 결정의 정책 버전이다(INV-APL-012).
+		auditRecorder.record(operatorUserId, OperatorActionType.MANUAL_REVIEW_DECIDE,
+			OperatorActionTargetType.MANUAL_REVIEW_CASE, String.valueOf(caseId), reason,
+			reviewCase.priorityPolicyVersion());
 
 		FilterJob job = filterJobRepository.findByIdForUpdate(reviewCase.filterJobId())
 			.orElseThrow(() -> new FilteringException(

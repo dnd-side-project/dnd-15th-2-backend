@@ -187,9 +187,12 @@ class FilterReleaseRegistryIntegrationTest extends PostgisContainerIntegrationTe
 		return objectMapper.readTree(result.getResponse().getContentAsString()).get("data").get("id").asLong();
 	}
 
+	// #113부터 authority를 바꾸는 release 전이는 근거를 함께 받는다(INV-APL-012).
 	private ResultActions transition(long releaseId, String action) throws Exception {
 		return mockMvc.perform(
-			withSession(withCsrf(post("/admin/filtering/releases/%d/%s".formatted(releaseId, action)))));
+			withSession(withCsrf(post("/admin/filtering/releases/%d/%s".formatted(releaseId, action))))
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"reasonCode\":\"TEST\",\"reasonText\":\"통합 테스트 전이\"}"));
 	}
 
 	private MockHttpServletRequestBuilder withSession(MockHttpServletRequestBuilder request) {

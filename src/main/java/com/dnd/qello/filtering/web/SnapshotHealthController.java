@@ -28,9 +28,10 @@ public class SnapshotHealthController implements SnapshotHealthApiSpec {
 
 	@Override
 	public ResponseEntity<ApiResponse<SnapshotHealthResponse>> confirmPermanent(
-		String modelSnapshot, Authentication authentication
+		String modelSnapshot, OperatorReasonRequest request, Authentication authentication
 	) {
-		SnapshotHealth confirmed = snapshotHealthService.confirmPermanent(modelSnapshot, operatorUserId(authentication));
+		SnapshotHealth confirmed = snapshotHealthService.confirmPermanent(
+			modelSnapshot, operatorUserId(authentication), request.toDomain());
 		return ResponseEntity.ok(responseFactory.success(SnapshotHealthResponse.from(confirmed)));
 	}
 

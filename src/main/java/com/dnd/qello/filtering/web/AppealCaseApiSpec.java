@@ -89,5 +89,6 @@ public interface AppealCaseApiSpec {
 	@PostMapping(value = "/{appealCaseId}/extend", consumes = MediaType.APPLICATION_JSON_VALUE)
 	ResponseEntity<ApiResponse<AppealCaseResponse>> extendExpiry(
 		@Parameter(description = "appeal case id") @PathVariable long appealCaseId,
-		@RequestBody @Valid ExtendAppealExpiryRequest request);
+		@RequestBody @Valid ExtendAppealExpiryRequest request,
+		@Parameter(hidden = true) Authentication authentication);
 }

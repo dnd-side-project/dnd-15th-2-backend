@@ -6,6 +6,11 @@ import java.time.Instant;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.dnd.qello.filtering.audit.OperatorActionAuditRecorder;
+import com.dnd.qello.filtering.domain.OperatorActionAudit;
+import com.dnd.qello.filtering.domain.OperatorActionTargetType;
+import com.dnd.qello.filtering.domain.OperatorActionType;
+import com.dnd.qello.filtering.domain.OperatorReason;
 import com.dnd.qello.filtering.domain.SnapshotHealth;
 import com.dnd.qello.filtering.repository.SnapshotHealthRepository;
 
@@ -20,9 +25,12 @@ import com.dnd.qello.filtering.repository.SnapshotHealthRepository;
 public class SnapshotHealthService {
 
 	private final SnapshotHealthRepository snapshotHealthRepository;
+	private final OperatorActionAuditRecorder auditRecorder;
 	private final Clock clock;
 
-	public SnapshotHealthService(SnapshotHealthRepository snapshotHealthRepository, Clock clock) {
+	public SnapshotHealthService(SnapshotHealthRepository snapshotHealthRepository,
+		OperatorActionAuditRecorder auditRecorder, Clock clock) {
+		this.auditRecorder = auditRecorder;
 		this.snapshotHealthRepository = snapshotHealthRepository;
 		this.clock = clock;
 	}
@@ -37,10 +45,16 @@ public class SnapshotHealthService {
 	// 이슈 범위 밖이라 별도 이력 테이블 없이도 "누가 언제 승인했는지"가 유일하게
 	// 보존된다.
 	@Transactional
-	public SnapshotHealth confirmPermanent(String modelSnapshot, long operatorUserId) {
+	public SnapshotHealth confirmPermanent(String modelSnapshot, long operatorUserId, OperatorReason reason) {
 		Instant now = Instant.now(clock);
 		SnapshotHealth current = snapshotHealthRepository.findOrCreateForUpdate(modelSnapshot, now);
 		SnapshotHealth confirmed = current.confirmPermanent(operatorUserId, now);
-		return snapshotHealthRepository.save(confirmed);
+		SnapshotHealth saved = snapshotHealthRepository.save(confirmed);
+		// snapshot health에는 버전이 붙은 정책이 없다. 정책이 생기면 그 식별자로
+		// 교체한다(INV-APL-012).
+		auditRecorder.record(operatorUserId, OperatorActionType.SNAPSHOT_HEALTH_CONFIRM_PERMANENT,
+			OperatorActionTargetType.SNAPSHOT_HEALTH, modelSnapshot, reason,
+			OperatorActionAudit.UNVERSIONED_POLICY);
+		return saved;
 	}
 }

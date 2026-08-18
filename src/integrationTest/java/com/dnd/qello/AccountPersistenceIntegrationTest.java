@@ -115,7 +115,8 @@ class AccountPersistenceIntegrationTest extends PostgisContainerIntegrationTestS
 		// 자체는 마이그레이션 성공 여부에 포함되지 않지만, 애플리케이션 시작 시 전체
 		// migration이 먼저 적용된 뒤 이 테스트가 실행되므로 V14~V19가 만든 테이블도
 		// 이 count에 포함된다.
-		assertThat(applicationTableCount).isEqualTo(48);
+		// + operator_action_audit(V20, #113 — 운영자 행위 감사 원장)
+		assertThat(applicationTableCount).isEqualTo(49);
 	}
 
 	@Test

@@ -45,8 +45,8 @@ public class ManualReviewCaseController implements ManualReviewCaseApiSpec {
 	public ResponseEntity<ApiResponse<ManualReviewCaseResponse>> decide(
 		long caseId, ManualReviewDecisionRequest request, Authentication authentication
 	) {
-		ManualReviewCase resolved =
-			manualReviewDecisionService.decide(caseId, request.verdict(), operatorUserId(authentication));
+		ManualReviewCase resolved = manualReviewDecisionService.decide(
+			caseId, request.verdict(), operatorUserId(authentication), request.reason().toDomain());
 		return ResponseEntity.ok(responseFactory.success(ManualReviewCaseResponse.from(resolved)));
 	}
 

@@ -21,7 +21,9 @@ import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import com.dnd.qello.filtering.audit.OperatorActionAuditRecorder;
 import com.dnd.qello.filtering.domain.FilterRelease;
+import com.dnd.qello.filtering.domain.OperatorReason;
 import com.dnd.qello.filtering.domain.FilterReleaseStatus;
 import com.dnd.qello.filtering.domain.SnapshotHealth;
 import com.dnd.qello.filtering.domain.SnapshotHealthStatus;
@@ -52,7 +54,7 @@ class SnapshotEmergencyMigrationServiceTest {
 			.thenReturn(SnapshotHealth.healthy(MODEL_SNAPSHOT, NOW));
 		SnapshotEmergencyMigrationService service = service();
 
-		assertThatThrownBy(() -> service.emergencyMigrate(1L, 2L, 9L))
+		assertThatThrownBy(() -> service.emergencyMigrate(1L, 2L, 9L, new OperatorReason("TEST", "테스트 근거")))
 			.isInstanceOf(FilteringException.class)
 			.hasFieldOrPropertyWithValue("errorCode", FilteringErrorCode.INVALID_SNAPSHOT_HEALTH_STATUS);
 		verify(filterJobRepository, never()).findAutomatedByFilterReleaseId(anyLong());
@@ -66,7 +68,7 @@ class SnapshotEmergencyMigrationServiceTest {
 		when(filterReleaseRegistryService.find(2L)).thenReturn(release(2L, FilterReleaseStatus.CANDIDATE));
 		SnapshotEmergencyMigrationService service = service();
 
-		assertThatThrownBy(() -> service.emergencyMigrate(1L, 2L, 9L))
+		assertThatThrownBy(() -> service.emergencyMigrate(1L, 2L, 9L, new OperatorReason("TEST", "테스트 근거")))
 			.isInstanceOf(FilteringException.class)
 			.hasFieldOrPropertyWithValue("errorCode", FilteringErrorCode.INVALID_MIGRATION_TARGET);
 		verify(snapshotHealthRepository, never()).findOrCreateForUpdate(any(), any());
@@ -78,7 +80,7 @@ class SnapshotEmergencyMigrationServiceTest {
 		when(filterReleaseRegistryService.find(1L)).thenReturn(release(1L, FilterReleaseStatus.PROMOTED));
 		SnapshotEmergencyMigrationService service = service();
 
-		assertThatThrownBy(() -> service.emergencyMigrate(1L, 1L, 9L))
+		assertThatThrownBy(() -> service.emergencyMigrate(1L, 1L, 9L, new OperatorReason("TEST", "테스트 근거")))
 			.isInstanceOf(FilteringException.class)
 			.hasFieldOrPropertyWithValue("errorCode", FilteringErrorCode.INVALID_MIGRATION_TARGET);
 	}
@@ -92,7 +94,7 @@ class SnapshotEmergencyMigrationServiceTest {
 			target.categoryMappingRef(), target.modelSnapshot(), FilterReleaseStatus.PROMOTED, NOW, target.createdAt());
 		when(filterReleaseRegistryService.find(1L)).thenReturn(source);
 		when(filterReleaseRegistryService.find(2L)).thenReturn(target);
-		when(filterReleaseRegistryService.promote(2L, 9L)).thenReturn(promotedTarget);
+		when(filterReleaseRegistryService.promote(2L, 9L, new OperatorReason("TEST", "테스트 근거"))).thenReturn(promotedTarget);
 		SnapshotHealth confirmed = SnapshotHealth.healthy(MODEL_SNAPSHOT, NOW)
 			.recordProbe(com.dnd.qello.filtering.domain.ModerationFailureClassification.SERVER_ERROR, null, NOW,
 				new com.dnd.qello.filtering.domain.SnapshotHealthPolicy(1, java.time.Duration.ZERO))
@@ -102,17 +104,18 @@ class SnapshotEmergencyMigrationServiceTest {
 		when(migrationHistoryRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 		SnapshotEmergencyMigrationService service = service();
 
-		var result = service.emergencyMigrate(1L, 2L, 9L);
+		var result = service.emergencyMigrate(1L, 2L, 9L, new OperatorReason("TEST", "테스트 근거"));
 
 		assertThat(result.sourceReleaseId()).isEqualTo(1L);
 		assertThat(result.targetReleaseId()).isEqualTo(2L);
 		assertThat(result.operatorUserId()).isEqualTo(9L);
-		verify(filterReleaseRegistryService).promote(2L, 9L);
+		verify(filterReleaseRegistryService).promote(2L, 9L, new OperatorReason("TEST", "테스트 근거"));
 	}
 
 	private SnapshotEmergencyMigrationService service() {
 		return new SnapshotEmergencyMigrationService(
-			snapshotHealthRepository, filterReleaseRegistryService, filterJobRepository, migrationHistoryRepository, clock);
+			snapshotHealthRepository, filterReleaseRegistryService, filterJobRepository, migrationHistoryRepository,
+			mock(OperatorActionAuditRecorder.class), clock);
 	}
 
 	private static FilterRelease release(long id, FilterReleaseStatus status) {

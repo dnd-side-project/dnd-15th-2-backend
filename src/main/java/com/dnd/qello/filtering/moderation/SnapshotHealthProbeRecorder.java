@@ -19,7 +19,9 @@ import com.dnd.qello.filtering.repository.SnapshotHealthRepository;
 //
 // 의도적으로 Spring 빈이 아니다 — SnapshotHealthPolicy(threshold·persistence
 // window)의 실제 운영 수치가 이 이슈에서 미결정이며, probe를 실제로 주기적으로
-// 실행하는 scheduler 배선도 #113 production gate로 이연한다
+// 실행하는 scheduler 배선은 아직 하지 않는다. #113은 활성화 게이트와 감사·지표만
+// 다뤘고, 실제 배선은 그 게이트를 통과한 뒤의 후속 이슈 몫이다
+// (docs/filtering-production-gate.md 3절)
 // (AnswerModerationExecutionWorker, #107~#108과 동일한 이유).
 public class SnapshotHealthProbeRecorder {
 

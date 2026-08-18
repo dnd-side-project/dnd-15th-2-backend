@@ -8,7 +8,12 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.dnd.qello.filtering.domain.FilterJob;
+import com.dnd.qello.filtering.audit.OperatorActionAuditRecorder;
 import com.dnd.qello.filtering.domain.FilterRelease;
+import com.dnd.qello.filtering.domain.OperatorActionAudit;
+import com.dnd.qello.filtering.domain.OperatorActionTargetType;
+import com.dnd.qello.filtering.domain.OperatorActionType;
+import com.dnd.qello.filtering.domain.OperatorReason;
 import com.dnd.qello.filtering.domain.FilterReleaseStatus;
 import com.dnd.qello.filtering.domain.SnapshotEmergencyMigrationHistoryEntry;
 import com.dnd.qello.filtering.domain.SnapshotHealth;
@@ -31,6 +36,7 @@ public class SnapshotEmergencyMigrationService {
 	private final FilterReleaseRegistryService filterReleaseRegistryService;
 	private final FilterJobRepository filterJobRepository;
 	private final SnapshotEmergencyMigrationHistoryRepository migrationHistoryRepository;
+	private final OperatorActionAuditRecorder auditRecorder;
 	private final Clock clock;
 
 	public SnapshotEmergencyMigrationService(
@@ -38,8 +44,10 @@ public class SnapshotEmergencyMigrationService {
 		FilterReleaseRegistryService filterReleaseRegistryService,
 		FilterJobRepository filterJobRepository,
 		SnapshotEmergencyMigrationHistoryRepository migrationHistoryRepository,
+		OperatorActionAuditRecorder auditRecorder,
 		Clock clock
 	) {
+		this.auditRecorder = auditRecorder;
 		this.snapshotHealthRepository = snapshotHealthRepository;
 		this.filterReleaseRegistryService = filterReleaseRegistryService;
 		this.filterJobRepository = filterJobRepository;
@@ -54,7 +62,7 @@ public class SnapshotEmergencyMigrationService {
 	// migration이 불가능하다"의 구현이다.
 	@Transactional
 	public SnapshotEmergencyMigrationHistoryEntry emergencyMigrate(
-		long sourceReleaseId, long targetReleaseId, long operatorUserId
+		long sourceReleaseId, long targetReleaseId, long operatorUserId, OperatorReason reason
 	) {
 		FilterRelease source = filterReleaseRegistryService.find(sourceReleaseId);
 		FilterRelease target = filterReleaseRegistryService.find(targetReleaseId);
@@ -74,9 +82,15 @@ public class SnapshotEmergencyMigrationService {
 				health.status() + " 상태에서는 emergency migration을 실행할 수 없습니다");
 		}
 
+		// 대상 release 승격은 registry 서비스가 자체 감사를 남긴다. 여기서는
+		// "emergency migration이라는 상위 행위"를 별도로 한 행 더 남긴다 —
+		// 승격 감사만 보면 그것이 통상 승격인지 긴급 이관인지 구분할 수 없다.
 		FilterRelease promotedTarget = target.status() == FilterReleaseStatus.CANARY
-			? filterReleaseRegistryService.promote(targetReleaseId, operatorUserId)
-			: filterReleaseRegistryService.rollback(targetReleaseId, operatorUserId);
+			? filterReleaseRegistryService.promote(targetReleaseId, operatorUserId, reason)
+			: filterReleaseRegistryService.rollback(targetReleaseId, operatorUserId, reason);
+		auditRecorder.record(operatorUserId, OperatorActionType.SNAPSHOT_EMERGENCY_MIGRATION,
+			OperatorActionTargetType.SNAPSHOT_HEALTH, source.modelSnapshot(), reason,
+			OperatorActionAudit.UNVERSIONED_POLICY);
 
 		List<FilterJob> affected = filterJobRepository.findAutomatedByFilterReleaseId(sourceReleaseId);
 		for (FilterJob job : affected) {
