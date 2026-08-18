@@ -43,7 +43,26 @@ public enum AccountErrorCode implements ErrorCode {
 	INVALID_STATUS_TRANSITION(HttpStatus.CONFLICT, "ACC-DOM-004", ErrorCategory.DOM, "현재 계정 상태로는 요청을 처리할 수 없습니다."),
 
 	// 수정 대상 계정이 존재하지 않음
-	ACCOUNT_NOT_FOUND(HttpStatus.NOT_FOUND, "ACC-APP-001", ErrorCategory.APP, "계정을 찾을 수 없습니다.");
+	ACCOUNT_NOT_FOUND(HttpStatus.NOT_FOUND, "ACC-APP-001", ErrorCategory.APP, "계정을 찾을 수 없습니다."),
+
+	// 대소문자를 무시했을 때 이미 다른 계정(자기 자신 포함)이 쓰고 있는 닉네임(#168).
+	// DeviceRegistrationService의 installationId 검사와 같은 패턴 — 사전 조회로
+	// 대부분 막고, 동시 요청 race는 uq_user_account_nickname_ci와
+	// ConstraintExceptionMapper가 최종 방어선으로 같은 코드를 던진다.
+	DUPLICATED_NICKNAME(HttpStatus.CONFLICT, "ACC-APP-002", ErrorCategory.APP, "이미 사용 중인 닉네임입니다."),
+
+	// moderation 주 판정기(또는 timeout/error 후 보조 판정기)가 명시적으로 BLOCK한
+	// 닉네임(#168, #106 NicknameModerationOutcome.Rejected.BLOCKED_BY_PRIMARY/SECONDARY).
+	// 재시도해도 같은 닉네임으로는 통과하지 못하므로 DOM으로 분류한다.
+	NICKNAME_REJECTED_BY_MODERATION(
+		HttpStatus.BAD_REQUEST, "ACC-DOM-005", ErrorCategory.DOM, "닉네임이 정책을 위반해 사용할 수 없습니다."),
+
+	// 주·보조 판정기가 모두 timeout/error여서 판정 자체를 할 수 없는 상태(#168, #106
+	// NicknameModerationOutcome.Rejected.UNAVAILABLE). 같은 닉네임이라도 판정 서비스가
+	// 복구되면 통과할 수 있으므로 재시도 후보인 INFRA로 분류하고, 400이 아닌 503으로
+	// NICKNAME_REJECTED_BY_MODERATION과 구분한다.
+	NICKNAME_MODERATION_UNAVAILABLE(
+		HttpStatus.SERVICE_UNAVAILABLE, "ACC-INFRA-001", ErrorCategory.INFRA, "닉네임 검증 서비스를 일시적으로 사용할 수 없습니다.");
 
 	private final HttpStatus httpStatus;
 	private final String code;

@@ -128,7 +128,8 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 		"uq_region_code_code_level",
 		"user_account_country_idx",
 		"operator_action_audit_target_idx",
-		"operator_action_audit_operator_idx"
+		"operator_action_audit_operator_idx",
+		"uq_user_account_nickname_ci"
 	);
 
 	private static final Set<String> EXPECTED_FUNCTIONS = Set.of(
@@ -267,6 +268,11 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 			FROM flyway_schema_history
 			WHERE version = '20' AND success
 			""", Integer.class);
+		Integer successfulV21 = jdbcTemplate.queryForObject("""
+			SELECT count(*)
+			FROM flyway_schema_history
+			WHERE version = '21' AND success
+			""", Integer.class);
 		Integer successfulV22 = jdbcTemplate.queryForObject("""
 			SELECT count(*)
 			FROM flyway_schema_history
@@ -295,8 +301,9 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 		assertThat(successfulV18).isEqualTo(1);
 		assertThat(successfulV19).isEqualTo(1);
 		assertThat(successfulV20).isEqualTo(1);
+		assertThat(successfulV21).isEqualTo(1);
 		assertThat(successfulV22).isEqualTo(1);
-		assertThat(flyway.info().applied()).hasSize(21);
+		assertThat(flyway.info().applied()).hasSize(22);
 		assertThat(postgisVersion).isNotBlank();
 	}
 
@@ -374,7 +381,10 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 		// 117에서 124가 됐다.
 		assertThat(countConstraints(constraints, "c")).isEqualTo(124);
 		// V20(#113)이 operator_action_audit의 조회 인덱스 2개를 추가해 62에서 64가 됐다.
-		assertThat(EXPECTED_INDEXES).hasSize(64);
+		// V21(#168)이 uq_user_account_nickname_ci 1개를 추가해 64에서 65가 됐다.
+		// CREATE UNIQUE INDEX로 만든 부분 인덱스라 pg_constraint에는 잡히지 않는다 —
+		// countConstraints(constraints, "u")는 그대로다.
+		assertThat(EXPECTED_INDEXES).hasSize(65);
 		assertThat(EXPECTED_FUNCTIONS).hasSize(11);
 		assertThat(EXPECTED_TRIGGERS).hasSize(10);
 

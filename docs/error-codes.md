@@ -117,6 +117,9 @@
 | `ACC-DOM-003` | INVALID_PASSWORD_HASH_STATE | 400 | DOM | 계정 권한과 비밀번호 설정이 맞지 않습니다. |
 | `ACC-DOM-004` | INVALID_STATUS_TRANSITION | 409 | DOM | 현재 계정 상태로는 요청을 처리할 수 없습니다. |
 | `ACC-APP-001` | ACCOUNT_NOT_FOUND | 404 | APP | 계정을 찾을 수 없습니다. |
+| `ACC-APP-002` | DUPLICATED_NICKNAME | 409 | APP | 이미 사용 중인 닉네임입니다. |
+| `ACC-DOM-005` | NICKNAME_REJECTED_BY_MODERATION | 400 | DOM | 닉네임이 정책을 위반해 사용할 수 없습니다. |
+| `ACC-INFRA-001` | NICKNAME_MODERATION_UNAVAILABLE | 503 | INFRA | 닉네임 검증 서비스를 일시적으로 사용할 수 없습니다. |
 
 `ACC-DOM-001`은 생성·수정 시각 관리가 저장 계층으로 옮겨가면서 사용을 중단했다.
 
@@ -309,5 +312,6 @@
 | `uq_open_report_post` | `SAF-INFRA-001` | — |
 | `uq_open_report_answer` | `SAF-INFRA-001` | — |
 | `uq_active_device_installation` | `AUT-APP-005` | `installationId` |
+| `uq_user_account_nickname_ci` | `ACC-APP-002` | `nickname` |
 
 Flyway 마이그레이션에서 제약 이름을 바꾸면 이 매핑과 표를 함께 고친다.
