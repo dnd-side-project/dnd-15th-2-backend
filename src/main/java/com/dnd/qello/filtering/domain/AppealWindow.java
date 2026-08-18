@@ -23,6 +23,10 @@ public record AppealWindow(Duration acceptanceWindow) {
 
 	public static final AppealWindow GLOBAL = new AppealWindow(GLOBAL_ACCEPTANCE_WINDOW);
 
+	// 감사 이력에 남길 정책 식별자(#113, INV-APL-012). 접수 기간 정책이 바뀌면
+	// 이 값을 올려, 어떤 기간 정책 아래에서 내려진 결정인지 구분할 수 있게 한다.
+	public static final String POLICY_VERSION = "appeal-window-v1";
+
 	public AppealWindow {
 		if (acceptanceWindow == null) {
 			throw new FilteringException(FilteringErrorCode.REQUIRED_VALUE_MISSING, "acceptanceWindow");
