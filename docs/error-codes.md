@@ -212,10 +212,20 @@
 | `SAF-VAL-003` | INVALID_REPORT_TARGET | 400 | VAL | 신고 대상이 올바르지 않습니다. |
 | `SAF-VAL-004` | INVALID_REASON_CODE | 400 | VAL | 신고 사유 코드가 올바르지 않습니다. |
 | `SAF-VAL-005` | INVALID_TIME_ORDER | 400 | VAL | 신고 시각 순서가 올바르지 않습니다. |
+| `SAF-VAL-006` | INVALID_REPORT_DETAIL | 400 | VAL | 신고 설명이 올바르지 않습니다. |
+| `SAF-VAL-007` | INVALID_REPORT_SUB_REASON | 400 | VAL | 신고 하위 사유가 올바르지 않습니다. |
+| `SAF-VAL-008` | INVALID_SNAPSHOT_EDIT_COUNT | 400 | VAL | 스냅샷 편집 횟수가 올바르지 않습니다. |
 | `SAF-DOM-001` | SELF_BLOCK_NOT_ALLOWED | 400 | DOM | 자기 자신을 차단할 수 없습니다. |
 | `SAF-DOM-002` | INVALID_REPORT_STATUS | 400 | DOM | 신고 종결 상태가 올바르지 않습니다. |
+| `SAF-DOM-003` | SELF_REPORT_NOT_ALLOWED | 400 | DOM | 자기 자신을 신고할 수 없습니다. |
+| `SAF-DOM-004` | REPORT_ALREADY_LINKED_TO_CASE | 400 | DOM | 이미 다른 사건에 연결된 신고입니다. |
+| `SAF-DOM-005` | REPORT_CASE_ALREADY_RESOLVED | 400 | DOM | 이미 종결된 사건입니다. |
 | `SAF-APP-001` | ACTIVE_BLOCK_NOT_FOUND | 404 | APP | 활성 차단을 찾을 수 없습니다. |
+| `SAF-APP-002` | REPORT_TARGET_NOT_FOUND | 404 | APP | 신고 대상을 찾을 수 없습니다. |
+| `SAF-APP-003` | REPORT_NOT_FOUND | 404 | APP | 신고를 찾을 수 없습니다. |
+| `SAF-APP-004` | REPORT_RATE_LIMIT_EXCEEDED | 429 | APP | 신고 요청이 너무 많습니다. |
 | `SAF-INFRA-001` | DUPLICATED_OPEN_REPORT | 409 | INFRA | 이미 접수된 신고가 있습니다. |
+| `SAF-INFRA-002` | CASE_MERGE_CONFLICT | 409 | INFRA | 신고 처리가 일시적으로 지연되고 있습니다. |
 
 ## 11. notification (NOT)
 
