@@ -22,8 +22,10 @@ import com.dnd.qello.notification.repository.NotificationEventRepository;
  *
  * webhook/secret과 실제 재시도 수치가 미결정이라 {@code AnswerModerationJobIntakeService}
  * (#105), {@code SnapshotHealthProbeRecorder}(#109)와 동일하게 Spring bean으로
- * 배선하지 않는다. 실제 {@link SlackNotifier} 구현체와 scheduler 배선은 #113
- * production gate에서 이어간다.
+ * 배선하지 않는다. #113이 production 활성화 게이트와 감사·지표를 갖췄지만 secret
+ * 저장·rotation을 범위에서 제외해, 실제 {@link SlackNotifier} 구현체와 scheduler
+ * 배선은 그 게이트를 통과한 뒤의 후속 이슈 몫으로 남았다
+ * (docs/filtering-production-gate.md 3절).
  */
 public class SlackManualReviewNotificationDispatchWorker {
 
