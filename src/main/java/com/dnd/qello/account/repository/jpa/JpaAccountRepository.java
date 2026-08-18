@@ -43,6 +43,14 @@ public class JpaAccountRepository implements AccountRepository {
 
 	@Override
 	@Transactional
+	public Account updateProfileImage(Account account) {
+		AccountJpaEntity entity = findManaged(account.getId());
+		AccountJpaMapper.updateProfileImage(entity, account);
+		return AccountJpaMapper.toDomain(entity);
+	}
+
+	@Override
+	@Transactional
 	public Account updateStatus(Account account) {
 		AccountJpaEntity entity = findManaged(account.getId());
 		AccountJpaMapper.updateStatus(entity, account);

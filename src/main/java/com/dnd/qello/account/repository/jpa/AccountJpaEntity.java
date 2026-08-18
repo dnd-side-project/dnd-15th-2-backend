@@ -53,6 +53,11 @@ public class AccountJpaEntity extends JpaAuditableEntity {
 	@Column(name = "nickname", length = 50)
 	private String nickname;
 
+	// null이면 기본 이미지를 사용한다. 참조 무결성과 소유권은 fk_user_account_profile_image
+	// 복합 FK가 강제하므로 JPA 연관을 두지 않고 식별자만 보관한다.
+	@Column(name = "profile_image_media_id")
+	private Long profileImageMediaId;
+
 	@Column(name = "deleted_at")
 	private Instant deletedAt;
 
@@ -86,6 +91,10 @@ public class AccountJpaEntity extends JpaAuditableEntity {
 		this.locale = locale;
 		this.timezone = timezone;
 		this.nickname = nickname;
+	}
+
+	void updateProfileImage(Long profileImageMediaId) {
+		this.profileImageMediaId = profileImageMediaId;
 	}
 
 	void updateStatus(AccountStatus status, Instant deletedAt) {
