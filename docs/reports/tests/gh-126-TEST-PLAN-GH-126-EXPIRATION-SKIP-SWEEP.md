@@ -1,9 +1,11 @@
 # Test Report: TEST-PLAN-GH-126-EXPIRATION-SKIP-SWEEP
 
 > Created at: `2026-08-17T21:06:15+09:00`
+> Updated at: `2026-08-18T01:04:18+09:00`
 > GitHub Issue: `#126`
 > Branch: `feat/gh-126-expiration-skip-sweep`
-> Commit: `65c6828`
+> Commit: `a1d2092` (최초 실행은 `65c6828` 기준. `a1d2092`에서 후보 조회 SQL이 바뀌어
+> sweep·회귀 스위트를 재실행했다 — §3 재실행 행과 §6 참고)
 
 ## 1. Executive summary
 
@@ -18,7 +20,8 @@
   `DirectionPost` 상태 전이 변경) — 이번 이슈 범위 밖이며 미구현.
 - Release recommendation: 승인된 P0/P1 시나리오가 전부 통과했고 저장소 전체
   회귀(unit 581건 + integration 440건, 합계 1021건, 실패 0건)도 통과했으므로
-  병합 가능.
+  병합 가능. 전체 회귀 수치는 `65c6828` 기준이며, 이후 `a1d2092`가 후보 조회
+  SQL을 바꿔 sweep과 해당 조회 호출자 69건을 재실행했다(실패 0건 — §3).
 
 ## 2. Environment
 
@@ -43,6 +46,25 @@
 | `./gradlew test` (전체 unit) | PASS | 581 | — | `build/test-results/test/` |
 | `./gradlew integrationTest` (전체 integration) | PASS | 440 | — | `build/test-results/integrationTest/` |
 | 전체 합산(unit+integration) | PASS | 1021, 실패 0, 오류 0, 스킵 0 | — | `build/test-results/{test,integrationTest}/TEST-*.xml` 전수 집계 |
+
+`a1d2092` 재실행: 이 커밋이 무제한 후보 조회를 별도 SQL 상수로 분리했다(§6). 프로덕션
+SQL 변경이므로 sweep 스위트와 무제한 조회 호출자를 현재 커밋에서 다시 실행했다.
+
+| Command / suite | Result | Tests | Duration | Evidence |
+| --- | --- | --- | --- | --- |
+| `./gradlew test --tests 'com.dnd.qello.direction.sweep.*'` | PASS | 13 | 0.456s | `build/test-results/test/TEST-com.dnd.qello.direction.sweep.*.xml` |
+| `./gradlew integrationTest --tests 'RecipientSweepIntegrationTest'` | PASS | 14 | 0.300s | `build/test-results/integrationTest/TEST-com.dnd.qello.RecipientSweepIntegrationTest.xml` |
+| `./gradlew integrationTest --tests 'RecipientSweepConcurrencyIntegrationTest'` | PASS | 4 | 0.142s | 〃 `...RecipientSweepConcurrencyIntegrationTest.xml` |
+| 무제한 조회 호출자 회귀(`ReceiveSlotReleaseIntegrationTest` 16, `AnswerSubmissionApiIntegrationTest` 10, `InboxApiIntegrationTest` 12) | PASS | 38 | 1.285s | 각 클래스 XML |
+| 재실행 합산 | PASS | 69, 실패 0, 오류 0, 스킵 0 | — | 위 XML 전수 집계 |
+
+재실행 범위는 sweep과 후보 조회 경로로 한정했다. 전체 스위트(unit 581 + integration
+440)는 `a1d2092`에서 재실행하지 않았다 — 이 커밋이 건드린 파일은 `PostRecipientSql`과
+`JdbcPostRecipientRepository` 둘뿐이고, 변경된 네 메서드
+(`findExpirableAsOf` 2개, `findConfirmableSkips` 2개)의 호출자를 저장소 전체에서
+확인해 위 재실행이 전부 포함함을 확인했다. 무제한 오버로드의 호출자는 현재
+`ReceiveSlotReleaseIntegrationTest`, `AnswerSubmissionApiIntegrationTest`,
+`InboxApiIntegrationTest` 세 통합 테스트뿐이며 프로덕션 호출자는 없다(§6 참고).
 
 ## 4. Scenario results
 
@@ -120,13 +142,28 @@
 
 ### Database and migrations
 
-- `PostRecipientSql.FIND_EXPIRABLE`/`FIND_CONFIRMABLE_SKIPS`는 각각
-  `(dp.expires_at, pr.id)`/`(skip_requested_at, id)`로 정렬한다(`/simplify` 리뷰
-  이후 무제한·제한 조회가 하나의 SQL 템플릿을 공유하도록 합쳤다 — 무제한
-  호출자는 `JdbcPostRecipientRepository`가 `limit`에 `Integer.MAX_VALUE`를 넘겨
-  같은 쿼리를 그대로 재사용한다). 두 정렬 컬럼 다 전용 복합 인덱스가 없다 —
-  현재 스키마의 기존 인덱스로 커버되는지, 데이터가 늘었을 때 정렬 비용이
-  어떻게 변하는지는 이번 검증 범위 밖이다. 이 이슈는 Flyway migration을
+- 후보 조회는 처리량 제한 유무에 따라 **네 개의 SQL 상수**로 나뉜다(`a1d2092`
+  기준). 제한 있는 쪽만 정렬한다.
+
+  | 상수 | 정렬 | `LIMIT` | 호출 메서드 |
+  | --- | --- | --- | --- |
+  | `FIND_EXPIRABLE` | `dp.expires_at, pr.id` | `:limit` | `findExpirableAsOf(at, limit)` |
+  | `FIND_EXPIRABLE_UNLIMITED` | 없음 | 없음 | `findExpirableAsOf(at)` |
+  | `FIND_CONFIRMABLE_SKIPS` | `skip_requested_at, id` | `:limit` | `findConfirmableSkips(deadline, limit)` |
+  | `FIND_CONFIRMABLE_SKIPS_UNLIMITED` | 없음 | 없음 | `findConfirmableSkips(deadline)` |
+
+  각 쌍은 WHERE 조건이 동일하고 `ORDER BY`·`LIMIT` 유무만 다르다. 중간에
+  `/simplify` 리뷰로 두 경로를 하나의 템플릿으로 합치고 무제한 호출자가
+  `Integer.MAX_VALUE`를 넘기는 형태로 정리한 적이 있으나, 그 구성에서는 정렬
+  결과를 쓰지 않는 호출자가 전체 후보 정렬 비용을 지불하므로 `a1d2092`에서 다시
+  분리했다. 기아 방지 정렬은 처리량 제한이 있는 호출에만 의미가 있다.
+- 조건이 같은 SQL이 두 벌씩 존재하므로 만료·넘김확정 조건을 바꿀 때 두 상수를 함께
+  고쳐야 한다. 한쪽만 바뀌면 sweep과 무제한 조회가 서로 다른 후보 집합을 보게
+  된다. 현재는 무제한 오버로드에 프로덕션 호출자가 없어(위 §3 재실행 항목) 실제
+  영향은 통합 테스트에 한정되지만, 이 결합은 정적 검사로 잡히지 않는다.
+- 정렬 컬럼 `(dp.expires_at, pr.id)`/`(skip_requested_at, id)` 어느 쪽에도 전용 복합
+  인덱스가 없다 — 현재 스키마의 기존 인덱스로 커버되는지, 데이터가 늘었을 때 정렬
+  비용이 어떻게 변하는지는 이번 검증 범위 밖이다. 이 이슈는 Flyway migration을
   명시적으로 제외했으므로 인덱스 추가가 필요하면 별도 이슈로 분리해야 한다.
 
 ### Concurrency and idempotency
@@ -178,6 +215,13 @@
   `findConfirmableSkips(Instant)`)는 시그니처를 바꾸지 않았다.
   `ReceiveSlotReleaseIntegrationTest`, `AnswerSubmissionApiIntegrationTest`,
   `InboxApiIntegrationTest`를 재실행해 기존 호출자가 영향받지 않음을 확인했다.
+- 회귀(`a1d2092`): 무제한 조회를 별도 SQL 상수로 분리한 뒤 위 세 클래스와 sweep
+  스위트를 다시 실행했다(합계 69건, 실패 0 — §3 재실행 표). WHERE 조건은 바뀌지
+  않았고 무제한 경로에서 `ORDER BY`만 빠졌으므로 후보 집합은 동일하다. 무제한
+  조회에 정렬이 없는 것은 `origin/main`의 기존 동작과 같다(브랜치 중간 커밋에서
+  일시적으로 생겼던 순서 보장이 없어진 것이며, 병합 대상 기준으로는 회귀가 아니다).
+  현재 호출자인 통합 테스트 3곳은 `contains`/`doesNotContain`/`forEach`만 사용해
+  순서에 의존하지 않음을 코드로 확인했다.
 - 잔여 위험: 위 §6에 정리한 실행 트리거 부재, 인덱스 미검증, `confirmSkip()`의
   비잠금 조회 비대칭, 실패 행 재시도 상한 없음 — 모두 TASK.md의 명시적 제외
   범위와 일치하며 이 이슈에서 새로 만든 위험이 아니라 기존 설계나 후속 이슈로
@@ -189,7 +233,8 @@
 - CI run: 로컬 실행(`./gradlew test`, `./gradlew integrationTest`) — 이 세션에서
   별도 CI 파이프라인은 트리거하지 않았다.
 - Related ADR: 없음
-- PR: 아직 생성하지 않음
+- PR: `#158` (`feat: 만료·넘김확정 sweep 실행기 추가`) — 이 보고서 최초 작성 이후
+  생성됐고 현재 열려 있다. `a1d2092` 재실행 결과는 PR 본문에 반영해야 한다.
 
 ## 9. Reviewer checklist
 
