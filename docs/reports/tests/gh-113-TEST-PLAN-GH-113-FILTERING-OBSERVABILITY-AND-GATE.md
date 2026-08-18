@@ -11,9 +11,11 @@
 - Tested scope: `operator_action_audit` 스키마와 append-only 계약, 필터링 운영자
   경로 전체의 감사 배선과 `reason` 필수화, metric tag 허용목록과 계측 실패
   격리, production 활성화 게이트의 fail-closed 동작.
-- Unverified scope: **판정 경로(latency·판정 분포·queue 체류·deadline 경과)의
-  실제 계측은 배선하지 않았다.** 아래 5절에 이유를 적었다. metric exporter,
-  경보 규칙, 대시보드도 도구 미정이라 다루지 않았다.
+- Unverified scope: 판정 경로(latency·판정 분포·queue 체류·deadline 경과)의
+  실제 계측은 배선하지 않았다. 6절에 이유를 적었다. 그에 따라 계획의 INT-003,
+  INT-010, INT-011은 실행하지 않았다(INT-010·INT-011의 개인정보 유입 방지는
+  UNIT-013·UNIT-015가 registry 전수 검사와 값 형태 검증으로 대신 덮는다).
+  metric exporter, 경보 규칙, 대시보드도 도구 미정이라 다루지 않았다.
 - Release recommendation: 병합 가능. 다만 이 변경만으로 관측 데이터가 프로세스
   밖으로 나가지는 않는다 — exporter가 없다.
 
@@ -30,14 +32,14 @@
 
 | Command / suite | Result | Tests | Duration | Evidence |
 | --- | --- | --- | --- | --- |
-| `./gradlew test` | PASS | 636 (실패 0, 건너뜀 0) | 약 9초 | `build/test-results/test` |
-| `./gradlew integrationTest` | PASS | 482 (실패 0, 건너뜀 0) | 약 6분 1초 | `build/test-results/integrationTest` |
+| `./gradlew test` | PASS | 642 (실패 0, 건너뜀 0) | 약 8초 | `build/test-results/test` |
+| `./gradlew integrationTest` | PASS | 484 (실패 0, 건너뜀 0) | 약 8분 24초 | `build/test-results/integrationTest` |
 | `./harness check` | PASS | 민감정보 954파일·JUnit 정책 166파일·컨벤션·workflow·label·Husky | — | 명령 출력 |
 | `git diff --check` | PASS | — | — | 공백 오류 없음 |
 
-이번 이슈가 추가한 테스트는 단위 14건(`OperatorActionAuditTest` 3,
-`FilteringMetricsTest` 6, `FilteringProductionGateTest` 4, 그리고 기존 파일의
-보강 1), 통합 5건(`OperatorActionAuditIntegrationTest`)이다.
+이번 이슈가 추가한 테스트는 단위 20건(`OperatorActionAuditTest` 3,
+`FilteringMetricsTest` 8, `FilteringProductionGateTest` 9), 통합 7건
+(`OperatorActionAuditIntegrationTest` 6, `ActuatorExposureIntegrationTest` 1)이다.
 
 ## 4. Scenario results
 
@@ -57,21 +59,27 @@
 | UNIT-012 | PASS | `FilteringMetricsTest.instrumentationFailureNeverPropagates` | 계측 실패가 전파되지 않음 |
 | UNIT-013 (추가) | PASS | `FilteringMetricsTest.everyRecordedMeterUsesAllowedTagsOnly` | 기록된 meter 전수 검사 |
 | UNIT-014 (추가) | PASS | `FilteringProductionGateTest.reportsEveryMissingConfirmation` | 누락 항목 전부 보고 |
-| INT-001 | PASS | `OperatorActionAuditIntegrationTest.appliesOperatorActionAuditSchema` | 컬럼 8·CHECK 4·인덱스 2 |
+| INT-001 | PASS | `OperatorActionAuditIntegrationTest.appliesOperatorActionAuditSchema` | 컬럼 8·CHECK 7·인덱스 2 |
 | INT-002 | PASS | `OperatorActionAuditIntegrationTest.promotionRecordsAuditInSameTransaction` | 4요소 전부 확인 |
 | INT-004 | PASS | `OperatorActionAuditIntegrationTest.distinctOperatorPathsRecordDistinctActionTypes` | 5개 경로 구분 |
 | INT-005 | PASS | `OperatorActionAuditIntegrationTest.auditCannotRunOutsideCallerTransaction` | MANDATORY 전파 |
 | INT-006 | PASS | `OperatorActionAuditIntegrationTest.auditLedgerIsAppendOnlyAndRejectsBlankReason` | |
+| INT-007 | PASS | `ActuatorExposureIntegrationTest.actuatorEndpointsAreNotExposed` | `/actuator/**` 4개 경로가 401 |
+| INT-008 | PASS | `FilteringProductionGateTest.contextFailsToStartWhenConfirmationsAreMissing` | 누락 항목명이 근본 원인에 |
+| INT-009 | PASS | `FilteringProductionGateTest.contextStartsWhenEveryConfirmationIsPresent` | 비활성 기본값도 함께 확인 |
 | INT-012 | PASS | 기존 통합 테스트 12개 파일 | `reason` 추가 후 회귀 없음 |
+| INT-017 | PASS | `OperatorActionAuditIntegrationTest.databaseRejectsUndefinedEnumAndBlankReasonCode` | 리뷰 지적으로 추가 |
+| UNIT-015 | PASS | `FilteringMetricsTest.rejectsFreeTextValuesUnderAllowedKeys` | 리뷰 지적으로 추가 |
+| UNIT-016 | PASS | `FilteringMetricsTest.rejectionMessageNeverEchoesTheValue` | 리뷰 지적으로 추가 |
 
 미실행 시나리오는 6절과 7절에 적었다.
 
 ## 5. Failures and diagnostics
 
-최종 실행에서 실패한 테스트는 없다. 구현 도중 발생했다가 해결한 실패는 넷이다.
+최종 실행에서 실패한 테스트는 없다. 구현 도중 발생했다가 해결한 실패는 다섯이다.
 
 1. **스키마 인벤토리 가드 4종.** `operator_action_audit` 하나가 늘면서
-   테이블 수(48→49), 마이그레이션 수(19→20), CHECK 제약 수(117→121), 인덱스
+   테이블 수(48→49), 마이그레이션 수(19→20), CHECK 제약 수(117→124), 인덱스
    수(62→64) 단언이 함께 깨졌다. 전부 "스키마가 사람 모르게 늘지 않는가"를 묻는
    장치이므로 값을 갱신하고 근거를 주석으로 남겼다.
 2. **`FlywayMigrationContractTest`의 파일 목록 정렬.** `V20`을 `V19` 뒤에
@@ -84,6 +92,42 @@
    바로 `rollback`하려다 `INVALID_RELEASE_STATUS`로 실패했다. `rollback`은 이미
    `ROLLED_BACK`으로 내려간 release를 다시 올리는 경로라, 두 번째 release를
    승격해 첫 번째를 내린 뒤에야 호출할 수 있다. 테스트를 실제 계약에 맞췄다.
+
+5. **게이트 컨텍스트 테스트의 단언 위치.** 코드 리뷰 대응으로 추가한 INT-008이
+   `BeanCreationException`의 메시지에서 누락 항목 이름을 찾다 실패했다. 이름은
+   게이트가 던진 근본 원인에 있고 래핑 예외에는 초기화 실패 사실만 남는다.
+   `hasStackTraceContaining`으로 바꿔 근본 원인까지 확인하게 했다.
+
+## 5.1 코드 리뷰 대응
+
+CodeRabbit 리뷰의 Major 5건 중 4건을 반영했다.
+
+- **감사 테이블 제약 누락.** `reason_code`의 공백 금지 CHECK와 `action_type`·
+  `target_type`의 허용값 CHECK가 없어, 애플리케이션 검증을 우회한 행이
+  들어오면 읽을 때 `valueOf`가 실패해 감사 조회가 막힐 수 있었다. V20에 CHECK
+  3개를 추가하고 INT-017로 확인했다. V20은 아직 병합 전이라 후속 migration
+  대신 V20 자체를 고쳤다.
+- **강등 감사 누락.** `promote`/`rollback`이 기존 PROMOTED release를 같은
+  트랜잭션에서 내리는데 그 release 쪽에는 감사가 남지 않았다. 대상의 이력만
+  보면 누가 왜 내렸는지 알 수 없다. `RELEASE_DEMOTED_BY_PROMOTION`을 추가해
+  기록한다. 리뷰는 `RELEASE_ROLLBACK` 재사용을 제안했지만, 운영자가 직접 요청한
+  rollback과 승격에 딸린 자동 강등을 같은 값으로 두면 이력만으로 구분할 수
+  없어 별도 값으로 뒀다.
+- **metric tag 값 검증 부재.** 키만 제한하고 값은 60자 이내 아무 문자열이나
+  통과해, 허용된 키에 이메일이나 원문 조각을 실을 수 있었다. 키마다 값의
+  형태를 고정했다(열거 토큰·숫자 id·model snapshot). 거절 메시지에 값 자체를
+  담지 않는다 — 거절된 값이 곧 유출 대상일 수 있다. UNIT-015·UNIT-016으로
+  확인했다.
+- **게이트 승인 참조 형식 부재.** `true`나 임의의 짧은 문자열이 승인 근거로
+  통과했다. boolean으로 두는 것과 결과가 같아지므로, placeholder 토큰 집합을
+  거절하고 최소 길이를 요구한다. UNIT-015로 확인했다.
+
+나머지 1건(보고서 상태를 `BLOCKED`로 유지하라)은 근거가 이 환경과 다르다.
+리뷰는 `./harness pr-ready --project-tests`가 브랜치 형식 오류로 종료 코드 2를
+반환했다고 했지만, 이 브랜치에서 실행하면 통과한다. 다만 지적의 실질(P0
+시나리오가 미실행인 채로 `PASS`를 쓰지 말 것)은 타당해, 미실행이던 INT-007과
+INT-008·INT-009를 실제로 구현했다. 남은 미실행은 판정 경로 계측에 딸린
+INT-003·INT-010·INT-011이며 1절과 6절에 명시했다.
 
 ## 6. Potential issues
 
@@ -168,7 +212,7 @@
 ## 9. Reviewer checklist
 
 - [x] 보고서에 `.env` 값이나 비밀정보가 없음
-- [x] 미실행 테스트가 명시됨 (판정 경로 계측, exporter·경보, INT-003·INT-007~011)
+- [x] 미실행 테스트가 명시됨 (판정 경로 계측, exporter·경보, INT-003·INT-010·INT-011)
 - [ ] 잠재 문제에 후속 GitHub Issue가 연결됨 — 아직 생성하지 않았다. pipeline
       계측·스케줄러 배선·Slack 구현체·감사 보관 정책은 후속 이슈가 필요하다.
 - [x] 실행 결과와 PR 설명이 일치함

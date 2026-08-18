@@ -89,6 +89,18 @@ public class FilterReleaseRegistryService {
 		return canary;
 	}
 
+	// 승격은 기존 PROMOTED release를 같은 트랜잭션에서 내린다. 내려간 release
+	// 쪽에도 감사를 남기지 않으면 "누가 왜 이 release를 내렸는가"가 그 대상의
+	// 이력에는 전혀 남지 않는다(INV-APL-012).
+	private void auditDemotion(Long previousActiveReleaseId, long operatorUserId, OperatorReason reason) {
+		if (previousActiveReleaseId == null) {
+			return;
+		}
+		auditRecorder.record(operatorUserId, OperatorActionType.RELEASE_DEMOTED_BY_PROMOTION,
+			OperatorActionTargetType.FILTER_RELEASE, String.valueOf(previousActiveReleaseId), reason,
+			releasePolicyVersion(previousActiveReleaseId));
+	}
+
 	private void audit(OperatorActionType actionType, long releaseId, long operatorUserId, OperatorReason reason) {
 		auditRecorder.record(operatorUserId, actionType, OperatorActionTargetType.FILTER_RELEASE,
 			String.valueOf(releaseId), reason, releasePolicyVersion(releaseId));
@@ -107,6 +119,7 @@ public class FilterReleaseRegistryService {
 		promotionHistoryRepository.save(ReleasePromotionHistoryEntry.of(
 			promoted.id(), ReleasePromotionAction.PROMOTE, previousActiveReleaseId, operatorUserId, now));
 		audit(OperatorActionType.RELEASE_PROMOTE, releaseId, operatorUserId, reason);
+		auditDemotion(previousActiveReleaseId, operatorUserId, reason);
 		return promoted;
 	}
 
@@ -121,6 +134,7 @@ public class FilterReleaseRegistryService {
 		promotionHistoryRepository.save(ReleasePromotionHistoryEntry.of(
 			rePromoted.id(), ReleasePromotionAction.ROLLBACK, previousActiveReleaseId, operatorUserId, now));
 		audit(OperatorActionType.RELEASE_ROLLBACK, releaseId, operatorUserId, reason);
+		auditDemotion(previousActiveReleaseId, operatorUserId, reason);
 		return rePromoted;
 	}
 

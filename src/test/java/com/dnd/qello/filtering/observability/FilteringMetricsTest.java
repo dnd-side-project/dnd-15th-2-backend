@@ -51,10 +51,36 @@ class FilteringMetricsTest {
 	void rejectsUnusableTagValues() {
 		assertThatThrownBy(() -> FilteringMetricTags.tag("path", "  "))
 			.isInstanceOf(FilteringException.class);
-		assertThatThrownBy(() -> FilteringMetricTags.tag("path", "x".repeat(61)))
+		assertThatThrownBy(() -> FilteringMetricTags.tag("path", "X".repeat(61)))
 			.isInstanceOf(FilteringException.class);
 		assertThatThrownBy(() -> FilteringMetricTags.of("path"))
 			.isInstanceOf(FilteringException.class);
+	}
+
+	@Test
+	@DisplayName("UNIT-015: 허용된 키라도 이메일·원문 조각처럼 자유 텍스트인 값은 거절한다")
+	void rejectsFreeTextValuesUnderAllowedKeys() {
+		// 키만 제한하면 허용된 키에 개인 식별자나 답변 조각을 실을 수 있다.
+		assertThatThrownBy(() -> FilteringMetricTags.tag("path", "user@example.com"))
+			.isInstanceOf(FilteringException.class)
+			.hasFieldOrPropertyWithValue("errorCode", FilteringErrorCode.INVALID_TEXT);
+		assertThatThrownBy(() -> FilteringMetricTags.tag("outcome", "오늘 날씨가 좋네요"))
+			.isInstanceOf(FilteringException.class);
+		assertThatThrownBy(() -> FilteringMetricTags.tag("reason_code", "nickname:김도연"))
+			.isInstanceOf(FilteringException.class);
+		assertThatThrownBy(() -> FilteringMetricTags.tag("release", "release-7"))
+			.isInstanceOf(FilteringException.class);
+		assertThatThrownBy(() -> FilteringMetricTags.tag("model", "Answer body text"))
+			.isInstanceOf(FilteringException.class);
+	}
+
+	@Test
+	@DisplayName("UNIT-016: 거절 메시지에 값 자체를 담지 않는다")
+	void rejectionMessageNeverEchoesTheValue() {
+		// 거절된 값이 곧 원문이나 식별자일 수 있다. 메시지로 흘리면 막으려던
+		// 유출이 그대로 일어난다.
+		assertThatThrownBy(() -> FilteringMetricTags.tag("path", "user@example.com"))
+			.hasMessageNotContaining("user@example.com");
 	}
 
 	@Test

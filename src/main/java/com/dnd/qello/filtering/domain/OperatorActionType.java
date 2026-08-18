@@ -14,6 +14,11 @@ public enum OperatorActionType {
 	RELEASE_PROMOTE,
 	RELEASE_ROLLBACK,
 
+	// 다른 release가 승격되면서 기존 PROMOTED release가 자동으로 내려간 경우.
+	// 운영자가 직접 요청한 RELEASE_ROLLBACK과 구분한다 — 같은 값을 쓰면 감사
+	// 이력만 보고 "누가 이 release를 내리기로 했는가"에 답할 수 없다.
+	RELEASE_DEMOTED_BY_PROMOTION,
+
 	MANUAL_REVIEW_DECIDE,
 
 	APPEAL_DECIDE,

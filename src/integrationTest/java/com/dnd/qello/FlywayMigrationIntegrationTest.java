@@ -361,9 +361,10 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 		// V19(#153)이 report.ck_report_sub_reason 1개를 추가해 116에서 117이 됐다
 		// (ck_report_reason·ck_notification_target은 같은 이름으로 교체돼 순증가는
 		// 없다).
-		// V20(#113)이 operator_action_audit의 CHECK 4개(operator_user_id, target_key,
-		// reason_text, policy_version)를 추가해 117에서 121이 됐다.
-		assertThat(countConstraints(constraints, "c")).isEqualTo(121);
+		// V20(#113)이 operator_action_audit의 CHECK 7개(operator_user_id, target_key,
+		// reason_code, reason_text, policy_version, action_type, target_type)를 추가해
+		// 117에서 124가 됐다.
+		assertThat(countConstraints(constraints, "c")).isEqualTo(124);
 		// V20(#113)이 operator_action_audit의 조회 인덱스 2개를 추가해 62에서 64가 됐다.
 		assertThat(EXPECTED_INDEXES).hasSize(64);
 		assertThat(EXPECTED_FUNCTIONS).hasSize(11);

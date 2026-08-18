@@ -23,10 +23,23 @@ CREATE TABLE operator_action_audit (
     CONSTRAINT ck_operator_action_audit_target_key
         CHECK (btrim(target_key) <> ''),
     -- 형식만 채운 근거를 막는다. 공백뿐인 reason은 "왜"가 없는 것과 같다.
+    CONSTRAINT ck_operator_action_audit_reason_code
+        CHECK (btrim(reason_code) <> ''),
     CONSTRAINT ck_operator_action_audit_reason_text
         CHECK (btrim(reason_text) <> ''),
     CONSTRAINT ck_operator_action_audit_policy_version
-        CHECK (btrim(policy_version) <> '')
+        CHECK (btrim(policy_version) <> ''),
+    -- 애플리케이션 검증을 우회해 들어온 값이 있으면 읽을 때 valueOf가 실패해
+    -- 감사 조회 자체가 막힌다. 쓰기 시점에 거절해 그 상황을 만들지 않는다.
+    CONSTRAINT ck_operator_action_audit_action_type
+        CHECK (action_type IN (
+            'RELEASE_MARK_OFFLINE_EVALUATED', 'RELEASE_DESIGNATE_SHADOW', 'RELEASE_DESIGNATE_CANARY',
+            'RELEASE_PROMOTE', 'RELEASE_ROLLBACK', 'RELEASE_DEMOTED_BY_PROMOTION',
+            'MANUAL_REVIEW_DECIDE', 'APPEAL_DECIDE', 'APPEAL_EXTEND_EXPIRY',
+            'SNAPSHOT_HEALTH_CONFIRM_PERMANENT', 'SNAPSHOT_EMERGENCY_MIGRATION'
+        )),
+    CONSTRAINT ck_operator_action_audit_target_type
+        CHECK (target_type IN ('FILTER_RELEASE', 'MANUAL_REVIEW_CASE', 'APPEAL_CASE', 'SNAPSHOT_HEALTH'))
 );
 
 -- 대상 하나의 변경 이력을 시간순으로 훑는 조회.

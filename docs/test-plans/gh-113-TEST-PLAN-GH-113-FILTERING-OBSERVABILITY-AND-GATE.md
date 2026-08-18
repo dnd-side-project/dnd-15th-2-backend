@@ -106,6 +106,11 @@
 | ...-INT-010 | moderation pipeline, MeterRegistry | 실제 판정 1회 | 지표 조회 | latency·판정 분포가 기록되고 tag 값에 원문·userId가 없다 | 트랜잭션 롤백 |
 | ...-INT-011 | 전체 metric 이름·tag | 컨텍스트 기동 후 registry 전수 조회 | 모든 meter의 tag 키 확인 | 전부 허용목록 안이다 (`INV-CMP-002`) | 없음 |
 | ...-INT-012 | 기존 운영자 API 통합 테스트 | `reason` 추가 후 | 기존 시나리오 재실행 | 회귀 없이 통과한다 | 기존과 동일 |
+| ...-INT-017 | 감사 테이블 CHECK 제약 | V20 적용 후 | 정의되지 않은 `action_type`·`target_type`, 공백 `reason_code` 삽입 | DB가 셋 다 거절한다 | 트랜잭션 롤백 |
+
+> INT-017은 코드 리뷰에서 드러난 구멍을 메우려고 추가했다. 애플리케이션 검증을
+> 우회해 들어온 값이 있으면 읽을 때 `valueOf`가 실패해 감사 조회 자체가 막히므로,
+> 쓰기 시점에 DB가 거절하는지 확인한다.
 
 ## 7. Cross-cutting scenarios
 

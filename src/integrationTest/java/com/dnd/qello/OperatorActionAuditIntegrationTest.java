@@ -1,6 +1,7 @@
 /**
  * Created at: 2026-08-18T21:30:00+09:00
- * Source scenario: TEST-PLAN-GH-113-FILTERING-OBSERVABILITY-AND-GATE-INT-001 ~ INT-006
+ * Source scenario: TEST-PLAN-GH-113-FILTERING-OBSERVABILITY-AND-GATE-INT-001, INT-002,
+ *                  INT-004 ~ INT-006, INT-017
  */
 package com.dnd.qello;
 
@@ -69,8 +70,10 @@ class OperatorActionAuditIntegrationTest extends PostgisContainerIntegrationTest
 		assertThat(jdbc.queryForObject("""
 			SELECT count(*) FROM pg_constraint
 			WHERE conname IN ('ck_operator_action_audit_operator', 'ck_operator_action_audit_target_key',
-			                  'ck_operator_action_audit_reason_text', 'ck_operator_action_audit_policy_version')
-			""", Integer.class)).isEqualTo(4);
+			                  'ck_operator_action_audit_reason_code', 'ck_operator_action_audit_reason_text',
+			                  'ck_operator_action_audit_policy_version', 'ck_operator_action_audit_action_type',
+			                  'ck_operator_action_audit_target_type')
+			""", Integer.class)).isEqualTo(7);
 		assertThat(jdbc.queryForObject("""
 			SELECT count(*) FROM pg_indexes
 			WHERE indexname IN ('operator_action_audit_target_idx', 'operator_action_audit_operator_idx')
@@ -113,9 +116,31 @@ class OperatorActionAuditIntegrationTest extends PostgisContainerIntegrationTest
 			"SELECT action_type FROM operator_action_audit WHERE target_key = ? ORDER BY id",
 			String.class, String.valueOf(first));
 
+		// 두 번째 release가 승격되면서 first가 내려간 사실도 first의 이력에 남아야
+		// 한다. 남지 않으면 "누가 왜 이 release를 내렸는가"에 답할 수 없다.
 		assertThat(actionTypes).containsExactly(
 			"RELEASE_MARK_OFFLINE_EVALUATED", "RELEASE_DESIGNATE_SHADOW", "RELEASE_DESIGNATE_CANARY",
-			"RELEASE_PROMOTE", "RELEASE_ROLLBACK");
+			"RELEASE_PROMOTE", "RELEASE_DEMOTED_BY_PROMOTION", "RELEASE_ROLLBACK");
+	}
+
+	@Test
+	@DisplayName("INT-017: 정의되지 않은 action_type과 공백 reason_code는 DB 제약이 거절한다")
+	void databaseRejectsUndefinedEnumAndBlankReasonCode() {
+		assertThatThrownBy(() -> insertAudit("NOT_A_REAL_ACTION", "FILTER_RELEASE", "CODE"))
+			.isInstanceOf(DataIntegrityViolationException.class);
+		assertThatThrownBy(() -> insertAudit("RELEASE_PROMOTE", "NOT_A_REAL_TARGET", "CODE"))
+			.isInstanceOf(DataIntegrityViolationException.class);
+		assertThatThrownBy(() -> insertAudit("RELEASE_PROMOTE", "FILTER_RELEASE", "   "))
+			.isInstanceOf(DataIntegrityViolationException.class);
+	}
+
+	private void insertAudit(String actionType, String targetType, String reasonCode) {
+		jdbc.update("""
+			INSERT INTO operator_action_audit
+				(operator_user_id, action_type, target_type, target_key, reason_code, reason_text,
+				 policy_version, occurred_at)
+			VALUES (1, ?, ?, '1', ?, '근거', 'v1', ?)
+			""", actionType, targetType, reasonCode, java.sql.Timestamp.from(Instant.now()));
 	}
 
 	@Test
@@ -136,9 +161,10 @@ class OperatorActionAuditIntegrationTest extends PostgisContainerIntegrationTest
 		promotedRelease();
 		int before = countAudits();
 
-		// 같은 대상에 행위를 더 하면 덮어쓰지 않고 한 행이 더 쌓인다.
+		// 같은 대상에 행위를 더 하면 덮어쓰지 않고 행이 쌓인다. rollback은 대상의
+		// RELEASE_ROLLBACK과 내려간 release의 RELEASE_DEMOTED_BY_PROMOTION을 함께 남긴다.
 		releaseRegistryService.rollback(first, OPERATOR_USER_ID, REASON);
-		assertThat(countAudits()).isEqualTo(before + 1);
+		assertThat(countAudits()).isEqualTo(before + 2);
 
 		assertThatThrownBy(() -> jdbc.update("""
 			INSERT INTO operator_action_audit
