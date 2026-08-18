@@ -46,18 +46,33 @@ public record Report(Long id, long reporterId, Long targetUserId, Long direction
 	}
 
 	public static Report forUser(long reporterId, long targetUserId, String reasonCode, String detail, Instant at) {
+		return forUser(reporterId, targetUserId, reasonCode, null, detail, at);
+	}
+
+	public static Report forUser(long reporterId, long targetUserId, String reasonCode, String subReasonCode,
+		String detail, Instant at) {
 		return new Report(null, reporterId, targetUserId, null, null, reasonCode, detail,
-			ReportStatus.RECEIVED, at, null, null, null);
+			ReportStatus.RECEIVED, at, null, null, subReasonCode);
 	}
 
 	public static Report forPost(long reporterId, long directionPostId, String reasonCode, String detail, Instant at) {
+		return forPost(reporterId, directionPostId, reasonCode, null, detail, at);
+	}
+
+	public static Report forPost(long reporterId, long directionPostId, String reasonCode, String subReasonCode,
+		String detail, Instant at) {
 		return new Report(null, reporterId, null, directionPostId, null, reasonCode, detail,
-			ReportStatus.RECEIVED, at, null, null, null);
+			ReportStatus.RECEIVED, at, null, null, subReasonCode);
 	}
 
 	public static Report forAnswer(long reporterId, long answerId, String reasonCode, String detail, Instant at) {
+		return forAnswer(reporterId, answerId, reasonCode, null, detail, at);
+	}
+
+	public static Report forAnswer(long reporterId, long answerId, String reasonCode, String subReasonCode,
+		String detail, Instant at) {
 		return new Report(null, reporterId, null, null, answerId, reasonCode, detail,
-			ReportStatus.RECEIVED, at, null, null, null);
+			ReportStatus.RECEIVED, at, null, null, subReasonCode);
 	}
 
 	public Report startReview() { return transition(ReportStatus.UNDER_REVIEW, null); }
