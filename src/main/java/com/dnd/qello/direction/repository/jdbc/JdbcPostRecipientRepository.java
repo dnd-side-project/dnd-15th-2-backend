@@ -108,14 +108,28 @@ public class JdbcPostRecipientRepository implements PostRecipientRepository {
 
 	@Override
 	public List<PostRecipient> findExpirableAsOf(Instant at) {
-		return jdbc.query(PostRecipientSql.FIND_EXPIRABLE,
+		return jdbc.query(PostRecipientSql.FIND_EXPIRABLE_UNLIMITED,
 			new MapSqlParameterSource().addValue("at", timestamp(at)), (rs, rowNum) -> map(rs));
 	}
 
 	@Override
+	public List<PostRecipient> findExpirableAsOf(Instant at, int limit) {
+		return jdbc.query(PostRecipientSql.FIND_EXPIRABLE,
+			new MapSqlParameterSource().addValue("at", timestamp(at)).addValue("limit", limit),
+			(rs, rowNum) -> map(rs));
+	}
+
+	@Override
 	public List<PostRecipient> findConfirmableSkips(Instant deadline) {
-		return jdbc.query(PostRecipientSql.FIND_CONFIRMABLE_SKIPS,
+		return jdbc.query(PostRecipientSql.FIND_CONFIRMABLE_SKIPS_UNLIMITED,
 			new MapSqlParameterSource().addValue("deadline", timestamp(deadline)), (rs, rowNum) -> map(rs));
+	}
+
+	@Override
+	public List<PostRecipient> findConfirmableSkips(Instant deadline, int limit) {
+		return jdbc.query(PostRecipientSql.FIND_CONFIRMABLE_SKIPS,
+			new MapSqlParameterSource().addValue("deadline", timestamp(deadline)).addValue("limit", limit),
+			(rs, rowNum) -> map(rs));
 	}
 
 	@Override

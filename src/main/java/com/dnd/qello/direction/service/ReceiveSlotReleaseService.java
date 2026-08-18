@@ -54,6 +54,24 @@ public class ReceiveSlotReleaseService {
 		return recipientRepository.findConfirmableSkips(confirmationDeadline(at));
 	}
 
+	/**
+	 * 처리량이 제한된 만료 sweep 후보. RecipientExpirationSweepWorker의 batch 크기를
+	 * 그대로 전달한다. 정렬은 JdbcPostRecipientRepository의 SQL이 소유한다
+	 * (dp.expires_at, pr.id) — 기아를 막는 결정적 순서다.
+	 */
+	public List<PostRecipient> findExpirable(Instant at, int limit) {
+		return recipientRepository.findExpirableAsOf(at, limit);
+	}
+
+	/**
+	 * 처리량이 제한된 넘김확정 sweep 후보. 유예 계산은 findConfirmableSkips(Instant)와
+	 * 동일하게 이 메서드가 소유한다 — SkipConfirmationSweepWorker는 batch 시각과 limit만
+	 * 넘긴다.
+	 */
+	public List<PostRecipient> findConfirmableSkips(Instant at, int limit) {
+		return recipientRepository.findConfirmableSkips(confirmationDeadline(at), limit);
+	}
+
 	/** blockerId 자신의 수신 항목 중 blockedSenderId가 보낸 질문글에 대한 미종결 항목. */
 	public List<PostRecipient> findBlockable(long blockerId, long blockedSenderId) {
 		return recipientRepository.findBlockableFor(blockerId, blockedSenderId);
