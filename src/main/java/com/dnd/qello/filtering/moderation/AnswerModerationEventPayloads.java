@@ -41,6 +41,17 @@ final class AnswerModerationEventPayloads {
 		long filterJobId, FilterTargetType targetType, long targetId, long targetVersion
 	) { }
 
+	// MODERATION_APPEAL_RESOLVED payload. OVERTURN_HIDDEN 결정이 났고 다른 공개
+	// 금지 사유도 없을 때만 발행한다 — 이 이벤트의 존재 자체가 "복원해도 된다"는
+	// 신호이므로, 소비자가 결정 종류를 다시 해석할 필요가 없다.
+	//
+	// UPHOLD_HIDDEN과 복원이 차단된 OVERTURN_HIDDEN은 이벤트를 내지 않는다.
+	// 공개 상태를 실제로 되돌리는 것은 답변 담당 코드의 몫이다.
+	@JsonIgnoreProperties(ignoreUnknown = true)
+	record AppealResolved(
+		long appealCaseId, long filterDecisionId, FilterTargetType targetType, long targetId, long targetVersion
+	) { }
+
 	static String toJson(ObjectMapper objectMapper, Object payload) {
 		try {
 			return objectMapper.writeValueAsString(payload);
@@ -69,5 +80,9 @@ final class AnswerModerationEventPayloads {
 
 	static String deadlineElapsedDedupKey(long filterJobId) {
 		return "filter-job:" + filterJobId + ":DEADLINE_ELAPSED";
+	}
+
+	static String appealResolvedDedupKey(long appealCaseId) {
+		return "appeal-case:" + appealCaseId + ":APPEAL_RESOLVED";
 	}
 }

@@ -18,7 +18,10 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 
+import com.dnd.qello.filtering.domain.AppealAcceptance;
+import com.dnd.qello.filtering.domain.AppealAcceptanceReasonCode;
 import com.dnd.qello.filtering.domain.AppealCase;
+import com.dnd.qello.filtering.domain.AppealWindow;
 import com.dnd.qello.filtering.domain.FilterDecision;
 import com.dnd.qello.filtering.domain.FilterJob;
 import com.dnd.qello.filtering.domain.FilterRelease;
@@ -158,11 +161,13 @@ class FilteringPersistenceIntegrationTest extends PostgisContainerIntegrationTes
 		FilterDecision decision = filterDecisionRepository.save(
 			FilterDecision.of(job.id(), 1, FilterVerdict.BLOCK, releaseId, "text-moderation-2026-08", NOW));
 
-		AppealCase filed = appealCaseRepository.save(
-			AppealCase.file(FilterTargetType.ANSWER, TARGET.targetId(), decision.id(), NOW));
+		AppealAcceptance acceptance =
+			new AppealAcceptance(true, AppealAcceptanceReasonCode.WITHIN_WINDOW, NOW);
+		AppealCase filed = appealCaseRepository.save(AppealCase.file(
+			FilterTargetType.ANSWER, TARGET.targetId(), decision.id(), 7L, acceptance, AppealWindow.GLOBAL, NOW));
 
-		assertThatThrownBy(() -> appealCaseRepository.save(
-			AppealCase.file(FilterTargetType.ANSWER, TARGET.targetId(), decision.id(), NOW)))
+		assertThatThrownBy(() -> appealCaseRepository.save(AppealCase.file(
+			FilterTargetType.ANSWER, TARGET.targetId(), decision.id(), 7L, acceptance, AppealWindow.GLOBAL, NOW)))
 			.isInstanceOf(DataIntegrityViolationException.class);
 
 		assertThat(appealCaseRepository.findByTargetAndFilterDecisionId(

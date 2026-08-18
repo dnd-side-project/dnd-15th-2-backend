@@ -8,6 +8,9 @@ final class AppealCaseJpaMapper {
 
 	static AppealCase toDomain(AppealCaseJpaEntity entity) {
 		return AppealCase.restore(entity.getId(), entity.getTargetType(), entity.getTargetId(),
-			entity.getFilterDecisionId(), entity.getCreatedAt());
+			entity.getFilterDecisionId(), entity.getAppellantUserId(), entity.getStatus(),
+			entity.getWindowStartedAt(), entity.getExpiresAt(), entity.getAcceptanceReasonCode(),
+			entity.getDecision(), entity.getDecidedAt(), entity.getDecidedByOperatorUserId(),
+			entity.getRestoreBlockedReasonCode(), entity.getCreatedAt());
 	}
 }

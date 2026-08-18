@@ -80,7 +80,43 @@ public enum FilteringErrorCode implements ErrorCode {
 
 	// 요청한 manual review case를 찾을 수 없음(#110)
 	MANUAL_REVIEW_CASE_NOT_FOUND(HttpStatus.NOT_FOUND, "FLT-DOM-010", ErrorCategory.DOM,
-		"manual review case를 찾을 수 없습니다.");
+		"manual review case를 찾을 수 없습니다."),
+
+	// 요청한 appeal case를 찾을 수 없음(#112)
+	APPEAL_CASE_NOT_FOUND(HttpStatus.NOT_FOUND, "FLT-DOM-011", ErrorCategory.DOM,
+		"appeal case를 찾을 수 없습니다."),
+
+	// 이미 RESOLVED된 appeal case에 재결정을 시도하거나, 상태와 결정 필드가
+	// 어긋난 조합을 만들려는 시도(#112)
+	INVALID_APPEAL_CASE_STATUS(HttpStatus.CONFLICT, "FLT-DOM-012", ErrorCategory.DOM,
+		"현재 appeal case 상태로는 요청을 처리할 수 없습니다."),
+
+	// 이의제기 접수 기간(6개월)이 지난 뒤의 접수 시도(#112). 기산점을 확인할 수
+	// 없는 경우는 이 코드로 거절하지 않고 접수를 허용한다(fallback)
+	APPEAL_WINDOW_ELAPSED(HttpStatus.CONFLICT, "FLT-DOM-013", ErrorCategory.DOM,
+		"이의제기 접수 기간이 지났습니다."),
+
+	// 이의제기 대상 decision이 BLOCK이 아니어서 비공개 상태가 아님(#112)
+	APPEAL_TARGET_NOT_HIDDEN(HttpStatus.CONFLICT, "FLT-DOM-014", ErrorCategory.DOM,
+		"비공개 처리된 대상에만 이의제기할 수 있습니다."),
+
+	// 대상 콘텐츠의 작성자가 아닌 사용자의 접수 시도(#112)
+	APPEAL_NOT_OWNED(HttpStatus.FORBIDDEN, "FLT-DOM-015", ErrorCategory.DOM,
+		"본인이 작성한 콘텐츠에만 이의제기할 수 있습니다."),
+
+	// 접수 기간을 현재보다 이르거나 같은 시각으로 바꾸려는 시도(#112,
+	// INV-APL-008·INV-APL-009 — 연장만 가능하고 단축 경로는 없다)
+	APPEAL_EXPIRY_NOT_EXTENDABLE(HttpStatus.CONFLICT, "FLT-DOM-016", ErrorCategory.DOM,
+		"이의제기 접수 기간은 연장만 할 수 있습니다."),
+
+	// 이의제기 대상으로 지정한 filter decision을 찾을 수 없음(#112)
+	FILTER_DECISION_NOT_FOUND(HttpStatus.NOT_FOUND, "FLT-DOM-017", ErrorCategory.DOM,
+		"filter decision을 찾을 수 없습니다."),
+
+	// 이의제기를 지원하지 않는 대상 유형(#112). NICKNAME은 동기 판정 경로라
+	// 비공개(HIDDEN) 상태 자체가 존재하지 않는다
+	UNSUPPORTED_APPEAL_TARGET(HttpStatus.BAD_REQUEST, "FLT-VAL-005", ErrorCategory.VAL,
+		"이의제기를 지원하지 않는 대상 유형입니다.");
 
 	private final HttpStatus httpStatus;
 	private final String code;
