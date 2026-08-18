@@ -80,9 +80,9 @@
   기동 실패했다. 실제 `@SpringBootTest`/운영 기동에서는 `SpringApplication`이
   `ApplicationConversionService`를 자동 등록해 문제가 없지만, 경량 러너에는 없어 테스트에서
   명시적으로 등록해 해결했다.
-- `./harness pr-ready`의 secret preflight가 테스트용 더미 OpenAI API 키 문자열
-  (`openai-api-key=test-only-...`)을 `assigned-secret` 패턴으로 오탐했다. 값을
-  `example-...`로 바꿔(스캐너의 허용 접두사) 해결했다 — 실제 비밀값이 아니었다.
+- `./harness pr-ready`의 secret preflight가 테스트 프로퍼티에 지정한 더미 OpenAI API 키
+  값을 `assigned-secret` 패턴으로 오탐했다. 값의 접두사를 스캐너가 허용하는 `example` 계열로
+  바꿔 해결했다 — 실제 비밀값이 아니었다.
 - `RecipientNotificationFanOutWorkerIntegrationTest`의 익명 `AccountRepository` 구현체가
   `AccountRepository`에 새로 추가한 `existsActiveNickname` 메서드를 구현하지 않아 컴파일이
   깨졌다. 기존 `accounts` 필드에 위임하도록 추가해 해결했다(#168의 회귀, 원래 로직 변경 없음).
