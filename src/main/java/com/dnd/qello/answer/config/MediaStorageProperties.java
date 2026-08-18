@@ -17,7 +17,7 @@ import com.dnd.qello.answer.domain.ImageMimeType;
  */
 @ConfigurationProperties(prefix = "qello.media")
 public record MediaStorageProperties(String bucket, Set<String> allowedMimeTypes, long maxByteSize,
-	Duration uploadUrlTtl) {
+	Duration uploadUrlTtl, Duration viewUrlTtl, String defaultProfileImageKey) {
 
 	public MediaStorageProperties {
 		if (bucket == null || bucket.isBlank()) {
@@ -43,6 +43,19 @@ public record MediaStorageProperties(String bucket, Set<String> allowedMimeTypes
 		if (uploadUrlTtl == null || uploadUrlTtl.isZero() || uploadUrlTtl.isNegative()) {
 			throw new AnswerException(AnswerErrorCode.INVALID_MEDIA_METADATA, "uploadUrlTtl",
 				"qello.media.upload-url-ttl은 양수여야 합니다");
+		}
+		// 업로드 TTL과 분리한다. 업로드 TTL은 최대 크기 PUT 하나가 느린 회선에서 끝날 시간을
+		// 재지만, 조회 URL의 수명은 그대로 노출 창이 된다. 두 값을 묶으면 업로드 TTL을 늘릴 때
+		// 조회 URL 수명이 함께 늘어난다.
+		if (viewUrlTtl == null || viewUrlTtl.isZero() || viewUrlTtl.isNegative()) {
+			throw new AnswerException(AnswerErrorCode.INVALID_MEDIA_METADATA, "viewUrlTtl",
+				"qello.media.view-url-ttl은 양수여야 합니다");
+		}
+		// 값이 없으면 프로필 이미지를 설정하지 않은 모든 사용자의 조회가 깨진다.
+		// 누락을 런타임까지 미루지 않고 기동에서 끊는다.
+		if (defaultProfileImageKey == null || defaultProfileImageKey.isBlank()) {
+			throw new AnswerException(AnswerErrorCode.REQUIRED_VALUE_MISSING, "defaultProfileImageKey",
+				"qello.media.default-profile-image-key는 필수입니다");
 		}
 	}
 

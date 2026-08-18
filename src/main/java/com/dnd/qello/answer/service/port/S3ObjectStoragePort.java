@@ -21,6 +21,8 @@ import software.amazon.awssdk.services.s3.model.NoSuchKeyException;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.model.S3Exception;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
+import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest;
+import software.amazon.awssdk.services.s3.presigner.model.PresignedGetObjectRequest;
 import software.amazon.awssdk.services.s3.presigner.model.PresignedPutObjectRequest;
 import software.amazon.awssdk.services.s3.presigner.model.PutObjectPresignRequest;
 
@@ -46,6 +48,21 @@ public class S3ObjectStoragePort implements ObjectStoragePort {
 		} catch (SdkException exception) {
 			throw new AnswerException(
 				AnswerErrorCode.STORAGE_UNAVAILABLE, null, "presigned URL 발급에 실패했습니다", exception);
+		}
+	}
+
+	@Override
+	public PresignedView issueGetUrl(String storageKey, Duration ttl) {
+		try {
+			GetObjectRequest objectRequest = GetObjectRequest.builder()
+				.bucket(properties.bucket()).key(storageKey).build();
+			GetObjectPresignRequest presignRequest = GetObjectPresignRequest.builder()
+				.signatureDuration(ttl).getObjectRequest(objectRequest).build();
+			PresignedGetObjectRequest presigned = s3Presigner.presignGetObject(presignRequest);
+			return new PresignedView(presigned.url(), presigned.expiration());
+		} catch (SdkException exception) {
+			throw new AnswerException(
+				AnswerErrorCode.STORAGE_UNAVAILABLE, null, "조회 URL 발급에 실패했습니다", exception);
 		}
 	}
 
