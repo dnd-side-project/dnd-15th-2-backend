@@ -81,8 +81,24 @@ tasks.register('integrationTest', Test) {
 	group = 'verification'
 	testClassesDirs = sourceSets.integrationTest.output.classesDirs
 	classpath = sourceSets.integrationTest.runtimeClasspath
-	useJUnitPlatform()
+	useJUnitPlatform {
+		// 10,000행 합성 데이터 적재는 이 태스크가 아니라 별도 performanceTest에서만
+		// 돈다. check가 이 태스크에 의존하므로, 여기 포함하면 모든 로컬 커밋과 CI가
+		// 매번 그 적재 비용을 치른다(GH-127 TASK.md 결정).
+		excludeTags 'performance'
+	}
 	shouldRunAfter tasks.named('test')
+}
+
+tasks.register('performanceTest', Test) {
+	description = 'Runs @Tag("performance") integration tests (10k synthetic scale, EXPLAIN ANALYZE). check에 포함되지 않으며 수동으로만 실행한다.'
+	group = 'verification'
+	testClassesDirs = sourceSets.integrationTest.output.classesDirs
+	classpath = sourceSets.integrationTest.runtimeClasspath
+	useJUnitPlatform {
+		includeTags 'performance'
+	}
+	shouldRunAfter tasks.named('integrationTest')
 }
 
 tasks.named('check') {
