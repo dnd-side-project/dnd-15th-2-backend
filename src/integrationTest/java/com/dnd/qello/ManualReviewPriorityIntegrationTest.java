@@ -29,6 +29,10 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Import;
+import org.springframework.context.annotation.Primary;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
@@ -80,6 +84,7 @@ import jakarta.servlet.http.Cookie;
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
+@Import(ManualReviewPriority110TestClockConfiguration.class)
 class ManualReviewPriorityIntegrationTest extends PostgisContainerIntegrationTestSupport {
 
 	private static final Instant NOW = Instant.parse("2026-08-17T00:00:00Z");
@@ -472,5 +477,20 @@ class ManualReviewPriorityIntegrationTest extends PostgisContainerIntegrationTes
 	}
 
 	private record OperatorSession(String csrfHeaderName, String csrfToken, Cookie[] csrfCookies, Cookie sessionCookie) {
+	}
+}
+
+// manualReviewDecisionService(Spring 빈)가 다른 헬퍼들과 같은 고정 NOW를 쓰게
+// 한다 — 이 빈이 기본 Clock(systemUTC)을 쓰면 findQueue()의 aging 기준선이
+// 실제 벽시계 시각을 따라가고, NOW + POLICY.agingThreshold()를 실제 시각이
+// 넘어서는 순간 이 클래스의 모든 케이스가 aging으로 HIGH 승격돼
+// queueOrdersByEffectiveBandAndFifo의 기대 순서가 깨진다(#161).
+@TestConfiguration
+class ManualReviewPriority110TestClockConfiguration {
+
+	@Bean
+	@Primary
+	Clock manualReviewPriority110FixedClock() {
+		return Clock.fixed(Instant.parse("2026-08-17T00:00:00Z"), ZoneOffset.UTC);
 	}
 }
