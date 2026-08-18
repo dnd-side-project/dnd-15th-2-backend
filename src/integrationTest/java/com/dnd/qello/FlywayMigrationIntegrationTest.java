@@ -60,7 +60,8 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 		"operator_credential",
 		"spring_session",
 		"spring_session_attributes",
-		"device_credential"
+		"device_credential",
+		"operator_action_audit"
 	);
 
 	private static final Set<String> EXPECTED_INDEXES = Set.of(
@@ -125,7 +126,9 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 		"uq_active_device_installation",
 		"device_credential_user_idx",
 		"uq_region_code_code_level",
-		"user_account_country_idx"
+		"user_account_country_idx",
+		"operator_action_audit_target_idx",
+		"operator_action_audit_operator_idx"
 	);
 
 	private static final Set<String> EXPECTED_FUNCTIONS = Set.of(
@@ -162,7 +165,7 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 	private JdbcTemplate jdbcTemplate;
 
 	@Test
-	@DisplayName("빈 PostGIS 데이터베이스의 startup에서 V1부터 V19까지 migration을 적용한다")
+	@DisplayName("빈 PostGIS 데이터베이스의 startup에서 V1부터 V20까지 migration을 적용한다")
 	void appliesAllMigrationsOnApplicationStartup() {
 		Integer successfulV1 = jdbcTemplate.queryForObject("""
 			SELECT count(*)
@@ -259,6 +262,11 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 			FROM flyway_schema_history
 			WHERE version = '19' AND success
 			""", Integer.class);
+		Integer successfulV20 = jdbcTemplate.queryForObject("""
+			SELECT count(*)
+			FROM flyway_schema_history
+			WHERE version = '20' AND success
+			""", Integer.class);
 		String postgisVersion = jdbcTemplate.queryForObject(
 			"SELECT PostGIS_Version()", String.class);
 
@@ -281,7 +289,8 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 		assertThat(successfulV17).isEqualTo(1);
 		assertThat(successfulV18).isEqualTo(1);
 		assertThat(successfulV19).isEqualTo(1);
-		assertThat(flyway.info().applied()).hasSize(19);
+		assertThat(successfulV20).isEqualTo(1);
+		assertThat(flyway.info().applied()).hasSize(20);
 		assertThat(postgisVersion).isNotBlank();
 	}
 
@@ -352,8 +361,11 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 		// V19(#153)이 report.ck_report_sub_reason 1개를 추가해 116에서 117이 됐다
 		// (ck_report_reason·ck_notification_target은 같은 이름으로 교체돼 순증가는
 		// 없다).
-		assertThat(countConstraints(constraints, "c")).isEqualTo(117);
-		assertThat(EXPECTED_INDEXES).hasSize(62);
+		// V20(#113)이 operator_action_audit의 CHECK 4개(operator_user_id, target_key,
+		// reason_text, policy_version)를 추가해 117에서 121이 됐다.
+		assertThat(countConstraints(constraints, "c")).isEqualTo(121);
+		// V20(#113)이 operator_action_audit의 조회 인덱스 2개를 추가해 62에서 64가 됐다.
+		assertThat(EXPECTED_INDEXES).hasSize(64);
 		assertThat(EXPECTED_FUNCTIONS).hasSize(11);
 		assertThat(EXPECTED_TRIGGERS).hasSize(10);
 

@@ -5,6 +5,7 @@
 package com.dnd.qello;
 
 import com.dnd.qello.filtering.domain.FilterRelease;
+import com.dnd.qello.filtering.domain.OperatorReason;
 import com.dnd.qello.filtering.service.FilterReleaseRegistryService;
 
 /**
@@ -22,9 +23,9 @@ final class AnswerModerationReleaseTestFixture {
 
 	static FilterRelease promotedRelease(FilterReleaseRegistryService releaseRegistryService, long operatorUserId) {
 		var candidate = releaseRegistryService.createCandidate("norm-v1", "ruleset-v1", "category-map-v1", MODEL_SNAPSHOT);
-		releaseRegistryService.markOfflineEvaluated(candidate.id());
-		releaseRegistryService.designateShadow(candidate.id());
-		releaseRegistryService.designateCanary(candidate.id());
-		return releaseRegistryService.promote(candidate.id(), operatorUserId);
+		releaseRegistryService.markOfflineEvaluated(candidate.id(), 1L, new OperatorReason("TEST", "테스트 근거"));
+		releaseRegistryService.designateShadow(candidate.id(), 1L, new OperatorReason("TEST", "테스트 근거"));
+		releaseRegistryService.designateCanary(candidate.id(), 1L, new OperatorReason("TEST", "테스트 근거"));
+		return releaseRegistryService.promote(candidate.id(), operatorUserId, new OperatorReason("TEST", "테스트 근거"));
 	}
 }

@@ -29,6 +29,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
 
+import com.dnd.qello.filtering.domain.OperatorReason;
 import com.dnd.qello.answer.domain.Answer;
 import com.dnd.qello.answer.domain.AnswerStatus;
 import com.dnd.qello.answer.service.AnswerSubmissionApplicationService;
@@ -359,10 +360,10 @@ class DirectionMatchingVerticalFlowIntegrationTest extends PostgisContainerInteg
 	private void promotedRelease(long operatorUserId) {
 		var candidate = releaseRegistryService.createCandidate("flow127-norm", "flow127-ruleset", "flow127-category-map",
 			"flow127-model-snapshot");
-		releaseRegistryService.markOfflineEvaluated(candidate.id());
-		releaseRegistryService.designateShadow(candidate.id());
-		releaseRegistryService.designateCanary(candidate.id());
-		releaseRegistryService.promote(candidate.id(), operatorUserId);
+		releaseRegistryService.markOfflineEvaluated(candidate.id(), 1L, new OperatorReason("TEST", "테스트 근거"));
+		releaseRegistryService.designateShadow(candidate.id(), 1L, new OperatorReason("TEST", "테스트 근거"));
+		releaseRegistryService.designateCanary(candidate.id(), 1L, new OperatorReason("TEST", "테스트 근거"));
+		releaseRegistryService.promote(candidate.id(), operatorUserId, new OperatorReason("TEST", "테스트 근거"));
 	}
 
 	private void seedVerdictReady(long filterJobId, long answerId, FilterVerdict verdict, String dedupSuffix) {

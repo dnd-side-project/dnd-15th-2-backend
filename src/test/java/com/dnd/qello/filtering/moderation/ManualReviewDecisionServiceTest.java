@@ -18,6 +18,7 @@ import java.time.ZoneOffset;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import com.dnd.qello.filtering.audit.OperatorActionAuditRecorder;
 import com.dnd.qello.filtering.domain.FilterJob;
 import com.dnd.qello.filtering.domain.FilterJobStatus;
 import com.dnd.qello.filtering.domain.FilterTarget;
@@ -27,6 +28,7 @@ import com.dnd.qello.filtering.domain.ManualReviewBand;
 import com.dnd.qello.filtering.domain.ManualReviewCase;
 import com.dnd.qello.filtering.domain.ManualReviewPriorityDecision;
 import com.dnd.qello.filtering.domain.ManualReviewPriorityReasonCode;
+import com.dnd.qello.filtering.domain.OperatorReason;
 import com.dnd.qello.filtering.repository.FilterJobRepository;
 import com.dnd.qello.filtering.repository.FilterJobStatusHistoryRepository;
 import com.dnd.qello.filtering.repository.ManualReviewCaseRepository;
@@ -44,9 +46,10 @@ class ManualReviewDecisionServiceTest {
 	private final FilterJobStatusHistoryRepository filterJobStatusHistoryRepository =
 		mock(FilterJobStatusHistoryRepository.class);
 	private final OutboxEventRepository outboxEventRepository = mock(OutboxEventRepository.class);
+	private final OperatorActionAuditRecorder auditRecorder = mock(OperatorActionAuditRecorder.class);
 	private final ManualReviewDecisionService service = new ManualReviewDecisionService(manualReviewCaseRepository,
-		filterJobRepository, filterJobStatusHistoryRepository, outboxEventRepository, new ObjectMapper(),
-		Clock.fixed(NOW, ZoneOffset.UTC));
+		filterJobRepository, filterJobStatusHistoryRepository, outboxEventRepository, auditRecorder,
+		new ObjectMapper(), Clock.fixed(NOW, ZoneOffset.UTC));
 
 	@Test
 	@DisplayName("job이 이미 자동 결과로 RESOLVED면 job은 건드리지 않고 case만 종료한다")
@@ -57,7 +60,7 @@ class ManualReviewDecisionServiceTest {
 		when(filterJobRepository.findByIdForUpdate(20L)).thenReturn(java.util.Optional.of(resolvedByAutomation));
 		when(manualReviewCaseRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
-		ManualReviewCase result = service.decide(1L, FilterVerdict.BLOCK, 9L);
+		ManualReviewCase result = service.decide(1L, FilterVerdict.BLOCK, 9L, new OperatorReason("TEST", "테스트 근거"));
 
 		assertThat(result.resolvedVerdict()).isEqualTo(FilterVerdict.ALLOW);
 		assertThat(result.resolvedByOperatorUserId()).isEqualTo(9L);
@@ -76,7 +79,7 @@ class ManualReviewDecisionServiceTest {
 		when(filterJobRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 		when(manualReviewCaseRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
-		ManualReviewCase result = service.decide(1L, FilterVerdict.BLOCK, 9L);
+		ManualReviewCase result = service.decide(1L, FilterVerdict.BLOCK, 9L, new OperatorReason("TEST", "테스트 근거"));
 
 		assertThat(result.resolvedVerdict()).isEqualTo(FilterVerdict.BLOCK);
 		verify(filterJobRepository).save(argThatResolved());

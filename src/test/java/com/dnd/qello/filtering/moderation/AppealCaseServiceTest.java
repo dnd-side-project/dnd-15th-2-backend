@@ -22,6 +22,7 @@ import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import com.dnd.qello.filtering.audit.OperatorActionAuditRecorder;
 import com.dnd.qello.filtering.domain.AppealAcceptanceReasonCode;
 import com.dnd.qello.filtering.domain.AppealCase;
 import com.dnd.qello.filtering.domain.AppealCaseStatus;
@@ -31,6 +32,7 @@ import com.dnd.qello.filtering.domain.FilterJob;
 import com.dnd.qello.filtering.domain.FilterTarget;
 import com.dnd.qello.filtering.domain.FilterTargetType;
 import com.dnd.qello.filtering.domain.FilterVerdict;
+import com.dnd.qello.filtering.domain.OperatorReason;
 import com.dnd.qello.filtering.error.FilteringErrorCode;
 import com.dnd.qello.filtering.error.FilteringException;
 import com.dnd.qello.filtering.repository.AppealCaseRepository;
@@ -60,9 +62,10 @@ class AppealCaseServiceTest {
 	private final OutboxEventRepository outboxEventRepository = mock(OutboxEventRepository.class);
 	private final AppealTargetOwnershipChecker ownershipChecker = mock(AppealTargetOwnershipChecker.class);
 	private final PublicationBlockChecker publicationBlockChecker = mock(PublicationBlockChecker.class);
+	private final OperatorActionAuditRecorder auditRecorder = mock(OperatorActionAuditRecorder.class);
 	private final AppealCaseService service = new AppealCaseService(appealCaseRepository, filterDecisionRepository,
-		filterJobRepository, outboxEventRepository, ownershipChecker, publicationBlockChecker, new ObjectMapper(),
-		Clock.fixed(NOW, ZoneOffset.UTC));
+		filterJobRepository, outboxEventRepository, ownershipChecker, publicationBlockChecker, auditRecorder,
+		new ObjectMapper(), Clock.fixed(NOW, ZoneOffset.UTC));
 
 	@Test
 	@DisplayName("UNIT-016: NICKNAME 대상 이의제기는 지원하지 않는 대상 유형으로 거절한다")
@@ -97,7 +100,7 @@ class AppealCaseServiceTest {
 		when(publicationBlockChecker.findPublicationBlockReason(FilterTargetType.ANSWER, TARGET.targetId()))
 			.thenReturn(Optional.of("ACCOUNT_BLOCKED"));
 
-		AppealCase resolved = service.decide(APPEAL_CASE_ID, AppealDecision.OVERTURN_HIDDEN, OPERATOR_USER_ID);
+		AppealCase resolved = service.decide(APPEAL_CASE_ID, AppealDecision.OVERTURN_HIDDEN, OPERATOR_USER_ID, new OperatorReason("TEST", "테스트 근거"));
 
 		assertThat(resolved.status()).isEqualTo(AppealCaseStatus.RESOLVED);
 		assertThat(resolved.decision()).isEqualTo(AppealDecision.OVERTURN_HIDDEN);
@@ -115,7 +118,7 @@ class AppealCaseServiceTest {
 		when(filterDecisionRepository.findById(FILTER_DECISION_ID)).thenReturn(Optional.of(blockDecision()));
 		when(filterJobRepository.findById(FILTER_JOB_ID)).thenReturn(Optional.of(job()));
 
-		AppealCase resolved = service.decide(APPEAL_CASE_ID, AppealDecision.OVERTURN_HIDDEN, OPERATOR_USER_ID);
+		AppealCase resolved = service.decide(APPEAL_CASE_ID, AppealDecision.OVERTURN_HIDDEN, OPERATOR_USER_ID, new OperatorReason("TEST", "테스트 근거"));
 
 		assertThat(resolved.restoreBlockedReasonCode()).isNull();
 		org.mockito.ArgumentCaptor<OutboxEvent> captor = org.mockito.ArgumentCaptor.forClass(OutboxEvent.class);
@@ -133,7 +136,7 @@ class AppealCaseServiceTest {
 		when(appealCaseRepository.findByIdForUpdate(APPEAL_CASE_ID)).thenReturn(Optional.of(openCase()));
 		when(appealCaseRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
-		AppealCase resolved = service.decide(APPEAL_CASE_ID, AppealDecision.UPHOLD_HIDDEN, OPERATOR_USER_ID);
+		AppealCase resolved = service.decide(APPEAL_CASE_ID, AppealDecision.UPHOLD_HIDDEN, OPERATOR_USER_ID, new OperatorReason("TEST", "테스트 근거"));
 
 		assertThat(resolved.decision()).isEqualTo(AppealDecision.UPHOLD_HIDDEN);
 		verifyNoInteractions(publicationBlockChecker);

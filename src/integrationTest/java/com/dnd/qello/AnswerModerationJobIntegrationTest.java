@@ -33,6 +33,7 @@ import com.dnd.qello.filtering.domain.FilterJob;
 import com.dnd.qello.filtering.domain.FilterRelease;
 import com.dnd.qello.filtering.domain.FilterTarget;
 import com.dnd.qello.filtering.domain.FilterTargetType;
+import com.dnd.qello.filtering.domain.OperatorReason;
 import com.dnd.qello.filtering.domain.FilterVerdict;
 import com.dnd.qello.filtering.domain.ManualReviewPriorityPolicy;
 import com.dnd.qello.filtering.domain.RetryGateConfig;
@@ -307,10 +308,10 @@ class AnswerModerationJobIntegrationTest extends PostgisContainerIntegrationTest
 	private long promotedRelease() {
 		FilterRelease candidate = releaseRegistryService.createCandidate(
 			"norm-v1", "ruleset-v1", "category-map-v1", MODEL_SNAPSHOT);
-		releaseRegistryService.markOfflineEvaluated(candidate.id());
-		releaseRegistryService.designateShadow(candidate.id());
-		releaseRegistryService.designateCanary(candidate.id());
-		FilterRelease promoted = releaseRegistryService.promote(candidate.id(), 1L);
+		releaseRegistryService.markOfflineEvaluated(candidate.id(), 1L, new OperatorReason("TEST", "테스트 근거"));
+		releaseRegistryService.designateShadow(candidate.id(), 1L, new OperatorReason("TEST", "테스트 근거"));
+		releaseRegistryService.designateCanary(candidate.id(), 1L, new OperatorReason("TEST", "테스트 근거"));
+		FilterRelease promoted = releaseRegistryService.promote(candidate.id(), 1L, new OperatorReason("TEST", "테스트 근거"));
 		return promoted.id();
 	}
 }

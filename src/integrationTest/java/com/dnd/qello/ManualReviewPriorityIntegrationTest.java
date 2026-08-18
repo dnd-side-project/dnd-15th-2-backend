@@ -48,6 +48,7 @@ import com.dnd.qello.filtering.domain.FilterJobStatus;
 import com.dnd.qello.filtering.domain.FilterRelease;
 import com.dnd.qello.filtering.domain.FilterTarget;
 import com.dnd.qello.filtering.domain.FilterTargetType;
+import com.dnd.qello.filtering.domain.OperatorReason;
 import com.dnd.qello.filtering.domain.FilterVerdict;
 import com.dnd.qello.filtering.domain.ManualReviewBand;
 import com.dnd.qello.filtering.domain.ManualReviewCase;
@@ -164,7 +165,7 @@ class ManualReviewPriorityIntegrationTest extends PostgisContainerIntegrationTes
 		filterJobRepository.save(job.openManualReview(NOW));
 		ManualReviewCase reviewCase = openCase(job);
 
-		ManualReviewCase resolved = manualReviewDecisionService.decide(reviewCase.id(), FilterVerdict.ALLOW, 1L);
+		ManualReviewCase resolved = manualReviewDecisionService.decide(reviewCase.id(), FilterVerdict.ALLOW, 1L, new OperatorReason("TEST", "테스트 근거"));
 
 		assertThat(resolved.status().name()).isEqualTo("RESOLVED");
 		FilterJob resolvedJob = filterJobRepository.findById(job.id()).orElseThrow();
@@ -193,7 +194,7 @@ class ManualReviewPriorityIntegrationTest extends PostgisContainerIntegrationTes
 		Callable<ManualReviewCase> manualDecision = () -> {
 			ready.countDown();
 			start.await(5, TimeUnit.SECONDS);
-			return manualReviewDecisionService.decide(reviewCase.id(), FilterVerdict.BLOCK, 1L);
+			return manualReviewDecisionService.decide(reviewCase.id(), FilterVerdict.BLOCK, 1L, new OperatorReason("TEST", "테스트 근거"));
 		};
 		Callable<AnswerModerationExecutionWorker.BatchResult> automatedDecision = () -> {
 			ready.countDown();
@@ -225,7 +226,7 @@ class ManualReviewPriorityIntegrationTest extends PostgisContainerIntegrationTes
 		FilterJob manualReviewRequired = filterJobRepository.save(
 			filterJobRepository.findById(submitted.id()).orElseThrow().exhaustRetries(NOW).openManualReview(NOW));
 		ManualReviewCase reviewCase = openCase(manualReviewRequired);
-		manualReviewDecisionService.decide(reviewCase.id(), FilterVerdict.BLOCK, 1L);
+		manualReviewDecisionService.decide(reviewCase.id(), FilterVerdict.BLOCK, 1L, new OperatorReason("TEST", "테스트 근거"));
 
 		AnswerModerationExecutionWorker worker = executionWorker(allowPipeline());
 		worker.processBatch(new AnswerModerationExecutionWorker.BatchCommand(
@@ -287,7 +288,7 @@ class ManualReviewPriorityIntegrationTest extends PostgisContainerIntegrationTes
 		mockMvc.perform(withCsrf(withSession(post(
 				"/admin/filtering/manual-review-cases/%d/decide".formatted(reviewCase.id())), session), session)
 				.contentType(MediaType.APPLICATION_JSON)
-				.content("{\"verdict\":\"ALLOW\"}"))
+				.content("{\"verdict\":\"ALLOW\",\"reason\":{\"reasonCode\":\"TEST\",\"reasonText\":\"통합 테스트 근거\"}}"))
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.data.status").value("RESOLVED"))
 			.andExpect(jsonPath("$.data.resolvedVerdict").value("ALLOW"));
@@ -308,7 +309,7 @@ class ManualReviewPriorityIntegrationTest extends PostgisContainerIntegrationTes
 				.header(csrfData.get("headerName").asText(), csrfData.get("token").asText())
 				.cookie(issued.getResponse().getCookies())
 				.contentType(MediaType.APPLICATION_JSON)
-				.content("{\"verdict\":\"ALLOW\"}"))
+				.content("{\"verdict\":\"ALLOW\",\"reason\":{\"reasonCode\":\"TEST\",\"reasonText\":\"통합 테스트 근거\"}}"))
 			.andExpect(status().isUnauthorized());
 
 		assertThat(manualReviewCaseRepository.findById(reviewCase.id()).orElseThrow().status().name())
@@ -424,10 +425,10 @@ class ManualReviewPriorityIntegrationTest extends PostgisContainerIntegrationTes
 	private long promotedRelease() {
 		FilterRelease candidate = releaseRegistryService.createCandidate(
 			"norm-v1", "ruleset-v1", "category-map-v1", MODEL_SNAPSHOT);
-		releaseRegistryService.markOfflineEvaluated(candidate.id());
-		releaseRegistryService.designateShadow(candidate.id());
-		releaseRegistryService.designateCanary(candidate.id());
-		return releaseRegistryService.promote(candidate.id(), 1L).id();
+		releaseRegistryService.markOfflineEvaluated(candidate.id(), 1L, new OperatorReason("TEST", "테스트 근거"));
+		releaseRegistryService.designateShadow(candidate.id(), 1L, new OperatorReason("TEST", "테스트 근거"));
+		releaseRegistryService.designateCanary(candidate.id(), 1L, new OperatorReason("TEST", "테스트 근거"));
+		return releaseRegistryService.promote(candidate.id(), 1L, new OperatorReason("TEST", "테스트 근거")).id();
 	}
 
 	private OperatorSession login() throws Exception {
