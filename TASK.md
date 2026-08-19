@@ -1,100 +1,122 @@
-# GitHub Issue #170 Task Contract
+# GitHub Issue #155 Task Contract
 
-> Generated at: `2026-08-19T01:55:36+09:00`
+> Generated at: `2026-08-19T00:00:00+09:00`
 >
 > 이 파일은 현재 작업 브랜치의 계약이다. 저장소 전역 정책은 `AGENTS.md`를
 > 따른다.
 
 ## Work gate
 
-- Title: `피드 읽기·상호작용 API 노출`
-- GitHub Issue: `#170`
-- Branch: `feat/gh-170-feed-read-interaction-api`
+- Title: `신고 시스템 — 집계 제외와 처리 결과 알림 (R02)`
+- GitHub Issue: `#155`
+- Branch: `feat/gh-155-report-suppression-notifications`
 - Base branch: `main`
-- 선행 이슈 `#67`, `#124`, `#125`, `#55`, `#79` 전부 CLOSED 확인. 차단 요소 없음.
+- Test plan: `TEST-PLAN-GH-155-REPORT-SUPPRESSION-NOTIFICATIONS`
+  (`docs/test-plans/gh-155-TEST-PLAN-GH-155-REPORT-SUPPRESSION-NOTIFICATIONS.md`)
+- Test plan approval: `APPROVED` — 사용자가 2026-08-19 "테스트 계획서 진행"으로 승인했다.
 
 ## Objective
 
-- `내가 보낸 질문`, 답변 목록, 공감, 답변 읽음 처리는 service·repository 계층이
-  `#67`, `#55`, `#79`에서 이미 구현·검증됐지만 HTTP로 노출된 적이 없다. `openapi.json`의
-  앱 엔드포인트 13개 중 방향 글을 읽는 경로는 수신함(`/inbox`)뿐이다.
-- 그 결과 디자인 화면 5장 중 3장(`내가 보낸 질문` 목록, 수신 질문 상세의 답변 목록과
-  하트, `새로운 답변 N개` 배지)이 호출할 API가 없다.
-- 이미 있는 service를 web 계층으로 올려 읽기·상호작용 경로를 닫는다.
+신고된 콘텐츠를 목록과 모든 카운트에서 동시에 빼고(집계 제외 2계층), 사건이
+종결되면 신고자에게 결과를 비동기로 알린다. `NotificationType.REPORT_RESOLVED`
+· `OutboxEventType.REPORT_RESOLVED` · `OutboxAggregateType.REPORT`는 enum과
+DB CHECK에 모두 있으나(코드베이스 확인 완료) 생산자·소비자가 없다.
+
+## Scope decision (사용자 승인 완료)
+
+`ReportCase`를 실제로 `RESOLVED`로 전이시키는 "판정 트랜잭션"은 지금 저장소에
+없다 — `ReportCase.resolve()` 도메인 메서드는 단위 테스트에서만 호출되고,
+서비스·리포지토리·REST 어느 계층에도 호출부가 없다. 운영자 판정 API는 #156
+(아직 `OPEN`) 몫으로 #155가 명시적으로 제외한 항목이다.
+
+사용자에게 확인한 결과: **#155는 내부 전용 서비스 메서드만 추가한다.** REST
+엔드포인트는 만들지 않는다. `SafetyReportService`(또는 신규
+`SafetyCaseResolutionService`)에 `resolveCase(...)` 같은 내부 메서드를 두고,
+그 안에서 사건 종결 + 전역 숨김 부수효과(알림 REVOKED) + outbox 이벤트 발행을
+같은 트랜잭션에 배선한다. #156은 이후 이 메서드를 운영자 API에서 호출한다.
+통합 테스트는 이 서비스 메서드를 직접 호출해 검증한다.
 
 ## Scope
 
-1. **`내가 보낸 질문` 조회** — `feed.web.SentPostController`와 `SentPostApiSpec` 신규.
-   - `GET /api/v1/direction/posts` — `filter`(ALL·IN_PROGRESS·EXPIRED),
-     `cursorSubmittedAt`·`cursorPostId`, `limit`. `SentPostQueryService.list` 배선.
-   - `GET /api/v1/direction/posts/{postId}` — `SentPostQueryService.detail` 배선.
-     남의 질문글이면 404.
-2. **답변 목록 조회**
-   - `GET /api/v1/direction/posts/{postId}/answers` — `cursorPublishedAt`·
-     `cursorAnswerId`, `limit`. `PostAnswerQueryService` 배선. 질문글 작성자와 그
-     질문글의 수신 자격자만 내용을 받는다.
-3. **답변 읽음 처리**(`새로운 답변 N개` 배지 해제)
-   - `PUT /api/v1/direction/posts/{postId}/answers/read` —
-     `DirectionPostService.markAnswersRead` 배선(질문자용).
-   - `PUT /api/v1/direction/inbox/{postRecipientId}/answers/read` —
-     `PostRecipientService.markAnswersRead` 배선(수신자용).
-4. **공감**
-   - `PUT`·`DELETE /api/v1/direction/posts/{postId}/reaction` — 질문글 공감.
-   - `PUT`·`DELETE /api/v1/direction/answers/{answerId}/reaction` — 답변 공감.
-   - `PostReactionService`와 `AnswerReactionService`의 `toggle`을 `react`/`cancel`로
-     분해하고, 기존 `toggle`은 이 둘을 조합해 남긴다(기존 통합 테스트 계약 보존).
-   - `AnswerReactionRepository.countByAnswerId` 추가. `PostReactionRepository`는
-     `countByPostId`가 이미 있다.
-5. **`reactedByMe` 보강** — `InboxCard`와 `InboxQuerySql.SELECT_CARD`에 뷰어 본인의
-   질문글 공감 여부를 추가한다. `AnswerCard`에는 이미 있다.
-6. 새 경로에도 `InboxApplicationService.requireEligibleAccount`와 같은 계정 자격
-   게이트를 적용한다.
-7. 단위 테스트, PostgreSQL 통합 테스트, 테스트 계획·보고서, `openapi.json` 재생성.
+### 1. 신고자 한정 숨김 (즉시 적용, 종결 결과와 무관하게 유지)
 
-## Design decisions (구현 전 확정, 리뷰 필요)
+- `ContentSuppressionSql`(신규 클래스, `safety` 또는 `feed` SQL 패키지) —
+  뷰어가 본인이 신고한 콘텐츠를 다시 보지 않게 하는 `NOT EXISTS (SELECT 1
+  FROM report r WHERE r.reporter_id = <viewer> AND r.answer_id = a.id)` 조각.
+  **코드베이스에 이런 클래스·상수가 아직 없음을 확인했다 — 신규 작성.**
+- 다음 5곳에 적용한다(모두 확인 완료, 현재 `a.status = 'PUBLISHED'`만 본다):
+  1. `PostAnswerQuerySql.SELECT_ANSWERS` (답변 목록, viewer = `:viewerId`)
+  2. `InboxQuerySql.SELECT_CARD`의 `answer_count` 서브쿼리 (viewer =
+     `:recipientId`)
+  3. `InboxQuerySql.SELECT_CARD`의 `unread_answer_count` 서브쿼리 (viewer =
+     `:recipientId`)
+  4. `SentPostQuerySql.SELECT_CARD`의 `answer_count` 서브쿼리 (viewer =
+     `dp.sender_id` 컬럼 참조 — bind 파라미터 아님)
+  5. `SentPostQuerySql.SELECT_CARD`의 `unread_answer_count` 서브쿼리 (viewer =
+     `dp.sender_id`)
+  viewer 표현식이 위치마다 다르므로(bind 파라미터 vs 컬럼 참조)
+  `ContentSuppressionSql`은 viewer SQL 조각을 인자로 받는 형태로 설계한다.
+- `report (reporter_id, answer_id) WHERE answer_id IS NOT NULL` 부분 인덱스
+  신규 추가. **기존 인덱스 없음을 마이그레이션에서 확인.**
 
-1. **공감은 toggle 단일 호출이 아니라 idempotent `PUT`/`DELETE` 쌍으로 노출한다.**
-   `toggle`은 호출 한 번이 상태를 뒤집으므로 같은 요청이 두 번 도착하면 결과가
-   반대가 된다. 누르기(`PUT`)와 취소(`DELETE`)로 나누면 각 요청이 몇 번 도착해도
-   최종 상태가 하나로 정해진다. `/inbox/{id}/skip`이 이미 같은 쌍이다. 또한
-   `AnswerReactionRepository.react`가 "같은 transaction 안에서 `cancel` 직후 같은
-   key로 `react`는 안전하지 않다"고 명시하는데, 요청을 나누면 그 제약을 구조적으로
-   피한다.
-2. **cursor는 불투명 토큰이 아니라 명시적 두 파라미터로 받는다.** 정렬 키
-   (`submittedAt`+`postId`, `publishedAt`+`answerId`)가 이미 응답에 공개된 값이라
-   숨길 이유가 없고, 인코딩·검증 계층을 새로 만들지 않는다.
-3. **`reactedByMe`는 `InboxCard`에만 추가한다.** 발송자는 자기 질문글의 수신자가
-   아니므로 `PostReactionService`가 공감을 거부한다 — `SentPostCard`에서는 항상
-   false여서 실을 의미가 없다.
-4. **읽음 처리는 `PUT`이다.** 두 repository의 `advanceAnswersReadAt`이
-   `GREATEST(현재값, at)`로만 전진하므로 반복 호출과 순서 역전이 읽음 지점을 과거로
-   되돌리지 않는다.
-5. **답변 목록의 자격 없는 뷰어는 403이 아니라 빈 목록을 받는다.**
-   `PostAnswerQueryRepository.findAnswers`의 기존 계약(질문글 존재 여부 비노출)을
-   web 계층까지 그대로 올린다.
-6. **`limit` 기본 20, 상한 50.** `nextCursor`는 반환 건수가 `limit`과 같을 때만
-   채우고 그보다 적으면 `null`이다.
-7. **7개 엔드포인트의 application 계층은 전부 `feed.service`에 둔다.** 계정 자격
-   게이트(`requireEligibleAccount`)가 한 곳에만 있어야 갈라지지 않는다. controller는
-   `feed.web`, `direction.web`, `answer.web`에 각각 두되 application service는 feed가
-   소유하고, 403·404는 기존 `FED-APP-002`·`FED-APP-001`을 그대로 쓴다. feed가
-   `PostRecipientService`를 이미 참조하므로 참조 방향이 새로 생기지 않는다.
-8. **공감 취소(`DELETE`)는 공감 자격을 검사하지 않고 본인 행만 삭제한다.** 질문글
-   만료나 넘김 확정으로 자격을 잃은 뒤에도 자기가 남긴 공감은 거둘 수 있어야 한다.
-   삭제 조건이 `(postId, reactorId)`·`(answerId, reactorId)`라 남의 공감에는 닿지
-   않고, DB의 FK와 constraint trigger는 삽입만 막으므로 안전하다. 공감
-   누르기(`PUT`)에는 기존 자격 검사를 그대로 유지한다.
-9. **구현 전에 `/harness-test-plan`으로 테스트 계획을 먼저 확정한다.** 테스트 클래스
-   헤더의 `Source scenario`가 참조할 시나리오 식별자가 계획에서 나온다.
+### 2. 전역 숨김
+
+- `Answer.hide(at)` / `Answer.restore(at)` 전이 신규 추가.
+  `AnswerStatus.HIDDEN`은 enum과 `ck_answer_status` DB CHECK에 이미 있다(확인
+  완료). 도메인에 전이 메서드가 없을 뿐이다.
+- 위 5곳은 `a.status = 'PUBLISHED'` 조건을 이미 갖고 있으므로 상태를
+  `HIDDEN`으로 바꾸는 것만으로 자동으로 빠진다 — **이 5곳 자체는 코드 변경이
+  필요 없다.** 신고자 한정 숨김(§1)만 새 필터가 필요하다.
+- 위험: `assert_answer_has_content` DB 함수(`V1` 마이그레이션, deferred
+  constraint trigger)는 `status = 'PUBLISHED'`이고 `body_text`가 비어 있고
+  `READY` 상태 미디어가 하나도 없으면 예외를 던진다. `HIDDEN` 동안 미디어가
+  정리되어(`media_asset.status`가 더 이상 `READY`가 아니게 되어) 텍스트 없는
+  답변을 `restore(at)`로 다시 `PUBLISHED`로 되돌리면 이 트리거가 막는다.
+  **이 실패 경로는 고치지 않고 테스트로 문서화한다**(issue 완료 조건 그대로).
+- `AnswerRepository`는 JPA 구현(`JpaAnswerRepository`)이고 `save(Answer)`가
+  기존 id로 upsert하므로, `answerRepository.save(answer.hide(at))` 형태로
+  기존 `save`를 그대로 재사용한다 — 신규 리포지토리 메서드는 필요 없다(확인
+  완료).
+- 전역 숨김 시 그 답변을 가리키던 기존 `notification` 행을
+  `NotificationStatus.REVOKED`로 전이. `NotificationRepository`에 해당
+  리포지토리 메서드가 없음을 확인 — 신규 추가(예: `revokeByAnswerId(long
+  answerId, Instant at)`).
+
+### 3. 결과 알림 (outbox fan-out)
+
+- §"Scope decision"의 내부 전용 서비스 메서드 안에서, `ReportCase`가
+  `RESOLVED`로 전이하는 같은 트랜잭션에 배선한다.
+- `SafetyRepository`에 `findReportsByCaseId(long caseId)` 신규 추가 — 사건에
+  묶인 신고 전체를 찾아 **신고 1건당 outbox 이벤트 1개**를 발행한다(사건
+  1개가 아니라 신고자 수만큼). 현재 이런 조회 메서드가 없음을 확인했다.
+- `dedup_key = "report-resolved:" + reportId`, payload에 대상·작성자
+  식별자를 넣지 않는다(`INV-RPT-005`와 같은 원칙 — #154 참고).
+- `ReportResolutionFanOutWorker`(신규) — `RecipientNotificationFanOutWorker`
+  (`notification/fanout/RecipientNotificationFanOutWorker.java`, 확인 완료)
+  와 같은 claim(`outboxEventRepository.claimDue`)·트랜잭션·
+  lease-fencing(`hasLeaseIdentity`)·재시도(`OutboxRetryPolicy`)·stale 처리
+  골격을 따른다.
+- **선호 설정 예외**: `RecipientNotificationFanOutWorker`는 `isPreferenceEnabled`
+  가 알림 생성 자체를 게이트하지만, `ReportResolutionFanOutWorker`는 다르게
+  동작해야 한다 — 인앱 `notification` 행은 항상
+  `notificationRepository.saveIfAbsent(...)`로 생성하고, `isPreferenceEnabled`
+  는 `notification_delivery`(push) 행 생성 여부만 게이트한다. 이 편차를
+  구현에서 반드시 지킨다.
+- worker를 두 번 실행해도 알림이 중복되지 않아야 한다 — `notification`의
+  `UNIQUE (recipient_id, dedup_key)`와 `notification_delivery`의
+  `UNIQUE (notification_id, push_device_id)`를 그대로 활용
+  (`saveIfAbsent`/`saveDeliveryIfAbsent` 패턴, 확인 완료).
 
 ## Explicit exclusions
 
-- 알림 목록 조회 API. `notification`은 도메인·repository·fan-out 워커까지만 있고
-  service·web 계층이 없어 "이미 있는 service를 노출한다"는 이 이슈의 성격과 다르다.
-- 답변 수정·삭제 API. `Answer.delete`는 도메인에 있지만 service·정책이 없다.
-- 신고·차단 진입점(`#154`~`#157`이 담당).
-- 닉네임·프로필 이미지(`#168`, `#166`이 담당).
-- 지도 활동 마커 집계.
+- 자동 전역 숨김의 임계값 결정(R04). 이 이슈는 운영자 조치와 판정에 의한
+  숨김만 배선한다 — 임계값 기반 자동 숨김 트리거는 만들지 않는다.
+- 심각도 산출, 대기열 라우팅, 운영자 판정 REST API(#156). 내부 서비스
+  메서드까지만 만들고 그 메서드를 호출하는 API·인증·권한 로직은 만들지
+  않는다.
+- Slack 보조 알림(#111 범위).
+- API 변경 없음 — issue 본문의 "백엔드 영향" 절대로 REST 계층은 손대지
+  않는다(기존 조회 결과만 달라진다).
 - 인프라 apply, 배포, 프로덕션 변경은 별도 승인 없이는 실행하지 않는다.
 - Secret, 계정 식별자, 토큰, `.env` 값은 기록하지 않는다.
 
@@ -102,38 +124,80 @@
 
 | Area | Owner | Required review |
 | --- | --- | --- |
-| `feed.web`·`direction.web`·`answer.web` 신규 엔드포인트, reaction service 분해, `InboxQuerySql` 보강, 테스트 | Feature executor | 자격 없는 사용자가 남의 질문글·답변·공감에 접근할 경로가 없는지, 공감 `PUT`/`DELETE`와 읽음 처리가 반복·역순 호출에서 최종 상태를 흔들지 않는지, 응답에 정확 위치와 내부 사용자 식별자가 실리지 않는지 |
+| `ContentSuppressionSql`, 5개 조회 지점 반영, `Answer.hide/restore`, 리포지토리 확장, `NotificationRepository` REVOKE 확장, 내부 사건 종결 서비스 메서드, `ReportResolutionFanOutWorker`, 단위·통합 테스트 | Feature executor | `INV-RPT-006`·`008` 검증, `RecipientNotificationFanOutWorker` 골격과의 일관성 리뷰, `assert_answer_has_content` 실패 경로 테스트 리뷰, #154 `ReportCase`/`Report.attachToCase` 계약과의 호환성 리뷰 |
 
 ## Existing user-owned changes
 
-- `origin/main`(e7086dc)에서 새로 분기했다. 분기 시점 `git status --short`는 비어
-  있었다.
+- `git status --short` 결과: `docs/reports/harness/` (2026-08-18 작성된
+  하네스 엔지니어링 감사 보고서, untracked) — 이번 작업과 무관한 이전 세션
+  산출물이라 그대로 보존했다(worktree 정리를 위해 잠시 stash했다가 새
+  branch로 전환 직후 복원, 삭제하지 않음).
+- `main`(`#154` 병합 이후, `origin/main` 최신 커밋 `5309cc3a`)에서 새로
+  분기했다.
 
 ## Validation
 
 ```bash
-./gradlew test --tests "com.dnd.qello.account.*" --console=plain
-./gradlew test --tests "com.dnd.qello.filtering.moderation.*" --console=plain
-./gradlew integrationTest --tests "com.dnd.qello.NicknameDuplicateModerationIntegrationTest" --console=plain
-./gradlew integrationTest --tests "com.dnd.qello.OpenApiSpecificationIntegrationTest" --console=plain
-./harness test-run --id TEST-PLAN-GH-168-NICKNAME-DUPLICATE-MODERATION
+./gradlew test --tests "com.dnd.qello.safety.*" --console=plain
+./gradlew test --tests "com.dnd.qello.notification.*" --console=plain
+./gradlew test --tests "com.dnd.qello.answer.*" --console=plain
+./gradlew integrationTest --tests "com.dnd.qello.*Report*" --console=plain
+./gradlew integrationTest --tests "com.dnd.qello.*Suppress*" --console=plain
+./harness test-run --id <TEST-PLAN-ID>
 ./harness check
 ./harness pr-ready --project-tests
-npm run hooks:validate
 git diff --check
 ```
 
 ## Completion criteria
 
-- [x] 경로 7개, operation 9개(`GET` 3, `PUT` 4, `DELETE` 2)가 동작하고
-      `docs/api/openapi.json`에 반영된다. (원본 이슈의 `PUT 3` 집계는 수신자 읽음
-      처리 경로 하나가 빠진 오타였다 — 실제로는 질문자·수신자 읽음 처리 2개와
-      공감 `PUT` 2개로 4개다.)
-- [ ] 자격 없는 사용자가 남의 `내가 보낸 질문`, 답변 목록, 공감 경로로 데이터를
-      얻지 못한다(통합 테스트로 확인).
-- [ ] 공감 `PUT`·`DELETE`를 반복 호출해도 최종 상태와 공감 수가 달라지지 않는다.
-- [ ] 답변 읽음 처리를 반복·역순으로 호출해도 `answers_read_at`이 뒤로 가지 않는다.
-- [ ] `reactedByMe`가 수신함 목록·상세에 뷰어 기준으로 정확히 실린다.
-- [ ] 정확 위치와 내부 사용자 식별자를 응답에 싣지 않는다(기존 수신함 규칙 유지).
-- [ ] 단위·통합 테스트가 통과하고 `@DisplayName`·클래스 헤더 규칙을 충족한다.
-- [ ] `./harness check`와 `./harness pr-ready --project-tests`가 통과한다.
+- [x] 답변 목록 길이와 `answer_count`가 항상 일치한다 — 신고자 한정 숨김과
+      전역 숨김 각각에서(`INV-RPT-006`) — `ReportSuppressionIntegrationTest`
+      INT-001/002, `AnswerGlobalHideIntegrationTest` INT-006.
+- [x] `unread_answer_count`도 같은 규칙으로 감소한다 —
+      `ReportSuppressionIntegrationTest` INT-003/004,
+      `AnswerGlobalHideIntegrationTest` INT-007. (`InboxQuerySql.SELECT_CHIP_AGGREGATE`
+      수신함 방향 칩 집계는 방향별 질문글 수를 세지 개별 답변을 세지 않으므로
+      신고·숨김된 답변 하나 때문에 그 질문글 전체가 칩 집계에서 빠질 이유가
+      없다 — 이 집계는 이번 억제 규칙의 대상이 아님을 코드로 확인했다.)
+- [x] 전역 숨김된 답변을 가리키던 기존 알림이 `REVOKED`다 —
+      `AnswerGlobalHideIntegrationTest#globalHideRevokesExistingNotification`
+      (INT-008).
+- [x] 사건 종결 시 신고자 수만큼 outbox 이벤트가 생기고 fan-out 후 알림이
+      신고자당 1건이다(`INV-RPT-008`) —
+      `ReportResolutionIntegrationTest` INT-011, INT-013.
+- [x] worker를 두 번 실행해도 알림이 중복되지 않는다 —
+      `ReportResolutionIntegrationTest#fanOutIsIdempotentAcrossReruns`
+      (INT-014).
+- [x] 푸시 선호가 꺼져 있어도 인앱 알림 행은 생성된다 —
+      `ReportResolutionIntegrationTest#inAppNotificationIsCreatedEvenWhenPushPreferenceDisabled`
+      (INT-015).
+- [x] 숨김 기간에 미디어가 정리된 답변의 복원이 `assert_answer_has_content`로
+      실패하는 경로가 테스트로 문서화돼 있다 —
+      `AnswerGlobalHideIntegrationTest#restoringContentlessAnswerAfterMediaCleanupFails`
+      (INT-010).
+- [x] 실행하지 못한 검증과 남은 위험을 보고서에 기록한다 — 상세는
+      `docs/reports/tests/gh-155-TEST-PLAN-GH-155-REPORT-SUPPRESSION-NOTIFICATIONS.md`
+      §1·§6·§7 참고. 인덱스 실행 계획 미검증과 접수·종결 동시 조합 미검증은
+      이 이슈 완료 조건 밖으로 판단해 후속 이슈 없이 기록만 남겼다.
+
+## Implementation notes (2026-08-19)
+
+- 사건 종결은 REST API 없이 내부 전용 메서드
+  (`SafetyCaseResolutionService.resolveCase`)로만 노출했다 — 사용자 승인
+  받은 Scope decision과 일치. `#156`이 이후 운영자 API에서 이 메서드를
+  호출한다.
+- `Notification` 도메인 레코드에 `reportId` 필드를 추가하면서(V19가 이미
+  추가한 `notification.report_id` 컬럼을 처음으로 실제 사용) 기존 생성자
+  호출부 10곳을 함께 갱신했다. 전체 단위(672)·통합(521) 테스트 모두 통과.
+- `V21__add_report_reporter_answer_suppression_index.sql` 추가로
+  `FlywayMigrationContractTest`·`FlywayMigrationIntegrationTest`의 마이그레이션
+  개수·이름 하드코딩이 깨져 함께 갱신했다(이 저장소의 기존 관례 — 다음
+  마이그레이션 작업자도 유의).
+- 전역 숨김(`Answer.hide`)과 알림 REVOKE 부수효과는 `resolveCase`(판정
+  ACTIONED)를 통해서만 배선했다 — 이슈 본문의 "운영자 조치와 판정에 의한
+  숨김만 배선한다"는 제약과 일치. `Answer.hide`를 다른 경로에서 직접
+  호출해도 알림은 REVOKE되지 않는다 — 통합 테스트 작성 중 이 커플링을
+  실제로 발견하고 테스트를 재설계했다(보고서 §6 참고).
+- 새 `SafetyErrorCode.PAYLOAD_SERIALIZATION_FAILED`(`SAF-INFRA-003`) 1개를
+  추가했다 — outbox payload 직렬화 실패를 기존 코드로 표현할 수 없었다.
