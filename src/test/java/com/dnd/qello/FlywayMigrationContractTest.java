@@ -65,6 +65,7 @@ class FlywayMigrationContractTest {
 			"V20__add_operator_action_audit.sql",
 			"V21__add_user_account_nickname_uniqueness.sql",
 			"V22__add_user_account_profile_image.sql",
+			"V23__add_report_reporter_answer_suppression_index.sql",
 			"V2__add_reactions_and_skip_pending.sql",
 			"V3__add_user_account_password_hash.sql",
 			"V4__add_user_account_optimistic_lock.sql",

@@ -129,7 +129,8 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 		"user_account_country_idx",
 		"operator_action_audit_target_idx",
 		"operator_action_audit_operator_idx",
-		"uq_user_account_nickname_ci"
+		"uq_user_account_nickname_ci",
+		"idx_report_reporter_answer_suppression"
 	);
 
 	private static final Set<String> EXPECTED_FUNCTIONS = Set.of(
@@ -166,7 +167,7 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 	private JdbcTemplate jdbcTemplate;
 
 	@Test
-	@DisplayName("빈 PostGIS 데이터베이스의 startup에서 V1부터 V22까지 migration을 적용한다")
+	@DisplayName("빈 PostGIS 데이터베이스의 startup에서 V1부터 V23까지 migration을 적용한다")
 	void appliesAllMigrationsOnApplicationStartup() {
 		Integer successfulV1 = jdbcTemplate.queryForObject("""
 			SELECT count(*)
@@ -278,6 +279,11 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 			FROM flyway_schema_history
 			WHERE version = '22' AND success
 			""", Integer.class);
+		Integer successfulV23 = jdbcTemplate.queryForObject("""
+			SELECT count(*)
+			FROM flyway_schema_history
+			WHERE version = '23' AND success
+			""", Integer.class);
 		String postgisVersion = jdbcTemplate.queryForObject(
 			"SELECT PostGIS_Version()", String.class);
 
@@ -303,7 +309,8 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 		assertThat(successfulV20).isEqualTo(1);
 		assertThat(successfulV21).isEqualTo(1);
 		assertThat(successfulV22).isEqualTo(1);
-		assertThat(flyway.info().applied()).hasSize(22);
+		assertThat(successfulV23).isEqualTo(1);
+		assertThat(flyway.info().applied()).hasSize(23);
 		assertThat(postgisVersion).isNotBlank();
 	}
 
@@ -384,7 +391,8 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 		// V21(#168)이 uq_user_account_nickname_ci 1개를 추가해 64에서 65가 됐다.
 		// CREATE UNIQUE INDEX로 만든 부분 인덱스라 pg_constraint에는 잡히지 않는다 —
 		// countConstraints(constraints, "u")는 그대로다.
-		assertThat(EXPECTED_INDEXES).hasSize(65);
+		// V23(#155)이 report(reporter_id, answer_id) 부분 인덱스 1개를 추가해 65에서 66이 됐다.
+		assertThat(EXPECTED_INDEXES).hasSize(66);
 		assertThat(EXPECTED_FUNCTIONS).hasSize(11);
 		assertThat(EXPECTED_TRIGGERS).hasSize(10);
 
