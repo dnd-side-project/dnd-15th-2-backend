@@ -132,6 +132,12 @@ public class JdbcSafetyRepository implements SafetyRepository {
 	}
 
 	@Override
+	public void acquireReporterSubmissionLock(long reporterId) {
+		jdbc.query("SELECT pg_advisory_xact_lock(:reporterId)",
+			new MapSqlParameterSource("reporterId", reporterId), (ResultSet rs) -> null);
+	}
+
+	@Override
 	public List<Report> findReportsByReporter(
 		long reporterId, Instant cursorCreatedAt, Long cursorId, int limit) {
 		MapSqlParameterSource params = new MapSqlParameterSource()

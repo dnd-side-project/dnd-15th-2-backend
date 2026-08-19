@@ -33,6 +33,14 @@ public interface SafetyRepository {
 	/** rate limit 판정용. since 이후 이 신고자가 접수한 신고 수(#154). */
 	int countReportsByReporterSince(long reporterId, Instant since);
 
+	/**
+	 * 같은 신고자의 동시 제출을 직렬화한다(트랜잭션 종료 시 자동 해제). rate limit
+	 * count-then-insert와 findOpenReport-then-insert가 각각 별도 연산이라 생기는
+	 * 경합을 이 잠금으로 없앤다 — 두 번째 트랜잭션은 첫 번째가 커밋한 뒤에야
+	 * 진행되므로 이미 저장된 신고를 그대로 조회한다(#154 리뷰 후속).
+	 */
+	void acquireReporterSubmissionLock(long reporterId);
+
 	/** 최신순 커서 페이지네이션. cursorCreatedAt·cursorId가 둘 다 null이면 처음부터(#154). */
 	List<Report> findReportsByReporter(long reporterId, Instant cursorCreatedAt, Long cursorId, int limit);
 }

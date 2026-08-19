@@ -88,7 +88,9 @@ public class SafetyReportService {
 
 	private ReportOutcome submit(ReportTargetType type, long targetId, long reporterId,
 		ReportSubmission submission, boolean blockAuthor, Instant now) {
-		enforceRateLimit(reporterId, now);
+		// 신고자 단위로 직렬화해 rate limit count-then-insert와 findOpenReport-then-insert
+		// 경합을 없앤다 — 뒤따르는 트랜잭션은 앞선 트랜잭션의 커밋 이후에만 진행된다.
+		safetyRepository.acquireReporterSubmissionLock(reporterId);
 		ReportTargetSnapshot target = resolveTarget(type, targetId, reporterId, now)
 			.orElseThrow(() -> new SafetyException(
 				SafetyErrorCode.REPORT_TARGET_NOT_FOUND, null, "신고 대상을 찾을 수 없습니다"));
@@ -112,6 +114,8 @@ public class SafetyReportService {
 			return suppressed.get();
 		}
 
+		// 멱등 반환·억제 경로는 새 신고를 만들지 않으므로 한도 검사에서 면제한다.
+		enforceRateLimit(reporterId, now);
 		long caseId = mergeCase(targetUserId, directionPostId, answerId, now);
 		Report toSave = newReport(type, reporterId, targetId, submission, now).attachToCase(caseId);
 		Report saved = safetyRepository.saveReport(toSave);

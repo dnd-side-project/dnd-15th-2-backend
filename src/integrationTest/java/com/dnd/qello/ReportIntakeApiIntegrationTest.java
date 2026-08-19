@@ -6,6 +6,8 @@ package com.dnd.qello;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.Mockito.doThrow;
 
 import java.math.BigDecimal;
 import java.sql.Timestamp;
@@ -14,6 +16,7 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -24,8 +27,10 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import com.dnd.qello.answer.domain.Answer;
@@ -57,7 +62,7 @@ class ReportIntakeApiIntegrationTest extends PostgisContainerIntegrationTestSupp
 	private TransactionTemplate transactionTemplate;
 	@Autowired
 	private AnswerRepository answerRepository;
-	@Autowired
+	@MockitoSpyBean
 	private SafetyRepository safetyRepository;
 	@Autowired
 	private ReportContentSnapshotRepository reportContentSnapshotRepository;
@@ -177,8 +182,8 @@ class ReportIntakeApiIntegrationTest extends PostgisContainerIntegrationTestSupp
 		CountDownLatch start = new CountDownLatch(1);
 		try {
 			List<Future<ReportOutcome>> results = List.of(
-				executor.submit(() -> submitInTransaction(reporterId, ready, start)),
-				executor.submit(() -> submitInTransaction(secondReporterId, ready, start)));
+				executor.submit(() -> submitAnswerReportInTransaction(reporterId, answerId, ready, start)),
+				executor.submit(() -> submitAnswerReportInTransaction(secondReporterId, answerId, ready, start)));
 			assertThat(ready.await(5, TimeUnit.SECONDS)).isTrue();
 			start.countDown();
 			ReportOutcome first = results.get(0).get(10, TimeUnit.SECONDS);
@@ -295,6 +300,109 @@ class ReportIntakeApiIntegrationTest extends PostgisContainerIntegrationTestSupp
 	}
 
 	@Test
+	@DisplayName("blockAuthor=true 경로에서 차단 삽입이 실패하면 신고·스냅샷·사건이 모두 롤백된다")
+	void blockAuthorFailureRollsBackReportSnapshotAndCase() {
+		// 실제 기존 차단 행으로 실패를 재현하면 열람 자격 NOT EXISTS 조건(신고자-작성자
+		// 양방향)에도 걸려 대상 조회 자체가 404가 된다. block insert 단계만 실패시키기
+		// 위해 이 테스트의 reporterId/authorId 조합에만 매칭되는 spy 스텁을 쓴다.
+		doThrow(new DataIntegrityViolationException("gh154 rollback test"))
+			.when(safetyRepository)
+			.block(argThat(block -> block.blockerId() == reporterId && block.blockedId() == authorId));
+
+		assertThatThrownBy(() -> safetyReportService.submitAnswerReport(
+			reporterId, answerId, submission(ReportReason.SPAM_OR_ADVERTISING), true, NOW))
+			.isInstanceOf(DataIntegrityViolationException.class);
+
+		assertThat(jdbc.queryForObject(
+			"SELECT count(*) FROM report WHERE reporter_id = ? AND answer_id = ?",
+			Integer.class, reporterId, answerId)).isZero();
+		assertThat(jdbc.queryForObject("SELECT count(*) FROM report_content_snapshot", Integer.class)).isZero();
+		assertThat(jdbc.queryForObject(
+			"SELECT count(*) FROM report_case WHERE answer_id = ?", Integer.class, answerId)).isZero();
+		Integer activeBlockCount = jdbc.queryForObject(
+			"SELECT count(*) FROM user_block WHERE blocker_id = ? AND blocked_id = ?",
+			Integer.class, reporterId, authorId);
+		assertThat(activeBlockCount).isZero();
+	}
+
+	@Test
+	@DisplayName("같은 신고자의 동시 재신고는 하나만 새로 접수되고 나머지는 기존 접수증을 반환한다")
+	void concurrentReportsFromSameReporterAreIdempotent() throws Exception {
+		ExecutorService executor = Executors.newFixedThreadPool(2);
+		CountDownLatch ready = new CountDownLatch(2);
+		CountDownLatch start = new CountDownLatch(1);
+		try {
+			List<Future<ReportOutcome>> results = List.of(
+				executor.submit(() -> submitAnswerReportInTransaction(reporterId, answerId, ready, start)),
+				executor.submit(() -> submitAnswerReportInTransaction(reporterId, answerId, ready, start)));
+			assertThat(ready.await(5, TimeUnit.SECONDS)).isTrue();
+			start.countDown();
+			ReportOutcome first = results.get(0).get(10, TimeUnit.SECONDS);
+			ReportOutcome second = results.get(1).get(10, TimeUnit.SECONDS);
+
+			assertThat(first.report().id()).isEqualTo(second.report().id());
+			assertThat(List.of(first.alreadyReceived(), second.alreadyReceived()))
+				.containsExactlyInAnyOrder(false, true);
+			Integer reportCount = jdbc.queryForObject(
+				"SELECT count(*) FROM report WHERE reporter_id = ? AND answer_id = ?",
+				Integer.class, reporterId, answerId);
+			assertThat(reportCount).isEqualTo(1);
+		} finally {
+			executor.shutdownNow();
+		}
+	}
+
+	@Test
+	@DisplayName("한도 직전의 동시 요청은 하나만 성공한다 (rate limit 원자성)")
+	void concurrentReportsFromSameReporterEnforceRateLimitAtomically() throws Exception {
+		for (int i = 0; i < 9; i++) {
+			jdbc.update("""
+				INSERT INTO report (reporter_id, target_user_id, reason_code, status, created_at)
+				VALUES (?, ?, 'SPAM_OR_ADVERTISING', 'NO_VIOLATION', ?)
+				""", reporterId, unrelatedUserId, Timestamp.from(NOW.minusSeconds(30)));
+		}
+		long secondAuthorId = account("rate-limit-second-author");
+		long secondAuthorRecipientId = insertRecipient(postId, secondAuthorId, "AVAILABLE");
+		long secondAnswerId = answerRepository.save(Answer.restore(null, secondAuthorRecipientId, secondAuthorId,
+			AnswerStatus.PUBLISHED, "gh154-answer-3", "두 번째 신고 대상 답변", REGION,
+			BigDecimal.valueOf(90), "NEAR", AnswerModerationStatus.PASSED,
+			NOW, NOW, null, 5000L, null, 0)).getId();
+
+		ExecutorService executor = Executors.newFixedThreadPool(2);
+		CountDownLatch ready = new CountDownLatch(2);
+		CountDownLatch start = new CountDownLatch(1);
+		try {
+			List<Future<ReportOutcome>> results = List.of(
+				executor.submit(() -> submitAnswerReportInTransaction(reporterId, answerId, ready, start)),
+				executor.submit(() -> submitAnswerReportInTransaction(reporterId, secondAnswerId, ready, start)));
+			assertThat(ready.await(5, TimeUnit.SECONDS)).isTrue();
+			start.countDown();
+
+			int succeeded = 0;
+			int rateLimited = 0;
+			for (Future<ReportOutcome> result : results) {
+				try {
+					ReportOutcome outcome = result.get(10, TimeUnit.SECONDS);
+					assertThat(outcome.alreadyReceived()).isFalse();
+					succeeded++;
+				} catch (ExecutionException e) {
+					assertThat(e.getCause()).isInstanceOf(SafetyException.class)
+						.hasFieldOrPropertyWithValue("errorCode", SafetyErrorCode.REPORT_RATE_LIMIT_EXCEEDED);
+					rateLimited++;
+				}
+			}
+			assertThat(succeeded).isEqualTo(1);
+			assertThat(rateLimited).isEqualTo(1);
+			Integer totalReports = jdbc.queryForObject(
+				"SELECT count(*) FROM report WHERE reporter_id = ? AND created_at >= ?",
+				Integer.class, reporterId, Timestamp.from(NOW.minusSeconds(60)));
+			assertThat(totalReports).isEqualTo(10);
+		} finally {
+			executor.shutdownNow();
+		}
+	}
+
+	@Test
 	@DisplayName("매칭 이력이 없는 사용자 신고는 404다")
 	void reportingUnrelatedUserIsNotFound() {
 		assertThatThrownBy(() -> safetyReportService.submitUserReport(
@@ -381,13 +489,13 @@ class ReportIntakeApiIntegrationTest extends PostgisContainerIntegrationTestSupp
 		assertThat(activeAfterRelease).isZero();
 	}
 
-	private ReportOutcome submitInTransaction(long asReporterId, CountDownLatch ready, CountDownLatch start)
-		throws Exception {
+	private ReportOutcome submitAnswerReportInTransaction(
+		long asReporterId, long asAnswerId, CountDownLatch ready, CountDownLatch start) throws Exception {
 		ready.countDown();
 		start.await(5, TimeUnit.SECONDS);
 		return transactionTemplate.execute(status ->
 			safetyReportService.submitAnswerReport(
-				asReporterId, answerId, submission(ReportReason.SPAM_OR_ADVERTISING), false, NOW));
+				asReporterId, asAnswerId, submission(ReportReason.SPAM_OR_ADVERTISING), false, NOW));
 	}
 
 	private ReportSubmission submission(ReportReason reason) {

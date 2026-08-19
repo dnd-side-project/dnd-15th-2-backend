@@ -116,6 +116,31 @@ git diff --check
       엔드포인트 반영 확인.
 - [x] 실행하지 못한 검증과 남은 위험을 보고서에 기록한다 — 상세는
       `docs/reports/tests/gh-154-TEST-PLAN-GH-154-REPORT-INTAKE-API.md`
-      §1·§6·§7 참고. 특히 사건 병합 재시도 소진 경로(`SAF-INFRA-002`)와
-      같은 신고자의 진짜 동시 중복 요청(`DataIntegrityViolationException`
-      흡수 로직 부재)은 재현하지 못했다.
+      §1·§6·§7 참고. 사건 병합 재시도 소진 경로(`SAF-INFRA-002`)는 여전히
+      재현하지 못했다. 같은 신고자의 동시 중복 요청은 PR #167 코드 리뷰
+      후속으로 아래에서 해소했다.
+
+## PR #167 code review follow-up (Major)
+
+CodeRabbit의 PR #167 리뷰 중 Major 등급 4건을 수정했다. Minor/Trivial 등급은
+이번 후속 작업 범위에 포함하지 않았다.
+
+- `SafetyReportService.submit`에서 `enforceRateLimit`을 멱등 반환·억제
+  경로 뒤(`mergeCase` 직전)로 옮겼다 — 한도를 채운 신고자가 같은 대상을
+  재제출(예: 네트워크 재시도)해도 더 이상 429를 받지 않는다.
+- `SafetyRepository.acquireReporterSubmissionLock`(`pg_advisory_xact_lock`
+  기반, `JdbcSafetyRepository`에 구현)을 `submit` 최상단에서 획득해 같은
+  신고자의 제출을 트랜잭션 단위로 직렬화했다. `countReportsByReporterSince`
+  → `saveReport`의 경합(rate limit 원자성)과 `findOpenReport` → `saveReport`
+  의 경합(동시 재신고 멱등성)을 같은 메커니즘으로 없앴다.
+- 새 통합 테스트 3건을 `ReportIntakeApiIntegrationTest`에 추가했다 —
+  `concurrentReportsFromSameReporterAreIdempotent`(동시 재신고 1건만 신규
+  접수), `concurrentReportsFromSameReporterEnforceRateLimitAtomically`(한도
+  직전 동시 요청 중 정확히 1건만 성공), `blockAuthorFailureRollsBackReport
+  SnapshotAndCase`(`blockAuthor=true` 경로에서 차단 삽입 실패 시 신고·
+  스냅샷·사건 전체 롤백 — `SafetyRepository`를 `@MockitoSpyBean`으로 감싸
+  이 테스트의 reporterId/authorId 조합에만 매칭되는 예외를 주입했다. 실제
+  기존 차단 행으로 재현하면 열람 자격 양방향 `NOT EXISTS` 조건에 걸려
+  대상 조회가 먼저 404가 되므로 이 방식을 썼다).
+- 전체 unit(`./gradlew test`)·integration(`./gradlew integrationTest`)
+  재실행, 모두 통과.

@@ -97,6 +97,9 @@
 | INT-013 | PASS | `#findReportReturnsNotFoundForNonOwner` | 404(403 아님) |
 | INT-014/015 | PASS | `#blockAndReleaseServiceCallsSucceed` | 계획의 MockMvc HTTP 경로 대신 서비스 직접 호출로 구현(§5 참고) |
 | INT-015(OpenAPI) | PASS | `OpenApiSpecificationIntegrationTest`(기존, 재실행) | `docs/api/openapi.json` 재생성·커밋 대상 |
+| INT-016 | PASS | `#concurrentReportsFromSameReporterAreIdempotent` | PR #167 리뷰 후속(Major), 같은 신고자 동시 재신고 |
+| INT-017 | PASS | `#concurrentReportsFromSameReporterEnforceRateLimitAtomically` | PR #167 리뷰 후속(Major), rate limit 원자성 |
+| INT-018 | PASS | `#blockAuthorFailureRollsBackReportSnapshotAndCase` | PR #167 리뷰 후속(Major), blockAuthor 실패 시 전체 롤백 |
 
 ## 5. Failures and diagnostics
 
@@ -157,6 +160,13 @@
   (옵션) 차단 INSERT까지 하나의 `@Transactional` 경계 안에 있다. `blockAuthor`
   옵션이 `SafetyService.block(...)`을 호출할 때 Spring 프록시 전파
   (`REQUIRED`, 기본값)로 같은 트랜잭션에 합류함을 INT-008로 확인했다.
+  다만 INT-008은 성공 경로만 확인했다 — 차단 삽입이 실패할 때 report·
+  스냅샷·사건까지 실제로 롤백되는지는 이 실행 당시 별도로 검증하지
+  않았고, §1 요약에 그대로 PASS로만 표기해 커버리지를 과장했다(PR #167
+  리뷰 지적). PR #167 리뷰 후속으로 `INT-018`
+  (`#blockAuthorFailureRollsBackReportSnapshotAndCase`)을 추가해 실패
+  주입 후 `report`/`report_content_snapshot`/`report_case` 행이 모두
+  없음을 확인했다.
 - `findMostRecentClosedReport`는 `resolved_at DESC, id DESC` 정렬이다.
   같은 신고자가 같은 대상을 여러 번 신고·종결한 이력이 쌓이면 항상
   "가장 최근에 종결된" 건과만 비교한다 — 더 오래된 종결 건과 내용이
@@ -168,21 +178,21 @@
 - INT-003은 정확히 2명의 동시 신고자만 검증한다. Foundation의 자체
   검증과 마찬가지로 N-way 동시성은 부분 유일 인덱스가 같은 방식으로
   처리할 것으로 예상되지만 실측하지 않았다.
-- 같은 신고자가 같은 대상에 정말로 동시에(밀리초 단위로) 두 번 요청하는
-  경쟁은 별도로 테스트하지 않았다 — `uq_open_report_*`가 두 번째 INSERT를
-  막지만, `SafetyReportService.submit`은 이 경우 `DataIntegrityViolationException`
-  을 잡아 멱등 응답으로 흡수하는 로직이 없다. 현재는 이 예외가 그대로
-  호출자에게 전파되며, `GlobalExceptionHandler`의 기본 처리로 귀결된다.
-  테스트 계획 §7에서 "실행 에이전트가 필요 시 추가 시나리오로 보고한다"고
-  명시했던 항목이며, 이 실행에서는 재현하지 않았다.
+- (해소, PR #167 리뷰 후속) 같은 신고자가 같은 대상에 정말로 동시에
+  요청하는 경쟁은 `SafetyReportService.submit`이 `acquireReporterSubmissionLock`
+  (`pg_advisory_xact_lock`)으로 신고자 단위 제출을 직렬화해 없앴다 —
+  두 번째 트랜잭션은 첫 번째가 커밋한 뒤에야 `findOpenReport`를 실행하므로
+  `uq_open_report_*` 위반 자체가 더 이상 발생하지 않는다.
+  `INT-016`(`#concurrentReportsFromSameReporterAreIdempotent`)으로 검증했다.
 
 ### Transactions and event ordering
 
-- rate limit 검사와 신고 저장이 같은 트랜잭션 안에 있으므로, 동시에
-  들어온 두 요청이 모두 rate limit 통과 판정을 받은 뒤 함께 저장되면
-  일시적으로 한도를 초과할 수 있다(rate limit은 정확한 원자적 카운터가
-  아니라 근사치). 이 경계 사례는 테스트하지 않았다 — 신고 rate limit의
-  성격상 엄격한 정확성보다 대략적인 남용 방지가 목적이라고 판단했다.
+- (해소, PR #167 리뷰 후속) rate limit 카운트(`countReportsByReporterSince`)와
+  신고 저장이 분리된 연산이라 동시 요청이 함께 한도를 통과할 수 있던
+  경합은 `acquireReporterSubmissionLock`으로 없앴다 — 같은 신고자의 두
+  트랜잭션이 더 이상 동시에 카운트를 읽지 않는다. `INT-017`
+  (`#concurrentReportsFromSameReporterEnforceRateLimitAtomically`)로,
+  한도 직전 동시 요청 중 정확히 1건만 성공함을 검증했다.
 
 ### External APIs
 
