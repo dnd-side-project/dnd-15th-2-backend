@@ -67,7 +67,11 @@ public enum SafetyErrorCode implements ErrorCode {
 	DUPLICATED_OPEN_REPORT(HttpStatus.CONFLICT, "SAF-INFRA-001", ErrorCategory.INFRA, "이미 접수된 신고가 있습니다."),
 
 	// 사건 병합 재시도가 반복적으로 실패함. 재시도 후보
-	CASE_MERGE_CONFLICT(HttpStatus.CONFLICT, "SAF-INFRA-002", ErrorCategory.INFRA, "신고 처리가 일시적으로 지연되고 있습니다.");
+	CASE_MERGE_CONFLICT(HttpStatus.CONFLICT, "SAF-INFRA-002", ErrorCategory.INFRA, "신고 처리가 일시적으로 지연되고 있습니다."),
+
+	// 결과 알림 outbox payload 직렬화 실패(#155). payload가 고정된 형태라 사실상 발생하지 않는다
+	PAYLOAD_SERIALIZATION_FAILED(
+		HttpStatus.INTERNAL_SERVER_ERROR, "SAF-INFRA-003", ErrorCategory.INFRA, "신고 처리 결과를 저장하지 못했습니다.");
 
 	private final HttpStatus httpStatus;
 	private final String code;

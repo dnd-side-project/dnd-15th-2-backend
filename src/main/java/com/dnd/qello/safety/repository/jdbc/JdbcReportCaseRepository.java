@@ -49,6 +49,12 @@ public class JdbcReportCaseRepository implements ReportCaseRepository {
 	}
 
 	@Override
+	public Optional<ReportCase> findByIdForUpdate(long id) {
+		return jdbc.query("SELECT * FROM report_case WHERE id = :id FOR UPDATE",
+			new MapSqlParameterSource("id", id), (rs, row) -> mapReportCase(rs)).stream().findFirst();
+	}
+
+	@Override
 	public ReportCase update(ReportCase reportCase) {
 		if (reportCase.id() == null) {
 			throw new SafetyException(SafetyErrorCode.REQUIRED_VALUE_MISSING, "id", "수정에는 case id가 필요합니다");

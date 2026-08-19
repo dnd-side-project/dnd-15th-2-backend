@@ -43,4 +43,7 @@ public interface SafetyRepository {
 
 	/** 최신순 커서 페이지네이션. cursorCreatedAt·cursorId가 둘 다 null이면 처음부터(#154). */
 	List<Report> findReportsByReporter(long reporterId, Instant cursorCreatedAt, Long cursorId, int limit);
+
+	/** 사건 종결(#155) 시 신고자 수만큼 결과 알림을 내보내려면 사건에 묶인 신고를 모두 알아야 한다. */
+	List<Report> findReportsByCaseId(long caseId);
 }
