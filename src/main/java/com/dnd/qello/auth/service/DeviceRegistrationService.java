@@ -86,8 +86,10 @@ public class DeviceRegistrationService {
 
 		// 닉네임은 선택값이다(#48). 주어진 경우에만 중복·moderation을 검사한다 — 이
 		// 검사는 계정·자격증명 생성과 같은 트랜잭션 안에서 실행된다(#168, 트레이드오프는
-		// docs/test-plans/gh-168-...md §4·§7 참고).
-		if (nickname != null) {
+		// docs/test-plans/gh-168-...md §4·§7 참고). 공백만 있는 값은 어차피
+		// Account.createUser가 REQUIRED_VALUE_MISSING으로 거부하므로, 그 앞에서
+		// DB 조회와 외부 moderation 호출을 낭비하지 않는다.
+		if (nickname != null && !nickname.isBlank()) {
 			nicknameRegistrationService.ensureAvailable(nickname, locale);
 		}
 

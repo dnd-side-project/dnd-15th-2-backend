@@ -47,11 +47,14 @@ public class NicknameRegistrationService {
 	 * 메서드는 검사만 하고 저장하지 않는다.
 	 */
 	public void ensureAvailable(String nickname, String locale) {
-		if (accountRepository.existsActiveNickname(nickname)) {
+		// Account.validateNickname이 저장 시점에 trim하는 것과 같은 기준으로 검사해야
+		// 앞뒤 공백만 다른 닉네임이 중복 검사를 우회하지 않는다(#168).
+		String normalized = nickname == null ? null : nickname.trim();
+		if (accountRepository.existsActiveNickname(normalized)) {
 			throw new AccountException(AccountErrorCode.DUPLICATED_NICKNAME, "nickname", "이미 사용 중인 닉네임입니다");
 		}
 
-		NicknameModerationOutcome outcome = moderationChecker.check(nickname, languageOf(locale));
+		NicknameModerationOutcome outcome = moderationChecker.check(normalized, languageOf(locale));
 		if (outcome instanceof NicknameModerationOutcome.Rejected rejected) {
 			throw rejectionFor(rejected.reason());
 		}

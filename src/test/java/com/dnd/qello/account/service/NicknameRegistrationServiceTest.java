@@ -54,6 +54,20 @@ class NicknameRegistrationServiceTest {
 	}
 
 	@Test
+	@DisplayName("앞뒤 공백만 다른 닉네임도 trim된 값 기준으로 중복 검사와 저장이 일어난다")
+	void normalizesWhitespaceBeforeDuplicateCheckAndPersist() {
+		FakeAccountRepository accountRepository = new FakeAccountRepository(false);
+		accountRepository.store(1L, sampleAccount());
+		FakeNicknameModerationChecker moderationChecker = new FakeNicknameModerationChecker(NicknameModerationOutcome.allowed());
+		NicknameRegistrationService service = new NicknameRegistrationService(accountRepository, moderationChecker);
+
+		Account updated = service.changeNickname(1L, "  새닉네임  ");
+
+		assertThat(accountRepository.lastCheckedNickname).isEqualTo("새닉네임");
+		assertThat(updated.getNickname()).isEqualTo("새닉네임");
+	}
+
+	@Test
 	@DisplayName("UNIT-010: moderation이 BLOCK을 반환하면 NICKNAME_REJECTED_BY_MODERATION이고 저장하지 않는다")
 	void rejectsNicknameBlockedByModeration() {
 		FakeAccountRepository accountRepository = new FakeAccountRepository(false);
@@ -130,6 +144,7 @@ class NicknameRegistrationServiceTest {
 		private final Map<Long, Account> accounts = new HashMap<>();
 		private final boolean alwaysDuplicate;
 		private int updateProfileCallCount;
+		private String lastCheckedNickname;
 
 		private FakeAccountRepository(boolean alwaysDuplicate) {
 			this.alwaysDuplicate = alwaysDuplicate;
@@ -168,6 +183,7 @@ class NicknameRegistrationServiceTest {
 
 		@Override
 		public boolean existsActiveNickname(String nickname) {
+			lastCheckedNickname = nickname;
 			return alwaysDuplicate;
 		}
 	}
