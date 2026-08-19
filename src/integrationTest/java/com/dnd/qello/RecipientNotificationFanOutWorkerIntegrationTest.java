@@ -1007,6 +1007,11 @@ class RecipientNotificationFanOutWorkerIntegrationTest extends PostgisContainerI
 			}
 
 			@Override
+			public Account updateProfileImage(Account account) {
+				return accounts.updateProfileImage(account);
+			}
+
+			@Override
 			public Account updateStatus(Account account) {
 				return accounts.updateStatus(account);
 			}

@@ -124,6 +124,7 @@ class DirectionPresenceServiceTest {
 
 		@Override public Account save(Account account) { throw new UnsupportedOperationException(); }
 		@Override public Account updateProfile(Account account) { throw new UnsupportedOperationException(); }
+		@Override public Account updateProfileImage(Account account) { throw new UnsupportedOperationException(); }
 		@Override public Account updateStatus(Account account) { throw new UnsupportedOperationException(); }
 		@Override public Optional<Account> findById(long id) { return Optional.ofNullable(account); }
 	}
