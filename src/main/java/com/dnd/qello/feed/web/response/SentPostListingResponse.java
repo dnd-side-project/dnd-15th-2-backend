@@ -3,6 +3,8 @@ package com.dnd.qello.feed.web.response;
 import java.time.Instant;
 import java.util.List;
 
+import io.swagger.v3.oas.annotations.media.Schema;
+
 import com.dnd.qello.feed.view.SentPostCard;
 
 /**
@@ -25,6 +27,7 @@ public record SentPostListingResponse(
 		return new SentPostListingResponse(mapped, next);
 	}
 
+	@Schema(name = "SentPostCard")
 	public record Card(
 		long postId,
 		String questionText,

@@ -51,6 +51,19 @@
         },
         "type" : "object"
       },
+      "AnswerCursor" : {
+        "properties" : {
+          "answerId" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "publishedAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
       "AnswerListingResponse" : {
         "properties" : {
           "answers" : {
@@ -60,7 +73,7 @@
             "type" : "array"
           },
           "nextCursor" : {
-            "$ref" : "#/components/schemas/Cursor"
+            "$ref" : "#/components/schemas/AnswerCursor"
           }
         },
         "type" : "object"
@@ -954,10 +967,21 @@
           "bodyText" : {
             "type" : "string"
           },
-          "coarseRegionCode" : {
+          "distanceBand" : {
             "type" : "string"
           },
+          "distanceM" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
           "expiresAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "inboundBearingDegrees" : {
+            "type" : "number"
+          },
+          "matchedAt" : {
             "format" : "date-time",
             "type" : "string"
           },
@@ -972,15 +996,24 @@
             "format" : "int64",
             "type" : "integer"
           },
+          "postRecipientId" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
           "questionText" : {
             "type" : "string"
+          },
+          "reactedByMe" : {
+            "type" : "boolean"
           },
           "reactionCount" : {
             "format" : "int64",
             "type" : "integer"
           },
-          "submittedAt" : {
-            "format" : "date-time",
+          "senderCoarseRegionCode" : {
+            "type" : "string"
+          },
+          "status" : {
             "type" : "string"
           },
           "unreadAnswerCount" : {
@@ -1742,6 +1775,51 @@
         },
         "type" : "object"
       },
+      "SentPostCard" : {
+        "properties" : {
+          "answerCount" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "bodyText" : {
+            "type" : "string"
+          },
+          "coarseRegionCode" : {
+            "type" : "string"
+          },
+          "expiresAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "mediaIds" : {
+            "items" : {
+              "format" : "int64",
+              "type" : "integer"
+            },
+            "type" : "array"
+          },
+          "postId" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "questionText" : {
+            "type" : "string"
+          },
+          "reactionCount" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "submittedAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "unreadAnswerCount" : {
+            "format" : "int64",
+            "type" : "integer"
+          }
+        },
+        "type" : "object"
+      },
       "SentPostDetailResponse" : {
         "properties" : {
           "answersReadAt" : {
@@ -1749,7 +1827,7 @@
             "type" : "string"
           },
           "card" : {
-            "$ref" : "#/components/schemas/Card"
+            "$ref" : "#/components/schemas/SentPostCard"
           }
         },
         "type" : "object"
@@ -1758,7 +1836,7 @@
         "properties" : {
           "cards" : {
             "items" : {
-              "$ref" : "#/components/schemas/Card"
+              "$ref" : "#/components/schemas/SentPostCard"
             },
             "type" : "array"
           },

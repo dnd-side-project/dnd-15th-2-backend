@@ -2,6 +2,8 @@ package com.dnd.qello.feed.web.response;
 
 import com.dnd.qello.feed.view.AnswerCard;
 
+import io.swagger.v3.oas.annotations.media.Schema;
+
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
@@ -52,6 +54,7 @@ public record AnswerListingResponse(
         }
     }
 
+    @Schema(name = "AnswerCursor")
     public record Cursor(Instant publishedAt, long answerId) {
     }
 }
