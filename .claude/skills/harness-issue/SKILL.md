@@ -12,6 +12,7 @@ description: 질문형 대화로 GitHub Issue를 만들고 Project 필드(Sprint
 
 - `references/issue-forms.md` — 이슈 유형별 라벨·본문 구조·브랜치 type 매핑
 - `references/project-fields.md` — Project 번호와 필드/옵션 ID, 조회 명령
+- `references/writing-style.md` — 이슈 본문 문체 규칙과 금지 표현 목록
 
 ## 0. 사전 점검
 
@@ -92,6 +93,11 @@ Work type 필드는 1단계 선택에서 자동 결정하므로 묻지 않는다
 
 생성 전에 반드시 전체 초안을 보여주고 승인을 받는다. 승인 없이 `gh issue create`를
 실행하지 않는다.
+
+초안을 쓰기 전에 `references/writing-style.md`를 읽고 그 규칙을 적용한다.
+서술은 평서체(`~한다`, `~했다`)로 통일하고, 같은 문서의 금지 표현 표에 있는
+이모지·과장 형용사·모호한 동사·판별 기준 없는 완료 조건을 쓰지 않는다.
+초안을 사용자에게 보여주기 전에 그 문서의 점검 목록을 통과시킨다.
 
 ```markdown
 제목: [영역] 한 줄 요약
@@ -195,3 +201,5 @@ ID는 `references/project-fields.md`에 캐시돼 있다. `item-edit`이 ID 오�
 - Sprint·Priority·상태를 GitHub **라벨**로 만들지 않는다. Project 필드로만 관리한다.
 - `.env` 값, 토큰, URL, 계정·IAM 식별자를 이슈 본문에 쓰지 않는다.
 - 이슈 없이 구현을 시작하지 않는다.
+- 이슈 본문에 합쇼체(`~합니다`)나 반말을 쓰지 않는다. 평서체로 통일한다.
+- `references/writing-style.md`의 금지 표현을 쓰지 않는다.
