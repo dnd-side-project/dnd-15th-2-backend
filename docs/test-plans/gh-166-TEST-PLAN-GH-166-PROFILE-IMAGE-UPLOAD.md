@@ -27,7 +27,7 @@
 
 ### Included
 
-- `user_account.profile_image_media_id` 추가 마이그레이션(V21)과 `media_asset (id, owner_id)`
+- `user_account.profile_image_media_id` 추가 마이그레이션(V22)과 `media_asset (id, owner_id)`
   복합 FK
 - `NULL`을 "기본 이미지 사용"으로 해석하는 도메인 규칙
 - 프로필 이미지 설정 시 소유자 일치 검증(애플리케이션과 DB 양쪽)
@@ -79,7 +79,7 @@
 | 기본 이미지 키 설정 누락이 기동을 통과 | 미설정 사용자 전체의 프로필 조회 실패 | 중 | P0 | UNIT-014 |
 | 버킷 이름·객체 키가 응답이나 오류에 노출 | private 버킷 내부 구조 유출 | 중 | P0 | UNIT-012, INT-003 |
 | 가입 트랜잭션 부분 반영 | 계정만 있고 프로필이 없거나 그 반대 | 낮 | P0 | INT-005, INT-006 |
-| V21 복합 FK가 기존 데이터와 충돌 | 마이그레이션 실패로 배포 중단 | 낮 | P0 | INT-001 |
+| V22 복합 FK가 기존 데이터와 충돌 | 마이그레이션 실패로 배포 중단 | 낮 | P0 | INT-001 |
 | 프로필 이미지 동시 변경 | 나중 요청이 앞선 변경을 조용히 덮어씀 | 낮 | P1 | INT-008 |
 | presigned GET TTL 미적용 또는 과다 | 만료 없는 URL이 외부에 남음 | 중 | P1 | UNIT-013, INT-011 |
 | 인증 없이 프로필 접근 | 타인 프로필 열람 | 낮 | P1 | INT-009 |
@@ -114,7 +114,7 @@
 
 | Scenario ID | Components | Setup | Action | Expected result | Cleanup |
 | --- | --- | --- | --- | --- | --- |
-| TEST-PLAN-GH-166-PROFILE-IMAGE-UPLOAD-INT-001 | Flyway, PostgreSQL | 기존 마이그레이션이 적용된 스키마 | V21까지 마이그레이션한다 | `profile_image_media_id` 컬럼이 nullable로 생기고, `media_asset (id, owner_id)` 복합 FK가 존재하며, 기존 행은 모두 `NULL` | 컨테이너 종료 |
+| TEST-PLAN-GH-166-PROFILE-IMAGE-UPLOAD-INT-001 | Flyway, PostgreSQL | 기존 마이그레이션이 적용된 스키마 | V22까지 마이그레이션한다 | `profile_image_media_id` 컬럼이 nullable로 생기고, `media_asset (id, owner_id)` 복합 FK가 존재하며, 기존 행은 모두 `NULL` | 컨테이너 종료 |
 | TEST-PLAN-GH-166-PROFILE-IMAGE-UPLOAD-INT-002 | PostgreSQL | 사용자 A·B와 B 소유 자산 | A의 행에 B 자산 id를 직접 `UPDATE` 한다 | FK 위반으로 실패한다 — 애플리케이션을 우회해도 막힌다 | 트랜잭션 롤백 |
 | TEST-PLAN-GH-166-PROFILE-IMAGE-UPLOAD-INT-003 | HTTP, PostgreSQL, LocalStack S3 | 인증된 사용자 | 업로드 URL 발급 → 객체 PUT → `confirm` → 프로필 이미지 지정 → 프로필 조회 | 조회 응답이 만료 있는 presigned GET URL을 반환하고, 응답 본문에 버킷 이름과 객체 키가 없다 | 버킷 객체와 DB 정리 |
 | TEST-PLAN-GH-166-PROFILE-IMAGE-UPLOAD-INT-004 | HTTP, PostgreSQL, LocalStack S3 | 버킷에 기본 이미지 객체를 미리 넣는다 | 프로필 이미지 없이 가입한 뒤 프로필을 조회한다 | 기본 이미지의 presigned GET URL을 반환하고 그 URL로 객체를 받을 수 있다 | 버킷 객체와 DB 정리 |
@@ -132,7 +132,7 @@
 
 ### Database and transactions
 
-- V21은 컬럼 추가와 FK 추가만 한다. 기존 행 변환이 없어야 하고, 되돌릴 때 데이터
+- V22는 컬럼 추가와 FK 추가만 한다. 기존 행 변환이 없어야 하고, 되돌릴 때 데이터
   손실이 없어야 한다(INT-001).
 - 복합 FK `(profile_image_media_id, id) → media_asset (id, owner_id)`가 소유권
   불변식의 최종 방어선이다. 애플리케이션 검증이 뚫려도 DB가 막는다(INT-002).
@@ -193,7 +193,7 @@
 
 | Order | Executor | Owned files | Scenario IDs | Verification |
 | --- | --- | --- | --- | --- |
-| 1 | A — 스키마와 도메인 | `src/main/resources/db/migration/V21__*.sql`, `account/domain/Account.java`, `account/repository/jpa/*`, `src/test/java/com/dnd/qello/account/domain/AccountProfileImageTest.java`, `src/integrationTest/java/com/dnd/qello/ProfileImageSchemaIntegrationTest.java` | UNIT-001~004, INT-001~002 | `./gradlew test --tests '*AccountProfileImage*'`, `./gradlew integrationTest --tests '*ProfileImageSchema*'` |
+| 1 | A — 스키마와 도메인 | `src/main/resources/db/migration/V22__*.sql`, `account/domain/Account.java`, `account/repository/jpa/*`, `src/test/java/com/dnd/qello/account/domain/AccountProfileImageTest.java`, `src/integrationTest/java/com/dnd/qello/ProfileImageSchemaIntegrationTest.java` | UNIT-001~004, INT-001~002 | `./gradlew test --tests '*AccountProfileImage*'`, `./gradlew integrationTest --tests '*ProfileImageSchema*'` |
 | 2 | B — 서비스와 저장소 포트 | `account/service/**`, `answer/service/port/ObjectStoragePort.java`, `answer/service/port/S3ObjectStoragePort.java`, `answer/config/MediaStorageProperties.java`, `src/test/java/com/dnd/qello/account/service/**`, `src/integrationTest/java/com/dnd/qello/ProfileImageStorageIntegrationTest.java` | UNIT-005~015, UNIT-017~018, INT-011 | `./gradlew test --tests '*ProfileImage*'`, `./gradlew integrationTest --tests '*ProfileImageStorage*'` |
 | 3 | C — web과 가입 연결 | `account/web/**`, `auth/web/DeviceRegistrationRequest.java`, `auth/service/DeviceRegistrationService.java`, `src/test/java/com/dnd/qello/account/web/**`, `src/integrationTest/java/com/dnd/qello/ProfileImageApiIntegrationTest.java` | UNIT-016, INT-003~010, INT-012~013 | `./gradlew test --tests '*ProfileImageWeb*'`, `./gradlew integrationTest --tests '*ProfileImageApi*'` |
 | 4 | 전체 | 없음 | 전체 | `./harness check`, `./harness pr-ready --project-tests`, `npm run hooks:validate`, `git diff --check` |

@@ -93,7 +93,7 @@ class ProfileImageIntegrationTest extends LocalStackContainerIntegrationTestSupp
 	}
 
 	@Test
-	@DisplayName("V21은 profile_image_media_id를 nullable로 추가하고 기존 계정은 기본 이미지 상태로 남는다")
+	@DisplayName("V22는 profile_image_media_id를 nullable로 추가하고 기존 계정은 기본 이미지 상태로 남는다")
 	void addsNullableProfileImageColumn() {
 		String nullable = jdbc.queryForObject("""
 			SELECT is_nullable FROM information_schema.columns

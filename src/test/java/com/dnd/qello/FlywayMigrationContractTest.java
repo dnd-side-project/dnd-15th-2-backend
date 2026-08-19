@@ -63,7 +63,7 @@ class FlywayMigrationContractTest {
 			"V19__add_report_case_and_evidence_snapshot.sql",
 			"V1__create_direction_communication_schema.sql",
 			"V20__add_operator_action_audit.sql",
-			"V21__add_user_account_profile_image.sql",
+			"V22__add_user_account_profile_image.sql",
 			"V2__add_reactions_and_skip_pending.sql",
 			"V3__add_user_account_password_hash.sql",
 			"V4__add_user_account_optimistic_lock.sql",

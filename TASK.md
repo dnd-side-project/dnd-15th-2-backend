@@ -31,7 +31,7 @@
 ## Scope
 
 1. **스키마와 도메인**
-   - `user_account.profile_image_media_id BIGINT NULL` 추가(V21).
+   - `user_account.profile_image_media_id BIGINT NULL` 추가(V22).
      `media_asset (id, owner_id)`를 참조하는 복합 FK로, 남의 자산을 자기
      프로필로 지정하는 것을 DB 수준에서 막는다
      (`uq_media_asset_id_owner`가 이미 있다).

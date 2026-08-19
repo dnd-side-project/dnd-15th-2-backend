@@ -165,7 +165,7 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 	private JdbcTemplate jdbcTemplate;
 
 	@Test
-	@DisplayName("빈 PostGIS 데이터베이스의 startup에서 V1부터 V21까지 migration을 적용한다")
+	@DisplayName("빈 PostGIS 데이터베이스의 startup에서 V1부터 V22까지 migration을 적용한다")
 	void appliesAllMigrationsOnApplicationStartup() {
 		Integer successfulV1 = jdbcTemplate.queryForObject("""
 			SELECT count(*)
@@ -267,10 +267,10 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 			FROM flyway_schema_history
 			WHERE version = '20' AND success
 			""", Integer.class);
-		Integer successfulV21 = jdbcTemplate.queryForObject("""
+		Integer successfulV22 = jdbcTemplate.queryForObject("""
 			SELECT count(*)
 			FROM flyway_schema_history
-			WHERE version = '21' AND success
+			WHERE version = '22' AND success
 			""", Integer.class);
 		String postgisVersion = jdbcTemplate.queryForObject(
 			"SELECT PostGIS_Version()", String.class);
@@ -295,7 +295,7 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 		assertThat(successfulV18).isEqualTo(1);
 		assertThat(successfulV19).isEqualTo(1);
 		assertThat(successfulV20).isEqualTo(1);
-		assertThat(successfulV21).isEqualTo(1);
+		assertThat(successfulV22).isEqualTo(1);
 		assertThat(flyway.info().applied()).hasSize(21);
 		assertThat(postgisVersion).isNotBlank();
 	}
@@ -358,7 +358,7 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 		// report_content_snapshot/report_case_event 자체의 FK도 EXPECTED_TABLES
 		// 밖이라 잡히지 않는다). V18(#112)의 appeal_case·outbox_event ALTER도
 		// EXPECTED_TABLES 밖이라 총계에 반영되지 않는다.
-		// V21(#166)이 user_account.fk_user_account_profile_image를 추가해 54에서 55가 됐다.
+		// V22(#166)이 user_account.fk_user_account_profile_image를 추가해 54에서 55가 됐다.
 		// user_account는 V1 catalog에 속하므로 이 FK는 총계에 반영된다.
 		assertThat(countConstraints(constraints, "f")).isEqualTo(55);
 		assertThat(countConstraints(constraints, "u")).isEqualTo(21);
