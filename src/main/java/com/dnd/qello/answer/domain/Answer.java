@@ -114,6 +114,24 @@ public final class Answer {
 		return copy(AnswerStatus.DELETED, moderationStatus, publishedAt, at);
 	}
 
+	public Answer hide(Instant at) {
+		requireStatus(AnswerStatus.PUBLISHED, "숨김");
+		requireValue(at, "hiddenAt");
+		return copy(AnswerStatus.HIDDEN, moderationStatus, publishedAt, deletedAt);
+	}
+
+	// publishedAt은 최초 공개 시각을 보존한다 — 숨김·복원은 다시 게시하는 것이 아니라
+	// 노출 여부만 바꾸는 가시성 토글이다.
+	//
+	// 숨김 기간에 첨부 미디어가 정리된 텍스트 없는 답변은 DB의 deferred constraint
+	// trigger(assert_answer_has_content, V1)가 커밋 시점에 복원을 막는다 — 이 경로는
+	// 고치지 않고 테스트로만 문서화한다(#155 범위 밖, R04).
+	public Answer restore(Instant at) {
+		requireStatus(AnswerStatus.HIDDEN, "복원");
+		requireValue(at, "restoredAt");
+		return copy(AnswerStatus.PUBLISHED, moderationStatus, publishedAt, deletedAt);
+	}
+
 	private Answer copy(AnswerStatus nextStatus, AnswerModerationStatus nextModeration,
 		Instant nextPublishedAt, Instant nextDeletedAt) {
 		return new Answer(id, postRecipientId, authorId, nextStatus, idempotencyKey, bodyText,
