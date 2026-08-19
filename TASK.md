@@ -1,110 +1,61 @@
-# GitHub Issue #166 Task Contract
+# GitHub Issue #168 Task Contract
 
-> Generated at: `2026-08-18T23:30:13+09:00`
+> Generated at: `2026-08-19T00:30:48+09:00`
 >
 > 이 파일은 현재 작업 브랜치의 계약이다. 저장소 전역 정책은 `AGENTS.md`를
 > 따른다.
 
 ## Work gate
 
-- Title: `프로필 이미지 업로드와 기본 이미지 제공`
-- GitHub Issue: `#166`
-- Branch: `feat/gh-166-profile-image-upload`
+- Title: `닉네임 등록·수정 API — 중복 검사와 moderation 연동`
+- GitHub Issue: `#168`
+- Branch: `feat/gh-168-nickname-duplicate-moderation`
 - Base branch: `main`
-- 분기 시점 `origin/main`은 `e7086dc`(PR `#165` 병합 커밋)다.
+- Test plan: `TEST-PLAN-GH-168-NICKNAME-DUPLICATE-MODERATION`
+- Test plan approval: `APPROVED` — 사용자가 2026-08-19 계획과 §11 결정 사항(자기 자신과의 중복도 409, 오류 코드 3종, PATCH 경로)을 승인했다.
 
 ## Objective
 
-- 회원가입한 일반 사용자가 프로필 이미지를 가질 수 있어야 한다. 지금은
-  `user_account`에 프로필 이미지 컬럼이 없고 `account` 도메인에 web 계층이
-  없어 프로필을 조회하거나 변경할 방법 자체가 없다.
-- 업로드 인프라는 이미 있다. `media_asset`은 `owner_id` 기반 범용 자산이고
-  `POST /api/v1/media-assets`가 presigned PUT을 발급한 뒤 `confirm`에서
-  HeadObject와 시그니처로 실제 객체를 검증한다(`MediaUploadService`).
-- 빠진 것은 **조회(서빙) 경로**다. `ObjectStoragePort`에는 `issuePutUrl`,
-  `headObject`, `readObjectPrefix`만 있고 presigned GET이 없다. 버킷은
-  private(`infra/modules/s3-private-bucket`)이라 URL 없이는 이미지를 내려줄
-  방법이 없다.
-- 프로필 이미지는 가입 시 필수가 아니다. 설정하지 않은 사용자에게는 S3에 미리
-  올려 둔 기본 이미지를 같은 경로로 제공한다.
+닉네임 설정·변경이 실제로 반영되기 전에 중복 검사와 moderation 판정을 통과하도록
+한다. #106이 만든 `NicknameSyncModerationGate`는 아직 어떤 호출 지점에도
+연결되지 않았고, `DeviceRegistrationService.register()`는 닉네임을
+중복·moderation 검증 없이 그대로 저장한다. 닉네임 변경 API도 아직 없다.
+
+테스트 계획 작성 중 `ModerationPipelineService`가 의존하는 `TextNormalizer`·
+`LocalRuleEngine`·`PolicyEngine`과 `SecondaryModerationClient`가 저장소 전체에
+프로덕션 구현체가 하나도 없다는 사실을 확인했다(#103~#113 모두 "실제 내용은
+이 이슈의 범위가 아니다"로 반복 유보). 사용자가 2026-08-19 최소 실제 구현체를
+함께 만드는 방향으로 승인해 범위에 포함했다.
 
 ## Scope
 
-1. **스키마와 도메인**
-   - `user_account.profile_image_media_id BIGINT NULL` 추가(V22).
-     `media_asset (id, owner_id)`를 참조하는 복합 FK로, 남의 자산을 자기
-     프로필로 지정하는 것을 DB 수준에서 막는다
-     (`uq_media_asset_id_owner`가 이미 있다).
-   - `Account`에 프로필 이미지 설정·해제 동작 추가. `NULL`이 "기본 이미지
-     사용"을 뜻하며 별도 sentinel 값을 두지 않는다.
-   - `AccountJpaEntity`·`AccountJpaMapper`·`AccountRepository`에 반영한다.
-     `updateProfile`은 현재 지역·로케일·타임존·닉네임만 바꾸므로 프로필
-     이미지 변경 경로를 어디에 둘지 구현 시 확정한다.
-2. **프로필 API 신설**
-   - `account` 도메인에 web 계층을 만든다. 경로는 `/api/v1/me/profile`이다.
-   - 프로필 조회, 프로필 이미지 변경, 프로필 이미지 삭제.
-   - 소유자와 요청자는 `AuthenticatedUserId`로 JWT subject에서 결정한다.
-     `MediaAssetController`와 같은 방식이다.
-3. **가입 경로 연결 — 구현 불가로 제외했다.**
-   `media_asset.owner_id`가 `user_account.id`를 FK로 참조하므로 자산은 소유자
-   계정 행이 있어야 존재할 수 있고, 업로드 endpoint는 `/api/**` 체인의
-   `anyRequest().authenticated()` 아래에 있어 토큰이 필요하다. 가입 전에는
-   토큰이 없으니 가입 시점에 넘길 수 있는 유효한 media id가 원리적으로 없다.
-   실제 순서는 기기 등록 → 업로드 → confirm → 프로필 지정이며, 사용자 관점의
-   "가입할 때 사진 올리기"는 온보딩 화면에서 그대로 성립한다.
-4. **조회 경로**
-   - `ObjectStoragePort`에 presigned GET 발급을 추가하고 `S3ObjectStoragePort`에
-     구현한다.
-   - 프로필 응답이 `qello.media.view-url-ttl`(`PT5M`) 만료의 조회 URL을 반환한다.
-     기본 이미지도 같은 경로로 내려준다.
-   - 기본 이미지 객체 키를 설정으로 주입한다(`qello.media` 계열). 버킷 이름과
-     객체 키를 코드 상수로 박지 않는다. 값이 비면 기동이 실패해야 한다
-     (`MediaStorageProperties`의 기존 compact constructor 검증과 같은 방식).
-5. 단위 테스트, LocalStack + PostgreSQL 통합 테스트와 테스트 계획·보고서.
-
-## Design decisions (구현 전 확정, 리뷰 필요)
-
-1. **`media_asset`을 재사용하고 프로필 전용 테이블을 만들지 않는다.**
-   `media_asset`은 스키마상 답변 전용이 아니라 `owner_id` 기반 범용 자산이다.
-   코드가 `answer` 패키지에 있는 것은 최초 도입 맥락 때문이고 스키마 제약은
-   없다. 별도 테이블을 만들면 presigned 발급·confirm·시그니처 검증을 통째로
-   복제해야 한다.
-2. **`NULL`이 곧 기본 이미지다.** 기본 이미지를 가리키는 `media_asset` 행을
-   만들어 모든 신규 계정이 그것을 참조하게 하면, 소유자 없는 자산이라는 예외를
-   `owner_id NOT NULL`과 소유권 검사 전반에 뚫어야 한다. `NULL`을 읽는 쪽에서
-   기본 키로 해석하는 편이 제약을 지킨다.
-3. **조회는 presigned GET으로 한다.** 버킷이 private이므로 URL을 만들지 않으면
-   내려줄 수 없다. 객체를 public-read로 바꾸는 것은 공개 접근 범위 확대라
-   `AGENTS.md` 6절의 고위험 변경이고, CDN 도입은 이 이슈 범위를 넘는다.
-4. **기본 이미지 객체는 이미 버킷에 있다고 전제한다.** 적재와 그에 필요한
-   Terraform 변경은 이 이슈에서 하지 않는다. 설정 키가 비면 기동을 실패시켜
-   누락을 조용히 넘기지 않는다.
-5. **이미지 moderation은 하지 않는다.** `FilterTargetType`은 `ANSWER`와
-   `NICKNAME`뿐이고 이미지 판정기가 없다. `media_asset.moderation_status`는
-   기존 기본값을 그대로 둔다.
-6. **프로필에 붙은 자산이 나중에 `DELETED`가 되면 기본 이미지로 폴백한다.**
-   프로필 참조를 그때 지우지는 않는다. 읽기 경로가 쓰기를 하면 조회가 낙관적
-   락 충돌을 일으킬 수 있고, 자산이 되살아나는 경로가 생겼을 때 원래 참조를
-   잃는다. 폴백은 읽는 쪽의 해석으로만 처리한다. 설정 시점의 `READY` 검증은
-   그대로다 — `DELETED` 자산을 새로 지정하는 것은 여전히 거부한다.
-7. **조회 URL TTL은 업로드 TTL과 분리한다.** `qello.media.upload-url-ttl`이
-   `PT10M`인 것은 최대 10MB PUT 하나가 느린 회선에서 끝날 시간을 재기 때문이고,
-   조회 URL이 살아 있어야 하는 시간은 응답 수신부터 렌더링까지다. private 버킷의
-   presigned GET은 그 객체에 대한 bearer 자격증명이라 수명이 곧 노출 창이다.
-   두 값을 묶으면 나중에 업로드 TTL을 늘릴 때 조회 URL 수명이 함께 늘어나
-   성능 튜닝의 부수효과로 보안 속성이 바뀐다. `qello.media.view-url-ttl`을
-   따로 두고 `PT5M`으로 한다.
+- `user_account.nickname`에 대소문자를 구분하지 않는 유일성 제약 추가(삭제된
+  계정 제외 partial unique index) — 신규 Flyway 마이그레이션(V21).
+- `AccountErrorCode.DUPLICATED_NICKNAME` 추가, `ConstraintExceptionMapper`에
+  새 제약 이름 매핑 추가.
+- 최소 실제 moderation 구현체 3종: `TextNormalizer`(trim 통과),
+  `LocalRuleEngine`(항상 `noMatch()`), `PolicyEngine`(flagged 카테고리가
+  하나라도 있으면 BLOCK).
+- `SecondaryModerationClient` fail-closed placeholder(즉시
+  `SECONDARY_MODERATOR_UNAVAILABLE`).
+- OpenAI moderation 호출용 `RestClient` 설정 — API 키는 환경 변수로만 주입.
+- `NicknameSyncModerationGate` 구성 Spring 설정 — `qello.filtering.production.enabled`
+  (#113)가 `true`일 때만 게이트 빈을 등록한다. 꺼져 있으면 닉네임 경로는 중복
+  검사만 수행한다(ASSUMED).
+- `DeviceRegistrationService.register()`와 신규 닉네임 변경 유스케이스에 중복
+  검사 + (게이트가 있으면) moderation 연결.
+- `account/web` 신규 패키지 — `PATCH /api/v1/users/me/nickname` +
+  `AccountController`/`AccountApiSpec` + request/response record.
+- `docs/api/openapi.json` 재생성, `docs/error-codes.md` ACC 절 갱신.
 
 ## Explicit exclusions
 
-- 이미지 내용 moderation과 `FilterTargetType` 확장.
-- 이미지 리사이즈, 썸네일 생성, EXIF 제거.
-- CDN(CloudFront) 도입과 캐시 정책.
-- 기본 이미지 객체를 버킷에 적재하는 작업과 그에 필요한 Terraform 변경.
-- 로그인(`POST /api/v1/auth/token`) 경로 변경. 로그인은 자격증명 교환이라
-  프로필 업로드를 붙이지 않는다.
-- 프로필의 나머지 필드(닉네임·지역·로케일·타임존) 변경 API. 이 이슈는 프로필
-  이미지만 다룬다.
+- moderation 실행 자원의 실제 timeout·quota·동시성 수치(`UNKNOWN`, #106과 동일).
+- `PolicyEngine`의 카테고리별 세부 threshold·언어별 차등 정책, `LocalRuleEngine`의
+  실제 로컬 사전·패턴 — 최소 동작 버전만 제공한다.
+- 독립 보조 판정기의 실제 공급자 확정 — fail-closed placeholder만 추가한다.
+- 닉네임 변경 빈도 제한(rate limit).
+- 프로필 이미지 등 닉네임 외 다른 프로필 필드 변경(#166에서 별도로 다룬다).
 - 인프라 apply, 배포, 프로덕션 변경은 별도 승인 없이는 실행하지 않는다.
 - Secret, 계정 식별자, 토큰, `.env` 값은 기록하지 않는다.
 
@@ -112,55 +63,50 @@
 
 | Area | Owner | Required review |
 | --- | --- | --- |
-| `user_account` 스키마 변경, `Account` 도메인, 프로필 API, presigned GET, 기본 이미지 설정, 테스트 | Feature executor | 남의 자산이나 `READY`가 아닌 자산을 프로필로 지정할 수 있는 경로가 없는지, 버킷 이름·객체 키가 API 응답이나 로그에 노출되지 않는지, 기본 이미지 설정 누락이 조용히 통과하지 않는지 |
+| `Account`/`AccountRepository` 확장, `account/web`, `SafetyReportService`류 패턴을 따르는 닉네임 서비스, moderation 최소 구현체·Spring 설정, 단위·통합 테스트 | Feature executor | #106 `INV-NICK` 계약 회귀 확인, #113 production gate 조건부 등록 검증, 기존 `DeviceRegistrationService` 동작과의 호환성 리뷰 |
 
 ## Existing user-owned changes
 
-- `origin/main`(e7086dc)에서 새로 분기했다. 분기 시점 `git status --short`는
-  비어 있었다.
+- `git status --short` 결과 없음(clean). `main`에서 새로 분기했다.
 
 ## Validation
 
 ```bash
+./gradlew test --tests "com.dnd.qello.account.*" --console=plain
+./gradlew test --tests "com.dnd.qello.filtering.moderation.*" --console=plain
+./gradlew integrationTest --tests "com.dnd.qello.NicknameDuplicateModerationIntegrationTest" --console=plain
+./gradlew integrationTest --tests "com.dnd.qello.OpenApiSpecificationIntegrationTest" --console=plain
+./harness test-run --id TEST-PLAN-GH-168-NICKNAME-DUPLICATE-MODERATION
 ./harness check
 ./harness pr-ready --project-tests
-npm run hooks:validate
 git diff --check
 ```
 
 ## Completion criteria
 
-- [x] 프로필 이미지 없이 회원가입할 수 있고, 그 사용자의 프로필 조회 응답이
-      기본 이미지 URL을 반환한다. (INT-004가 발급 URL로 실제 200을 받는다)
-- [x] 업로드 → confirm → 프로필 지정 흐름으로 프로필 이미지를 설정할 수 있고,
-      삭제하면 기본 이미지로 되돌아간다. (INT-003, INT-007)
-- [x] 다른 사용자가 소유한 `media_asset`을 자기 프로필로 지정하면 거부된다.
-      애플리케이션 검증(UNIT-005, INT-010)과 DB 복합 FK(INT-002) 양쪽에서
-      막힌다. 남의 자산과 없는 자산을 같은 404로 응답해 열거 오라클을 만들지
-      않는다.
-- [x] `READY`가 아닌 자산(`UPLOADING`, `REJECTED`, `DELETED`)은 프로필로
-      지정할 수 없다. (UNIT-006~008)
-- [x] 프로필에 붙은 자산이 나중에 `DELETED`가 되면 조회가 오류가 아니라 기본
-      이미지로 폴백하고 참조는 남는다. (UNIT-018, INT-013)
-- [x] 프로필 이미지 URL은 만료가 있는 presigned URL이며, 버킷 이름과 객체 키를
-      응답에 그대로 노출하지 않는다. (UNIT-012가 응답 필드를 전수 확인한다)
-- [x] 기본 이미지 키 설정이 비어 있으면 기동이 실패한다. (UNIT-014)
-- [x] 승인된 테스트 계획과 실행 보고서가 존재한다.
-      계획 `docs/test-plans/gh-166-TEST-PLAN-GH-166-PROFILE-IMAGE-UPLOAD.md`
-      (Status: Approved), 보고서
-      `docs/reports/tests/gh-166-TEST-PLAN-GH-166-PROFILE-IMAGE-UPLOAD.md`.
-- [x] 단위·통합 테스트가 `@DisplayName`과 클래스 헤더(생성 시각, 테스트 계획
-      식별자)를 갖추고 통과한다. 단위 664건·통합 492건 전체 통과했다
-      (신규 단위 16, 통합 8).
-
-## Delivered vs deferred
-
-- **가입 요청의 프로필 이미지 필드 없음.** 위 Scope 3번의 이유로 성립하지 않는다.
-- **INT-008(동시 변경 낙관적 락) 미실행.** `@Version`은 이미 있고 이번 변경이 그
-  경로를 바꾸지 않았지만 실제 동시 실행으로 확인하지는 않았다. 남은 위험은
-  보고서 7절에 있다.
-- **INT-011 부분 실행.** 발급 URL로 실제 객체를 받는 것은 확인했고, TTL 경과 후
-  실패는 5분 대기가 필요해 스위트에 넣지 않았다.
-- **기본 이미지 객체 적재는 배포 전제 조건이다.** presigned 발급은 객체 존재를
-  확인하지 않아, 객체가 없으면 URL은 정상 발급되고 404를 가리킨다. 테스트로
-  잡히지 않는 종류라 보고서 6절에 남겼다.
+- [x] 이미 존재하는(대소문자 무시) 닉네임으로 기기 등록을 시도하면 계정이
+      생성되지 않고 `ACC-APP-002 DUPLICATED_NICKNAME`을 반환한다 —
+      `DeviceRegistrationServiceTest#rejectsRegistrationWhenNicknameAlreadyExists`,
+      `NicknameDuplicateModerationIntegrationTest#secondRegistrationWithDuplicateNicknameDoesNotCreateAccount`.
+- [x] production gate가 켜진 상태에서 moderation이 BLOCK을 반환하면 등록·변경
+      모두 거부된다 — `NicknameModerationGateConfigTest`(빈 등록 조건),
+      `NicknameDuplicateModerationIntegrationTest#changeNicknameFailsWhenModerationBlocks`.
+      실제 OpenAI HTTP 왕복 자체는 검증하지 못했다(보고서 §6 External APIs).
+- [x] moderation이 판정 불가(주·보조 모두 실패)면 등록·변경 모두 반영되지
+      않는다(#106 `INV-NICK-001`~`005` 계약 유지) —
+      `NicknameDuplicateModerationIntegrationTest#changeNicknameFailsWhenModerationIsUnavailable`.
+- [x] production gate가 꺼진 상태에서는 moderation 호출 없이 중복 검사만
+      수행되고 정상 등록·변경된다 —
+      `NicknameRegistrationServiceTest#passesWithDuplicateCheckOnlyWhenGateIsNoOp`,
+      `NicknameModerationGateConfigTest#noGateBeanWhenProductionDisabled`.
+- [x] 닉네임 변경 API가 중복 검사와(게이트가 있으면) moderation을 모두 통과한
+      뒤에만 `Account.updateProfile`을 호출한다 —
+      `NicknameRegistrationServiceTest#savesNewNicknameWhenModerationAllows`.
+- [x] 서로 다른 두 요청이 동시에 같은 닉네임을 선점하려 하면 DB 유일성 제약이
+      최종 방어선으로 동작한다 —
+      `NicknameDuplicateModerationIntegrationTest#concurrentRegistrationsWithCaseVariantNicknameYieldExactlyOneWinner`(2-way).
+- [x] `docs/api/openapi.json`이 재생성돼 있다 — `/api/v1/users/me/nickname` 반영 확인.
+- [x] 실행하지 못한 검증과 남은 위험을 보고서에 기록한다 — 상세는
+      `docs/reports/tests/gh-168-TEST-PLAN-GH-168-NICKNAME-DUPLICATE-MODERATION.md`
+      §6·§7 참고. release 실시간 재로딩 미지원, OpenAI 실제 HTTP 왕복 미검증,
+      N-way(3+) 동시성 미실측, 등록 경로의 트랜잭션 내 외부 호출 트레이드오프.

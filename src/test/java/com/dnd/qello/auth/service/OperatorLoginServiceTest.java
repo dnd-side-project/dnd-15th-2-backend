@@ -239,5 +239,10 @@ class OperatorLoginServiceTest {
 		public Optional<Account> findById(long id) {
 			return Optional.ofNullable(accounts.get(id));
 		}
+
+		@Override
+		public boolean existsActiveNickname(String nickname) {
+			throw new UnsupportedOperationException();
+		}
 	}
 }

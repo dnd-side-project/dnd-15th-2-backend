@@ -448,6 +448,25 @@
         },
         "type" : "object"
       },
+      "ApiResponseNicknameResponse" : {
+        "properties" : {
+          "data" : {
+            "$ref" : "#/components/schemas/NicknameResponse"
+          },
+          "status" : {
+            "enum" : [
+              "success",
+              "error"
+            ],
+            "type" : "string"
+          },
+          "timestamp" : {
+            "format" : "date-time",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
       "ApiResponseOperatorSessionResponse" : {
         "properties" : {
           "data" : {
@@ -856,6 +875,19 @@
             "type" : "integer"
           }
         },
+        "type" : "object"
+      },
+      "ChangeNicknameRequest" : {
+        "properties" : {
+          "nickname" : {
+            "example" : "여름바람",
+            "minLength" : 1,
+            "type" : "string"
+          }
+        },
+        "required" : [
+          "nickname"
+        ],
         "type" : "object"
       },
       "Chip" : {
@@ -1328,6 +1360,14 @@
             "type" : "integer"
           },
           "uploadUrl" : {
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "NicknameResponse" : {
+        "properties" : {
+          "nickname" : {
             "type" : "string"
           }
         },
@@ -5289,6 +5329,93 @@
         ]
       }
     },
+    "/api/v1/users/me/nickname" : {
+      "patch" : {
+        "description" : "인증된 본인의 닉네임을 변경합니다. 대소문자를 무시한 중복 닉네임(자기 자신이\n이미 쓰고 있는 값 포함)은 거절됩니다. production moderation gate가 켜져 있으면\nOpenAI moderation 판정을 통과한 뒤에만 반영됩니다.",
+        "operationId" : "changeNickname",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/ChangeNicknameRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiResponseNicknameResponse"
+                }
+              }
+            },
+            "description" : "닉네임을 변경했습니다."
+          },
+          "400" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "요청 값이 비었거나(CMN-VAL-002), 닉네임이 moderation 정책을 위반했습니다(ACC-DOM-005)."
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "앱 액세스 토큰이 유효하지 않습니다."
+          },
+          "409" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "이미 사용 중인 닉네임입니다. 자기 자신의 현재 닉네임도 포함됩니다. (ACC-APP-002)"
+          },
+          "500" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "서버 내부 오류가 발생했습니다."
+          },
+          "503" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "닉네임 moderation 판정을 할 수 없습니다. (ACC-INFRA-001)"
+          }
+        },
+        "security" : [
+          {
+            "appAccessToken" : [ ]
+          }
+        ],
+        "summary" : "닉네임 변경",
+        "tags" : [
+          "계정"
+        ]
+      }
+    },
     "/api/v1/users/{userId}/blocks" : {
       "delete" : {
         "description" : "지정한 사용자에 대한 활성 차단을 해제합니다.",
@@ -5512,6 +5639,10 @@
     {
       "description" : "비공개 처리된 자신의 답변에 대한 이의제기 접수와 조회 (#112)",
       "name" : "콘텐츠 이의제기"
+    },
+    {
+      "description" : "인증된 사용자 자신의 계정 프로필 (#168)",
+      "name" : "계정"
     },
     {
       "description" : "OpenAI moderation snapshot 단위 health 상태와 PERMANENT_CONFIRMED 운영자 승인",

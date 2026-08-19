@@ -339,18 +339,22 @@ public final class Account {
 		if (nickname == null) {
 			return null;
 		}
-		if (nickname.isBlank()) {
+		// 앞뒤 공백만 다른 닉네임이 대소문자 무시 유일성 검사와 uq_user_account_nickname_ci
+		// 인덱스(둘 다 lower()만 적용하고 trim은 하지 않는다)를 우회해 시각적으로 동일한
+		// 닉네임이 공존하지 않도록, 저장되는 값 자체를 여기서 정규화한다(#168).
+		String trimmed = nickname.trim();
+		if (trimmed.isBlank()) {
 			throw new AccountException(
 				AccountErrorCode.REQUIRED_VALUE_MISSING, "nickname", "nickname은 공백일 수 없습니다");
 		}
-		if (codePointLength(nickname) > NICKNAME_MAX_LENGTH) {
+		if (codePointLength(trimmed) > NICKNAME_MAX_LENGTH) {
 			throw new AccountException(
 				AccountErrorCode.TEXT_TOO_LONG,
 				"nickname",
 				"nickname은 " + NICKNAME_MAX_LENGTH + "자를 초과할 수 없습니다"
 			);
 		}
-		return nickname;
+		return trimmed;
 	}
 
 	private static void validateDeletionState(AccountStatus status, Instant deletedAt) {

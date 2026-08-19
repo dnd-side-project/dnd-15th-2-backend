@@ -2,6 +2,7 @@ package com.dnd.qello.common.error;
 
 import org.springframework.stereotype.Component;
 
+import com.dnd.qello.account.error.AccountErrorCode;
 import com.dnd.qello.answer.error.AnswerErrorCode;
 import com.dnd.qello.auth.error.AuthErrorCode;
 import com.dnd.qello.direction.error.DirectionErrorCode;
@@ -46,6 +47,8 @@ public class ConstraintExceptionMapper {
 				new ConstraintMapping(AuthErrorCode.DEVICE_ALREADY_REGISTERED, "installationId");
 			case "media_attachment_pkey" ->
 				new ConstraintMapping(AnswerErrorCode.INVALID_MEDIA_STATUS, "mediaId");
+			case "uq_user_account_nickname_ci" ->
+				new ConstraintMapping(AccountErrorCode.DUPLICATED_NICKNAME, "nickname");
 			default -> new ConstraintMapping(CommonErrorCode.CONFLICT, null);
 		};
 	}
@@ -67,7 +70,8 @@ public class ConstraintExceptionMapper {
 			"uq_open_report_post",
 			"uq_open_report_answer",
 			"uq_active_device_installation",
-			"media_attachment_pkey"
+			"media_attachment_pkey",
+			"uq_user_account_nickname_ci"
 		};
 	}
 }
