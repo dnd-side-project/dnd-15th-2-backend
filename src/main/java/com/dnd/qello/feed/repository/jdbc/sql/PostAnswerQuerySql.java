@@ -74,6 +74,8 @@ public final class PostAnswerQuerySql {
 		                  WHERE ub.blocker_id = :viewerId
 		                    AND ub.blocked_id = a.author_id
 		                    AND ub.released_at IS NULL)
+		  """ + ContentSuppressionSql.notReportedByViewer(":viewerId", "a.id") + """
+
 		""";
 
 	public static final String CURSOR_FILTER = " AND (a.published_at, a.id) < (:cursorPublishedAt, :cursorId)";
