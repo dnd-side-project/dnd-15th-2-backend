@@ -1,107 +1,64 @@
-# GitHub Issue #113 Task Contract
+# GitHub Issue #154 Task Contract
 
-> Generated at: `2026-08-18T20:03:43+09:00`
+> Generated at: `2026-08-18T21:15:46+09:00` (2026-08-18 완료 내용 갱신)
 >
 > 이 파일은 현재 작업 브랜치의 계약이다. 저장소 전역 정책은 `AGENTS.md`를
 > 따른다.
 
 ## Work gate
 
-- Title: `필터링 관측·감사와 production gate`
-- GitHub Issue: `#113`
-- Branch: `feat/gh-113-filtering-observability-gate`
+- Title: `신고 접수·사유·차단 진입점`
+- GitHub Issue: `#154`
+- Branch: `feat/gh-154-report-intake-api`
 - Base branch: `main`
-- 선행 이슈 `#103`~`#112` 전부 CLOSED 확인(`#112`는 PR `#159`가
-  2026-08-18에 병합됐다).
+- Test plan: `TEST-PLAN-GH-154-REPORT-INTAKE-API`
+- Test plan approval: `APPROVED` — 사용자가 2026-08-18 구현을 승인했다.
 
 ## Objective
 
-- 필터링 시스템은 `#103`~`#112`로 판정·재시도·수동 검토·이의제기까지 갖췄지만,
-  **운영 중에 무슨 일이 일어나는지 볼 방법이 없다.** 저장소 전체에
-  `MeterRegistry` 사용처가 하나도 없고 actuator·micrometer 의존성도 없다.
-- 운영자 행위는 "누가·언제"만 남고 **왜·어떤 정책 버전으로**가 빠져 있다
-  (`ReleasePromotionHistoryEntry`, `ManualReviewCase.resolve`,
-  `AppealCase.decide` 모두 `reason`과 `policyVersion`이 없다). `INV-APL-012`가
-  요구하는 감사 4요소 중 둘이 없는 상태다.
-- 법률·계약·보안 확인 항목이 미결인 채로 필터링이 production에서 켜지면
-  안 되는데, 그것을 막는 장치가 없다.
-- 이 세 구멍을 메운다.
+사용자가 더보기 → 신고 → 사유 선택 → (설명) → 접수까지 완료하고 접수증을
+받는 REST 경로를 만든다. 내게 온 질문글과 내가 받은 답변 두 화면이 같은
+진입점 집합(신고·차단)을 갖는다. Foundation(#153, `main` 병합 완료)이 만든
+`ReportCase`/`ReportContentSnapshot`/`ReportCaseEvent`/`Report.attachToCase`
+위에, 이 이슈가 처음으로 실제 사건 병합·증거 캡처·중복 판정·REST 계층을
+조립한다.
 
 ## Scope
 
-1. **운영자 감사 이력 통합(`INV-APL-012`)**
-   - `operator_action_audit` 신규 append-only 테이블(V20): `operator_user_id`,
-     `action_type`, `target_type`, `target_key`, `reason_code`, `reason_text`,
-     `policy_version`, `occurred_at`. 대상 식별자를 문자열 한 컬럼으로 통일한
-     이유는 snapshot health가 `modelSnapshot` 문자열을, 나머지가 숫자 id를
-     키로 쓰기 때문이다.
-   - 도메인 `OperatorActionAudit`, `OperatorActionType`, repository와
-     기록 지점 하나(`OperatorActionAuditRecorder`).
-   - 필터링의 운영자 권한 변경 경로 전부에 같은 트랜잭션으로 배선한다:
-     release `offline-evaluation`/`shadow`/`canary`/`promote`/`rollback`,
-     manual review `decide`, appeal `decide`/`extend`,
-     snapshot health `confirm-permanent`, emergency migration.
-   - 해당 endpoint 요청 본문에 `reason`을 필수로 추가한다(운영자 API 계약 변경).
-2. **관측 지표(`INV-CMP-001`, `INV-CMP-002`)**
-   - Micrometer 도입과 계측: 경로별 latency·timeout·오류, release/actual model별
-     판정 분포, 언어별 queue 체류와 deadline 경과, logical attempt 대비 실제
-     공급자 호출 수, manual overturn·appeal·aging·priority fallback,
-     Slack delivery 결과.
-   - metric tag 허용목록과, 원문·직접 식별정보가 tag나 metric 이름에 실리지
-     못하게 막는 가드와 회귀 테스트.
-3. **Production 활성화 게이트(`INV-CMP-005`, `INV-CMP-006`)**
-   - 법률·보안 확인 항목이 명시적으로 승인되지 않으면 필터링 파이프라인을
-     production에서 켤 수 없는 fail-closed 게이트.
-   - 승인 대상 항목을 열거한 체크리스트 문서. 승인 행위 자체는 사람의 몫이다.
-4. 단위 테스트, PostgreSQL 통합 테스트와 테스트 계획·보고서.
-
-## Design decisions (구현 전 확정, 리뷰 필요)
-
-1. **Micrometer는 도입하되 exporter는 고르지 않는다.** 이슈가 "외부 연동:
-   관측·경보 도구 (미정)"이라고 못박았다. Micrometer는 vendor-neutral
-   추상이라 지금 계측해 두고 backend는 나중에 붙일 수 있다. actuator를
-   추가하되 web endpoint 노출은 전부 끈다 — springdoc을 운영 기본
-   `api-docs.enabled=false`로 둔 것과 같은 처리이며, 미매칭 경로는
-   `SecurityConfiguration`의 fallback `denyAll` 체인이 이미 막는다.
-2. **감사 이력은 기존 이력 테이블을 대체하지 않고 추가한다.**
-   `release_promotion_history`, `filter_job_status_history`,
-   `manual_review_priority_evaluation`은 각자 도메인 이벤트 원장이고,
-   `operator_action_audit`은 "사람이 무엇을 왜 바꿨는가"의 단일 원장이다.
-   기존 원장을 옮기면 이미 배포된 계약을 깨고 마이그레이션 위험만 커진다.
-3. **`reason`은 필수 입력으로 받는다.** 서버가 기본값을 채우면 감사 이력에
-   "왜"가 사실상 없는 것과 같다. 운영자 API 계약이 바뀌지만, `INV-APL-012`를
-   만족하려면 다른 방법이 없다.
-4. **`policy_version`은 행위 시점의 정책 식별자를 그대로 적재한다.**
-   행위마다 관련 정책이 다르므로(우선순위 정책, 접수 기간 정책, release
-   정책) 단일 전역 버전을 만들지 않고 호출 지점이 자신의 정책 버전을 넘긴다.
-   해당 정책이 없는 행위는 고정 상수를 쓰고 그 사실을 주석에 남긴다.
-5. **metric tag는 허용목록 방식이다.** 금지목록은 새 필드가 생길 때마다
-   구멍이 난다. 허용된 tag 키만 통과시키고 나머지는 거부한다
-   (`INV-CMP-001`, `INV-CMP-002`).
-6. **production 게이트는 fail-closed다.** 확인 항목이 하나라도 비어 있으면
-   필터링 활성화 시도가 기동 실패로 끝난다. "확인하지 못했다"를 "확인됐다"로
-   해석하지 않는다.
-7. **감사 배선 범위는 필터링 도메인으로 한정한다.** 질문 제안 검토
-   (`/admin/questions/proposals/**`)와 신고 처리도 운영자 행위지만 `#113`의
-   부모 이슈 범위 밖이다. 같은 테이블을 쓰도록 설계하되 배선은 하지 않는다.
+- `ReportSubmission`(신규 값 객체) — 사유·하위사유 조합, `OTHER` 사유의
+  설명 필수 여부 검증(`SAF-VAL-006`, `SAF-VAL-007`).
+- `SafetyReportService`(신규) — 자기 신고 거절(`SAF-DOM-003`), rate limit
+  (`SAF-APP-004`), 대상 열람 자격 확인(`SAF-APP-002`), 같은 신고자의 열린
+  신고 멱등 반환, 종결된 사건과 내용 동일 시 억제(`DUPLICATE_SUPPRESSED`
+  이벤트만 기록), 사건 병합(`ON CONFLICT DO NOTHING` + 재조회, 재시도
+  소진 시 `SAF-INFRA-002`), 증거 스냅샷 캡처, `blockAuthor` 옵션의 같은
+  트랜잭션 차단 통합.
+- `ReportTargetRepository`(신규) — 답변/질문글/사용자 대상의 존재·열람
+  자격·현재 콘텐츠를 한 번에 읽는다. `PostAnswerQuerySql`/`FeedScopeSql`의
+  열람 자격 조건을 재사용한다.
+- `SafetyRepository` 확장 — `findMostRecentClosedReport`,
+  `countReportsByReporterSince`, `findReportsByReporter`.
+- `ReportCaseRepository` 확장 — `tryOpen`, `findOpenByTarget`.
+- `safety/web` 신규 — `SafetyController`/`SafetyApiSpec`과 request/response
+  DTO, 엔드포인트 8개(신고 사유 목록, 답변/질문글/사용자 신고, 내 신고
+  목록·상세 조회, 사용자 차단·차단 해제).
+- `docs/api/openapi.json` 재생성(기존 `OpenApiSpecificationIntegrationTest`
+  재실행).
+- `docs/error-codes.md` SAF 절 갱신 — 신규 오류 코드 6개
+  (`SAF-VAL-006/007`, `SAF-DOM-003/004`, `SAF-APP-002/003/004`,
+  `SAF-INFRA-002`; DOM-004/005는 Foundation이 이미 예약).
+- 단위 테스트 21개(도메인 검증, 응답 DTO 필드 집합, MockMvc 계약), 통합
+  테스트 16개(PostgreSQL 필수 — 동시성·트랜잭션 원자성·열람 자격·중복
+  판정 포함).
 
 ## Explicit exclusions
 
-- `SlackNotifier` 실제 구현체와 worker scheduler 배선(`#111`이 이연). 이슈가
-  "secret 저장·rotation"을 제외했는데 webhook 구현은 secret 취급이 전제라
-  이 이슈에서 완결할 수 없다. `SlackNotifier`,
-  `SlackManualReviewNotificationDispatchWorker`,
-  `SnapshotHealthProbeRecorder`의 "#113으로 이연" 주석은 후속 이슈를 가리키도록
-  정정한다.
-- `AnswerModerationDeadlineWorker`, `AnswerModerationVerdictWorker`,
-  `RecipientExpirationSweepWorker`의 `@Scheduled` 배선.
-- metric exporter 선택과 경보 규칙 자체(도구 미정).
-- OpenAI DPA·Services Agreement, data residency·processing location,
-  subprocessor, quota/SLA.
-- 원문·case·appeal·로그의 접근 권한, 보관·삭제·익명화, legal hold.
-- 대상 국가별 UGC·신고·통지·이의제기와 국외 이전 적용 범위.
-- local dictionary·dataset의 상업 이용 조건.
-- secret 저장·rotation과 관리자 권한 분리.
+- 집계 제외 2계층, 결과 알림 fan-out(`#155`).
+- 심각도 산출, 대기열 라우팅, 운영자 판정 API(`#156`).
+- rate limit·설명 길이 상한의 실제 운영 수치 — 주입 값으로만 존재(`UNKNOWN`).
+- 사용자 신고의 "관계 확인" 기준의 실제 제품 정책 — 직접 송수신 또는
+  같은 질문글의 co-recipient 관계로 `ASSUMED`.
+- 접수 시점 푸시 알림 — 동기 응답의 접수증으로 대신한다.
 - 인프라 apply, 배포, 프로덕션 변경은 별도 승인 없이는 실행하지 않는다.
 - Secret, 계정 식별자, 토큰, `.env` 값은 기록하지 않는다.
 
@@ -109,57 +66,81 @@
 
 | Area | Owner | Required review |
 | --- | --- | --- |
-| `operator_action_audit` 스키마·배선, metric 계측과 tag 가드, production 게이트, 테스트 | Feature executor | 감사 누락 경로가 없는지, metric에 원문·식별정보가 실릴 수 있는 경로가 없는지, 게이트가 확인 누락 시 열리지 않는지 |
+| `ReportSubmission`, `SafetyReportService`, `ReportTargetRepository`, `SafetyRepository`/`ReportCaseRepository` 확장, `safety/web` REST 계층, 단위·통합 테스트 | Feature executor | `INV-RPT-001`·`003`·`005` 검증, Foundation `ReportCase`/`ReportContentSnapshot`/`Report.attachToCase` 계약과의 호환성 리뷰, `#112`(AppealController) REST 관례 일관성 리뷰 |
 
 ## Existing user-owned changes
 
-- `origin/main`(4b8bc4e)에서 새로 분기했다. 분기 시점 `git status --short`는
-  비어 있었다.
+- `main`(`#153` Foundation 병합 직후, `origin/main` 최신 커밋 `4b8bc4e`)에서
+  새로 분기했다. 최초 `./harness start --issue 154 --type feat --slug
+  report-intake-api --base feat/gh-153-report-case-foundation`로 stacked
+  브랜치를 만들었으나, 도중에 `#153`의 PR이 이미 squash merge된 것을
+  발견해 `git reset --hard origin/main`으로 다시 `main` 기준으로 정렬했다
+  (branch 자체의 커밋 이력은 비어 있었으므로 유실된 작업은 없다).
 
 ## Validation
 
 ```bash
+./gradlew test --tests "com.dnd.qello.safety.*" --console=plain
+./gradlew integrationTest --tests "com.dnd.qello.ReportIntakeApiIntegrationTest" --console=plain
+./gradlew integrationTest --tests "com.dnd.qello.OpenApiSpecificationIntegrationTest" --console=plain
+./harness test-run --id TEST-PLAN-GH-154-REPORT-INTAKE-API
 ./harness check
 ./harness pr-ready --project-tests
-npm run hooks:validate
 git diff --check
 ```
 
 ## Completion criteria
 
-- [x] 운영 지표에 원문이나 직접 식별정보를 불필요하게 복제하지 않는다.
-      (`INV-CMP-001`, `INV-CMP-002`) `FilteringMetricTags`가 허용목록 방식으로
-      tag 키를 제한하고, 값 길이 상한으로 자유 텍스트 유입을 막는다. 허용목록에
-      사용자 식별자·원문 계열 키가 없음을 UNIT-002가, 기록된 모든 meter의 tag
-      키가 허용목록 안임을 UNIT-013이 전수 확인한다.
-- [x] 모든 수동·운영자 권한 변경에 actor, reason, policy version과 시간이
-      남는다. (`INV-APL-012`, 필터링 도메인 범위) `operator_action_audit`
-      원장과 `OperatorActionAuditRecorder`를 만들고 release 전이 5종, 수동 검토
-      결정, 이의제기 결정·연장, snapshot health 승인, 긴급 이관에 배선했다.
-      네 요소를 도메인·DB CHECK가 각각 강제하고(UNIT-004~006, INT-006), 감사가
-      결정과 같은 트랜잭션임을 `Propagation.MANDATORY`와 INT-005가 보장한다.
-      `reason`은 운영자 API 요청 본문의 필수 항목이 됐다.
-- [x] 법률·계약상 `확인 필요` 항목은 production 활성화 전에 책임자 승인을
-      받는다. (`INV-CMP-005`, `INV-CMP-006`) `FilteringProductionGate`가
-      fail-closed로 동작해, 활성화를 요청했는데 확인 항목이 하나라도 비면 기동을
-      실패시킨다(UNIT-007~009). 확인 항목과 절차는
-      `docs/filtering-production-gate.md`에 있다. 승인 행위 자체는 사람의 몫이다.
-- [x] 승인된 테스트 계획과 실행 보고서가 존재한다.
-      계획 `docs/test-plans/gh-113-TEST-PLAN-GH-113-FILTERING-OBSERVABILITY-AND-GATE.md`
-      (Status: Approved), 보고서
-      `docs/reports/tests/gh-113-TEST-PLAN-GH-113-FILTERING-OBSERVABILITY-AND-GATE.md`.
-      단위 636건·통합 482건 전체 통과했다(신규 단위 14, 통합 5).
+- [x] 접수 응답이 `reportId`·`status`·`receivedAt`·`alreadyReceived`·
+      `guidance`만 담고 상대 식별자·내부 판단을 담지 않는다(`INV-RPT-005`)
+      — `ReportResponseContractTest`의 레코드 컴포넌트 반사(reflection)
+      검사로 검증.
+- [x] 같은 신고자의 재신고가 새 행을 만들지 않고 기존 접수증을 반환한다
+      — `ReportIntakeApiIntegrationTest#resubmitReturnsExistingOpenReport`,
+      `#resubmitIsIdempotentWhenExistingReportAwaitsMoreInfo`(Foundation
+      `INV-RPT-002` 회귀 확인 포함).
+- [x] 서로 다른 신고자 2명이 동시에 같은 대상을 신고해도 사건이 1개다 —
+      `#concurrentReportsFromDifferentReportersMergeIntoOneCase`(2-way
+      PostgreSQL 동시성).
+- [x] 종결된 사건과 내용이 같은 재신고가 사건을 만들지 않고 이벤트만
+      남긴다 — `#resubmitAfterResolutionIsSuppressedWhenContentUnchanged`,
+      내용이 바뀌면 새 사건을 만드는 경계는
+      `#resubmitAfterResolutionCreatesNewCaseWhenContentChanged`.
+- [x] 열람 자격 없는 사용자의 신고가 404다 —
+      `#reportingUnviewableAnswerIsNotFound`,
+      `#reportingUnrelatedUserIsNotFound`.
+- [x] `OTHER` 사유에 설명이 없으면 400이다 —
+      `ReportSubmissionTest#rejectsOtherWithoutDetail`.
+- [x] `docs/api/openapi.json`이 재생성돼 있다 — 기존
+      `OpenApiSpecificationIntegrationTest` 재실행, `git diff`로 새 8개
+      엔드포인트 반영 확인.
+- [x] 실행하지 못한 검증과 남은 위험을 보고서에 기록한다 — 상세는
+      `docs/reports/tests/gh-154-TEST-PLAN-GH-154-REPORT-INTAKE-API.md`
+      §1·§6·§7 참고. 사건 병합 재시도 소진 경로(`SAF-INFRA-002`)는 여전히
+      재현하지 못했다. 같은 신고자의 동시 중복 요청은 PR #167 코드 리뷰
+      후속으로 아래에서 해소했다.
 
-## Delivered vs deferred
+## PR #167 code review follow-up (Major)
 
-계획했으나 이번에 넣지 않은 것과 그 이유를 명시한다.
+CodeRabbit의 PR #167 리뷰 중 Major 등급 4건을 수정했다. Minor/Trivial 등급은
+이번 후속 작업 범위에 포함하지 않았다.
 
-- **판정 경로 계측 미배선.** `FilteringMetrics`의 계측 메서드는 만들었지만
-  `ModerationPipelineService`에 연결하지 않았다. 그 클래스는 `PolicyEngine`
-  구현체가 미정이라 의도적으로 Spring bean이 아니고, 호출자가 직접 생성한다.
-  지금 배선하면 손으로 만드는 생성 지점 10곳을 고쳐야 하는데 정작 그것을
-  구동하는 프로덕션 경로가 없어 관측할 대상이 없다. pipeline이 bean으로
-  배선되는 후속 이슈에서 함께 넣는 것이 맞다. 그 결과 계획의 INT-003,
-  INT-007~INT-011은 실행하지 않았다.
-- **exporter·경보 규칙 없음.** 이슈가 관측·경보 도구를 미결정으로 뒀다.
-  Micrometer는 vendor-neutral 추상이라 지금 계측해 두고 backend는 나중에 고른다.
+- `SafetyReportService.submit`에서 `enforceRateLimit`을 멱등 반환·억제
+  경로 뒤(`mergeCase` 직전)로 옮겼다 — 한도를 채운 신고자가 같은 대상을
+  재제출(예: 네트워크 재시도)해도 더 이상 429를 받지 않는다.
+- `SafetyRepository.acquireReporterSubmissionLock`(`pg_advisory_xact_lock`
+  기반, `JdbcSafetyRepository`에 구현)을 `submit` 최상단에서 획득해 같은
+  신고자의 제출을 트랜잭션 단위로 직렬화했다. `countReportsByReporterSince`
+  → `saveReport`의 경합(rate limit 원자성)과 `findOpenReport` → `saveReport`
+  의 경합(동시 재신고 멱등성)을 같은 메커니즘으로 없앴다.
+- 새 통합 테스트 3건을 `ReportIntakeApiIntegrationTest`에 추가했다 —
+  `concurrentReportsFromSameReporterAreIdempotent`(동시 재신고 1건만 신규
+  접수), `concurrentReportsFromSameReporterEnforceRateLimitAtomically`(한도
+  직전 동시 요청 중 정확히 1건만 성공), `blockAuthorFailureRollsBackReport
+  SnapshotAndCase`(`blockAuthor=true` 경로에서 차단 삽입 실패 시 신고·
+  스냅샷·사건 전체 롤백 — `SafetyRepository`를 `@MockitoSpyBean`으로 감싸
+  이 테스트의 reporterId/authorId 조합에만 매칭되는 예외를 주입했다. 실제
+  기존 차단 행으로 재현하면 열람 자격 양방향 `NOT EXISTS` 조건에 걸려
+  대상 조회가 먼저 404가 되므로 이 방식을 썼다).
+- 전체 unit(`./gradlew test`)·integration(`./gradlew integrationTest`)
+  재실행, 모두 통과.

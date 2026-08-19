@@ -62,6 +62,52 @@ public class JdbcReportCaseRepository implements ReportCaseRepository {
 		return reportCase;
 	}
 
+	@Override
+	public Optional<ReportCase> tryOpen(ReportCase reportCase) {
+		String conflictTarget = conflictTargetFor(reportCase);
+		Long id = jdbc.query("""
+			INSERT INTO report_case (target_user_id, direction_post_id, answer_id,
+				status, severity, queue, decision, created_at, resolved_at)
+			VALUES (:targetUserId, :directionPostId, :answerId,
+				:status, :severity, :queue, :decision, :createdAt, :resolvedAt)
+			ON CONFLICT (%s) WHERE %s IS NOT NULL AND status IN ('OPEN', 'UNDER_REVIEW') DO NOTHING
+			RETURNING id
+			""".formatted(conflictTarget, conflictTarget), params(reportCase),
+			(rs, row) -> rs.getLong("id")).stream().findFirst().orElse(null);
+		if (id == null) {
+			return Optional.empty();
+		}
+		return Optional.of(new ReportCase(id, reportCase.targetUserId(), reportCase.directionPostId(),
+			reportCase.answerId(), reportCase.status(), reportCase.severity(), reportCase.queue(),
+			reportCase.decision(), reportCase.createdAt(), reportCase.resolvedAt()));
+	}
+
+	@Override
+	public Optional<ReportCase> findOpenByTarget(Long targetUserId, Long directionPostId, Long answerId) {
+		return jdbc.query("""
+			SELECT * FROM report_case
+			WHERE target_user_id IS NOT DISTINCT FROM :targetUserId
+			  AND direction_post_id IS NOT DISTINCT FROM :directionPostId
+			  AND answer_id IS NOT DISTINCT FROM :answerId
+			  AND status IN ('OPEN', 'UNDER_REVIEW')
+			ORDER BY id DESC LIMIT 1
+			""", new MapSqlParameterSource()
+				.addValue("targetUserId", targetUserId)
+				.addValue("directionPostId", directionPostId)
+				.addValue("answerId", answerId),
+			(rs, row) -> mapReportCase(rs)).stream().findFirst();
+	}
+
+	private static String conflictTargetFor(ReportCase reportCase) {
+		if (reportCase.targetUserId() != null) {
+			return "target_user_id";
+		}
+		if (reportCase.directionPostId() != null) {
+			return "direction_post_id";
+		}
+		return "answer_id";
+	}
+
 	private static MapSqlParameterSource params(ReportCase reportCase) {
 		return new MapSqlParameterSource()
 			.addValue("targetUserId", reportCase.targetUserId())

@@ -27,8 +27,11 @@ public enum SafetyErrorCode implements ErrorCode {
 	// 종결 시각이 접수 시각보다 앞선 순서 역전
 	INVALID_TIME_ORDER(HttpStatus.BAD_REQUEST, "SAF-VAL-005", ErrorCategory.VAL, "신고 시각 순서가 올바르지 않습니다."),
 
-	// SAF-VAL-006(INVALID_REPORT_DETAIL), SAF-VAL-007(INVALID_REPORT_SUB_REASON)은
-	// #154(신고 접수 API)가 예약한 번호다. 여기서 건너뛴다.
+	// OTHER 사유의 설명 누락 또는 설명 허용 길이 초과
+	INVALID_REPORT_DETAIL(HttpStatus.BAD_REQUEST, "SAF-VAL-006", ErrorCategory.VAL, "신고 설명이 올바르지 않습니다."),
+
+	// reason과 subReason 조합이 허용되지 않음
+	INVALID_REPORT_SUB_REASON(HttpStatus.BAD_REQUEST, "SAF-VAL-007", ErrorCategory.VAL, "신고 하위 사유가 올바르지 않습니다."),
 
 	// 증거 스냅샷의 편집 횟수가 음수
 	INVALID_SNAPSHOT_EDIT_COUNT(HttpStatus.BAD_REQUEST, "SAF-VAL-008", ErrorCategory.VAL, "스냅샷 편집 횟수가 올바르지 않습니다."),
@@ -39,7 +42,8 @@ public enum SafetyErrorCode implements ErrorCode {
 	// 종결 상태가 아닌 값으로의 신고 종결 시도
 	INVALID_REPORT_STATUS(HttpStatus.BAD_REQUEST, "SAF-DOM-002", ErrorCategory.DOM, "신고 종결 상태가 올바르지 않습니다."),
 
-	// SAF-DOM-003(SELF_REPORT_NOT_ALLOWED)은 #154가 예약한 번호다. 여기서 건너뛴다.
+	// 자기 자신이 작성한 콘텐츠 또는 자기 자신에 대한 신고 시도
+	SELF_REPORT_NOT_ALLOWED(HttpStatus.BAD_REQUEST, "SAF-DOM-003", ErrorCategory.DOM, "자기 자신을 신고할 수 없습니다."),
 
 	// 이미 다른 사건에 연결된 신고를 다른 사건에 재연결 시도
 	REPORT_ALREADY_LINKED_TO_CASE(HttpStatus.BAD_REQUEST, "SAF-DOM-004", ErrorCategory.DOM, "이미 다른 사건에 연결된 신고입니다."),
@@ -50,8 +54,20 @@ public enum SafetyErrorCode implements ErrorCode {
 	// 해제할 활성 차단 부재. 이미 해제됐거나 존재하지 않는 상태
 	ACTIVE_BLOCK_NOT_FOUND(HttpStatus.NOT_FOUND, "SAF-APP-001", ErrorCategory.APP, "활성 차단을 찾을 수 없습니다."),
 
+	// 신고 대상이 존재하지 않거나 신고자가 열람할 수 없음. 존재 비노출을 위해 둘을 구분하지 않음
+	REPORT_TARGET_NOT_FOUND(HttpStatus.NOT_FOUND, "SAF-APP-002", ErrorCategory.APP, "신고 대상을 찾을 수 없습니다."),
+
+	// 요청한 신고를 찾을 수 없거나 본인 소유가 아님. 존재 비노출을 위해 둘을 구분하지 않음
+	REPORT_NOT_FOUND(HttpStatus.NOT_FOUND, "SAF-APP-003", ErrorCategory.APP, "신고를 찾을 수 없습니다."),
+
+	// 신고자당 rate limit 초과
+	REPORT_RATE_LIMIT_EXCEEDED(HttpStatus.TOO_MANY_REQUESTS, "SAF-APP-004", ErrorCategory.APP, "신고 요청이 너무 많습니다."),
+
 	// 같은 대상에 대한 처리 중 신고 중복. DB 유일성 제약에서 감지
-	DUPLICATED_OPEN_REPORT(HttpStatus.CONFLICT, "SAF-INFRA-001", ErrorCategory.INFRA, "이미 접수된 신고가 있습니다.");
+	DUPLICATED_OPEN_REPORT(HttpStatus.CONFLICT, "SAF-INFRA-001", ErrorCategory.INFRA, "이미 접수된 신고가 있습니다."),
+
+	// 사건 병합 재시도가 반복적으로 실패함. 재시도 후보
+	CASE_MERGE_CONFLICT(HttpStatus.CONFLICT, "SAF-INFRA-002", ErrorCategory.INFRA, "신고 처리가 일시적으로 지연되고 있습니다.");
 
 	private final HttpStatus httpStatus;
 	private final String code;

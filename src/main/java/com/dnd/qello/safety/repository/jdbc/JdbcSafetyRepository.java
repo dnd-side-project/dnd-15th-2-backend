@@ -4,6 +4,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
@@ -104,6 +105,57 @@ public class JdbcSafetyRepository implements SafetyRepository {
 			.addValue("status", report.status().name()).addValue("resolvedAt", timestamp(report.resolvedAt()))
 			.addValue("caseId", report.caseId()));
 		return report;
+	}
+
+	@Override
+	public Optional<Report> findMostRecentClosedReport(
+		long reporterId, Long targetUserId, Long directionPostId, Long answerId) {
+		return jdbc.query("""
+			SELECT * FROM report
+			WHERE reporter_id = :reporterId
+			  AND target_user_id IS NOT DISTINCT FROM :targetUserId
+			  AND direction_post_id IS NOT DISTINCT FROM :directionPostId
+			  AND answer_id IS NOT DISTINCT FROM :answerId
+			  AND status IN ('ACTIONED', 'NO_VIOLATION')
+			ORDER BY resolved_at DESC, id DESC LIMIT 1
+			""", reportParams(reporterId, targetUserId, directionPostId, answerId),
+			(rs, row) -> mapReport(rs)).stream().findFirst();
+	}
+
+	@Override
+	public int countReportsByReporterSince(long reporterId, Instant since) {
+		Integer count = jdbc.queryForObject("""
+			SELECT count(*) FROM report WHERE reporter_id = :reporterId AND created_at >= :since
+			""", new MapSqlParameterSource().addValue("reporterId", reporterId)
+				.addValue("since", timestamp(since)), Integer.class);
+		return count == null ? 0 : count;
+	}
+
+	@Override
+	public void acquireReporterSubmissionLock(long reporterId) {
+		jdbc.query("SELECT pg_advisory_xact_lock(:reporterId)",
+			new MapSqlParameterSource("reporterId", reporterId), (ResultSet rs) -> null);
+	}
+
+	@Override
+	public List<Report> findReportsByReporter(
+		long reporterId, Instant cursorCreatedAt, Long cursorId, int limit) {
+		MapSqlParameterSource params = new MapSqlParameterSource()
+			.addValue("reporterId", reporterId)
+			.addValue("limit", limit);
+		String cursorFilter = "";
+		if (cursorCreatedAt != null && cursorId != null) {
+			cursorFilter = " AND (created_at, id) < (:cursorCreatedAt, :cursorId)";
+			params.addValue("cursorCreatedAt", timestamp(cursorCreatedAt)).addValue("cursorId", cursorId);
+		}
+		return jdbc.query("""
+			SELECT * FROM report
+			WHERE reporter_id = :reporterId
+			""" + cursorFilter + """
+
+			ORDER BY created_at DESC, id DESC
+			LIMIT :limit
+			""", params, (rs, row) -> mapReport(rs));
 	}
 
 	@Override
