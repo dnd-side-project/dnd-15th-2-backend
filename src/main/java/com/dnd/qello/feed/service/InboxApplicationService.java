@@ -6,10 +6,6 @@ import java.time.Instant;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.dnd.qello.account.domain.Account;
-import com.dnd.qello.account.domain.AccountRole;
-import com.dnd.qello.account.domain.AccountStatus;
-import com.dnd.qello.account.repository.AccountRepository;
 import com.dnd.qello.direction.config.SkipConfirmationProperties;
 import com.dnd.qello.direction.domain.PostRecipient;
 import com.dnd.qello.direction.error.DirectionErrorCode;
@@ -28,7 +24,7 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class InboxApplicationService {
 
-	private final AccountRepository accountRepository;
+	private final AccountEligibilityGate accountEligibilityGate;
 	private final InboxQueryService queryService;
 	private final PostRecipientService postRecipientService;
 	private final Clock clock;
@@ -36,7 +32,7 @@ public class InboxApplicationService {
 
 	@Transactional(readOnly = true)
 	public InboxListing list(long recipientId, InboxCategory category, String directionSegmentKey) {
-		requireEligibleAccount(recipientId);
+		accountEligibilityGate.require(recipientId);
 		Instant at = clock.instant();
 		return queryService.list(recipientId, category, directionSegmentKey, at);
 	}
@@ -44,7 +40,7 @@ public class InboxApplicationService {
 	/** 최초 OPENED 전이와 전이 후 상세 projection 조회를 같은 transaction과 시각으로 묶는다. */
 	@Transactional
 	public InboxDetail detail(long recipientId, long postRecipientId) {
-		requireEligibleAccount(recipientId);
+		accountEligibilityGate.require(recipientId);
 		Instant at = clock.instant();
 		try {
 			postRecipientService.open(recipientId, postRecipientId, at);
@@ -57,7 +53,7 @@ public class InboxApplicationService {
 
 	@Transactional
 	public PostRecipient skip(long recipientId, long postRecipientId) {
-		requireEligibleAccount(recipientId);
+		accountEligibilityGate.require(recipientId);
 		Instant at = clock.instant();
 		try {
 			return postRecipientService.requestSkip(recipientId, postRecipientId, at);
@@ -68,7 +64,7 @@ public class InboxApplicationService {
 
 	@Transactional
 	public PostRecipient revertSkip(long recipientId, long postRecipientId) {
-		requireEligibleAccount(recipientId);
+		accountEligibilityGate.require(recipientId);
 		Instant at = clock.instant();
 		try {
 			PostRecipient candidate = postRecipientService.findRevertCandidate(recipientId, postRecipientId, at);
@@ -88,14 +84,6 @@ public class InboxApplicationService {
 		}
 		return recipient.getSkipRequestedAt()
 			.plusSeconds(skipConfirmationProperties.skipConfirmationGraceSeconds());
-	}
-
-	private void requireEligibleAccount(long recipientId) {
-		Account account = accountRepository.findById(recipientId)
-			.orElseThrow(() -> new FeedException(FeedErrorCode.INBOX_ACCOUNT_NOT_FOUND));
-		if (account.getRole() != AccountRole.USER || account.getStatus() != AccountStatus.ACTIVE) {
-			throw new FeedException(FeedErrorCode.INBOX_ACCOUNT_NOT_ELIGIBLE);
-		}
 	}
 
 	private FeedException mapCommandException(DirectionException exception) {
