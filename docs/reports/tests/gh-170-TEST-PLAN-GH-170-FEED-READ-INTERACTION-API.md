@@ -33,8 +33,13 @@
 | 전체 통합 테스트(`./gradlew integrationTest --rerun-tasks`) | PASS | 528 | `build/reports/tests/integrationTest/index.html` |
 | `./harness pr-ready --project-tests`(unit+integration+check 포함) | PASS | 710+528 | `BUILD SUCCESSFUL in 4m 17s` |
 | `./harness check`(secret preflight, JUnit 정책, convention, workflow, label, husky) | PASS | 정책 검사 7종 | 실패 없음 |
+| `npm run hooks:validate` | PASS | Husky hook 구성 검증 | `Husky validation passed.` |
 | `git diff --check` | PASS | 공백·충돌 마커 | 없음 |
 | `OpenApiSpecificationIntegrationTest`(재생성+idempotency) | PASS | 9 | `build/test-results/integrationTest/TEST-com.dnd.qello.OpenApiSpecificationIntegrationTest.xml` |
+
+task_id: `TASK-GH-170` · design_id: 없음(신규 인프라·아키텍처 설계가 필요 없는
+이슈 — 기존 service를 web 계층으로 노출) · changed_files: 이 보고서 하단
+`## 8. Artifacts`와 연결된 커밋 범위(`6dd6f54`~현재 HEAD)의 전체 diff.
 
 ## 4. Scenario results
 
