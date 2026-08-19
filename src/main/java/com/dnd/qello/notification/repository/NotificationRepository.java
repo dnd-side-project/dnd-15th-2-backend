@@ -20,6 +20,9 @@ public interface NotificationRepository {
 
 	boolean update(Notification notification);
 
+	/** 그 답변을 가리키던 알림을 모두 REVOKED로 전이한다(#155 전역 숨김). 이미 REVOKED인 행은 건드리지 않는다 — 멱등. */
+	int revokeByAnswerId(long answerId);
+
 	NotificationDelivery saveDelivery(NotificationDelivery delivery);
 
 	NotificationDelivery saveDeliveryIfAbsent(NotificationDelivery delivery);

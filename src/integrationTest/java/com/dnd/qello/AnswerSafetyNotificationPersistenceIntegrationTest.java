@@ -182,7 +182,8 @@ class AnswerSafetyNotificationPersistenceIntegrationTest extends PostgisContaine
 		OutboxEvent event = outboxRepository.save(OutboxEvent.pending(OutboxAggregateType.ANSWER, answer.getId(),
 			OutboxEventType.ANSWER_PUBLISHED, "notification-event", "{\"answerId\":" + answer.getId() + "}", NOW));
 		Notification notification = notificationRepository.save(new Notification(null, recipientId, event.id(),
-			NotificationType.ANSWER_RECEIVED, "answer:" + answer.getId(), null, answer.getId(), NotificationStatus.UNREAD, NOW, null));
+			NotificationType.ANSWER_RECEIVED, "answer:" + answer.getId(), null, answer.getId(), null,
+			NotificationStatus.UNREAD, NOW, null));
 		assertThat(notificationRepository.update(notification.markRead(NOW.plusSeconds(1)))).isTrue();
 		long deviceId = device(recipientId);
 		assertThat(notificationRepository.saveDelivery(com.dnd.qello.notification.domain.NotificationDelivery.pending(notification.id(),

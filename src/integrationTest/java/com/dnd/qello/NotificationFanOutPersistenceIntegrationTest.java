@@ -220,7 +220,7 @@ class NotificationFanOutPersistenceIntegrationTest extends PostgisContainerInteg
 
 	private Notification notification(long outboxEventId, Instant createdAt) {
 		return new Notification(null, recipientId, outboxEventId, NotificationType.DIRECTION_POST_RECEIVED,
-			notificationDedupKey(), postId, null, NotificationStatus.UNREAD, createdAt, null);
+			notificationDedupKey(), postId, null, null, NotificationStatus.UNREAD, createdAt, null);
 	}
 
 	private String notificationDedupKey() {

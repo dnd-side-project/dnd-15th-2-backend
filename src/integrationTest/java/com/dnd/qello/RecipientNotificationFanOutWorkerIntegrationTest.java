@@ -830,7 +830,7 @@ class RecipientNotificationFanOutWorkerIntegrationTest extends PostgisContainerI
 	private Notification notification(Fixture fixture) {
 		return new Notification(null, fixture.recipientId(), fixture.sourceId(),
 			NotificationType.DIRECTION_POST_RECEIVED,
-			"direction-post-received:" + fixture.postRecipientId(), fixture.postId(), null,
+			"direction-post-received:" + fixture.postRecipientId(), fixture.postId(), null, null,
 			NotificationStatus.UNREAD, NOW.minusSeconds(1), null);
 	}
 

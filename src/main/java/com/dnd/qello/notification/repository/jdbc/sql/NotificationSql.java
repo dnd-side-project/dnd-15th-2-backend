@@ -87,9 +87,9 @@ public final class NotificationSql {
 	public static final String INSERT_NOTIFICATION = """
 		INSERT INTO notification
 			(recipient_id, outbox_event_id, notification_type, dedup_key,
-			 direction_post_id, answer_id, status, created_at, read_at)
+			 direction_post_id, answer_id, report_id, status, created_at, read_at)
 		VALUES (:recipientId, :outboxEventId, :notificationType, :dedupKey,
-			:directionPostId, :answerId, :status, :createdAt, :readAt)
+			:directionPostId, :answerId, :reportId, :status, :createdAt, :readAt)
 		RETURNING id
 		""";
 
@@ -100,12 +100,19 @@ public final class NotificationSql {
 	public static final String INSERT_NOTIFICATION_IF_ABSENT = """
 		INSERT INTO notification
 			(recipient_id, outbox_event_id, notification_type, dedup_key,
-			 direction_post_id, answer_id, status, created_at, read_at)
+			 direction_post_id, answer_id, report_id, status, created_at, read_at)
 		VALUES (:recipientId, :outboxEventId, :notificationType, :dedupKey,
-			:directionPostId, :answerId, :status, :createdAt, :readAt)
+			:directionPostId, :answerId, :reportId, :status, :createdAt, :readAt)
 		ON CONFLICT (recipient_id, dedup_key) DO UPDATE
 		SET dedup_key = notification.dedup_key
 		RETURNING notification.*
+		""";
+
+	/** ck_notification_read_at이 REVOKED 상태에 read_at을 허용하지 않으므로 함께 비운다. */
+	public static final String REVOKE_NOTIFICATIONS_BY_ANSWER_ID = """
+		UPDATE notification
+		SET status = 'REVOKED', read_at = NULL
+		WHERE answer_id = :answerId AND status <> 'REVOKED'
 		""";
 
 	public static final String INSERT_NOTIFICATION_DELIVERY = """

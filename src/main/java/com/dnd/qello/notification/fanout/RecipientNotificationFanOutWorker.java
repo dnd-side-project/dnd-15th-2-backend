@@ -205,7 +205,7 @@ public class RecipientNotificationFanOutWorker {
 
 	private Notification newNotification(OutboxEvent event, FanOutTarget target, Instant at) {
 		return new Notification(null, target.recipientId(), event.id(), FAN_OUT_TYPE,
-			DEDUP_KEY_PREFIX + event.aggregateId(), target.postId(), null,
+			DEDUP_KEY_PREFIX + event.aggregateId(), target.postId(), null, null,
 			NotificationStatus.UNREAD, at, null);
 	}
 
