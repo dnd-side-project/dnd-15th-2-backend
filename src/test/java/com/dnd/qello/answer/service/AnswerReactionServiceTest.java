@@ -9,6 +9,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -23,6 +24,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionStatus;
 
 import com.dnd.qello.answer.domain.Answer;
 import com.dnd.qello.answer.domain.AnswerReaction;
@@ -47,6 +50,7 @@ class AnswerReactionServiceTest {
 	@Mock private AnswerRepository answerRepository;
 	@Mock private com.dnd.qello.direction.repository.PostRecipientRepository recipientRepository;
 	@Mock private PostAnswerQueryService postAnswerQueryService;
+	@Mock private PlatformTransactionManager transactionManager;
 
 	@InjectMocks private AnswerReactionService service;
 
@@ -54,6 +58,7 @@ class AnswerReactionServiceTest {
 	@DisplayName("이미 공감한 사용자가 다시 공감해도 새 행을 저장하지 않고 같은 공감 수를 돌려준다")
 	void reactIsIdempotentWhenAlreadyReacted() {
 		givenEligibleReactor();
+		givenReactionTransactionRunsInline();
 		when(reactionRepository.findByAnswerIdAndReactorId(ANSWER_ID, REACTOR_ID))
 			.thenReturn(Optional.of(AnswerReaction.create(ANSWER_ID, REACTOR_ID, AT)));
 		when(reactionRepository.countByAnswerId(ANSWER_ID)).thenReturn(2L);
@@ -67,6 +72,7 @@ class AnswerReactionServiceTest {
 	@DisplayName("공감이 없던 사용자의 답변 공감은 한 번만 저장되고 반영된 공감 수를 돌려준다")
 	void reactSavesOnceWhenNotReactedYet() {
 		givenEligibleReactor();
+		givenReactionTransactionRunsInline();
 		when(reactionRepository.findByAnswerIdAndReactorId(ANSWER_ID, REACTOR_ID)).thenReturn(Optional.empty());
 		when(reactionRepository.countByAnswerId(ANSWER_ID)).thenReturn(1L);
 
@@ -140,6 +146,11 @@ class AnswerReactionServiceTest {
 		when(answerRepository.findById(ANSWER_ID)).thenReturn(Optional.of(answer()));
 		when(recipientRepository.findById(POST_RECIPIENT_ID)).thenReturn(Optional.of(recipient()));
 		when(postAnswerQueryService.canView(REACTOR_ID, POST_ID, AT)).thenReturn(true);
+	}
+
+	/** react()가 삽입 시도를 감싸는 REQUIRES_NEW TransactionTemplate이 실제 트랜잭션 없이도 콜백을 실행하게 한다. */
+	private void givenReactionTransactionRunsInline() {
+		when(transactionManager.getTransaction(any())).thenReturn(mock(TransactionStatus.class));
 	}
 
 	private static Answer answer() {

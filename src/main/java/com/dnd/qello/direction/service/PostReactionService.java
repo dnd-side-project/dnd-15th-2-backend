@@ -2,16 +2,18 @@ package com.dnd.qello.direction.service;
 
 import java.time.Instant;
 
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import com.dnd.qello.direction.domain.PostReaction;
 import com.dnd.qello.direction.error.DirectionErrorCode;
 import com.dnd.qello.direction.error.DirectionException;
 import com.dnd.qello.direction.repository.PostReactionRepository;
 import com.dnd.qello.direction.repository.PostRecipientRepository;
-
-import lombok.RequiredArgsConstructor;
 
 /**
  * 질문글 공감의 남김과 취소를 소유한다.
@@ -23,20 +25,47 @@ import lombok.RequiredArgsConstructor;
  * DELETE가 이 둘에 대응하며, 재시도로 도착한 중복 요청이 공감을 뒤집지 않는다.
  */
 @Service
-@RequiredArgsConstructor
 public class PostReactionService {
 
 	private final PostReactionRepository reactionRepository;
 	private final PostRecipientRepository recipientRepository;
+	private final TransactionTemplate newReactionAttempt;
+
+	public PostReactionService(
+		PostReactionRepository reactionRepository,
+		PostRecipientRepository recipientRepository,
+		PlatformTransactionManager transactionManager) {
+		this.reactionRepository = reactionRepository;
+		this.recipientRepository = recipientRepository;
+		this.newReactionAttempt = new TransactionTemplate(transactionManager);
+		// 동시에 도착한 두 PUT이 모두 exists()를 false로 보고 함께 insert를 시도하면
+		// pk_post_reaction 위반으로 한쪽이 실패한다. REQUIRES_NEW로 그 삽입 시도를
+		// 별도 물리 트랜잭션에 가둬야, 실패해도 호출자의 앰비언트 트랜잭션과 Postgres
+		// 커넥션(실패 시 currently aborted 상태가 되는)이 오염되지 않고 react()가
+		// 재조회로 복구할 수 있다.
+		this.newReactionAttempt.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+	}
 
 	/**
-	 * 이미 공감한 상태면 저장을 건너뛴다.
+	 * 이미 공감한 상태면 저장을 건너뛴다. 동시에 도착한 두 PUT이 함께 삽입을 시도해 PK
+	 * 위반이 나면, 그 요청을 진 쪽으로 취급하지 않고 재조회해 이긴 쪽과 같은 결과로
+	 * 수렴시킨다(둘 다 "공감함"으로 응답).
 	 *
 	 * @return 반영 후 그 질문글의 공감 수
 	 */
-	@Transactional
 	public long react(long postId, long reactorId, Instant at) {
 		requireEligibleReactor(postId, reactorId);
+		try {
+			return newReactionAttempt.execute(status -> insertIfAbsent(postId, reactorId, at));
+		} catch (DataIntegrityViolationException race) {
+			if (!reactionRepository.exists(postId, reactorId)) {
+				throw race;
+			}
+			return reactionRepository.countByPostId(postId);
+		}
+	}
+
+	private long insertIfAbsent(long postId, long reactorId, Instant at) {
 		if (!reactionRepository.exists(postId, reactorId)) {
 			reactionRepository.react(PostReaction.create(postId, reactorId, at));
 		}

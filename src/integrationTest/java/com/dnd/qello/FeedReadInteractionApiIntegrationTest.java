@@ -1,7 +1,7 @@
 /**
  * Created at: 2026-08-19T15:29:03+09:00
  * Source scenario: TEST-PLAN-GH-170-FEED-READ-INTERACTION-API-INT-001 through
- * INT-019, INT-022 through INT-025, INT-027
+ * INT-019, INT-022 through INT-025, INT-027, INT-028
  */
 package com.dnd.qello;
 
@@ -409,6 +409,22 @@ class FeedReadInteractionApiIntegrationTest extends PostgisContainerIntegrationT
 		assertThat(results.second().failure()).isNull();
 		assertThat(fixtures.answerReactionCount(answerId)).isIn(0L, 1L);
 		assertThat(fixtures.answerReactionCount(answerId)).isNotNegative();
+	}
+
+	@Test
+	@DisplayName("INT-028 같은 사용자·같은 답변의 동시 공감 PUT은 예외 없이 최종 1행으로 수렴한다")
+	void concurrentAnswerReactionPutConvergesToOneRow() throws Exception {
+		long postId = fixtures.post(senderId, "int028-post", NOW.plusSeconds(3600));
+		long recipientItemId = fixtures.recipient(postId, recipientId, "OPENED", NOW.minusSeconds(30));
+		long answerId = fixtures.answer(recipientItemId, recipientId, "int028-a1", NOW.minusSeconds(10));
+
+		RacePair<Long, Long> results = race(
+			() -> feed.reactToAnswer(answerId, senderId),
+			() -> feed.reactToAnswer(answerId, senderId));
+
+		assertThat(results.first().failure()).isNull();
+		assertThat(results.second().failure()).isNull();
+		assertThat(fixtures.answerReactionCount(answerId)).isEqualTo(1);
 	}
 
 	@Test

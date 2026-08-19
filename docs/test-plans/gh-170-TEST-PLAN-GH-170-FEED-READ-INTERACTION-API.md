@@ -93,7 +93,7 @@
 | `limit` 상한이 없어 한 요청이 전체 목록을 긁는다 | Medium | Medium | P1 | 상한 초과 요청의 400 확인 |
 | `nextCursor`가 마지막 페이지에서도 채워져 무한 페이징이 된다 | Medium | Medium | P1 | 반환 건수 < `limit`인 페이지에서 `null` 확인 |
 | 커서 두 값 중 하나만 온 요청이 정렬 키를 반만 써 중복·누락을 만든다 | Medium | Medium | P1 | 단일 커서 파라미터 요청의 400 확인 |
-| 동시 `PUT` 두 건이 PK 충돌로 한쪽이 500이 된다 | Medium | Low | P1 | 동시 실행 후 행 1건과 예외 부재 확인 |
+| 동시 `PUT` 두 건이 PK 충돌로 한쪽이 500이 된다 | Medium | Low | P1 | 동시 실행 후 행 1건과 예외 부재 확인(질문글 INT-024, 답변 INT-028) |
 | `openapi.json`을 갱신하지 않은 채 컨트롤러만 바뀐다 | Medium | Medium | P0 | `OpenApiSpecificationIntegrationTest` 재생성 일치 |
 | feed가 다른 feature의 JDBC·JPA 구현을 직접 참조해 경계가 무너진다 | Medium | Low | P1 | `FeedPersistenceBoundaryTest` 통과 |
 
@@ -160,6 +160,16 @@
 | …-INT-025 | 동시성 | 같은 사용자·같은 답변 | `PUT`과 `DELETE` 동시 실행 | 최종 상태가 0행 또는 1행 중 하나로 수렴, count 음수 없음, 미처리 예외 없음 | 동일 |
 | …-INT-026 | `OpenApiSpecificationIntegrationTest` | 애플리케이션 컨텍스트 | 스펙 재생성 | 새 경로 7개 존재, `appAccessToken` security 선언, 좌표·내부 식별자 필드 부재, 커밋된 파일과 동일 | 없음 |
 | …-INT-027 | feed app service + `JdbcPostAnswerQueryRepository` | PUBLISHED 답변 1건, 검토 대기 답변 1건, 삭제된 답변 1건 | 답변 목록 조회 | PUBLISHED 1건만 반환, `answerCount`도 1 — 제품 ADR 0002의 `검토 중인 답변은 다른 사람에게 감춘다`를 노출 경로에서 고정 | 지역 코드 기준 삭제 |
+| …-INT-028 | 동시성 | 같은 사용자·같은 답변 | 답변 공감 `PUT` 2건 동시 실행 | 예외 없이 최종 1행, count 1 | 동일 |
+
+### Addendum (2026-08-19)
+
+INT-024 구현 중 `PostReactionService.react`의 check-then-insert가 동시 `PUT` 두 건에서
+`pk_post_reaction` 위반으로 실패함을 확인해 REQUIRES_NEW 트랜잭션으로 삽입 시도를
+격리하고 재조회로 복구하도록 고쳤다. `AnswerReactionService.react`도 같은
+check-then-insert 패턴이라 같은 위험을 안고 있어 INT-028을 추가하고 같은 방식으로
+고쳤다 — 두 서비스 모두 사람이 "AnswerReactionService도 같은 방식으로 수정해줘"로
+승인한 범위다.
 
 ## 7. Cross-cutting scenarios
 
@@ -214,7 +224,7 @@
 | 1 | Reaction 계층 | `answer/repository/AnswerReactionRepository.java`, `answer/repository/jpa/SpringDataAnswerReactionRepository.java`, `answer/repository/jpa/JpaAnswerReactionRepository.java`, `direction/service/PostReactionService.java`, `answer/service/AnswerReactionService.java`, `src/test/java/com/dnd/qello/direction/service/PostReactionServiceTest.java`(신규), `src/test/java/com/dnd/qello/answer/service/AnswerReactionServiceTest.java`(신규) | UNIT-017~019 | `./gradlew test` |
 | 2 | 수신함 `reactedByMe` | `feed/view/InboxCard.java`, `feed/repository/jdbc/sql/InboxQuerySql.java`, `feed/repository/jdbc/JdbcInboxQueryRepository.java`, `feed/web/response/InboxListingResponse.java`, `src/test/java/com/dnd/qello/feed/web/InboxWebContractTest.java`, `src/test/java/com/dnd/qello/feed/web/InboxApiMockMvcTest.java`, `src/test/java/com/dnd/qello/feed/FeedPersistenceBoundaryTest.java`, `src/integrationTest/.../InboxQueryIntegrationTest.java`, `InboxApiIntegrationTest.java`, `InboxDirectionChipIntegrationTest.java`, `InboxDetailScopeIntegrationTest.java` | UNIT-020~021, INT-020~021 | `./gradlew test`, `./gradlew integrationTest` |
 | 3 | Application + web | `feed/service/FeedInteractionApplicationService.java`(신규), `feed/error/FeedErrorCode.java`, `feed/web/SentPostApiSpec.java`·`SentPostController.java`(신규), `feed/web/AnswerReadApiSpec.java`·`AnswerReadController.java`(신규), `direction/web/PostReactionApiSpec.java`·`PostReactionController.java`(신규), `answer/web/AnswerReactionApiSpec.java`·`AnswerReactionController.java`(신규), `feed/web/response/*`(신규 4종), 대응 `src/test` 신규 파일 | UNIT-001~016 | `./gradlew test` |
-| 4 | 통합 검증 | `src/integrationTest/java/com/dnd/qello/FeedReadInteractionApiIntegrationTest.java`(신규, fixtures·clock 포함) | INT-001~025, INT-027 | `./gradlew integrationTest` |
+| 4 | 통합 검증 | `src/integrationTest/java/com/dnd/qello/FeedReadInteractionApiIntegrationTest.java`(신규, fixtures·clock 포함) | INT-001~025, INT-027~028 | `./gradlew integrationTest` |
 | 5 | 스펙 산출물 | `docs/api/openapi.json`, `src/integrationTest/java/com/dnd/qello/OpenApiSpecificationIntegrationTest.java` | INT-026 | `./gradlew integrationTest` |
 
 Order 3은 `PUT /inbox/{postRecipientId}/answers/read`를 기존 `InboxApiSpec`이 아니라 신규
