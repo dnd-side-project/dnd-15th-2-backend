@@ -34,4 +34,10 @@ public interface AnswerReactionRepository {
 	void cancel(long answerId, long reactorId);
 
 	Optional<AnswerReaction> findByAnswerIdAndReactorId(long answerId, long reactorId);
+
+	/**
+	 * 그 답변이 받은 공감 총수. 응답에 서버가 센 값을 실어 클라이언트가 직접 증감하며
+	 * 생기는 어긋남을 없앤다.
+	 */
+	long countByAnswerId(long answerId);
 }

@@ -38,4 +38,9 @@ public class JpaAnswerReactionRepository implements AnswerReactionRepository {
 	public Optional<AnswerReaction> findByAnswerIdAndReactorId(long answerId, long reactorId) {
 		return reactions.findById(new AnswerReactionId(answerId, reactorId)).map(AnswerReactionJpaEntity::toDomain);
 	}
+
+	@Override
+	public long countByAnswerId(long answerId) {
+		return reactions.countByAnswerId(answerId);
+	}
 }

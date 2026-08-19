@@ -3,7 +3,9 @@ package com.dnd.qello.feed.repository.jdbc.sql;
 /**
  * JdbcInboxQueryRepository가 쓰는 SQL 상수.
  * SELECT_CARD는 수신함 카드 하나를 채우는 SELECT다 — 수신자 기준 방향·거리와
- * 답변 수·공감 수·미읽음 답변 수 집계를 한 쿼리에서 함께 가져온다.
+ * 답변 수·공감 수·미읽음 답변 수 집계와 뷰어 본인의 공감 여부를 한 쿼리에서 함께
+ * 가져온다. reacted_by_me는 목록과 상세가 같은 SELECT를 공유하므로 한 곳만 고치면
+ * 두 경로에 함께 반영된다.
  */
 public final class InboxQuerySql {
 
@@ -38,6 +40,8 @@ public final class InboxQuerySql {
 		                           WHERE ub.blocker_id = :recipientId
 		                             AND ub.blocked_id = a.author_id
 		                             AND ub.released_at IS NULL)) AS answer_count,
+		       EXISTS (SELECT 1 FROM post_reaction prm
+		                WHERE prm.post_id = dp.id AND prm.reactor_id = :recipientId) AS reacted_by_me,
 		       (SELECT count(*) FROM post_reaction prx WHERE prx.post_id = dp.id) AS reaction_count,
 		       (SELECT count(*) FROM answer a
 		          JOIN post_recipient pru ON pru.id = a.post_recipient_id

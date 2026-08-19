@@ -38,6 +38,7 @@ public record InboxListingResponse(
 		Instant matchedAt,
 		Instant expiresAt,
 		long answerCount,
+		boolean reactedByMe,
 		long reactionCount,
 		long unreadAnswerCount
 	) {
@@ -49,8 +50,8 @@ public record InboxListingResponse(
 			return new Card(
 				card.postRecipientId(), card.postId(), card.status().name(), card.questionText(), card.bodyText(),
 				card.mediaIds(), card.senderCoarseRegionCode(), card.inboundBearingDegrees(), card.distanceM(),
-				card.distanceBand(), card.matchedAt(), card.expiresAt(), card.answerCount(), card.reactionCount(),
-				card.unreadAnswerCount());
+				card.distanceBand(), card.matchedAt(), card.expiresAt(), card.answerCount(), card.reactedByMe(),
+				card.reactionCount(), card.unreadAnswerCount());
 		}
 	}
 

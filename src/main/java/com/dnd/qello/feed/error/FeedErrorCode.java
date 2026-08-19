@@ -17,6 +17,10 @@ public enum FeedErrorCode implements ErrorCode {
 	// 유예 마감 이후 되돌리기처럼 대상은 유효하지만 요청한 상태 전이를 더는 적용할 수 없다.
 	INBOX_TRANSITION_CONFLICT(HttpStatus.CONFLICT, "FED-DOM-002", ErrorCategory.DOM, "수신함 상태를 변경할 수 없습니다."),
 
+	// 존재하지 않음과 남의 질문글임을 구분하지 않는다 — SentPostQueryRepository가 조회
+	// 조건에 소유권을 이미 포함하므로 web 계층에서 그 계약을 그대로 올린다.
+	SENT_POST_NOT_FOUND(HttpStatus.NOT_FOUND, "FED-DOM-003", ErrorCategory.DOM, "질문글을 찾을 수 없습니다."),
+
 	// 인증 subject에 대응하는 계정이 없다.
 	INBOX_ACCOUNT_NOT_FOUND(HttpStatus.NOT_FOUND, "FED-APP-001", ErrorCategory.APP, "계정을 찾을 수 없습니다."),
 
@@ -32,7 +36,14 @@ public enum FeedErrorCode implements ErrorCode {
 	INVALID_VALUE_RANGE(HttpStatus.INTERNAL_SERVER_ERROR, "FED-INFRA-002", ErrorCategory.INFRA, "방향 칩 데이터를 생성하지 못했습니다."),
 
 	// 거리 스냅샷이 내부 불변식인 음수 범위를 벗어났다.
-	INVALID_DISTANCE(HttpStatus.INTERNAL_SERVER_ERROR, "FED-INFRA-003", ErrorCategory.INFRA, "거리 표시 정책을 적용하지 못했습니다.");
+	INVALID_DISTANCE(HttpStatus.INTERNAL_SERVER_ERROR, "FED-INFRA-003", ErrorCategory.INFRA, "거리 표시 정책을 적용하지 못했습니다."),
+
+	// limit이 1 미만이거나 상한(50)을 넘었다. 한 요청이 전체 목록을 긁어가지 못하게 막는다.
+	LIMIT_OUT_OF_RANGE(HttpStatus.BAD_REQUEST, "FED-VAL-001", ErrorCategory.VAL, "limit이 허용 범위를 벗어났습니다."),
+
+	// 커서 두 파라미터 중 하나만 왔다. 정렬 키가 두 값의 조합이라 하나만으로는 페이지
+	// 경계를 특정할 수 없다.
+	CURSOR_INCOMPLETE(HttpStatus.BAD_REQUEST, "FED-VAL-002", ErrorCategory.VAL, "cursor 파라미터를 모두 지정하거나 모두 생략해야 합니다.");
 
 	private final HttpStatus httpStatus;
 	private final String code;
