@@ -152,6 +152,11 @@ class NicknameRegistrationServiceTest {
 		}
 
 		@Override
+		public Account updateProfileImage(Account account) {
+			throw new UnsupportedOperationException();
+		}
+
+		@Override
 		public Account updateStatus(Account account) {
 			throw new UnsupportedOperationException();
 		}

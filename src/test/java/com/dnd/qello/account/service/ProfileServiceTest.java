@@ -243,6 +243,11 @@ class ProfileServiceTest {
 		public Optional<Account> findById(long id) {
 			return Optional.ofNullable(stored.get(id));
 		}
+
+		@Override
+		public boolean existsActiveNickname(String nickname) {
+			throw new UnsupportedOperationException();
+		}
 	}
 
 	private static final class FakeMediaAssetRepository implements MediaAssetRepository {
