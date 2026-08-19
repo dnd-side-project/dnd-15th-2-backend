@@ -226,6 +226,11 @@ class OperatorLoginServiceTest {
 		}
 
 		@Override
+		public Account updateProfileImage(Account account) {
+			throw new UnsupportedOperationException();
+		}
+
+		@Override
 		public Account updateStatus(Account account) {
 			throw new UnsupportedOperationException();
 		}
@@ -233,6 +238,11 @@ class OperatorLoginServiceTest {
 		@Override
 		public Optional<Account> findById(long id) {
 			return Optional.ofNullable(accounts.get(id));
+		}
+
+		@Override
+		public boolean existsActiveNickname(String nickname) {
+			throw new UnsupportedOperationException();
 		}
 	}
 }

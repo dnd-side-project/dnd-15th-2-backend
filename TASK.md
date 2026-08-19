@@ -112,6 +112,11 @@
 ## Validation
 
 ```bash
+./gradlew test --tests "com.dnd.qello.account.*" --console=plain
+./gradlew test --tests "com.dnd.qello.filtering.moderation.*" --console=plain
+./gradlew integrationTest --tests "com.dnd.qello.NicknameDuplicateModerationIntegrationTest" --console=plain
+./gradlew integrationTest --tests "com.dnd.qello.OpenApiSpecificationIntegrationTest" --console=plain
+./harness test-run --id TEST-PLAN-GH-168-NICKNAME-DUPLICATE-MODERATION
 ./harness check
 ./harness pr-ready --project-tests
 npm run hooks:validate

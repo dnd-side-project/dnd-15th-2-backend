@@ -25,6 +25,7 @@ public final class Account {
 	private final String locale;
 	private final String timezone;
 	private final String nickname;
+	private final Long profileImageMediaId;
 	private final Instant deletedAt;
 
 	private Account(
@@ -36,6 +37,7 @@ public final class Account {
 		String locale,
 		String timezone,
 		String nickname,
+		Long profileImageMediaId,
 		Instant deletedAt
 	) {
 		this.id = validateId(id);
@@ -47,12 +49,17 @@ public final class Account {
 		this.locale = requireText(locale, "locale", LOCALE_MAX_LENGTH);
 		this.timezone = requireTimezone(timezone);
 		this.nickname = validateNickname(nickname);
+		this.profileImageMediaId = validateProfileImageMediaId(profileImageMediaId);
 		this.deletedAt = deletedAt;
 		validateDeletionState(status, deletedAt);
 	}
 
 	/**
 	 * 일반 사용자 생성. 비밀번호를 사용하지 않으며 role을 외부에서 지정할 수 없다.
+	 *
+	 * <p>프로필 이미지는 여기서 받지 않는다. 자산의 소유자와 상태를 검증한 뒤에만 붙일 수
+	 * 있고 그 검증은 서비스 계층의 몫이므로, 생성은 항상 기본 이미지 상태(null)에서
+	 * 시작하고 {@link #withProfileImage(long)}로 합성한다.
 	 */
 	public static Account createUser(
 		String countryCode,
@@ -70,6 +77,7 @@ public final class Account {
 			locale,
 			timezone,
 			nickname,
+			null,
 			null
 		);
 	}
@@ -96,12 +104,16 @@ public final class Account {
 			locale,
 			timezone,
 			nickname,
+			null,
 			null
 		);
 	}
 
 	/**
 	 * 영속화된 계정을 복원한다. id가 없는 상태는 신규 생성 경로와 구분되어야 하므로 허용하지 않는다.
+	 *
+	 * <p>프로필 이미지는 이 시그니처에 없다. 인자로 추가하면 기존 호출자가 값을 빠뜨렸을 때
+	 * 프로필이 조용히 사라지므로, 복원한 뒤 {@link #withProfileImage(long)}로 합성한다.
 	 */
 	public static Account restore(
 		Long id,
@@ -127,6 +139,7 @@ public final class Account {
 			locale,
 			timezone,
 			nickname,
+			null,
 			deletedAt
 		);
 	}
@@ -146,6 +159,36 @@ public final class Account {
 			locale,
 			timezone,
 			nickname,
+			profileImageMediaId,
+			deletedAt
+		);
+	}
+
+	/**
+	 * 프로필 이미지를 지정한다. 자산의 소유자와 상태 검증은 서비스 계층이 끝낸 뒤 호출한다.
+	 */
+	public Account withProfileImage(long mediaId) {
+		return copyWithProfileImage(requirePositiveMediaId(mediaId));
+	}
+
+	/**
+	 * 프로필 이미지를 해제해 기본 이미지 상태로 되돌린다. 참조만 끊고 media_asset은 건드리지 않는다.
+	 */
+	public Account withoutProfileImage() {
+		return copyWithProfileImage(null);
+	}
+
+	private Account copyWithProfileImage(Long nextProfileImageMediaId) {
+		return new Account(
+			id,
+			role,
+			status,
+			countryCode,
+			coarseRegionCode,
+			locale,
+			timezone,
+			nickname,
+			nextProfileImageMediaId,
 			deletedAt
 		);
 	}
@@ -156,7 +199,8 @@ public final class Account {
 				AccountErrorCode.INVALID_STATUS_TRANSITION, "status", "삭제된 계정은 차단할 수 없습니다");
 		}
 		return new Account(
-			id, role, AccountStatus.BLOCKED, countryCode, coarseRegionCode, locale, timezone, nickname, deletedAt);
+			id, role, AccountStatus.BLOCKED, countryCode, coarseRegionCode, locale, timezone, nickname,
+			profileImageMediaId, deletedAt);
 	}
 
 	public Account unblock() {
@@ -165,7 +209,8 @@ public final class Account {
 				AccountErrorCode.INVALID_STATUS_TRANSITION, "status", "차단 상태인 계정만 차단 해제할 수 있습니다");
 		}
 		return new Account(
-			id, role, AccountStatus.ACTIVE, countryCode, coarseRegionCode, locale, timezone, nickname, deletedAt);
+			id, role, AccountStatus.ACTIVE, countryCode, coarseRegionCode, locale, timezone, nickname,
+			profileImageMediaId, deletedAt);
 	}
 
 	public Account delete(Instant deletedAt) {
@@ -175,7 +220,8 @@ public final class Account {
 				AccountErrorCode.INVALID_STATUS_TRANSITION, "status", "이미 삭제된 계정입니다");
 		}
 		return new Account(
-			id, role, AccountStatus.DELETED, countryCode, coarseRegionCode, locale, timezone, nickname, deletedAt);
+			id, role, AccountStatus.DELETED, countryCode, coarseRegionCode, locale, timezone, nickname,
+			profileImageMediaId, deletedAt);
 	}
 
 	public Long getId() {
@@ -210,6 +256,11 @@ public final class Account {
 		return nickname;
 	}
 
+	/** null이면 기본 이미지를 사용한다는 뜻이다. */
+	public Long getProfileImageMediaId() {
+		return profileImageMediaId;
+	}
+
 	public Instant getDeletedAt() {
 		return deletedAt;
 	}
@@ -219,6 +270,22 @@ public final class Account {
 			throw new AccountException(AccountErrorCode.INVALID_ID, "id", "id는 양수여야 합니다");
 		}
 		return id;
+	}
+
+	private static Long validateProfileImageMediaId(Long profileImageMediaId) {
+		if (profileImageMediaId != null && profileImageMediaId <= 0) {
+			throw new AccountException(
+				AccountErrorCode.INVALID_ID, "profileImageMediaId", "profileImageMediaId는 양수여야 합니다");
+		}
+		return profileImageMediaId;
+	}
+
+	private static long requirePositiveMediaId(long mediaId) {
+		if (mediaId <= 0) {
+			throw new AccountException(
+				AccountErrorCode.INVALID_ID, "profileImageMediaId", "profileImageMediaId는 양수여야 합니다");
+		}
+		return mediaId;
 	}
 
 	private static String validateCountryCode(AccountRole role, String countryCode) {
@@ -272,18 +339,22 @@ public final class Account {
 		if (nickname == null) {
 			return null;
 		}
-		if (nickname.isBlank()) {
+		// 앞뒤 공백만 다른 닉네임이 대소문자 무시 유일성 검사와 uq_user_account_nickname_ci
+		// 인덱스(둘 다 lower()만 적용하고 trim은 하지 않는다)를 우회해 시각적으로 동일한
+		// 닉네임이 공존하지 않도록, 저장되는 값 자체를 여기서 정규화한다(#168).
+		String trimmed = nickname.trim();
+		if (trimmed.isBlank()) {
 			throw new AccountException(
 				AccountErrorCode.REQUIRED_VALUE_MISSING, "nickname", "nickname은 공백일 수 없습니다");
 		}
-		if (codePointLength(nickname) > NICKNAME_MAX_LENGTH) {
+		if (codePointLength(trimmed) > NICKNAME_MAX_LENGTH) {
 			throw new AccountException(
 				AccountErrorCode.TEXT_TOO_LONG,
 				"nickname",
 				"nickname은 " + NICKNAME_MAX_LENGTH + "자를 초과할 수 없습니다"
 			);
 		}
-		return nickname;
+		return trimmed;
 	}
 
 	private static void validateDeletionState(AccountStatus status, Instant deletedAt) {

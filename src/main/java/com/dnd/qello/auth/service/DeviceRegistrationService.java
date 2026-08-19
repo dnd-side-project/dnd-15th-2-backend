@@ -13,6 +13,7 @@ import com.dnd.qello.account.domain.Account;
 import com.dnd.qello.account.domain.AccountRole;
 import com.dnd.qello.account.repository.CountryCatalogRepository;
 import com.dnd.qello.account.repository.AccountRepository;
+import com.dnd.qello.account.service.NicknameRegistrationService;
 import com.dnd.qello.auth.domain.DeviceCredential;
 import com.dnd.qello.auth.domain.DevicePlatform;
 import com.dnd.qello.auth.domain.SecretHash;
@@ -37,6 +38,7 @@ public class DeviceRegistrationService {
 	private final AccountRepository accountRepository;
 	private final CountryCatalogRepository countryCatalogRepository;
 	private final DeviceCredentialRepository credentialRepository;
+	private final NicknameRegistrationService nicknameRegistrationService;
 	private final DeviceSecretGenerator secretGenerator;
 	private final DeviceSecretHasher secretHasher;
 	private final AccessTokenIssuer accessTokenIssuer;
@@ -46,6 +48,7 @@ public class DeviceRegistrationService {
 		AccountRepository accountRepository,
 		CountryCatalogRepository countryCatalogRepository,
 		DeviceCredentialRepository credentialRepository,
+		NicknameRegistrationService nicknameRegistrationService,
 		DeviceSecretGenerator secretGenerator,
 		DeviceSecretHasher secretHasher,
 		AccessTokenIssuer accessTokenIssuer,
@@ -54,6 +57,7 @@ public class DeviceRegistrationService {
 		this.accountRepository = accountRepository;
 		this.countryCatalogRepository = countryCatalogRepository;
 		this.credentialRepository = credentialRepository;
+		this.nicknameRegistrationService = nicknameRegistrationService;
 		this.secretGenerator = secretGenerator;
 		this.secretHasher = secretHasher;
 		this.accessTokenIssuer = accessTokenIssuer;
@@ -79,6 +83,15 @@ public class DeviceRegistrationService {
 		}
 
 		String normalizedCountryCode = validateCountry(countryCode, coarseRegionCode);
+
+		// 닉네임은 선택값이다(#48). 주어진 경우에만 중복·moderation을 검사한다 — 이
+		// 검사는 계정·자격증명 생성과 같은 트랜잭션 안에서 실행된다(#168, 트레이드오프는
+		// docs/test-plans/gh-168-...md §4·§7 참고). 공백만 있는 값은 어차피
+		// Account.createUser가 REQUIRED_VALUE_MISSING으로 거부하므로, 그 앞에서
+		// DB 조회와 외부 moderation 호출을 낭비하지 않는다.
+		if (nickname != null && !nickname.isBlank()) {
+			nicknameRegistrationService.ensureAvailable(nickname, locale);
+		}
 
 		Instant now = Instant.now(clock);
 		Account account = accountRepository.save(

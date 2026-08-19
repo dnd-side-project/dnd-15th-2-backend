@@ -572,10 +572,48 @@
         },
         "type" : "object"
       },
+      "ApiResponseNicknameResponse" : {
+        "properties" : {
+          "data" : {
+            "$ref" : "#/components/schemas/NicknameResponse"
+          },
+          "status" : {
+            "enum" : [
+              "success",
+              "error"
+            ],
+            "type" : "string"
+          },
+          "timestamp" : {
+            "format" : "date-time",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
       "ApiResponseOperatorSessionResponse" : {
         "properties" : {
           "data" : {
             "$ref" : "#/components/schemas/OperatorSessionResponse"
+          },
+          "status" : {
+            "enum" : [
+              "success",
+              "error"
+            ],
+            "type" : "string"
+          },
+          "timestamp" : {
+            "format" : "date-time",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "ApiResponseProfileResponse" : {
+        "properties" : {
+          "data" : {
+            "$ref" : "#/components/schemas/ProfileResponse"
           },
           "status" : {
             "enum" : [
@@ -1021,6 +1059,19 @@
             "type" : "integer"
           }
         },
+        "type" : "object"
+      },
+      "ChangeNicknameRequest" : {
+        "properties" : {
+          "nickname" : {
+            "example" : "여름바람",
+            "minLength" : 1,
+            "type" : "string"
+          }
+        },
+        "required" : [
+          "nickname"
+        ],
         "type" : "object"
       },
       "Chip" : {
@@ -1511,6 +1562,14 @@
         },
         "type" : "object"
       },
+      "NicknameResponse" : {
+        "properties" : {
+          "nickname" : {
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
       "OperatorLoginRequest" : {
         "description" : "운영자 로그인 요청",
         "properties" : {
@@ -1560,6 +1619,40 @@
             "description" : "로그인한 운영자의 계정 id",
             "format" : "int64",
             "type" : "integer"
+          }
+        },
+        "type" : "object"
+      },
+      "ProfileImageChangeRequest" : {
+        "properties" : {
+          "mediaId" : {
+            "format" : "int64",
+            "type" : "integer"
+          }
+        },
+        "required" : [
+          "mediaId"
+        ],
+        "type" : "object"
+      },
+      "ProfileResponse" : {
+        "properties" : {
+          "nickname" : {
+            "type" : "string"
+          },
+          "profileImageExpiresAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "profileImageUrl" : {
+            "type" : "string"
+          },
+          "userId" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "usesDefaultProfileImage" : {
+            "type" : "boolean"
           }
         },
         "type" : "object"
@@ -5627,6 +5720,215 @@
         ]
       }
     },
+    "/api/v1/me/profile" : {
+      "get" : {
+        "description" : "만료가 있는 프로필 이미지 조회 URL을 함께 반환합니다. 프로필 이미지를 설정하지 않았거나 참조한 이미지를 더 이상 쓸 수 없으면 기본 이미지 URL을 반환합니다. 버킷 이름과 storage key는 반환하지 않습니다.",
+        "operationId" : "getProfile",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiResponseProfileResponse"
+                }
+              }
+            },
+            "description" : "프로필을 조회했습니다."
+          },
+          "400" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "요청 값이 올바르지 않습니다. 오류 코드는 docs/error-codes.md를 따른다."
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "앱 액세스 토큰이 유효하지 않습니다."
+          },
+          "500" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "서버 내부 오류가 발생했습니다."
+          },
+          "503" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "외부 저장소를 일시적으로 사용할 수 없습니다."
+          }
+        },
+        "security" : [
+          {
+            "appAccessToken" : [ ]
+          }
+        ],
+        "summary" : "본인 프로필 조회",
+        "tags" : [
+          "프로필"
+        ]
+      }
+    },
+    "/api/v1/me/profile/image" : {
+      "delete" : {
+        "description" : "프로필 이미지 참조만 해제해 기본 이미지 상태로 되돌립니다. 업로드한 이미지 자체는 삭제하지 않습니다.",
+        "operationId" : "removeProfileImage",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiResponseProfileResponse"
+                }
+              }
+            },
+            "description" : "프로필 이미지를 삭제했습니다."
+          },
+          "400" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "요청 값이 올바르지 않습니다. 오류 코드는 docs/error-codes.md를 따른다."
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "앱 액세스 토큰이 유효하지 않습니다."
+          },
+          "500" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "서버 내부 오류가 발생했습니다."
+          }
+        },
+        "security" : [
+          {
+            "appAccessToken" : [ ]
+          }
+        ],
+        "summary" : "프로필 이미지 삭제",
+        "tags" : [
+          "프로필"
+        ]
+      },
+      "put" : {
+        "description" : "본인 소유의 업로드 확인(READY)된 이미지만 프로필로 지정할 수 있습니다. 남의 이미지와 존재하지 않는 이미지는 모두 404로 응답합니다.",
+        "operationId" : "changeProfileImage",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/ProfileImageChangeRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiResponseProfileResponse"
+                }
+              }
+            },
+            "description" : "프로필 이미지를 변경했습니다."
+          },
+          "400" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "mediaId가 올바르지 않습니다."
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "앱 액세스 토큰이 유효하지 않습니다."
+          },
+          "404" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "사용할 수 있는 미디어를 찾을 수 없습니다."
+          },
+          "409" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "READY 상태가 아닌 미디어입니다."
+          },
+          "500" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "서버 내부 오류가 발생했습니다."
+          }
+        },
+        "security" : [
+          {
+            "appAccessToken" : [ ]
+          }
+        ],
+        "summary" : "프로필 이미지 변경",
+        "tags" : [
+          "프로필"
+        ]
+      }
+    },
     "/api/v1/media-assets/upload-requests" : {
       "post" : {
         "description" : "인증 사용자 소유의 JPEG/JPG 또는 PNG 한 건에 대한 presigned PUT URL을 발급합니다. storage key는 반환하지 않습니다.",
@@ -6110,6 +6412,93 @@
         ]
       }
     },
+    "/api/v1/users/me/nickname" : {
+      "patch" : {
+        "description" : "인증된 본인의 닉네임을 변경합니다. 대소문자를 무시한 중복 닉네임(자기 자신이\n이미 쓰고 있는 값 포함)은 거절됩니다. production moderation gate가 켜져 있으면\nOpenAI moderation 판정을 통과한 뒤에만 반영됩니다.",
+        "operationId" : "changeNickname",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/ChangeNicknameRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiResponseNicknameResponse"
+                }
+              }
+            },
+            "description" : "닉네임을 변경했습니다."
+          },
+          "400" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "요청 값이 비었거나(CMN-VAL-002), 닉네임이 moderation 정책을 위반했습니다(ACC-DOM-005)."
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "앱 액세스 토큰이 유효하지 않습니다."
+          },
+          "409" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "이미 사용 중인 닉네임입니다. 자기 자신의 현재 닉네임도 포함됩니다. (ACC-APP-002)"
+          },
+          "500" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "서버 내부 오류가 발생했습니다."
+          },
+          "503" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "닉네임 moderation 판정을 할 수 없습니다. (ACC-INFRA-001)"
+          }
+        },
+        "security" : [
+          {
+            "appAccessToken" : [ ]
+          }
+        ],
+        "summary" : "닉네임 변경",
+        "tags" : [
+          "계정"
+        ]
+      }
+    },
     "/api/v1/users/{userId}/blocks" : {
       "delete" : {
         "description" : "지정한 사용자에 대한 활성 차단을 해제합니다.",
@@ -6339,6 +6728,10 @@
       "name" : "답변 읽음 처리"
     },
     {
+      "description" : "인증된 사용자 자신의 계정 프로필 (#168)",
+      "name" : "계정"
+    },
+    {
       "description" : "OpenAI moderation snapshot 단위 health 상태와 PERMANENT_CONFIRMED 운영자 승인",
       "name" : "필터링 snapshot health"
     },
@@ -6357,6 +6750,10 @@
     {
       "description" : "운영자 세션 로그인과 로그아웃",
       "name" : "백오피스 인증"
+    },
+    {
+      "description" : "본인 프로필 조회와 프로필 이미지 관리",
+      "name" : "프로필"
     },
     {
       "description" : "답변·질문글·사용자 신고 접수와 차단 (#154)",

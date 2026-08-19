@@ -1007,6 +1007,11 @@ class RecipientNotificationFanOutWorkerIntegrationTest extends PostgisContainerI
 			}
 
 			@Override
+			public Account updateProfileImage(Account account) {
+				return accounts.updateProfileImage(account);
+			}
+
+			@Override
 			public Account updateStatus(Account account) {
 				return accounts.updateStatus(account);
 			}
@@ -1026,6 +1031,11 @@ class RecipientNotificationFanOutWorkerIntegrationTest extends PostgisContainerI
 					}
 				}
 				return snapshot;
+			}
+
+			@Override
+			public boolean existsActiveNickname(String nickname) {
+				return accounts.existsActiveNickname(nickname);
 			}
 		};
 	}

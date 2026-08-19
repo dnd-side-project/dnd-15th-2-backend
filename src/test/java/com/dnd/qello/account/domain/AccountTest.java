@@ -30,6 +30,14 @@ class AccountTest {
 	}
 
 	@Test
+	@DisplayName("닉네임 앞뒤 공백은 저장 전에 제거된다")
+	void trimsNicknameWhitespace() {
+		Account account = Account.createUser("KR", "KR-TEST", "ko-KR", "Asia/Seoul", "  여름  ");
+
+		assertThat(account.getNickname()).isEqualTo("여름");
+	}
+
+	@Test
 	@DisplayName("createOperator는 항상 OPERATOR 역할로 생성되며 자격증명을 갖지 않는다")
 	void createsOperatorAccountWithoutCredential() {
 		Account account = Account.createOperator("KR-TEST", "ko-KR", "Asia/Seoul", "qello-admin");

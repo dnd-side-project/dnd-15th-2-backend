@@ -28,6 +28,7 @@ import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
 
 import com.dnd.qello.account.domain.Account;
 import com.dnd.qello.account.repository.AccountRepository;
+import com.dnd.qello.account.service.NicknameRegistrationService;
 import com.dnd.qello.auth.domain.DeviceCredential;
 import com.dnd.qello.auth.domain.DevicePlatform;
 import com.dnd.qello.auth.domain.SecretHash;
@@ -38,6 +39,10 @@ import com.dnd.qello.auth.security.DeviceSecretGenerator;
 import com.dnd.qello.auth.security.DeviceSecretHasher;
 import com.dnd.qello.auth.token.AccessTokenIssuer;
 import com.dnd.qello.auth.token.AccessTokenProperties;
+import com.dnd.qello.filtering.moderation.ModerationLanguage;
+import com.dnd.qello.filtering.moderation.NicknameModerationChecker;
+import com.dnd.qello.filtering.moderation.NicknameModerationOutcome;
+import com.dnd.qello.filtering.moderation.NicknameModerationOutcome.Reason;
 import com.nimbusds.jose.jwk.source.ImmutableSecret;
 
 class DeviceRegistrationServiceTest {
@@ -47,12 +52,14 @@ class DeviceRegistrationServiceTest {
 
 	private FakeAccountRepository accountRepository;
 	private FakeDeviceCredentialRepository credentialRepository;
+	private ConfigurableNicknameModerationChecker moderationChecker;
 	private DeviceRegistrationService service;
 
 	@BeforeEach
 	void setUp() {
 		accountRepository = new FakeAccountRepository();
 		credentialRepository = new FakeDeviceCredentialRepository();
+		moderationChecker = new ConfigurableNicknameModerationChecker(NicknameModerationOutcome.allowed());
 		SecretKeySpec key = new SecretKeySpec(SECRET.getBytes(StandardCharsets.UTF_8), "HmacSHA256");
 		JwtEncoder jwtEncoder = new NimbusJwtEncoder(new ImmutableSecret<>(key));
 		AccessTokenIssuer accessTokenIssuer = new AccessTokenIssuer(
@@ -64,10 +71,45 @@ class DeviceRegistrationServiceTest {
 			accountRepository,
 			new FakeCountryCatalogRepository(),
 			credentialRepository,
+			new NicknameRegistrationService(accountRepository, moderationChecker),
 			new DeviceSecretGenerator(),
 			new DeviceSecretHasher(),
 			accessTokenIssuer,
 			Clock.fixed(NOW, ZoneOffset.UTC));
+	}
+
+	@Test
+	@DisplayName("UNIT-013: 닉네임이 이미 존재하면 계정과 자격증명 모두 생성하지 않는다")
+	void rejectsRegistrationWhenNicknameAlreadyExists() {
+		service.register("install-a", DevicePlatform.IOS, "KR", "KR-11", "ko-KR", "Asia/Seoul", "바람");
+
+		assertThatThrownBy(() -> service.register(
+			"install-b", DevicePlatform.IOS, "KR", "KR-11", "ko-KR", "Asia/Seoul", "바람"))
+			.isInstanceOf(com.dnd.qello.account.error.AccountException.class);
+		assertThat(accountRepository.accounts).hasSize(1);
+		assertThat(credentialRepository.findActiveByInstallationId("install-b")).isEmpty();
+	}
+
+	@Test
+	@DisplayName("UNIT-014: 닉네임이 null이면 중복·moderation 검사를 건너뛰고 정상 등록한다")
+	void skipsNicknameChecksWhenNicknameIsNull() {
+		DeviceRegistrationResult result = service.register(
+			"install-a", DevicePlatform.IOS, "KR", "KR-11", "ko-KR", "Asia/Seoul", null);
+
+		assertThat(result.userId()).isPositive();
+		assertThat(moderationChecker.callCount).isZero();
+	}
+
+	@Test
+	@DisplayName("UNIT-015: moderation이 거부하면 계정과 자격증명 모두 생성하지 않는다")
+	void rejectsRegistrationWhenModerationRejectsNickname() {
+		moderationChecker.outcome = NicknameModerationOutcome.rejected(Reason.BLOCKED_BY_PRIMARY);
+
+		assertThatThrownBy(() -> service.register(
+			"install-a", DevicePlatform.IOS, "KR", "KR-11", "ko-KR", "Asia/Seoul", "부적절한닉네임"))
+			.isInstanceOf(com.dnd.qello.account.error.AccountException.class);
+		assertThat(accountRepository.accounts).isEmpty();
+		assertThat(credentialRepository.byId).isEmpty();
 	}
 
 	@Test
@@ -177,6 +219,11 @@ class DeviceRegistrationServiceTest {
 		}
 
 		@Override
+		public Account updateProfileImage(Account account) {
+			throw new UnsupportedOperationException();
+		}
+
+		@Override
 		public Account updateStatus(Account account) {
 			throw new UnsupportedOperationException();
 		}
@@ -186,6 +233,29 @@ class DeviceRegistrationServiceTest {
 			return Optional.ofNullable(accounts.get(id));
 		}
 
+		@Override
+		public boolean existsActiveNickname(String nickname) {
+			return accounts.values().stream()
+				.anyMatch(account -> account.getNickname() != null
+					&& account.getNickname().equalsIgnoreCase(nickname)
+					&& account.getDeletedAt() == null);
+		}
+
+	}
+
+	private static final class ConfigurableNicknameModerationChecker implements NicknameModerationChecker {
+		private NicknameModerationOutcome outcome;
+		private int callCount;
+
+		private ConfigurableNicknameModerationChecker(NicknameModerationOutcome outcome) {
+			this.outcome = outcome;
+		}
+
+		@Override
+		public NicknameModerationOutcome check(String nickname, ModerationLanguage language) {
+			callCount++;
+			return outcome;
+		}
 	}
 
 	private static final class FakeCountryCatalogRepository implements com.dnd.qello.account.repository.CountryCatalogRepository {

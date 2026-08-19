@@ -34,6 +34,7 @@ import com.dnd.qello.answer.service.MediaUploadService.IssueUploadUrlCommand;
 import com.dnd.qello.answer.service.MediaUploadService.UploadUrl;
 import com.dnd.qello.answer.service.port.ObjectStoragePort;
 import com.dnd.qello.answer.service.port.PresignedUpload;
+import com.dnd.qello.answer.service.port.PresignedView;
 import com.dnd.qello.answer.service.port.StoredObjectMetadata;
 
 class MediaUploadServiceTest {
@@ -43,7 +44,8 @@ class MediaUploadServiceTest {
 	private final InMemoryMediaAssetRepository repository = new InMemoryMediaAssetRepository();
 	private final FakeObjectStoragePort storage = new FakeObjectStoragePort();
 	private final MediaStorageProperties properties = new MediaStorageProperties(
-		"test-bucket", ImageMimeType.supportedMimeTypes(), 1_000L, Duration.ofMinutes(10));
+		"test-bucket", ImageMimeType.supportedMimeTypes(), 1_000L, Duration.ofMinutes(10),
+		Duration.ofMinutes(5), "media/defaults/profile-image.png");
 	private final MediaAssetStatusTransitionService statusTransitionService =
 		new MediaAssetStatusTransitionService(repository);
 	private final MediaUploadService service =
@@ -98,7 +100,8 @@ class MediaUploadServiceTest {
 	@DisplayName("JPEG·PNG 이외 형식을 허용하는 미디어 설정은 애플리케이션 시작 전에 거부된다")
 	void rejectsUnsupportedMimeConfiguration() {
 		assertThatThrownBy(() -> new MediaStorageProperties(
-			"test-bucket", Set.of("image/jpeg", "image/webp"), 1_000L, Duration.ofMinutes(10)))
+			"test-bucket", Set.of("image/jpeg", "image/webp"), 1_000L, Duration.ofMinutes(10),
+			Duration.ofMinutes(5), "media/defaults/profile-image.png"))
 			.isInstanceOf(AnswerException.class)
 			.hasFieldOrPropertyWithValue("errorCode", AnswerErrorCode.INVALID_MEDIA_METADATA)
 			.hasFieldOrPropertyWithValue("reason", "qello.media.allowed-mime-types는 JPEG/PNG만 지원합니다");
@@ -108,7 +111,8 @@ class MediaUploadServiceTest {
 	@DisplayName("JPEG만 허용하는 부분 화이트리스트 설정은 PNG 누락으로 시작 전에 거부된다")
 	void rejectsPartialMimeConfiguration() {
 		assertThatThrownBy(() -> new MediaStorageProperties(
-			"test-bucket", Set.of("image/jpeg"), 1_000L, Duration.ofMinutes(10)))
+			"test-bucket", Set.of("image/jpeg"), 1_000L, Duration.ofMinutes(10),
+			Duration.ofMinutes(5), "media/defaults/profile-image.png"))
 			.isInstanceOf(AnswerException.class)
 			.hasFieldOrPropertyWithValue("errorCode", AnswerErrorCode.INVALID_MEDIA_METADATA);
 	}
@@ -207,6 +211,16 @@ class MediaUploadServiceTest {
 		void remove(String key) {
 			objects.remove(key);
 			prefixes.remove(key);
+		}
+
+		@Override
+		public PresignedView issueGetUrl(String storageKey, Duration ttl) {
+			try {
+				URL url = URI.create("https://example-test.invalid/get/" + storageKey).toURL();
+				return new PresignedView(url, Instant.EPOCH.plus(ttl));
+			} catch (MalformedURLException exception) {
+				throw new IllegalStateException(exception);
+			}
 		}
 
 		@Override
