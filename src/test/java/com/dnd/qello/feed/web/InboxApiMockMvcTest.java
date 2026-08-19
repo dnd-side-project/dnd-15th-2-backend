@@ -21,28 +21,15 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationFeature;
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.core.MethodParameter;
-import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.Authentication;
 import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.setup.MockMvcBuilders;
-import org.springframework.web.context.request.NativeWebRequest;
-import org.springframework.web.method.support.HandlerMethodArgumentResolver;
-import org.springframework.web.method.support.ModelAndViewContainer;
 
-import com.dnd.qello.common.error.ApiErrorResponseFactory;
-import com.dnd.qello.common.error.ConstraintExceptionMapper;
-import com.dnd.qello.common.web.GlobalExceptionHandler;
+import com.dnd.qello.common.web.MockMvcTestSupport;
 import com.dnd.qello.common.web.response.ApiResponseFactory;
 import com.dnd.qello.direction.domain.PostRecipient;
 import com.dnd.qello.direction.domain.PostRecipientStatus;
@@ -192,20 +179,13 @@ class InboxApiMockMvcTest {
 
 	private MockMvc buildMockMvc(boolean authenticated) {
 		Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
-		ObjectMapper objectMapper = new ObjectMapper()
-			.registerModule(new JavaTimeModule())
-			.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
-		return MockMvcBuilders.standaloneSetup(new InboxController(applicationService, new ApiResponseFactory(clock)))
-			.setCustomArgumentResolvers(new AuthenticationResolver(authenticated))
-			.setMessageConverters(new MappingJackson2HttpMessageConverter(objectMapper))
-			.setControllerAdvice(new GlobalExceptionHandler(
-				new ApiErrorResponseFactory(clock), new ConstraintExceptionMapper()))
-			.build();
+		return MockMvcTestSupport.standalone(
+			new InboxController(applicationService, new ApiResponseFactory(clock)), authenticated, RECIPIENT_ID, clock);
 	}
 
 	private static InboxCard card() {
 		return new InboxCard(POST_RECIPIENT_ID, 71L, PostRecipientStatus.OPENED, "질문", "본문", List.of(3L),
-			"KR-11", BigDecimal.valueOf(90), null, "NEAR", NOW.minusSeconds(60), NOW.plusSeconds(3600), 0, 0, 0);
+			"KR-11", BigDecimal.valueOf(90), null, "NEAR", NOW.minusSeconds(60), NOW.plusSeconds(3600), 0, false, 0, 0);
 	}
 
 	private static PostRecipient skipPending() {
@@ -218,24 +198,5 @@ class InboxApiMockMvcTest {
 		return PostRecipient.restore(POST_RECIPIENT_ID, 71L, RECIPIENT_ID, PostRecipientStatus.OPENED,
 			"NEAR", BigDecimal.valueOf(270), "KR-11", NOW.minusSeconds(60), NOW.minusSeconds(30), NOW.minusSeconds(20),
 			null, null, null, null, null, BigDecimal.valueOf(90), 100, null);
-	}
-
-	private static final class AuthenticationResolver implements HandlerMethodArgumentResolver {
-		private final boolean authenticated;
-
-		private AuthenticationResolver(boolean authenticated) {
-			this.authenticated = authenticated;
-		}
-
-		@Override
-		public boolean supportsParameter(MethodParameter parameter) {
-			return Authentication.class.isAssignableFrom(parameter.getParameterType());
-		}
-
-		@Override
-		public Object resolveArgument(MethodParameter parameter, ModelAndViewContainer mavContainer,
-			NativeWebRequest webRequest, org.springframework.web.bind.support.WebDataBinderFactory binderFactory) {
-			return authenticated ? UsernamePasswordAuthenticationToken.authenticated(Long.toString(RECIPIENT_ID), null, List.of()) : null;
-		}
 	}
 }

@@ -21,7 +21,8 @@ import com.dnd.qello.feed.service.InboxQueryService;
  * Created at: 2026-08-06T14:30:00+09:00
  * Source scenario: TEST-PLAN-GH-67-INBOX-SENT-POST-UNIT-006 through UNIT-008,
  * TEST-PLAN-GH-79-ANSWER-VISIBILITY-RECIPIENTS (2026-08-08 개정 반영),
- * TEST-PLAN-GH-96-INBOX-DETAIL-SCOPE-UNIT-001 through UNIT-003
+ * TEST-PLAN-GH-96-INBOX-DETAIL-SCOPE-UNIT-001 through UNIT-003,
+ * TEST-PLAN-GH-170-FEED-READ-INTERACTION-API-UNIT-020 (added 2026-08-19T15:16:05+09:00)
  */
 class FeedPersistenceBoundaryTest {
 
@@ -98,6 +99,15 @@ class FeedPersistenceBoundaryTest {
 		var detail = InboxQueryService.class.getDeclaredMethod("detail", long.class, long.class, Instant.class);
 
 		assertThat(detail.getReturnType()).isEqualTo(java.util.Optional.class);
+	}
+
+	@Test
+	@DisplayName("수신함 카드는 뷰어 본인의 질문글 공감 여부를 노출하고 SQL이 recipientId 기준으로 그 값을 채운다")
+	void inboxCardExposesReactedByMeFromViewerScopedSql() throws IOException {
+		String cardSource = read(Path.of("src/main/java/com/dnd/qello/feed/view/InboxCard.java"));
+		assertThat(cardSource).contains("reactedByMe");
+		assertThat(InboxQuerySql.SELECT_CARD).contains("reacted_by_me")
+			.contains("prm.post_id = dp.id AND prm.reactor_id = :recipientId");
 	}
 
 	private String read(Path path) {

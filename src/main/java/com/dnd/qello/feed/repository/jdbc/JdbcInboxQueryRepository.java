@@ -115,6 +115,7 @@ public class JdbcInboxQueryRepository implements InboxQueryRepository {
 			rs.getTimestamp("matched_at").toInstant(),
 			rs.getTimestamp("expires_at").toInstant(),
 			rs.getLong("answer_count"),
+			rs.getBoolean("reacted_by_me"),
 			rs.getLong("reaction_count"),
 			rs.getLong("unread_answer_count"));
 	}

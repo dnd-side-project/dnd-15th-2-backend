@@ -1,6 +1,8 @@
 /**
  * Created at: 2026-08-16T14:59:30+09:00
- * Source scenario: TEST-PLAN-GH-124-INBOX-READ-SKIP-API-INT-001 through INT-012
+ * Source scenario: TEST-PLAN-GH-124-INBOX-READ-SKIP-API-INT-001 through INT-012,
+ * TEST-PLAN-GH-170-FEED-READ-INTERACTION-API-INT-020, INT-021
+ * (added 2026-08-19T15:16:05+09:00)
  */
 package com.dnd.qello;
 
@@ -36,6 +38,7 @@ import com.dnd.qello.feed.error.FeedErrorCode;
 import com.dnd.qello.feed.error.FeedException;
 import com.dnd.qello.feed.service.InboxApplicationService;
 import com.dnd.qello.feed.view.InboxCategory;
+import com.dnd.qello.feed.view.InboxDetail;
 import com.dnd.qello.feed.view.InboxListing;
 
 @SpringBootTest
@@ -344,6 +347,37 @@ class InboxApiIntegrationTest extends PostgisContainerIntegrationTestSupport {
 			.extracting(PostRecipient::getId).contains(exactId, afterId);
 	}
 
+	@Test
+	@DisplayName("INT-020 뷰어 본인이 공감한 질문글은 목록과 상세 모두에서 reactedByMe가 true다")
+	void reactedByMeIsTrueForViewersOwnReaction() {
+		long postId = fixtures.post(senderId, "int020-post", NOW.plusSeconds(3600), "ACTIVE", null);
+		long recipientItemId = fixtures.available(postId, recipientId, NOW.minusSeconds(10), 0);
+		fixtures.react(postId, recipientId, NOW.minusSeconds(5));
+
+		InboxListing listing = inbox.list(recipientId, InboxCategory.UNANSWERED, null);
+		InboxDetail detail = inbox.detail(recipientId, recipientItemId);
+
+		assertThat(listing.cards()).hasSize(1);
+		assertThat(listing.cards().get(0).postRecipientId()).isEqualTo(recipientItemId);
+		assertThat(listing.cards().get(0).reactedByMe()).isTrue();
+		assertThat(detail.card().reactedByMe()).isTrue();
+		assertThat(detail.card().reactionCount()).isEqualTo(1);
+	}
+
+	@Test
+	@DisplayName("INT-021 다른 수신자만 공감한 질문글은 뷰어 기준 reactedByMe가 false이고 reactionCount는 그대로다")
+	void reactedByMeIsFalseWhenOnlyAnotherRecipientReacted() {
+		long postId = fixtures.post(senderId, "int021-post", NOW.plusSeconds(3600), "ACTIVE", null);
+		long recipientItemId = fixtures.available(postId, recipientId, NOW.minusSeconds(10), 0);
+		fixtures.available(postId, outsiderId, NOW.minusSeconds(9), 90);
+		fixtures.react(postId, outsiderId, NOW.minusSeconds(5));
+
+		InboxDetail detail = inbox.detail(recipientId, recipientItemId);
+
+		assertThat(detail.card().reactedByMe()).isFalse();
+		assertThat(detail.card().reactionCount()).isEqualTo(1);
+	}
+
 	private static void assertNotFound(ThrowingAction action) {
 		assertThatThrownBy(action::run)
 			.isInstanceOf(FeedException.class)
@@ -556,6 +590,15 @@ final class Inbox124IntegrationFixtures {
 			""", Long.class, postId, recipientId, status, REGION, Timestamp.from(matchedAt),
 			ts(discoveredAt), ts(openedAt), ts(skipRequestedAt), ts(skippedAt), ts(capacityReleasedAt),
 			ts(expiredAt), ts(blockedAt), inboundBearing);
+	}
+
+	/** fk_post_reaction_recipient가 (post_id, reactor_id)를 post_recipient에서 강제하므로
+	 * reactorId는 그 postId의 수신자여야 한다. */
+	void react(long postId, long reactorId, Instant at) {
+		jdbc.update("""
+			INSERT INTO post_reaction (post_id, reactor_id, created_at)
+			VALUES (?, ?, ?)
+			""", postId, reactorId, Timestamp.from(at));
 	}
 
 	void receiveState(long userId, int count) {
