@@ -186,7 +186,7 @@
 | 3 | PostgreSQL executor | `src/integrationTest/java/com/dnd/qello/NotificationFanOutExpansionIntegrationTest.java` | INT-001~003, INT-005~013 | four event types, replay, reaction concurrency, transaction and target evidence |
 | 4 | Query verifier | `src/integrationTest/java/com/dnd/qello/NotificationInboxQueryIntegrationTest.java` | INT-004, INT-014 | N1 query regression and target mapping |
 | 5 | Regression verifier | existing notification/answer/question integration classes selected by validation command | existing contracts | #176 worker, answer persistence, question persistence regression |
-| 5 | Report owner | `docs/test-reports/gh-177-TEST-REPORT-GH-177-NOTIFICATION-FANOUT-EXPANSION.md` | 전체 | harness test-run과 완료 명령, 잠재 문제 분석 |
+| 6 | Report owner | `docs/test-reports/gh-177-TEST-REPORT-GH-177-NOTIFICATION-FANOUT-EXPANSION.md` | 전체 | harness test-run과 완료 명령, 잠재 문제 분석 |
 
 각 executor는 표에 지정된 테스트 파일만 수정한다. 운영 코드 소유권은 `TASK.md`의 Ownership을
 따르며, 테스트 파일 충돌이 필요해지면 오케스트레이터가 순서를 재조정하고 계획을 먼저 갱신한다.

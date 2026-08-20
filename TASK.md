@@ -17,7 +17,7 @@
 - Test plan: `docs/test-plans/gh-177-TEST-PLAN-GH-177-NOTIFICATION-FANOUT-EXPANSION.md`
   (`Status: Approved`, 2026-08-20T19:20:22+09:00 사람 승인 완료).
 - Test report: `docs/test-reports/gh-177-TEST-REPORT-GH-177-NOTIFICATION-FANOUT-EXPANSION.md`
-  (`Result: PARTIAL`, 핵심 흐름 검증 완료, 일부 세부 concurrency matrix 잔여).
+  (`Result: BLOCKED`, 핵심 P0 일부를 보강했지만 사람 결정 또는 추가 PostgreSQL 증거가 필요한 범위 잔여).
 
 ## Objective
 
@@ -64,7 +64,9 @@
    스키마 변경이 범위 밖이므로 `targetKind=NONE`이다.
 4. 공감 생성 이벤트는 `(answerId, reactorId, createdAt)` 발생 단위를 식별하고, 현재
    `answer_reaction`이 이미 취소된 이벤트는 소비 시 suppress한다. 소비 후 이미 생성된
-   알림을 공감 취소 시 `REVOKED`로 회수하는 기능은 이 이슈에서 만들지 않는다.
+   알림을 공감 취소 시 `REVOKED`로 회수하는 기능은 이 이슈에서 만들지 않는다. 같은 시각
+   취소 후 재공감 충돌을 완전히 제거하려면 별도 occurrence ID 또는 schema 변경 결정이
+   필요하며, 이번 범위에서는 사람 결정 필요 항목으로 남긴다.
 5. preference는 알림 원장 생성을 막지 않는다. `notification` 저장 후
    `notification_delivery` 생성 직전에만 검사한다.
 
@@ -113,13 +115,19 @@ git diff --check
 ## Completion criteria
 
 - [x] 같은 outbox 이벤트를 재처리해도 `(recipient_id, dedup_key)` 기준 알림이 1건이다.
-- [ ] 질문글 하나의 답변 N개는 질문글 작성자에게 N건, 다른 수신자에게 0건을 만든다.
-- [ ] 새 답변·공감 알림은 답변을 `targetKind=ANSWER`로 노출한다.
+- [x] 질문글 하나의 답변 N개는 질문글 작성자에게 N건, 다른 수신자에게 0건을 만든다.
+- [x] 새 답변·공감 알림은 답변을 `targetKind=ANSWER`로 노출한다.
 - [x] 질문 제안 검토·추천 알림은 `targetKind=NONE`으로 노출한다.
 - [ ] 사용자 간 활성 차단 또는 비활성 계정은 알림 행 자체를 막는다.
 - [x] preference off는 알림 행을 남기고 delivery만 막는다.
-- [ ] producer 저장과 outbox 발행이 같은 트랜잭션에서 함께 성공하거나 롤백한다.
+- [x] producer 저장과 outbox 발행이 같은 트랜잭션에서 함께 성공하거나 롤백한다.
 - [ ] lease 재선점·worker 경합·실패 기록 예외에도 중복이나 후속 이벤트 중단이 없다.
 - [x] 종류별 단위 테스트와 PostgreSQL 통합 테스트가 있다.
 - [x] 모든 테스트에 `@DisplayName`과 클래스 헤더(ISO 8601, Source scenario)가 있다.
-- [x] 승인된 테스트 계획의 필수 검증과 저장소 완료 전 검증이 통과한다.
+- [ ] 승인된 테스트 계획의 필수 검증과 저장소 완료 전 검증이 통과한다.
+
+잔여 `BLOCKED` 범위:
+
+- `ANSWER_REACTED` dedup의 same-timestamp cancel/re-react 충돌은 occurrence ID 또는 schema 변경 결정이 필요하다.
+- 신규 worker의 두 owner lease reclaim, failure-recording 후속 event 진행은 PostgreSQL 다중 이벤트 증거가 아직 부족하다.
+- 비활성 계정 matrix는 단위 경계 위주로 확인되어 통합 evidence 또는 명시적 제외 승인이 필요하다.
