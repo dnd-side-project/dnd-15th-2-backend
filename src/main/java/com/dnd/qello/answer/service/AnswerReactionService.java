@@ -18,6 +18,10 @@ import com.dnd.qello.answer.repository.AnswerRepository;
 import com.dnd.qello.direction.domain.PostRecipient;
 import com.dnd.qello.direction.repository.PostRecipientRepository;
 import com.dnd.qello.feed.service.PostAnswerQueryService;
+import com.dnd.qello.notification.domain.OutboxAggregateType;
+import com.dnd.qello.notification.domain.OutboxEvent;
+import com.dnd.qello.notification.domain.OutboxEventType;
+import com.dnd.qello.notification.repository.OutboxEventRepository;
 
 /**
  * 답변 공감의 남김과 취소를 소유한다.
@@ -38,6 +42,7 @@ public class AnswerReactionService {
 	private final AnswerRepository answerRepository;
 	private final PostRecipientRepository recipientRepository;
 	private final PostAnswerQueryService postAnswerQueryService;
+	private final OutboxEventRepository outboxEventRepository;
 	private final TransactionTemplate newReactionAttempt;
 
 	public AnswerReactionService(
@@ -45,11 +50,13 @@ public class AnswerReactionService {
 		AnswerRepository answerRepository,
 		PostRecipientRepository recipientRepository,
 		PostAnswerQueryService postAnswerQueryService,
+		OutboxEventRepository outboxEventRepository,
 		PlatformTransactionManager transactionManager) {
 		this.reactionRepository = reactionRepository;
 		this.answerRepository = answerRepository;
 		this.recipientRepository = recipientRepository;
 		this.postAnswerQueryService = postAnswerQueryService;
+		this.outboxEventRepository = outboxEventRepository;
 		this.newReactionAttempt = new TransactionTemplate(transactionManager);
 		// 동시에 도착한 두 PUT이 모두 findByAnswerIdAndReactorId를 빈 값으로 보고 함께
 		// insert를 시도하면 PK 위반으로 한쪽이 실패한다(PostReactionService.react와 같은
@@ -83,7 +90,9 @@ public class AnswerReactionService {
 
 	private long insertIfAbsent(long answerId, long reactorId, Instant at) {
 		if (reactionRepository.findByAnswerIdAndReactorId(answerId, reactorId).isEmpty()) {
-			reactionRepository.react(AnswerReaction.create(answerId, reactorId, at));
+			AnswerReaction reaction = AnswerReaction.create(answerId, reactorId, at);
+			reactionRepository.react(reaction);
+			publishReactionEvent(reaction);
 		}
 		return reactionRepository.countByAnswerId(answerId);
 	}
@@ -116,8 +125,28 @@ public class AnswerReactionService {
 			reactionRepository.cancel(answerId, reactorId);
 			return false;
 		}
-		reactionRepository.react(AnswerReaction.create(answerId, reactorId, at));
+		AnswerReaction reaction = AnswerReaction.create(answerId, reactorId, at);
+		reactionRepository.react(reaction);
+		publishReactionEvent(reaction);
 		return true;
+	}
+
+	private void publishReactionEvent(AnswerReaction reaction) {
+		String dedupKey = answerReactedDedupKey(reaction);
+		if (outboxEventRepository.findByDedupKey(dedupKey).isPresent()) return;
+		outboxEventRepository.save(OutboxEvent.pending(
+			OutboxAggregateType.ANSWER, reaction.getAnswerId(), OutboxEventType.ANSWER_REACTED,
+			dedupKey, answerReactedPayload(reaction), reaction.getCreatedAt()));
+	}
+
+	private static String answerReactedDedupKey(AnswerReaction reaction) {
+		return "answer-reacted:" + reaction.getAnswerId() + ":"
+			+ reaction.getReactorId() + ":" + reaction.getCreatedAt();
+	}
+
+	private static String answerReactedPayload(AnswerReaction reaction) {
+		return "{\"answerId\":" + reaction.getAnswerId()
+			+ ",\"reactorId\":" + reaction.getReactorId() + "}";
 	}
 
 	private void requireEligibleReactor(long answerId, long reactorId, Instant at) {

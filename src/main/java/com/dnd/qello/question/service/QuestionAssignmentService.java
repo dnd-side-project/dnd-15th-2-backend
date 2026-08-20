@@ -6,6 +6,10 @@ import java.util.List;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.dnd.qello.notification.domain.OutboxAggregateType;
+import com.dnd.qello.notification.domain.OutboxEvent;
+import com.dnd.qello.notification.domain.OutboxEventType;
+import com.dnd.qello.notification.repository.OutboxEventRepository;
 import com.dnd.qello.question.domain.ApprovedQuestion;
 import com.dnd.qello.question.domain.QuestionAssignment;
 import com.dnd.qello.question.domain.QuestionAssignmentCycle;
@@ -24,15 +28,18 @@ public class QuestionAssignmentService {
 	private final ApprovedQuestionRepository approvedQuestionRepository;
 	private final QuestionAssignmentCycleRepository cycleRepository;
 	private final QuestionAssignmentRepository assignmentRepository;
+	private final OutboxEventRepository outboxEventRepository;
 
 	public QuestionAssignmentService(
 		ApprovedQuestionRepository approvedQuestionRepository,
 		QuestionAssignmentCycleRepository cycleRepository,
-		QuestionAssignmentRepository assignmentRepository
+		QuestionAssignmentRepository assignmentRepository,
+		OutboxEventRepository outboxEventRepository
 	) {
 		this.approvedQuestionRepository = approvedQuestionRepository;
 		this.cycleRepository = cycleRepository;
 		this.assignmentRepository = assignmentRepository;
+		this.outboxEventRepository = outboxEventRepository;
 	}
 
 	@Transactional
@@ -49,8 +56,38 @@ public class QuestionAssignmentService {
 		List<QuestionAssignment> assignments = command.assignments().stream()
 			.map(item -> createAssignment(savedCycle, item))
 			.map(assignmentRepository::save)
+			.map(this::publishRecommendationEvent)
 			.toList();
 		return new AssignmentBatch(savedCycle, assignments);
+	}
+
+	private QuestionAssignment publishRecommendationEvent(QuestionAssignment assignment) {
+		long assignmentId = requireSavedAssignmentId(assignment);
+		String dedupKey = recommendationDedupKey(assignmentId);
+		if (outboxEventRepository.findByDedupKey(dedupKey).isEmpty()) {
+			outboxEventRepository.save(OutboxEvent.pending(
+				OutboxAggregateType.QUESTION_ASSIGNMENT, assignmentId,
+				OutboxEventType.QUESTION_RECOMMENDED, dedupKey,
+				recommendationPayload(assignmentId), assignment.getAssignedAt()));
+		}
+		return assignment;
+	}
+
+	private long requireSavedAssignmentId(QuestionAssignment assignment) {
+		Long assignmentId = assignment.getId();
+		if (assignmentId == null) {
+			throw new QuestionException(
+				QuestionErrorCode.ASSIGNMENT_CYCLE_NOT_PERSISTED, null, "저장된 assignment에 ID가 없습니다");
+		}
+		return assignmentId;
+	}
+
+	private static String recommendationDedupKey(long assignmentId) {
+		return "question-recommended:" + assignmentId;
+	}
+
+	private static String recommendationPayload(long assignmentId) {
+		return "{\"assignmentId\":" + assignmentId + "}";
 	}
 
 	private QuestionAssignment createAssignment(
