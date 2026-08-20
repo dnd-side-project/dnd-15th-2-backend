@@ -46,6 +46,7 @@ public final class NotificationInboxQuerySql {
 		               WHEN dp.id IS NULL OR dp.deleted_at IS NOT NULL THEN 'GONE'
 		               WHEN\s""" + blockedBetween("dp.sender_id") + """
  THEN 'BLOCKED'
+		               WHEN dp.status = 'HIDDEN' THEN 'HIDDEN'
 		               WHEN dp.status <> 'ACTIVE' OR dp.expires_at <= :at THEN 'EXPIRED'
 		               ELSE 'AVAILABLE'
 		             END
