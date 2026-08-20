@@ -1,5 +1,7 @@
 package com.dnd.qello.notification.repository.jdbc;
 
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.List;
@@ -46,23 +48,27 @@ public class JdbcNotificationInboxQueryRepository implements NotificationInboxQu
 
 	@Override
 	public Optional<NotificationCard> findCard(long recipientId, long notificationId, Instant at) {
-		String sql = NotificationInboxQuerySql.SELECT_ROW + "WHERE sub.notification_id = :notificationId\n";
-		MapSqlParameterSource params = new MapSqlParameterSource()
-			.addValue("recipientId", recipientId)
-			.addValue("at", Timestamp.from(at))
-			.addValue("notificationId", notificationId);
-		return jdbc.query(sql, params, rs -> rs.next() ? Optional.of(NotificationRowMappers.card(rs)) : Optional.empty());
+		return findOne(recipientId, notificationId, at, NotificationRowMappers::card);
 	}
 
 	@Override
 	public Optional<NotificationTargetDecision> findTargetDecision(long recipientId, long notificationId, Instant at) {
+		return findOne(recipientId, notificationId, at, NotificationRowMappers::targetDecision);
+	}
+
+	private <T> Optional<T> findOne(
+		long recipientId, long notificationId, Instant at, ResultSetMapper<T> mapper) {
 		String sql = NotificationInboxQuerySql.SELECT_ROW + "WHERE sub.notification_id = :notificationId\n";
 		MapSqlParameterSource params = new MapSqlParameterSource()
 			.addValue("recipientId", recipientId)
 			.addValue("at", Timestamp.from(at))
 			.addValue("notificationId", notificationId);
-		return jdbc.query(sql, params,
-			rs -> rs.next() ? Optional.of(NotificationRowMappers.targetDecision(rs)) : Optional.empty());
+		return jdbc.query(sql, params, rs -> rs.next() ? Optional.of(mapper.map(rs)) : Optional.empty());
+	}
+
+	@FunctionalInterface
+	private interface ResultSetMapper<T> {
+		T map(ResultSet rs) throws SQLException;
 	}
 
 	@Override

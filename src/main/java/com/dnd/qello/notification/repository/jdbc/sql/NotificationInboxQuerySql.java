@@ -44,24 +44,16 @@ public final class NotificationInboxQuerySql {
 		           WHEN n.direction_post_id IS NOT NULL THEN
 		             CASE
 		               WHEN dp.id IS NULL OR dp.deleted_at IS NOT NULL THEN 'GONE'
-		               WHEN EXISTS (
-		                 SELECT 1 FROM user_block ub
-		                  WHERE ((ub.blocker_id = :recipientId AND ub.blocked_id = dp.sender_id)
-		                      OR (ub.blocker_id = dp.sender_id AND ub.blocked_id = :recipientId))
-		                    AND ub.released_at IS NULL
-		               ) THEN 'BLOCKED'
+		               WHEN\s""" + blockedBetween("dp.sender_id") + """
+ THEN 'BLOCKED'
 		               WHEN dp.status <> 'ACTIVE' OR dp.expires_at <= :at THEN 'EXPIRED'
 		               ELSE 'AVAILABLE'
 		             END
 		           WHEN n.answer_id IS NOT NULL THEN
 		             CASE
 		               WHEN a.id IS NULL OR a.status = 'DELETED' THEN 'GONE'
-		               WHEN EXISTS (
-		                 SELECT 1 FROM user_block ub
-		                  WHERE ((ub.blocker_id = :recipientId AND ub.blocked_id = a.author_id)
-		                      OR (ub.blocker_id = a.author_id AND ub.blocked_id = :recipientId))
-		                    AND ub.released_at IS NULL
-		               ) THEN 'BLOCKED'
+		               WHEN\s""" + blockedBetween("a.author_id") + """
+ THEN 'BLOCKED'
 		               WHEN a.status = 'HIDDEN' OR a.published_at IS NULL THEN 'HIDDEN'
 		               ELSE 'AVAILABLE'
 		             END
@@ -74,6 +66,18 @@ public final class NotificationInboxQuerySql {
 		  WHERE n.recipient_id = :recipientId
 		) sub
 		""";
+
+	/**
+	 * 뷰어(:recipientId)와 {@code otherIdColumn} 사이 활성 차단 여부다. 질문글
+	 * 대상은 발신자(dp.sender_id), 답변 대상은 작성자(a.author_id)와 비교해야 해서
+	 * 컬럼만 다른 같은 조건을 두 번 쓰게 되므로 여기서 한 번만 조립한다.
+	 */
+	private static String blockedBetween(String otherIdColumn) {
+		return "EXISTS (SELECT 1 FROM user_block ub "
+			+ "WHERE ((ub.blocker_id = :recipientId AND ub.blocked_id = " + otherIdColumn + ") "
+			+ "OR (ub.blocker_id = " + otherIdColumn + " AND ub.blocked_id = :recipientId)) "
+			+ "AND ub.released_at IS NULL)";
+	}
 
 	/** 목록에서 REVOKED·DISMISSED를 제외한다 — notification_recipient_feed_idx의 부분 조건과 같은 술어라야 인덱스가 잡힌다. */
 	public static final String LIST_STATUS_FILTER = "sub.status IN ('UNREAD', 'READ')";
