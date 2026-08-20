@@ -278,6 +278,11 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 			FROM flyway_schema_history
 			WHERE version = '22' AND success
 			""", Integer.class);
+		Integer successfulV23 = jdbcTemplate.queryForObject("""
+			SELECT count(*)
+			FROM flyway_schema_history
+			WHERE version = '23' AND success
+			""", Integer.class);
 		String postgisVersion = jdbcTemplate.queryForObject(
 			"SELECT PostGIS_Version()", String.class);
 
@@ -303,7 +308,8 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 		assertThat(successfulV20).isEqualTo(1);
 		assertThat(successfulV21).isEqualTo(1);
 		assertThat(successfulV22).isEqualTo(1);
-		assertThat(flyway.info().applied()).hasSize(22);
+		assertThat(successfulV23).isEqualTo(1);
+		assertThat(flyway.info().applied()).hasSize(23);
 		assertThat(postgisVersion).isNotBlank();
 	}
 
