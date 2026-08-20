@@ -87,9 +87,9 @@ public final class NotificationSql {
 	public static final String INSERT_NOTIFICATION = """
 		INSERT INTO notification
 			(recipient_id, outbox_event_id, notification_type, dedup_key,
-			 direction_post_id, answer_id, status, created_at, read_at)
+			 direction_post_id, answer_id, report_id, status, created_at, read_at)
 		VALUES (:recipientId, :outboxEventId, :notificationType, :dedupKey,
-			:directionPostId, :answerId, :status, :createdAt, :readAt)
+			:directionPostId, :answerId, :reportId, :status, :createdAt, :readAt)
 		RETURNING id
 		""";
 
@@ -100,12 +100,31 @@ public final class NotificationSql {
 	public static final String INSERT_NOTIFICATION_IF_ABSENT = """
 		INSERT INTO notification
 			(recipient_id, outbox_event_id, notification_type, dedup_key,
-			 direction_post_id, answer_id, status, created_at, read_at)
+			 direction_post_id, answer_id, report_id, status, created_at, read_at)
 		VALUES (:recipientId, :outboxEventId, :notificationType, :dedupKey,
-			:directionPostId, :answerId, :status, :createdAt, :readAt)
+			:directionPostId, :answerId, :reportId, :status, :createdAt, :readAt)
 		ON CONFLICT (recipient_id, dedup_key) DO UPDATE
 		SET dedup_key = notification.dedup_key
 		RETURNING notification.*
+		""";
+
+	/** ck_notification_read_at이 REVOKED 상태에 read_at을 허용하지 않으므로 함께 비운다. */
+	public static final String REVOKE_NOTIFICATIONS_BY_ANSWER_ID = """
+		UPDATE notification
+		SET status = 'REVOKED', read_at = NULL
+		WHERE answer_id = :answerId AND status <> 'REVOKED'
+		""";
+
+	/**
+	 * 전역 숨김된 답변을 가리키던 알림의 미발송 push 전달만 취소한다. SENT·PROCESSING·DEAD는
+	 * 이미 끝났거나 진행 중이라 건드리지 않는다 — 발송 worker가 아직 없어 지금은 죽은 코드지만,
+	 * worker가 붙었을 때 숨긴 콘텐츠를 가리키는 push가 나가지 않도록 미리 막아 둔다.
+	 */
+	public static final String CANCEL_DELIVERIES_BY_ANSWER_ID = """
+		UPDATE notification_delivery
+		SET status = 'CANCELLED'
+		WHERE status IN ('PENDING', 'FAILED')
+		  AND notification_id IN (SELECT id FROM notification WHERE answer_id = :answerId)
 		""";
 
 	public static final String INSERT_NOTIFICATION_DELIVERY = """

@@ -79,12 +79,12 @@ class SafetyNotificationBoundaryTest {
 	@DisplayName("Notification과 Delivery는 대상 중복과 terminal 재처리를 막는다")
 	void enforcesNotificationAndDeliveryStates() {
 		Notification notification = new Notification(null, 2L, 3L, NotificationType.ANSWER_RECEIVED,
-			"answer:7", null, 7L, NotificationStatus.UNREAD, NOW, null);
+			"answer:7", null, 7L, null, NotificationStatus.UNREAD, NOW, null);
 		assertThat(notification.markRead(NOW.plusSeconds(1)).status()).isEqualTo(NotificationStatus.READ);
 		NotificationDelivery delivery = NotificationDelivery.pending(4L, 5L, NOW).claimed(NOW.plusSeconds(1));
 		assertThat(delivery.sent(NOW.plusSeconds(2), "provider-id").status()).isEqualTo(DeliveryStatus.SENT);
 		assertThatThrownBy(() -> new Notification(null, 2L, 3L, NotificationType.ANSWER_RECEIVED,
-			"bad", 1L, 7L, NotificationStatus.UNREAD, NOW, null))
+			"bad", 1L, 7L, null, NotificationStatus.UNREAD, NOW, null))
 			.isInstanceOf(NotificationException.class)
 			.hasFieldOrPropertyWithValue("errorCode", NotificationErrorCode.INVALID_NOTIFICATION_TARGET);
 	}

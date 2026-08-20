@@ -39,7 +39,9 @@ public final class InboxQuerySql {
 		           AND NOT EXISTS (SELECT 1 FROM user_block ub
 		                           WHERE ub.blocker_id = :recipientId
 		                             AND ub.blocked_id = a.author_id
-		                             AND ub.released_at IS NULL)) AS answer_count,
+		                             AND ub.released_at IS NULL)
+		           """ + ContentSuppressionSql.notReportedByViewer(":recipientId", "a.id") + """
+		           ) AS answer_count,
 		       EXISTS (SELECT 1 FROM post_reaction prm
 		                WHERE prm.post_id = dp.id AND prm.reactor_id = :recipientId) AS reacted_by_me,
 		       (SELECT count(*) FROM post_reaction prx WHERE prx.post_id = dp.id) AS reaction_count,
@@ -51,7 +53,9 @@ public final class InboxQuerySql {
 		           AND NOT EXISTS (SELECT 1 FROM user_block ub
 		                           WHERE ub.blocker_id = :recipientId
 		                             AND ub.blocked_id = a.author_id
-		                             AND ub.released_at IS NULL)) AS unread_answer_count
+		                             AND ub.released_at IS NULL)
+		           """ + ContentSuppressionSql.notReportedByViewer(":recipientId", "a.id") + """
+		           ) AS unread_answer_count
 		FROM post_recipient pr
 		JOIN direction_post dp ON dp.id = pr.post_id
 		JOIN approved_question aq ON aq.id = dp.approved_question_id

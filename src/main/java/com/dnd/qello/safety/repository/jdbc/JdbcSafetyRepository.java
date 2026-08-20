@@ -159,6 +159,12 @@ public class JdbcSafetyRepository implements SafetyRepository {
 	}
 
 	@Override
+	public List<Report> findReportsByCaseId(long caseId) {
+		return jdbc.query("SELECT * FROM report WHERE case_id = :caseId ORDER BY id",
+			new MapSqlParameterSource("caseId", caseId), (rs, row) -> mapReport(rs));
+	}
+
+	@Override
 	public ModerationReview saveReview(ModerationReview review) {
 		Long id = jdbc.queryForObject("""
 			INSERT INTO moderation_review

@@ -26,7 +26,9 @@ public final class SentPostQuerySql {
 		           AND NOT EXISTS (SELECT 1 FROM user_block ub
 		                           WHERE ub.blocker_id = dp.sender_id
 		                             AND ub.blocked_id = a.author_id
-		                             AND ub.released_at IS NULL)) AS answer_count,
+		                             AND ub.released_at IS NULL)
+		           """ + ContentSuppressionSql.notReportedByViewer("dp.sender_id", "a.id") + """
+		           ) AS answer_count,
 		       (SELECT count(*) FROM post_reaction prx WHERE prx.post_id = dp.id) AS reaction_count,
 		       (SELECT count(*) FROM answer a
 		          JOIN post_recipient pru ON pru.id = a.post_recipient_id
@@ -35,7 +37,9 @@ public final class SentPostQuerySql {
 		           AND NOT EXISTS (SELECT 1 FROM user_block ub
 		                           WHERE ub.blocker_id = dp.sender_id
 		                             AND ub.blocked_id = a.author_id
-		                             AND ub.released_at IS NULL)) AS unread_answer_count
+		                             AND ub.released_at IS NULL)
+		           """ + ContentSuppressionSql.notReportedByViewer("dp.sender_id", "a.id") + """
+		           ) AS unread_answer_count
 		FROM direction_post dp
 		JOIN approved_question aq ON aq.id = dp.approved_question_id
 		""";

@@ -6724,12 +6724,12 @@
       "name" : "콘텐츠 이의제기"
     },
     {
-      "description" : "질문자·수신자의 답변 열람 시각을 기록해 미읽음 배지를 해제한다",
-      "name" : "답변 읽음 처리"
-    },
-    {
       "description" : "인증된 사용자 자신의 계정 프로필 (#168)",
       "name" : "계정"
+    },
+    {
+      "description" : "질문자·수신자의 답변 열람 시각을 기록해 미읽음 배지를 해제한다",
+      "name" : "답변 읽음 처리"
     },
     {
       "description" : "OpenAI moderation snapshot 단위 health 상태와 PERMANENT_CONFIRMED 운영자 승인",

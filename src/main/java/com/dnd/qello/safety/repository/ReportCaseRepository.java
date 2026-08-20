@@ -11,6 +11,9 @@ public interface ReportCaseRepository {
 
 	Optional<ReportCase> findById(long id);
 
+	/** 동시 종결 시도를 직렬화한다 — 두 번째 트랜잭션은 첫 번째가 커밋한 뒤에야 행을 읽는다(#155). */
+	Optional<ReportCase> findByIdForUpdate(long id);
+
 	ReportCase update(ReportCase reportCase);
 
 	/**

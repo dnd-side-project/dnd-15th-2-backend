@@ -10,15 +10,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
-import com.dnd.qello.account.domain.Account;
-import com.dnd.qello.account.domain.AccountStatus;
-import com.dnd.qello.account.repository.AccountRepository;
-import com.dnd.qello.direction.domain.DirectionPost;
-import com.dnd.qello.direction.domain.DirectionPostStatus;
-import com.dnd.qello.direction.domain.PostRecipient;
-import com.dnd.qello.direction.domain.PostRecipientStatus;
-import com.dnd.qello.direction.repository.DirectionPostRepository;
-import com.dnd.qello.direction.repository.PostRecipientRepository;
 import com.dnd.qello.notification.domain.Notification;
 import com.dnd.qello.notification.domain.NotificationDelivery;
 import com.dnd.qello.notification.domain.NotificationStatus;
@@ -34,32 +25,27 @@ import com.dnd.qello.notification.error.NotificationErrorCode;
 import com.dnd.qello.notification.error.NotificationException;
 import com.dnd.qello.notification.repository.NotificationRepository;
 import com.dnd.qello.notification.repository.OutboxEventRepository;
-import com.dnd.qello.safety.domain.UserBlock;
+import com.dnd.qello.safety.domain.Report;
 import com.dnd.qello.safety.repository.SafetyRepository;
 
 import lombok.RequiredArgsConstructor;
 
 /**
- * {@code RECIPIENTS_CONFIRMED} event를 인앱 알림과 기기별 전달 작업으로 fan-out한다.
- * Provider 호출과 scheduler/polling은 이 클래스의 책임이 아니다.
+ * {@code REPORT_RESOLVED} event를 신고자별 결과 알림으로 fan-out한다(#155).
+ * {@link RecipientNotificationFanOutWorker}와 같은 claim·lease-fencing·재시도·
+ * stale 처리 골격을 따르되, 선호 설정 게이트는 다르게 동작한다 — 인앱 알림은
+ * 항상 만들고, {@code notification_delivery}(push)만 선호로 게이트한다.
  */
 @Service
 @RequiredArgsConstructor
-public class RecipientNotificationFanOutWorker {
+public class ReportResolutionFanOutWorker {
 
-	private static final NotificationType FAN_OUT_TYPE = NotificationType.DIRECTION_POST_RECEIVED;
-	private static final Set<OutboxEventType> CLAIMED_EVENT_TYPES =
-		Set.of(OutboxEventType.RECIPIENTS_CONFIRMED);
-	private static final Set<PostRecipientStatus> ELIGIBLE_RECIPIENT_STATUSES =
-		Set.of(PostRecipientStatus.AVAILABLE, PostRecipientStatus.DISCOVERED,
-			PostRecipientStatus.OPENED, PostRecipientStatus.SKIP_PENDING);
-	private static final String DEDUP_KEY_PREFIX = "direction-post-received:";
+	private static final NotificationType FAN_OUT_TYPE = NotificationType.REPORT_RESOLVED;
+	private static final Set<OutboxEventType> CLAIMED_EVENT_TYPES = Set.of(OutboxEventType.REPORT_RESOLVED);
+	private static final String DEDUP_KEY_PREFIX = "report-resolved:";
 
 	private final OutboxEventRepository outboxEventRepository;
 	private final NotificationRepository notificationRepository;
-	private final PostRecipientRepository recipientRepository;
-	private final DirectionPostRepository postRepository;
-	private final AccountRepository accountRepository;
 	private final SafetyRepository safetyRepository;
 	private final PlatformTransactionManager transactionManager;
 	private final Clock clock;
@@ -81,8 +67,6 @@ public class RecipientNotificationFanOutWorker {
 	}
 
 	private Outcome processClaimedEvent(OutboxEvent event, BatchCommand command, Instant processingAt) {
-		// fencing identity가 없으면 어떤 terminal UPDATE도 현재 owner의 상태를 안전하게
-		// 식별할 수 없다. source를 추측해 갱신하지 않고 stale outcome으로 격리한다.
 		if (!hasLeaseIdentity(event)) return Outcome.STALE_LEASE;
 		try {
 			executeEventTransaction(event, processingAt);
@@ -123,89 +107,31 @@ public class RecipientNotificationFanOutWorker {
 
 	private void fanOutIfEligible(OutboxEvent event, Instant at) {
 		requireFanOutEvent(event);
-		PostRecipient recipient = lockAuthoritativeRecipient(event.aggregateId());
-		if (!hasDeliverableRecipientStatus(recipient)) return;
-
-		FanOutTarget target = new FanOutTarget(recipient, loadPost(recipient));
-		if (!isEligible(target, at)) return;
-
-		persistFanOut(event, target, at);
+		Report report = safetyRepository.findReportById(event.aggregateId())
+			.orElseThrow(() -> new PermanentFanOutException("report does not exist"));
+		persistFanOut(event, report, at);
 	}
 
 	private void requireFanOutEvent(OutboxEvent event) {
-		if (event.aggregateType() != OutboxAggregateType.POST_RECIPIENT
-			|| event.eventType() != OutboxEventType.RECIPIENTS_CONFIRMED
+		if (event.aggregateType() != OutboxAggregateType.REPORT
+			|| event.eventType() != OutboxEventType.REPORT_RESOLVED
 			|| event.status() != OutboxStatus.PROCESSING) {
-			throw new PermanentFanOutException("notification fan-out event contract is invalid");
+			throw new PermanentFanOutException("report resolution fan-out event contract is invalid");
 		}
 	}
 
-	private PostRecipient lockAuthoritativeRecipient(long aggregateId) {
-		PostRecipient recipient = recipientRepository.findByIdForUpdate(aggregateId)
-			.orElseThrow(() -> new PermanentFanOutException("post recipient does not exist"));
-		if (recipient.getId() == null || recipient.getId() != aggregateId) {
-			throw new PermanentFanOutException("post recipient aggregate identity is invalid");
-		}
-		return recipient;
-	}
-
-	private boolean hasDeliverableRecipientStatus(PostRecipient recipient) {
-		return ELIGIBLE_RECIPIENT_STATUSES.contains(recipient.getStatus());
-	}
-
-	private DirectionPost loadPost(PostRecipient recipient) {
-		return postRepository.findById(recipient.getPostId())
-			.orElseThrow(() -> new PermanentFanOutException("direction post does not exist"));
-	}
-
-	private boolean isEligible(FanOutTarget target, Instant at) {
-		if (!isDeliverablePost(target.post(), at)) return false;
-		if (!bothAccountsAreActive(target)) return false;
-		if (!hasNoActiveBlock(target)) return false;
-		return isPreferenceEnabled(target.recipientId());
-	}
-
-	private boolean isDeliverablePost(DirectionPost post, Instant at) {
-		return post.getStatus() == DirectionPostStatus.ACTIVE
-			&& post.getDeletedAt() == null
-			&& post.getExpiresAt().isAfter(at);
-	}
-
-	private boolean bothAccountsAreActive(FanOutTarget target) {
-		return isActiveAccount(target.senderId()) && isActiveAccount(target.recipientId());
-	}
-
-	private boolean isActiveAccount(long accountId) {
-		return accountRepository.findById(accountId)
-			.map(Account::getStatus)
-			.filter(AccountStatus.ACTIVE::equals)
-			.isPresent();
-	}
-
-	private boolean hasNoActiveBlock(FanOutTarget target) {
-		return !isActivelyBlocked(target.recipientId(), target.senderId())
-			&& !isActivelyBlocked(target.senderId(), target.recipientId());
-	}
-
-	private boolean isActivelyBlocked(long blockerId, long blockedId) {
-		return safetyRepository.findBlock(blockerId, blockedId)
-			.filter(UserBlock::active)
-			.isPresent();
-	}
-
-	private boolean isPreferenceEnabled(long recipientId) {
-		return notificationRepository.isPreferenceEnabled(recipientId, FAN_OUT_TYPE);
-	}
-
-	private void persistFanOut(OutboxEvent event, FanOutTarget target, Instant at) {
-		Notification notification = notificationRepository.saveIfAbsent(newNotification(event, target, at));
+	private void persistFanOut(OutboxEvent event, Report report, Instant at) {
+		Notification notification = notificationRepository.saveIfAbsent(newNotification(event, report, at));
 		long notificationId = requireNotificationId(notification);
-		persistPendingDeliveries(notificationId, target.recipientId(), at);
+		// 인앱 알림은 선호와 무관하게 항상 만든다 — push 전달만 선호로 게이트한다(#155).
+		if (isPreferenceEnabled(report.reporterId())) {
+			persistPendingDeliveries(notificationId, report.reporterId(), at);
+		}
 	}
 
-	private Notification newNotification(OutboxEvent event, FanOutTarget target, Instant at) {
-		return new Notification(null, target.recipientId(), event.id(), FAN_OUT_TYPE,
-			DEDUP_KEY_PREFIX + event.aggregateId(), target.postId(), null, null,
+	private Notification newNotification(OutboxEvent event, Report report, Instant at) {
+		return new Notification(null, report.reporterId(), event.id(), FAN_OUT_TYPE,
+			DEDUP_KEY_PREFIX + report.id(), null, null, report.id(),
 			NotificationStatus.UNREAD, at, null);
 	}
 
@@ -214,6 +140,10 @@ public class RecipientNotificationFanOutWorker {
 			throw new PermanentFanOutException("persisted notification has no id");
 		}
 		return notification.id();
+	}
+
+	private boolean isPreferenceEnabled(long recipientId) {
+		return notificationRepository.isPreferenceEnabled(recipientId, FAN_OUT_TYPE);
 	}
 
 	private void persistPendingDeliveries(long notificationId, long recipientId, Instant at) {
@@ -309,19 +239,5 @@ public class RecipientNotificationFanOutWorker {
 	}
 
 	private static final class StaleLeaseException extends RuntimeException {
-	}
-
-	private record FanOutTarget(PostRecipient recipient, DirectionPost post) {
-		private long recipientId() {
-			return recipient.getRecipientId();
-		}
-
-		private long senderId() {
-			return post.getSenderId();
-		}
-
-		private long postId() {
-			return recipient.getPostId();
-		}
 	}
 }

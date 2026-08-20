@@ -563,13 +563,14 @@ class RecipientNotificationFanOutWorkerTest {
 
 	private static Notification notification(long id, long sourceEventId) {
 		return new Notification(id, RECIPIENT_ID, sourceEventId, NotificationType.DIRECTION_POST_RECEIVED,
-			"direction-post-received:" + POST_RECIPIENT_ID, POST_ID, null, NotificationStatus.UNREAD, NOW, null);
+			"direction-post-received:" + POST_RECIPIENT_ID, POST_ID, null, null, NotificationStatus.UNREAD, NOW, null);
 	}
 
 	private static Notification withId(Notification notification, long id) {
 		return new Notification(id, notification.recipientId(), notification.outboxEventId(),
 			notification.notificationType(), notification.dedupKey(), notification.directionPostId(),
-			notification.answerId(), notification.status(), notification.createdAt(), notification.readAt());
+			notification.answerId(), notification.reportId(), notification.status(), notification.createdAt(),
+			notification.readAt());
 	}
 
 	private static void assertNotificationError(Runnable action, NotificationErrorCode errorCode) {

@@ -149,6 +149,18 @@ public class JdbcNotificationRepository implements OutboxEventRepository, Notifi
     }
 
     @Override
+    public int revokeByAnswerId(long answerId) {
+        return jdbc.update(NotificationSql.REVOKE_NOTIFICATIONS_BY_ANSWER_ID,
+                new MapSqlParameterSource("answerId", answerId));
+    }
+
+    @Override
+    public int cancelDeliveriesByAnswerId(long answerId) {
+        return jdbc.update(NotificationSql.CANCEL_DELIVERIES_BY_ANSWER_ID,
+                new MapSqlParameterSource("answerId", answerId));
+    }
+
+    @Override
     public NotificationDelivery saveDelivery(NotificationDelivery delivery) {
         Long id = jdbc.queryForObject(NotificationSql.INSERT_NOTIFICATION_DELIVERY, deliveryParams(delivery),
                 Long.class);
@@ -238,7 +250,8 @@ public class JdbcNotificationRepository implements OutboxEventRepository, Notifi
         return new MapSqlParameterSource().addValue("recipientId", n.recipientId())
                 .addValue("outboxEventId", n.outboxEventId()).addValue("notificationType", n.notificationType().name())
                 .addValue("dedupKey", n.dedupKey()).addValue("directionPostId", n.directionPostId())
-                .addValue("answerId", n.answerId()).addValue("status", n.status().name())
+                .addValue("answerId", n.answerId()).addValue("reportId", n.reportId())
+                .addValue("status", n.status().name())
                 .addValue("createdAt", timestamp(n.createdAt())).addValue("readAt", timestamp(n.readAt()));
     }
 
@@ -262,7 +275,7 @@ public class JdbcNotificationRepository implements OutboxEventRepository, Notifi
     private static Notification mapNotification(ResultSet rs) throws SQLException {
         return new Notification(rs.getLong("id"), rs.getLong("recipient_id"), rs.getLong("outbox_event_id"),
                 NotificationType.valueOf(rs.getString("notification_type")), rs.getString("dedup_key"),
-                nullableLong(rs, "direction_post_id"), nullableLong(rs, "answer_id"),
+                nullableLong(rs, "direction_post_id"), nullableLong(rs, "answer_id"), nullableLong(rs, "report_id"),
                 NotificationStatus.valueOf(rs.getString("status")), instant(rs, "created_at"), instant(rs, "read_at"));
     }
 
