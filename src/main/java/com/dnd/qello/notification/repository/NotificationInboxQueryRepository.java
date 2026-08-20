@@ -11,8 +11,8 @@ public interface NotificationInboxQueryRepository {
 
 	/**
 	 * recipientId 소유의 UNREAD·READ 줄만 최신순으로 반환한다. cursor가 null이면
-	 * 첫 페이지다. 반환 건수가 limit과 같을 때만 다음 페이지가 있을 수 있다 —
-	 * nextCursor 채움은 호출자(application service)의 몫이다.
+	 * 첫 페이지다. 반환 건수가 limit과 같을 때만 nextCursor를 채우고, 그보다 적으면
+	 * 마지막 페이지이므로 null로 둔다.
 	 */
 	NotificationListing list(long recipientId, NotificationListing.Cursor cursor, int limit, Instant at);
 
