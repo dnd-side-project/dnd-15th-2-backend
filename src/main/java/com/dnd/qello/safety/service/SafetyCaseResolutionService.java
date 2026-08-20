@@ -97,6 +97,7 @@ public class SafetyCaseResolutionService {
 				SafetyErrorCode.REPORT_TARGET_NOT_FOUND, "answerId", "숨길 답변을 찾을 수 없습니다"));
 		answerRepository.save(answer.hide(now));
 		notificationRepository.revokeByAnswerId(answerId);
+		notificationRepository.cancelDeliveriesByAnswerId(answerId);
 	}
 
 	private OutboxEvent reportResolvedEvent(Report report, Instant now) {

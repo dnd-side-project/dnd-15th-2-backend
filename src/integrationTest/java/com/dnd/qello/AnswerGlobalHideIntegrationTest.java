@@ -28,12 +28,17 @@ import com.dnd.qello.feed.repository.InboxQueryRepository;
 import com.dnd.qello.feed.repository.PostAnswerQueryRepository;
 import com.dnd.qello.feed.view.InboxCard;
 import com.dnd.qello.feed.view.InboxCategory;
+import com.dnd.qello.notification.domain.DeliveryStatus;
 import com.dnd.qello.notification.domain.Notification;
+import com.dnd.qello.notification.domain.NotificationDelivery;
 import com.dnd.qello.notification.domain.NotificationStatus;
 import com.dnd.qello.notification.domain.NotificationType;
 import com.dnd.qello.notification.domain.OutboxAggregateType;
 import com.dnd.qello.notification.domain.OutboxEvent;
 import com.dnd.qello.notification.domain.OutboxEventType;
+import com.dnd.qello.notification.domain.PushDevice;
+import com.dnd.qello.notification.domain.PushDeviceStatus;
+import com.dnd.qello.notification.domain.PushPlatform;
 import com.dnd.qello.notification.repository.NotificationRepository;
 import com.dnd.qello.notification.repository.OutboxEventRepository;
 import com.dnd.qello.safety.domain.ModerationDecision;
@@ -158,6 +163,35 @@ class AnswerGlobalHideIntegrationTest extends PostgisContainerIntegrationTestSup
 		assertThat(revoked.readAt()).isNull();
 	}
 
+	@Test
+	@DisplayName("판정으로 전역 숨김되면 그 답변을 가리키던 알림의 미발송(PENDING) push 전달도 CANCELLED로 전이하고, 이미 SENT된 전달은 건드리지 않는다")
+	void globalHideCancelsPendingDeliveryButPreservesSentDelivery() {
+		long sender = account("sender");
+		long author = account("author");
+		long questionId = question(sender);
+		long postId = post(sender, questionId);
+		long postRecipientId = recipient(postId, author);
+		long answerId = publishedAnswer(postRecipientId, author, "답변 본문");
+		OutboxEvent event = outboxEventRepository.save(OutboxEvent.pending(OutboxAggregateType.ANSWER, answerId,
+			OutboxEventType.ANSWER_PUBLISHED, "answer-published:" + answerId,
+			"{\"answerId\":" + answerId + "}", NOW));
+		Notification notification = notificationRepository.save(new Notification(null, sender, event.id(),
+			NotificationType.ANSWER_RECEIVED, "answer:" + answerId, null, answerId, null,
+			NotificationStatus.UNREAD, NOW, null));
+		long pendingDeviceId = device(sender, "pending");
+		long sentDeviceId = device(sender, "sent");
+		NotificationDelivery pendingDelivery = notificationRepository.saveDelivery(
+			NotificationDelivery.pending(notification.id(), pendingDeviceId, NOW));
+		NotificationDelivery sentDelivery = notificationRepository.saveDelivery(
+			new NotificationDelivery(null, notification.id(), sentDeviceId, DeliveryStatus.SENT, 1, NOW, NOW, NOW,
+				"provider-msg"));
+
+		resolveWithActionedDecision(sender, answerId, NOW.plusSeconds(10));
+
+		assertThat(deliveryStatus(pendingDelivery.id())).isEqualTo("CANCELLED");
+		assertThat(deliveryStatus(sentDelivery.id())).isEqualTo("SENT");
+	}
+
 	// 이 이슈는 운영자 조치와 판정(resolveCase의 ACTIONED)에 의한 숨김만 배선한다 —
 	// Answer.hide(at)를 직접 호출하는 경로는 아직 없다.
 	private void resolveWithActionedDecision(long reporterId, long answerId, Instant at) {
@@ -212,6 +246,16 @@ class AnswerGlobalHideIntegrationTest extends PostgisContainerIntegrationTestSup
 
 		assertThatThrownBy(() -> answerRepository.save(hidden.restore(NOW.plusSeconds(20))))
 			.isInstanceOf(DataIntegrityViolationException.class);
+	}
+
+	private long device(long userId, String label) {
+		return notificationRepository.saveDevice(new PushDevice(null, userId, PushPlatform.ANDROID,
+			new byte[] {1, 2}, "fingerprint-gh155-" + label + "-" + userId, PushDeviceStatus.ACTIVE, NOW, null)).id();
+	}
+
+	private String deliveryStatus(long deliveryId) {
+		return jdbc.queryForObject(
+			"SELECT status FROM notification_delivery WHERE id = ?", String.class, deliveryId);
 	}
 
 	private long mediaAsset(long ownerId) {

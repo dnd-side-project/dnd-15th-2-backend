@@ -155,6 +155,12 @@ public class JdbcNotificationRepository implements OutboxEventRepository, Notifi
     }
 
     @Override
+    public int cancelDeliveriesByAnswerId(long answerId) {
+        return jdbc.update(NotificationSql.CANCEL_DELIVERIES_BY_ANSWER_ID,
+                new MapSqlParameterSource("answerId", answerId));
+    }
+
+    @Override
     public NotificationDelivery saveDelivery(NotificationDelivery delivery) {
         Long id = jdbc.queryForObject(NotificationSql.INSERT_NOTIFICATION_DELIVERY, deliveryParams(delivery),
                 Long.class);
