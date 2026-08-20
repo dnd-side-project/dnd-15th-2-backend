@@ -1,203 +1,193 @@
-# GitHub Issue #155 Task Contract
+# GitHub Issue #176 Task Contract
 
-> Generated at: `2026-08-19T00:00:00+09:00`
+> Generated at: `2026-08-20T14:35:08+09:00`
 >
 > 이 파일은 현재 작업 브랜치의 계약이다. 저장소 전역 정책은 `AGENTS.md`를
 > 따른다.
 
 ## Work gate
 
-- Title: `신고 시스템 — 집계 제외와 처리 결과 알림 (R02)`
-- GitHub Issue: `#155`
-- Branch: `feat/gh-155-report-suppression-notifications`
-- Base branch: `main`
-- Test plan: `TEST-PLAN-GH-155-REPORT-SUPPRESSION-NOTIFICATIONS`
-  (`docs/test-plans/gh-155-TEST-PLAN-GH-155-REPORT-SUPPRESSION-NOTIFICATIONS.md`)
-- Test plan approval: `APPROVED` — 사용자가 2026-08-19 "테스트 계획서 진행"으로 승인했다.
+- Title: `알림함 읽기 API`
+- GitHub Issue: `#176` (상위 `#183`)
+- Branch: `feat/gh-176-notification-inbox-read`
+- Base branch: `main` (`028a863`)
+- 선행 이슈: 없음. `#183`의 sub-issue A이며 B~G(`#177`~`#182`)가 이 이슈를 선행으로 둔다.
+- 설계: `docs/product/NOTIFICATION_INBOX_DESIGN.md` §4~§15. 이 문서가 계약의 상세다.
+- Test plan: `docs/test-plans/gh-176-TEST-PLAN-GH-176-NOTIFICATION-INBOX-READ.md`
+  — 단위 21개, 통합 32개. `2026-08-20T14:47:35+09:00` `Byuntil` 승인 완료
+  (`Status: Approved`). 다음 단계는 §15.2 S1부터 순서대로 구현.
 
 ## Objective
 
-신고된 콘텐츠를 목록과 모든 카운트에서 동시에 빼고(집계 제외 2계층), 사건이
-종결되면 신고자에게 결과를 비동기로 알린다. `NotificationType.REPORT_RESOLVED`
-· `OutboxEventType.REPORT_RESOLVED` · `OutboxAggregateType.REPORT`는 enum과
-DB CHECK에 모두 있으나(코드베이스 확인 완료) 생산자·소비자가 없다.
-
-## Scope decision (사용자 승인 완료)
-
-`ReportCase`를 실제로 `RESOLVED`로 전이시키는 "판정 트랜잭션"은 지금 저장소에
-없다 — `ReportCase.resolve()` 도메인 메서드는 단위 테스트에서만 호출되고,
-서비스·리포지토리·REST 어느 계층에도 호출부가 없다. 운영자 판정 API는 #156
-(아직 `OPEN`) 몫으로 #155가 명시적으로 제외한 항목이다.
-
-사용자에게 확인한 결과: **#155는 내부 전용 서비스 메서드만 추가한다.** REST
-엔드포인트는 만들지 않는다. `SafetyReportService`(또는 신규
-`SafetyCaseResolutionService`)에 `resolveCase(...)` 같은 내부 메서드를 두고,
-그 안에서 사건 종결 + 전역 숨김 부수효과(알림 REVOKED) + outbox 이벤트 발행을
-같은 트랜잭션에 배선한다. #156은 이후 이 메서드를 운영자 API에서 호출한다.
-통합 테스트는 이 서비스 메서드를 직접 호출해 검증한다.
+- `notification` 패키지에 service·web 계층이 없다. `RecipientNotificationFanOutWorker`가
+  만드는 `DIRECTION_POST_RECEIVED` 알림이 원장에는 쌓이지만 HTTP로 노출된 적이 없어,
+  지도 홈의 알림 버튼과 알림함 화면이 호출할 경로가 하나도 없다.
+- F07은 알림을 ①알림함(기록) ②인앱 신호(상태) ③푸시(전달 시도) 세 자리로 나누고
+  "①②③은 서로를 대신하지 않는다"고 규정한다. 현재 fan-out 워커는 preference가 꺼진
+  사용자에게 `notification` 행 자체를 만들지 않아 ①과 ③을 한 게이트에 묶어 두었다.
+- 알림함 읽기 경로 5개를 열고, preference 게이트를 delivery 생성 직전으로 옮겨
+  "푸시를 전부 꺼도 알림함은 채워진다"는 규칙을 성립시킨다.
 
 ## Scope
 
-### 1. 신고자 한정 숨김 (즉시 적용, 종결 결과와 무관하게 유지)
+1. **`notification.view` 신규** — `NotificationCard`, `NotificationTargetKind`,
+   `NotificationTargetState`, `NotificationListing`, `NotificationTargetDecision`,
+   `UnreadSignal`.
+2. **`notification.repository` 신규** — `NotificationInboxQueryRepository`,
+   `NotificationSeenStateRepository`와 각 jdbc 구현,
+   `repository/jdbc/sql/NotificationInboxQuerySql`.
+3. **`notification.service.NotificationInboxService` 신규** — 목록, 미읽음 신호,
+   열람 기준선 전진, 줄 단위 읽음, 진입 판정.
+4. **`notification.web` 신규** — `NotificationApiSpec`, `NotificationController`,
+   `web/response/*`.
+   - `GET /api/v1/notifications` — `cursorCreatedAt`·`cursorNotificationId`·`limit`
+   - `GET /api/v1/notifications/unread-count`
+   - `PUT /api/v1/notifications/seen`
+   - `PUT /api/v1/notifications/{notificationId}/read`
+   - `GET /api/v1/notifications/{notificationId}/target`
+5. **`V23__add_notification_inbox_read_state.sql`** — `notification_seen_state` 테이블,
+   `notification_recipient_feed_idx` 부분 인덱스. `notification` 테이블 컬럼은
+   바꾸지 않는다.
+6. **`NotificationErrorCode` 확장** — `NOT-APP-001`, `NOT-APP-002`, `NOT-DOM-004`,
+   `NOT-VAL-006`, `NOT-VAL-007`. `docs/error-codes.md` §11 반영.
+7. **계정 자격 게이트 승격** — `feed.service.AccountEligibilityGate`를
+   `account.service`로 옮기고 `Account requireActiveUser(long)`를 반환하게 바꾼다.
+   `feed.service`에는 `FeedErrorCode`로 번역하는 package-private 어댑터를 남긴다.
+8. **preference 게이트 재배치** — `RecipientNotificationFanOutWorker.isEligible`에서
+   `isPreferenceEnabled`를 떼어 `persistPendingDeliveries` 직전으로 옮긴다.
+9. 단위 테스트, PostgreSQL 통합 테스트, 테스트 계획·보고서, `docs/api/openapi.json`
+   재생성.
 
-- `ContentSuppressionSql`(신규 클래스, `safety` 또는 `feed` SQL 패키지) —
-  뷰어가 본인이 신고한 콘텐츠를 다시 보지 않게 하는 `NOT EXISTS (SELECT 1
-  FROM report r WHERE r.reporter_id = <viewer> AND r.answer_id = a.id)` 조각.
-  **코드베이스에 이런 클래스·상수가 아직 없음을 확인했다 — 신규 작성.**
-- 다음 5곳에 적용한다(모두 확인 완료, 현재 `a.status = 'PUBLISHED'`만 본다):
-  1. `PostAnswerQuerySql.SELECT_ANSWERS` (답변 목록, viewer = `:viewerId`)
-  2. `InboxQuerySql.SELECT_CARD`의 `answer_count` 서브쿼리 (viewer =
-     `:recipientId`)
-  3. `InboxQuerySql.SELECT_CARD`의 `unread_answer_count` 서브쿼리 (viewer =
-     `:recipientId`)
-  4. `SentPostQuerySql.SELECT_CARD`의 `answer_count` 서브쿼리 (viewer =
-     `dp.sender_id` 컬럼 참조 — bind 파라미터 아님)
-  5. `SentPostQuerySql.SELECT_CARD`의 `unread_answer_count` 서브쿼리 (viewer =
-     `dp.sender_id`)
-  viewer 표현식이 위치마다 다르므로(bind 파라미터 vs 컬럼 참조)
-  `ContentSuppressionSql`은 viewer SQL 조각을 인자로 받는 형태로 설계한다.
-- `report (reporter_id, answer_id) WHERE answer_id IS NOT NULL` 부분 인덱스
-  신규 추가. **기존 인덱스 없음을 마이그레이션에서 확인.**
+## Design decisions (2026-08-20 확정)
 
-### 2. 전역 숨김
+설계 근거는 `NOTIFICATION_INBOX_DESIGN.md`의 해당 절에 있다. 아래는 이 브랜치에서
+고정된 결정만 옮긴 것이다.
 
-- `Answer.hide(at)` / `Answer.restore(at)` 전이 신규 추가.
-  `AnswerStatus.HIDDEN`은 enum과 `ck_answer_status` DB CHECK에 이미 있다(확인
-  완료). 도메인에 전이 메서드가 없을 뿐이다.
-- 위 5곳은 `a.status = 'PUBLISHED'` 조건을 이미 갖고 있으므로 상태를
-  `HIDDEN`으로 바꾸는 것만으로 자동으로 빠진다 — **이 5곳 자체는 코드 변경이
-  필요 없다.** 신고자 한정 숨김(§1)만 새 필터가 필요하다.
-- 위험: `assert_answer_has_content` DB 함수(`V1` 마이그레이션, deferred
-  constraint trigger)는 `status = 'PUBLISHED'`이고 `body_text`가 비어 있고
-  `READY` 상태 미디어가 하나도 없으면 예외를 던진다. `HIDDEN` 동안 미디어가
-  정리되어(`media_asset.status`가 더 이상 `READY`가 아니게 되어) 텍스트 없는
-  답변을 `restore(at)`로 다시 `PUBLISHED`로 되돌리면 이 트리거가 막는다.
-  **이 실패 경로는 고치지 않고 테스트로 문서화한다**(issue 완료 조건 그대로).
-- `AnswerRepository`는 JPA 구현(`JpaAnswerRepository`)이고 `save(Answer)`가
-  기존 id로 upsert하므로, `answerRepository.save(answer.hide(at))` 형태로
-  기존 `save`를 그대로 재사용한다 — 신규 리포지토리 메서드는 필요 없다(확인
-  완료).
-- 전역 숨김 시 그 답변을 가리키던 기존 `notification` 행을
-  `NotificationStatus.REVOKED`로 전이. `NotificationRepository`에 해당
-  리포지토리 메서드가 없음을 확인 — 신규 추가(예: `revokeByAnswerId(long
-  answerId, Instant at)`).
-
-### 3. 결과 알림 (outbox fan-out)
-
-- §"Scope decision"의 내부 전용 서비스 메서드 안에서, `ReportCase`가
-  `RESOLVED`로 전이하는 같은 트랜잭션에 배선한다.
-- `SafetyRepository`에 `findReportsByCaseId(long caseId)` 신규 추가 — 사건에
-  묶인 신고 전체를 찾아 **신고 1건당 outbox 이벤트 1개**를 발행한다(사건
-  1개가 아니라 신고자 수만큼). 현재 이런 조회 메서드가 없음을 확인했다.
-- `dedup_key = "report-resolved:" + reportId`, payload에 대상·작성자
-  식별자를 넣지 않는다(`INV-RPT-005`와 같은 원칙 — #154 참고).
-- `ReportResolutionFanOutWorker`(신규) — `RecipientNotificationFanOutWorker`
-  (`notification/fanout/RecipientNotificationFanOutWorker.java`, 확인 완료)
-  와 같은 claim(`outboxEventRepository.claimDue`)·트랜잭션·
-  lease-fencing(`hasLeaseIdentity`)·재시도(`OutboxRetryPolicy`)·stale 처리
-  골격을 따른다.
-- **선호 설정 예외**: `RecipientNotificationFanOutWorker`는 `isPreferenceEnabled`
-  가 알림 생성 자체를 게이트하지만, `ReportResolutionFanOutWorker`는 다르게
-  동작해야 한다 — 인앱 `notification` 행은 항상
-  `notificationRepository.saveIfAbsent(...)`로 생성하고, `isPreferenceEnabled`
-  는 `notification_delivery`(push) 행 생성 여부만 게이트한다. 이 편차를
-  구현에서 반드시 지킨다.
-- worker를 두 번 실행해도 알림이 중복되지 않아야 한다 — `notification`의
-  `UNIQUE (recipient_id, dedup_key)`와 `notification_delivery`의
-  `UNIQUE (notification_id, push_device_id)`를 그대로 활용
-  (`saveIfAbsent`/`saveDeliveryIfAbsent` 패턴, 확인 완료).
+1. **읽음 모델은 두 계층이다**(§5). 점은 `notification_seen_state.seen_at`, 줄은
+   `notification.status`·`read_at`. 하나로 합치면 알림함을 한 번 여는 순간 모든 줄이
+   `READ`가 되어 어떤 줄이 새 것이었는지 잃는다. `seen_at`은 `GREATEST`로만 전진한다
+   (#170 `advanceAnswersReadAt`과 같은 계약).
+2. **알림함은 `notification`이 소유한다**(§6.1). 알림 6종 중 4종이 방향 수신함과
+   무관하므로 `feed`에 두면 N2에서 `feed → question`·`feed → safety` 참조가 새로 생긴다.
+3. **계정 자격 게이트는 복제하지 않고 승격한다**(§6.2, §15.3 S1). 승격된 게이트는
+   `Account requireActiveUser(long, Supplier<RuntimeException> notFound,
+   Supplier<RuntimeException> notEligible)` 형태로, 호출부가 던질 예외를 직접 넘긴다.
+   `account`가 어떤 오류 코드 체계도 알 필요가 없고 `AccountErrorCode`에 403 코드를
+   새로 만들지 않아도 된다. `feed` 어댑터는 기존 `void require(long)` 시그니처를
+   유지하므로 `InboxApplicationService`·`FeedInteractionApplicationService` 호출부는
+   바뀌지 않고, `FED-APP-001`·`FED-APP-002` 응답 계약도 그대로다.
+4. **대상 생존 판정은 목록과 진입 두 자리에 둔다**(§7.1). 목록에서 끝내면 알림함을 열고
+   수분 뒤 톱할 때의 만료를 놓치고, 목록에서 생략하면 만료된 줄을 표시할 수 없다.
+   두 자리가 같은 판정 규칙을 쓰고 진입 API가 한 줄만 재판정한다.
+5. **판정 우선순위는 `GONE > BLOCKED > HIDDEN > EXPIRED > AVAILABLE`**(§7.2).
+   삭제된 대상에 차단 이유를 노출하면 상대의 차단 사실이 새어 나간다.
+6. **`REVOKED`·`DISMISSED` 줄은 목록에서 제외한다**(§7.2). `ANSWER_REPORT_DESIGN.md`
+   §5.4의 전역 숨김 트랜잭션이 만드는 `REVOKED`는 "볼 수 없게 된 대상"이 아니라
+   "회수된 기록"이다.
+7. **cursor는 불투명 토큰이 아니라 명시적 두 파라미터다**(§8.2, #170 결정 2). 두
+   파라미터는 함께 지정하거나 함께 생략한다. 한쪽만 오면 `NOT-VAL-007`.
+   `limit` 기본 20·상한 50, `nextCursor`는 반환 건수가 `limit`과 같을 때만 채운다.
+8. **응답에 본문·닉네임·계정 식별자·위치를 싣지 않는다**(§8.2). 알림 문구는 6종 모두
+   익명이므로 `type`만으로 클라이언트가 조립한다. F07의 잠금화면 규칙과 기존 수신함
+   규칙을 알림함까지 같은 기준으로 올린다.
+9. **남의 알림은 존재를 노출하지 않고 404**(§8.5, `NOT-DOM-004`).
+10. **preference는 푸시만 막고 기록은 남긴다**(§10). 차단은 알림함 줄도 만들지 않는
+    것이 맞고 preference는 성격이 다르다. 둘을 한 게이트에 묶어 둔 것이 결함이었다.
+11. **`unreadCount`는 정확한 수를 반환하고 절단은 클라이언트가 한다**(§12-1 확정).
+    `notification_recipient_feed_idx` 부분 인덱스가 `COUNT`를 커버하고, 초기 사용량에서
+    미읽음이 수백 건까지 쌓이지 않는다. 서버 절단이 필요해지면 응답에 필드를 더하는
+    후속 변경으로 처리한다.
+12. **목록의 `state`에도 `BLOCKED`를 싣는다**(§11-1 확정). 목록 쿼리에 `user_block`
+    `EXISTS` 2개가 붙는다. `limit` 상한 50과 부분 인덱스로 제한하고 통합 테스트에서
+    실행 계획을 확인한다. 인덱스가 선택되지 않으면 차단 판정을 진입 API로만 옮기는
+    대안이 있으며, 그 전환은 별도 결정으로 기록한다.
 
 ## Explicit exclusions
 
-- 자동 전역 숨김의 임계값 결정(R04). 이 이슈는 운영자 조치와 판정에 의한
-  숨김만 배선한다 — 임계값 기반 자동 숨김 트리거는 만들지 않는다.
-- 심각도 산출, 대기열 라우팅, 운영자 판정 REST API(#156). 내부 서비스
-  메서드까지만 만들고 그 메서드를 호출하는 API·인증·권한 로직은 만들지
+- **묶음 표시**(`새 답변 4개`) — [E] `#180`. `uq_notification_recipient_dedup`이
+  1행=1알림을 강제하므로 묶음은 표시 계층이 아니라 발행 계층의 설계 대상이다.
+  N1의 목록은 1행=1줄이다.
+- **알림 설정 조회·변경** — [C] `#178`. 이 이슈는 preference를 읽지도 않는다.
+- **푸시 토큰 등록과 발송 파이프라인, 잠금화면 문구** — [D] `#179`.
+- **카드 배지와 탭 상단 카운터** — [F] `#181`.
+- **fan-out 확장**(`ANSWER_RECEIVED`, `ANSWER_REACTED`, `QUESTION_PROPOSAL_REVIEWED`,
+  `QUESTION_RECOMMENDED` 소비자) — [B] `#177`. N1 완료 후에도 알림함에는
+  `DIRECTION_POST_RECEIVED` 한 종류만 실린다.
+- **워커 주기 실행 활성화** — [G] `#182`. 저장소 전체에 `@Scheduled`가 0개이고 이는
+  의도된 관례다(`RecipientExpirationSweepWorker` 주석). N1은 `@Scheduled`를 추가하지
   않는다.
-- Slack 보조 알림(#111 범위).
-- API 변경 없음 — issue 본문의 "백엔드 영향" 절대로 REST 계층은 손대지
-  않는다(기존 조회 결과만 달라진다).
+- **`notification.report_id` 컬럼과 `REPORT` 대상 매핑** — `#155`가 소유한다.
+  `NotificationTargetKind`에 자리만 열어 두고 값은 추가하지 않는다.
+- **알림 삭제·전체 읽음 버튼, `DISMISSED` 전이 UI** — F07에 없다.
+- **알림 보존 기간 정책**(§12-4) — N1 범위 밖. `UNKNOWN`으로 남긴다.
 - 인프라 apply, 배포, 프로덕션 변경은 별도 승인 없이는 실행하지 않는다.
 - Secret, 계정 식별자, 토큰, `.env` 값은 기록하지 않는다.
+
+## Open questions
+
+- **§12-3 `fallback = INBOX`의 착지점** — 만료된 수신 질문글 알림을 톱했을 때 수신함
+  목록으로 보낼지 만료 상세로 보낼지는 디자인 결정이다. `UNKNOWN`. 서버는
+  `fallback` 값만 반환하고 라우팅은 클라이언트가 정하므로 이 이슈를 막지 않는다.
+- **§12-2 방해 금지 시간의 저장 위치** — `notification_preference` PK가
+  `(notification_type, user_id)`라 `quiet_start`/`quiet_end`가 종별로 6벌 생긴다.
+  F07은 사용자당 한 쌍이다. `BLOCKED`: N3(`#178`) 설계에서 결정한다. N1은 건드리지
+  않는다.
 
 ## Ownership
 
 | Area | Owner | Required review |
 | --- | --- | --- |
-| `ContentSuppressionSql`, 5개 조회 지점 반영, `Answer.hide/restore`, 리포지토리 확장, `NotificationRepository` REVOKE 확장, 내부 사건 종결 서비스 메서드, `ReportResolutionFanOutWorker`, 단위·통합 테스트 | Feature executor | `INV-RPT-006`·`008` 검증, `RecipientNotificationFanOutWorker` 골격과의 일관성 리뷰, `assert_answer_has_content` 실패 경로 테스트 리뷰, #154 `ReportCase`/`Report.attachToCase` 계약과의 호환성 리뷰 |
+| `notification.view`·`repository`·`service`·`web` 신규, `V23` 마이그레이션, `NotificationErrorCode` 확장 | Feature executor | 남의 알림에 닿는 경로가 없는지(404, 존재 비노출), `REVOKED`·`DISMISSED`가 목록에서 빠지는지, `seen` 반복·역순 호출이 기준선을 되돌리지 않는지, 응답에 본문·닉네임·계정 식별자·위치가 실리지 않는지, `targetState` 우선순위가 차단 사실을 새게 하지 않는지 |
+| `AccountEligibilityGate` 승격과 `feed` 번역 어댑터 | Feature executor | `FED-APP-001`·`FED-APP-002` 응답 계약 불변, `account → feed` 역방향 의존 부재 |
+| `RecipientNotificationFanOutWorker` preference 게이트 재배치 | Feature executor | preference off에서 `notification` 1건·`notification_delivery` 0건, 차단 게이트는 그대로 알림 자체를 막는지, 기존 테스트 3종의 계약 변경이 PR에 명시됐는지 |
 
 ## Existing user-owned changes
 
-- `git status --short` 결과: `docs/reports/harness/` (2026-08-18 작성된
-  하네스 엔지니어링 감사 보고서, untracked) — 이번 작업과 무관한 이전 세션
-  산출물이라 그대로 보존했다(worktree 정리를 위해 잠시 stash했다가 새
-  branch로 전환 직후 복원, 삭제하지 않음).
-- `main`(`#154` 병합 이후, `origin/main` 최신 커밋 `5309cc3a`)에서 새로
-  분기했다.
+- `origin/main`(`028a863`)에서 새로 분기했다. 분기 시점의 유일한 미추적 파일은
+  `docs/product/NOTIFICATION_INBOX_DESIGN.md`이며, `./harness start`가 clean worktree를
+  요구해 잠시 옮겼다가 브랜치 생성 후 같은 경로에 되돌렸다. 내용은 바뀌지 않았다.
+
+## Contract changes to existing tests
+
+preference 게이트 재배치로 "preference off면 아무것도 생기지 않음"이 "알림함 행은
+생기고 `delivery`만 0건"으로 바뀐다. 아래 3종을 갱신하고 PR 본문에 계약 변경을
+명시한다.
+
+- `src/test/java/.../notification/fanout/RecipientNotificationFanOutWorkerTest.java`
+- `src/integrationTest/java/.../NotificationFanOutPersistenceIntegrationTest.java`
+- `src/integrationTest/java/.../RecipientNotificationFanOutWorkerIntegrationTest.java`
 
 ## Validation
 
 ```bash
-./gradlew test --tests "com.dnd.qello.safety.*" --console=plain
 ./gradlew test --tests "com.dnd.qello.notification.*" --console=plain
-./gradlew test --tests "com.dnd.qello.answer.*" --console=plain
-./gradlew integrationTest --tests "com.dnd.qello.*Report*" --console=plain
-./gradlew integrationTest --tests "com.dnd.qello.*Suppress*" --console=plain
-./harness test-run --id <TEST-PLAN-ID>
+./gradlew test --tests "com.dnd.qello.feed.*" --console=plain
+./gradlew test --tests "com.dnd.qello.account.*" --console=plain
+./gradlew integrationTest --tests "com.dnd.qello.Notification*" --console=plain
+./gradlew integrationTest --tests "com.dnd.qello.Inbox*" --console=plain
+./gradlew integrationTest --tests "com.dnd.qello.OpenApiSpecificationIntegrationTest" --console=plain
+./harness test-run --id TEST-PLAN-GH-176-NOTIFICATION-INBOX-READ
 ./harness check
 ./harness pr-ready --project-tests
+npm run hooks:validate
 git diff --check
 ```
 
 ## Completion criteria
 
-- [x] 답변 목록 길이와 `answer_count`가 항상 일치한다 — 신고자 한정 숨김과
-      전역 숨김 각각에서(`INV-RPT-006`) — `ReportSuppressionIntegrationTest`
-      INT-001/002, `AnswerGlobalHideIntegrationTest` INT-006.
-- [x] `unread_answer_count`도 같은 규칙으로 감소한다 —
-      `ReportSuppressionIntegrationTest` INT-003/004,
-      `AnswerGlobalHideIntegrationTest` INT-007. (`InboxQuerySql.SELECT_CHIP_AGGREGATE`
-      수신함 방향 칩 집계는 방향별 질문글 수를 세지 개별 답변을 세지 않으므로
-      신고·숨김된 답변 하나 때문에 그 질문글 전체가 칩 집계에서 빠질 이유가
-      없다 — 이 집계는 이번 억제 규칙의 대상이 아님을 코드로 확인했다.)
-- [x] 전역 숨김된 답변을 가리키던 기존 알림이 `REVOKED`다 —
-      `AnswerGlobalHideIntegrationTest#globalHideRevokesExistingNotification`
-      (INT-008).
-- [x] 사건 종결 시 신고자 수만큼 outbox 이벤트가 생기고 fan-out 후 알림이
-      신고자당 1건이다(`INV-RPT-008`) —
-      `ReportResolutionIntegrationTest` INT-011, INT-013.
-- [x] worker를 두 번 실행해도 알림이 중복되지 않는다 —
-      `ReportResolutionIntegrationTest#fanOutIsIdempotentAcrossReruns`
-      (INT-014).
-- [x] 푸시 선호가 꺼져 있어도 인앱 알림 행은 생성된다 —
-      `ReportResolutionIntegrationTest#inAppNotificationIsCreatedEvenWhenPushPreferenceDisabled`
-      (INT-015).
-- [x] 숨김 기간에 미디어가 정리된 답변의 복원이 `assert_answer_has_content`로
-      실패하는 경로가 테스트로 문서화돼 있다 —
-      `AnswerGlobalHideIntegrationTest#restoringContentlessAnswerAfterMediaCleanupFails`
-      (INT-010).
-- [x] 실행하지 못한 검증과 남은 위험을 보고서에 기록한다 — 상세는
-      `docs/reports/tests/gh-155-TEST-PLAN-GH-155-REPORT-SUPPRESSION-NOTIFICATIONS.md`
-      §1·§6·§7 참고. 인덱스 실행 계획 미검증과 접수·종결 동시 조합 미검증은
-      이 이슈 완료 조건 밖으로 판단해 후속 이슈 없이 기록만 남겼다.
-
-## Implementation notes (2026-08-19)
-
-- 사건 종결은 REST API 없이 내부 전용 메서드
-  (`SafetyCaseResolutionService.resolveCase`)로만 노출했다 — 사용자 승인
-  받은 Scope decision과 일치. `#156`이 이후 운영자 API에서 이 메서드를
-  호출한다.
-- `Notification` 도메인 레코드에 `reportId` 필드를 추가하면서(V19가 이미
-  추가한 `notification.report_id` 컬럼을 처음으로 실제 사용) 기존 생성자
-  호출부 10곳을 함께 갱신했다. 전체 단위(672)·통합(521) 테스트 모두 통과.
-- `V21__add_report_reporter_answer_suppression_index.sql` 추가로
-  `FlywayMigrationContractTest`·`FlywayMigrationIntegrationTest`의 마이그레이션
-  개수·이름 하드코딩이 깨져 함께 갱신했다(이 저장소의 기존 관례 — 다음
-  마이그레이션 작업자도 유의).
-- 전역 숨김(`Answer.hide`)과 알림 REVOKE 부수효과는 `resolveCase`(판정
-  ACTIONED)를 통해서만 배선했다 — 이슈 본문의 "운영자 조치와 판정에 의한
-  숨김만 배선한다"는 제약과 일치. `Answer.hide`를 다른 경로에서 직접
-  호출해도 알림은 REVOKE되지 않는다 — 통합 테스트 작성 중 이 커플링을
-  실제로 발견하고 테스트를 재설계했다(보고서 §6 참고).
-- 새 `SafetyErrorCode.PAYLOAD_SERIALIZATION_FAILED`(`SAF-INFRA-003`) 1개를
-  추가했다 — outbox payload 직렬화 실패를 기존 코드로 표현할 수 없었다.
+- [x] 엔드포인트 5개가 동작하고 `docs/api/openapi.json`에 반영된다.
+- [x] 남의 알림 조회와 읽음이 `NOT-DOM-004`(404)를 반환하고 존재를 노출하지 않는다.
+- [x] `REVOKED`·`DISMISSED` 줄이 목록과 미읽음 카운트에 실리지 않는다.
+- [x] `PUT /notifications/seen`을 반복·역순 호출해도 `notification_seen_state.seen_at`이
+      뒤로 가지 않는다.
+- [x] `PUT /notifications/{id}/read`가 멱등이고, `REVOKED` 줄에는 `NOT-DOM-003`(409)이다.
+- [x] `targetState`가 만료·삭제·운영 숨김·차단을
+      `GONE > BLOCKED > HIDDEN > EXPIRED > AVAILABLE` 우선순위로 판정한다.
+- [x] 목록 cursor 페이징이 같은 `created_at` 다건에서도 정렬이 안정적이고 중복·누락이 없다.
+- [x] 목록 쿼리가 `notification_recipient_feed_idx`를 사용한다(통합 테스트에서 실행 계획 확인).
+- [x] preference가 꺼진 사용자에게 `notification` 1건이 생기고 `notification_delivery`는 0건이다.
+- [x] 차단 관계가 있으면 preference와 무관하게 `notification` 행 자체가 생기지 않는다.
+- [x] `FED-APP-001`·`FED-APP-002` 응답이 게이트 승격 후에도 바뀌지 않는다.
+- [x] 응답에 질문·답변 본문, 닉네임, 계정 식별자, 정확 위치, 대략 지역·거리가 실리지 않는다.
+- [x] 모든 테스트에 `@DisplayName`과 클래스 헤더(ISO 8601 생성 시각, `Source scenario`)가 있다.
+- [ ] `./harness check`와 `./harness pr-ready --project-tests`가 통과한다. (`test-run` 실행 중)
