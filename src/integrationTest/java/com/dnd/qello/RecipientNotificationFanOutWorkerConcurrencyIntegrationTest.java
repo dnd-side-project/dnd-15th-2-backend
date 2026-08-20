@@ -226,7 +226,12 @@ class RecipientNotificationFanOutWorkerConcurrencyIntegrationTest
 		runCommittedChangeBeforeWorker(post, "before-post", () -> jdbc.update(
 			"UPDATE direction_post SET status = 'HIDDEN' WHERE id = ?", post.postId()));
 
-		List.of(preference, block, status, account, post).forEach(fixture -> {
+		// #176 결정 10: preference는 delivery만 억제한다. 다른 네 축(block·status·account·
+		// post)은 여전히 알림함 행 자체를 막지만, preference가 fan-out 이전에 이미
+		// disabled였던 이 fixture는 알림함 행이 생기고 delivery만 0건이다.
+		assertFanOut(preference, 1, 0);
+		assertSource(preference.sourceIds().get(0), OutboxStatus.PROCESSED, 1, 1);
+		List.of(block, status, account, post).forEach(fixture -> {
 			assertFanOut(fixture, 0, 0);
 			assertSource(fixture.sourceIds().get(0), OutboxStatus.PROCESSED, 1, 1);
 		});
@@ -258,7 +263,14 @@ class RecipientNotificationFanOutWorkerConcurrencyIntegrationTest
 		runChangeAfterEligibilityRead(post, "after-post", () -> jdbc.update(
 			"UPDATE direction_post SET status = 'HIDDEN' WHERE id = ?", post.postId()));
 
-		List.of(preference, block, account, post).forEach(fixture -> {
+		// #176 결정 10: preference read가 notification INSERT 이후(persistPendingDeliveries
+		// 직전)로 옮겨졌으므로, 이 gate 시점(= notification INSERT 직전에서 재개)에서는
+		// 이미 disable이 commit된 뒤라 delivery가 억제된다. block·account·post는 여전히
+		// isEligible 시점(= notification INSERT 이전)에서 스냅숏을 읽으므로 이 event에는
+		// 영향이 없다.
+		assertFanOut(preference, 1, 0);
+		assertSource(preference.sourceIds().get(0), OutboxStatus.PROCESSED, 1, 1);
+		List.of(block, account, post).forEach(fixture -> {
 			assertFanOut(fixture, 1, 1);
 			assertSource(fixture.sourceIds().get(0), OutboxStatus.PROCESSED, 1, 1);
 		});
