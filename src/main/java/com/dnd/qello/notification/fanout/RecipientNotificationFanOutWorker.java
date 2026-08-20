@@ -127,7 +127,7 @@ public class RecipientNotificationFanOutWorker {
 		if (!hasDeliverableRecipientStatus(recipient)) return;
 
 		FanOutTarget target = new FanOutTarget(recipient, loadPost(recipient));
-		if (!isEligible(target, at)) return;
+		if (!isRecordable(target, at)) return;
 
 		persistFanOut(event, target, at);
 	}
@@ -159,12 +159,12 @@ public class RecipientNotificationFanOutWorker {
 	}
 
 	/**
-	 * preference는 여기서 검사하지 않는다(#176 결정 10). 차단·계정·만료는 알림함 기록
-	 * 자체를 막아야 하지만, preference는 푸시 전달만 막아야 한다 — 사용자가 알림을
-	 * 전부 꺼도 알림함은 채워진다. preference 검사는 {@link #persistPendingDeliveries}
-	 * 직전으로 옮겼다.
+	 * 알림함에 기록을 남길지 판정한다(#176 결정 10). preference는 여기서 검사하지
+	 * 않는다 — 차단·계정·만료는 기록 자체를 막아야 하지만, preference는 푸시 전달
+	 * 자격({@link #isDeliverable})만 막아야 한다. 사용자가 알림을 전부 꺼도 알림함은
+	 * 채워진다.
 	 */
-	private boolean isEligible(FanOutTarget target, Instant at) {
+	private boolean isRecordable(FanOutTarget target, Instant at) {
 		if (!isDeliverablePost(target.post(), at)) return false;
 		if (!bothAccountsAreActive(target)) return false;
 		return hasNoActiveBlock(target);
@@ -198,7 +198,8 @@ public class RecipientNotificationFanOutWorker {
 			.isPresent();
 	}
 
-	private boolean isPreferenceEnabled(long recipientId) {
+	/** 알림함 기록과 별개로, 이 수신자에게 실제로 푸시를 시도해도 되는지 판정한다. */
+	private boolean isPushEnabled(long recipientId) {
 		return notificationRepository.isPreferenceEnabled(recipientId, FAN_OUT_TYPE);
 	}
 
@@ -223,7 +224,7 @@ public class RecipientNotificationFanOutWorker {
 
 	/** preference가 꺼져 있으면 알림함 행은 이미 만들어졌어도 delivery는 만들지 않는다. */
 	private void persistPendingDeliveries(long notificationId, long recipientId, Instant at) {
-		if (!isPreferenceEnabled(recipientId)) return;
+		if (!isPushEnabled(recipientId)) return;
 		for (long deviceId : notificationRepository.findActiveDeviceIdsByUserId(recipientId)) {
 			notificationRepository.saveDeliveryIfAbsent(NotificationDelivery.pending(notificationId, deviceId, at));
 		}
