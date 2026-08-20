@@ -1,6 +1,7 @@
 package com.dnd.qello.question.repository.jpa;
 
 import java.util.List;
+import java.util.Optional;
 
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,6 +23,11 @@ public class JpaQuestionAssignmentRepository implements QuestionAssignmentReposi
 	@Transactional
 	public QuestionAssignment save(QuestionAssignment assignment) {
 		return QuestionJpaMapper.toDomain(repository.saveAndFlush(QuestionJpaMapper.toEntity(assignment)));
+	}
+
+	@Override
+	public Optional<QuestionAssignment> findById(long id) {
+		return repository.findById(id).map(QuestionJpaMapper::toDomain);
 	}
 
 	@Override

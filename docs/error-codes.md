@@ -239,10 +239,18 @@
 | `NOT-VAL-003` | INVALID_TEXT | 400 | VAL | 알림 문자열 값이 올바르지 않습니다. |
 | `NOT-VAL-004` | INVALID_PAYLOAD | 400 | VAL | 이벤트 payload 형식이 올바르지 않습니다. |
 | `NOT-VAL-005` | INVALID_VALUE_RANGE | 400 | VAL | 알림 값이 허용 범위를 벗어났습니다. |
+| `NOT-VAL-006` | INVALID_LIMIT | 400 | VAL | limit 값이 올바르지 않습니다. |
+| `NOT-VAL-007` | INVALID_CURSOR | 400 | VAL | cursor 파라미터가 올바르지 않습니다. |
 | `NOT-DOM-001` | INVALID_NOTIFICATION_TARGET | 400 | DOM | 알림 대상이 올바르지 않습니다. |
 | `NOT-DOM-002` | INVALID_NOTIFICATION_STATE | 400 | DOM | 알림 상태와 값이 맞지 않습니다. |
 | `NOT-DOM-003` | INVALID_NOTIFICATION_STATUS | 409 | DOM | 현재 알림 상태로는 요청을 처리할 수 없습니다. |
+| `NOT-DOM-004` | NOTIFICATION_NOT_FOUND | 404 | DOM | 알림을 찾을 수 없습니다. |
+| `NOT-APP-001` | ACCOUNT_NOT_FOUND | 404 | APP | 계정을 찾을 수 없습니다. |
+| `NOT-APP-002` | ACCOUNT_NOT_ELIGIBLE | 403 | APP | 알림함을 사용할 수 없는 계정입니다. |
 | `NOT-INFRA-001` | DUPLICATED_EVENT | 409 | INFRA | 이미 처리된 알림입니다. |
+
+`NOT-DOM-004`는 알림이 없는 경우와 남의 알림인 경우를 구분하지 않는다 — 남의
+`notificationId`로 존재 여부를 추정할 수 없게 한다.
 
 ## 12. auth (AUT)
 

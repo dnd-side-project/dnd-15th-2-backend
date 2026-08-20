@@ -1,7 +1,8 @@
 /**
  * Created at: 2026-08-19T15:16:05+09:00
  * Source scenario: TEST-PLAN-GH-170-FEED-READ-INTERACTION-API-UNIT-017,
- * UNIT-018, UNIT-019
+ * UNIT-018, UNIT-019, TEST-PLAN-GH-177-NOTIFICATION-FANOUT-EXPANSION-UNIT-016,
+ * UNIT-017, UNIT-018, UNIT-019
  */
 package com.dnd.qello.answer.service;
 
@@ -21,6 +22,7 @@ import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -35,6 +37,10 @@ import com.dnd.qello.answer.repository.AnswerReactionRepository;
 import com.dnd.qello.answer.repository.AnswerRepository;
 import com.dnd.qello.direction.domain.PostRecipient;
 import com.dnd.qello.feed.service.PostAnswerQueryService;
+import com.dnd.qello.notification.domain.OutboxAggregateType;
+import com.dnd.qello.notification.domain.OutboxEvent;
+import com.dnd.qello.notification.domain.OutboxEventType;
+import com.dnd.qello.notification.repository.OutboxEventRepository;
 
 @ExtendWith(MockitoExtension.class)
 class AnswerReactionServiceTest {
@@ -50,6 +56,7 @@ class AnswerReactionServiceTest {
 	@Mock private AnswerRepository answerRepository;
 	@Mock private com.dnd.qello.direction.repository.PostRecipientRepository recipientRepository;
 	@Mock private PostAnswerQueryService postAnswerQueryService;
+	@Mock private OutboxEventRepository outboxEventRepository;
 	@Mock private PlatformTransactionManager transactionManager;
 
 	@InjectMocks private AnswerReactionService service;
@@ -79,6 +86,26 @@ class AnswerReactionServiceTest {
 		assertThat(service.react(ANSWER_ID, REACTOR_ID, AT)).isEqualTo(1L);
 
 		verify(reactionRepository).react(any(AnswerReaction.class));
+	}
+
+	@Test
+	@DisplayName("새 답변 공감은 ANSWER_REACTED outbox event를 같은 저장 경계에서 발행한다")
+	void reactPublishesAnswerReactedEventWhenReactionIsCreated() {
+		givenEligibleReactor();
+		givenReactionTransactionRunsInline();
+		when(reactionRepository.findByAnswerIdAndReactorId(ANSWER_ID, REACTOR_ID)).thenReturn(Optional.empty());
+		when(reactionRepository.countByAnswerId(ANSWER_ID)).thenReturn(1L);
+		when(outboxEventRepository.findByDedupKey(any())).thenReturn(Optional.empty());
+
+		service.react(ANSWER_ID, REACTOR_ID, AT);
+
+		ArgumentCaptor<OutboxEvent> events = ArgumentCaptor.forClass(OutboxEvent.class);
+		verify(outboxEventRepository).save(events.capture());
+		assertThat(events.getValue().aggregateType()).isEqualTo(OutboxAggregateType.ANSWER);
+		assertThat(events.getValue().aggregateId()).isEqualTo(ANSWER_ID);
+		assertThat(events.getValue().eventType()).isEqualTo(OutboxEventType.ANSWER_REACTED);
+		assertThat(events.getValue().dedupKey()).isEqualTo("answer-reacted:91:7:2026-08-19T06:00:00Z");
+		assertThat(events.getValue().payload()).contains("\"answerId\":91").contains("\"reactorId\":7");
 	}
 
 	@Test

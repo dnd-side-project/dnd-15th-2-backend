@@ -142,8 +142,12 @@ public class JdbcNotificationRepository implements OutboxEventRepository, Notifi
 
     @Override
     public boolean update(Notification notification) {
+        // status를 조건에 두어 동시 요청 중 하나만 UNREAD -> READ 전이를 반영하게 한다.
+        // 조건이 없으면 나중에 커밋된 요청의 이른 read_at이 먼저 커밋된 요청의 늦은
+        // read_at을 덮어쓰거나, 동시에 REVOKED로 전이된 행을 READ로 되돌릴 수 있다.
         return jdbc.update("""
-                UPDATE notification SET status = :status, read_at = :readAt WHERE id = :id
+                UPDATE notification SET status = :status, read_at = :readAt
+                WHERE id = :id AND status = 'UNREAD'
                 """, new MapSqlParameterSource().addValue("status", notification.status().name())
                 .addValue("readAt", timestamp(notification.readAt())).addValue("id", notification.id())) == 1;
     }

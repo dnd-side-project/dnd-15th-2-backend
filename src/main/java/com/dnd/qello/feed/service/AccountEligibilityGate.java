@@ -2,32 +2,31 @@ package com.dnd.qello.feed.service;
 
 import org.springframework.stereotype.Component;
 
-import com.dnd.qello.account.domain.Account;
-import com.dnd.qello.account.domain.AccountRole;
-import com.dnd.qello.account.domain.AccountStatus;
-import com.dnd.qello.account.repository.AccountRepository;
 import com.dnd.qello.feed.error.FeedErrorCode;
 import com.dnd.qello.feed.error.FeedException;
 
 import lombok.RequiredArgsConstructor;
 
 /**
- * feed 하위 application service가 공유하는 계정 자격 게이트(ACTIVE USER)다.
- * 수신함과 새 읽기·상호작용 경로가 각자 이 검사를 구현하면 기준이 갈라진다 —
- * {@link InboxApplicationService}와 {@link FeedInteractionApplicationService}가
- * 이 한 곳만 호출한다.
+ * feed 하위 application service가 공유하는 계정 자격 게이트(ACTIVE USER) 어댑터다.
+ * 실제 판정은 {@link com.dnd.qello.account.service.AccountEligibilityGate}에 있다 —
+ * 승격된 게이트가 한 곳에만 있어야 기준이 갈라지지 않는다(#170 결정 7). 이 어댑터는
+ * feed 오류 코드로 번역만 하고, 기존 {@code require(long)} 시그니처를 유지해
+ * {@link InboxApplicationService}와 {@link FeedInteractionApplicationService}의
+ * 호출부를 바꾸지 않는다.
  */
-@Component
+// 빈 이름이 account.service.AccountEligibilityGate와 같은 단순 클래스명으로 충돌하므로
+// 명시적으로 구분한다.
+@Component("feedAccountEligibilityGate")
 @RequiredArgsConstructor
 class AccountEligibilityGate {
 
-	private final AccountRepository accountRepository;
+	private final com.dnd.qello.account.service.AccountEligibilityGate delegate;
 
 	void require(long accountId) {
-		Account account = accountRepository.findById(accountId)
-			.orElseThrow(() -> new FeedException(FeedErrorCode.INBOX_ACCOUNT_NOT_FOUND));
-		if (account.getRole() != AccountRole.USER || account.getStatus() != AccountStatus.ACTIVE) {
-			throw new FeedException(FeedErrorCode.INBOX_ACCOUNT_NOT_ELIGIBLE);
-		}
+		delegate.requireActiveUser(
+			accountId,
+			() -> new FeedException(FeedErrorCode.INBOX_ACCOUNT_NOT_FOUND),
+			() -> new FeedException(FeedErrorCode.INBOX_ACCOUNT_NOT_ELIGIBLE));
 	}
 }
