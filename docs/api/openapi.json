@@ -1231,13 +1231,13 @@
       },
       "Cursor" : {
         "properties" : {
-          "createdAt" : {
-            "format" : "date-time",
-            "type" : "string"
-          },
-          "notificationId" : {
+          "postId" : {
             "format" : "int64",
             "type" : "integer"
+          },
+          "submittedAt" : {
+            "format" : "date-time",
+            "type" : "string"
           }
         },
         "type" : "object"
@@ -1695,10 +1695,23 @@
         },
         "type" : "object"
       },
+      "NotificationCursor" : {
+        "properties" : {
+          "createdAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "notificationId" : {
+            "format" : "int64",
+            "type" : "integer"
+          }
+        },
+        "type" : "object"
+      },
       "NotificationListingResponse" : {
         "properties" : {
           "nextCursor" : {
-            "$ref" : "#/components/schemas/Cursor"
+            "$ref" : "#/components/schemas/NotificationCursor"
           },
           "notifications" : {
             "items" : {
