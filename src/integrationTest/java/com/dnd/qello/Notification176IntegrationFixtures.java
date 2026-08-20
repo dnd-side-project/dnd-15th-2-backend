@@ -42,7 +42,11 @@ final class Notification176IntegrationFixtures {
 	}
 
 	void reset() {
-		jdbc.update("DELETE FROM notification_delivery");
+		jdbc.update("""
+			DELETE FROM notification_delivery WHERE notification_id IN (
+				SELECT id FROM notification WHERE recipient_id IN (
+					SELECT id FROM user_account WHERE coarse_region_code = ?))
+			""", REGION);
 		jdbc.update("DELETE FROM notification_seen_state WHERE user_id IN (SELECT id FROM user_account WHERE coarse_region_code = ?)", REGION);
 		jdbc.update("DELETE FROM notification WHERE recipient_id IN (SELECT id FROM user_account WHERE coarse_region_code = ?)", REGION);
 		jdbc.update("DELETE FROM outbox_event WHERE aggregate_type = 'POST_RECIPIENT' AND dedup_key LIKE 'gh176-%'");
