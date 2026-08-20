@@ -1,6 +1,6 @@
 /**
  * Created at: 2026-08-20T15:12:00+09:00
- * Source scenario: TEST-PLAN-GH-176-NOTIFICATION-INBOX-READ-INT-030
+ * Source scenario: TEST-PLAN-GH-176-NOTIFICATION-INBOX-READ-INT-030, INT-031
  */
 package com.dnd.qello;
 
@@ -18,10 +18,14 @@ import com.dnd.qello.feed.error.FeedErrorCode;
 import com.dnd.qello.feed.error.FeedException;
 import com.dnd.qello.feed.service.InboxApplicationService;
 import com.dnd.qello.feed.view.InboxCategory;
+import com.dnd.qello.notification.error.NotificationErrorCode;
+import com.dnd.qello.notification.error.NotificationException;
+import com.dnd.qello.notification.service.NotificationInboxService;
 
 /**
  * account.service로 승격된 AccountEligibilityGate가 feed의 기존
- * FED-APP-001·FED-APP-002 응답 계약을 바꾸지 않는지 확인한다.
+ * FED-APP-001·FED-APP-002 응답 계약을 바꾸지 않고, notification에도 같은 게이트가
+ * NOT-APP-001·NOT-APP-002로 정확히 번역되는지 확인한다.
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -33,6 +37,8 @@ class AccountEligibilityGateIntegrationTest extends PostgisContainerIntegrationT
 	private JdbcTemplate jdbc;
 	@Autowired
 	private InboxApplicationService inbox;
+	@Autowired
+	private NotificationInboxService notificationInbox;
 
 	@BeforeEach
 	void resetFixtures() {
@@ -78,6 +84,26 @@ class AccountEligibilityGateIntegrationTest extends PostgisContainerIntegrationT
 		assertThatThrownBy(() -> inbox.list(blockedId, InboxCategory.UNANSWERED, null))
 			.isInstanceOf(FeedException.class)
 			.hasFieldOrPropertyWithValue("errorCode", FeedErrorCode.INBOX_ACCOUNT_NOT_ELIGIBLE);
+	}
+
+	@Test
+	@DisplayName("존재하지 않는 계정은 알림함 경로에서 NOT-APP-001(404)을 반환한다")
+	void unknownAccountReturnsNotApp001() {
+		long unknownAccountId = 987_654_322L;
+
+		assertThatThrownBy(() -> notificationInbox.list(unknownAccountId, null, null, 20))
+			.isInstanceOf(NotificationException.class)
+			.hasFieldOrPropertyWithValue("errorCode", NotificationErrorCode.ACCOUNT_NOT_FOUND);
+	}
+
+	@Test
+	@DisplayName("OPERATOR 역할 계정은 알림함 경로에서 NOT-APP-002(403)을 반환한다")
+	void operatorAccountReturnsNotApp002() {
+		long operatorId = account("gate176-notif-operator", "OPERATOR", "ACTIVE");
+
+		assertThatThrownBy(() -> notificationInbox.list(operatorId, null, null, 20))
+			.isInstanceOf(NotificationException.class)
+			.hasFieldOrPropertyWithValue("errorCode", NotificationErrorCode.ACCOUNT_NOT_ELIGIBLE);
 	}
 
 	private long account(String nickname, String role, String status) {

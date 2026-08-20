@@ -1,12 +1,14 @@
 /**
  * Created at: 2026-08-20T16:20:00+09:00
  * Source scenario: TEST-PLAN-GH-176-NOTIFICATION-INBOX-READ-INT-013 through
- * INT-017
+ * INT-017, INT-019 through INT-021
  */
 package com.dnd.qello;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.Optional;
 
@@ -20,10 +22,14 @@ import org.springframework.test.context.ActiveProfiles;
 
 import com.dnd.qello.notification.domain.Notification;
 import com.dnd.qello.notification.domain.NotificationStatus;
+import com.dnd.qello.notification.error.NotificationErrorCode;
+import com.dnd.qello.notification.error.NotificationException;
 import com.dnd.qello.notification.repository.NotificationInboxQueryRepository;
 import com.dnd.qello.notification.repository.NotificationRepository;
 import com.dnd.qello.notification.repository.NotificationSeenStateRepository;
 import com.dnd.qello.notification.repository.OutboxEventRepository;
+import com.dnd.qello.notification.service.NotificationInboxService;
+import com.dnd.qello.notification.view.NotificationCard;
 
 @SpringBootTest
 @ActiveProfiles("test")
@@ -41,10 +47,13 @@ class NotificationInboxCommandIntegrationTest extends PostgisContainerIntegratio
 	private NotificationInboxQueryRepository queryRepository;
 	@Autowired
 	private NotificationSeenStateRepository seenStateRepository;
+	@Autowired
+	private NotificationInboxService inboxService;
 
 	private Notification176IntegrationFixtures fixtures;
 	private long senderId;
 	private long recipientId;
+	private long outsiderId;
 
 	@BeforeEach
 	void resetFixtures() {
@@ -52,6 +61,7 @@ class NotificationInboxCommandIntegrationTest extends PostgisContainerIntegratio
 		fixtures.reset();
 		senderId = fixtures.account("gh176-cmd-sender");
 		recipientId = fixtures.account("gh176-cmd-recipient");
+		outsiderId = fixtures.account("gh176-cmd-outsider");
 	}
 
 	@Test
@@ -120,5 +130,61 @@ class NotificationInboxCommandIntegrationTest extends PostgisContainerIntegratio
 
 		assertThat(result).isEqualTo(later);
 		assertThat(seenStateRepository.findSeenAt(recipientId)).contains(later);
+	}
+
+	@Test
+	@DisplayName("INT-019 markRead를 두 번 호출해도 두 번째 호출이 read_at을 바꾸지 않는다")
+	void markReadTwiceKeepsFirstReadAt() {
+		long postId = fixtures.activePost(senderId, "int019", NOW.plusSeconds(3600));
+		Notification created = fixtures.directionPostNotification(recipientId, postId, NOW);
+
+		NotificationCard first = inboxService.markRead(recipientId, created.id());
+		Instant firstReadAt = readAtOf(created.id());
+		NotificationCard second = inboxService.markRead(recipientId, created.id());
+		Instant secondReadAt = readAtOf(created.id());
+
+		assertThat(first.readAt()).isNotNull();
+		assertThat(secondReadAt).isEqualTo(firstReadAt);
+		assertThat(second.readAt()).isEqualTo(first.readAt());
+	}
+
+	@Test
+	@DisplayName("INT-020 REVOKED 알림을 읽음 처리하면 NOT-DOM-003이고 status는 REVOKED로 남는다")
+	void markReadOnRevokedNotificationLeavesStatusUnchanged() {
+		long postId = fixtures.activePost(senderId, "int020", NOW.plusSeconds(3600));
+		Notification created = fixtures.directionPostNotification(recipientId, postId, NOW);
+		fixtures.withStatus(created, NotificationStatus.REVOKED, null);
+
+		assertThatThrownBy(() -> inboxService.markRead(recipientId, created.id()))
+			.isInstanceOf(NotificationException.class)
+			.hasFieldOrPropertyWithValue("errorCode", NotificationErrorCode.INVALID_NOTIFICATION_STATUS);
+
+		String status = jdbc.queryForObject(
+			"SELECT status FROM notification WHERE id = ?", String.class, created.id());
+		assertThat(status).isEqualTo("REVOKED");
+	}
+
+	@Test
+	@DisplayName("INT-021 남의 알림을 markRead하면 NOT-DOM-004이고 그 행의 status·read_at은 그대로다")
+	void markReadOnUnownedNotificationHasNoSideEffect() {
+		long postId = fixtures.activePost(senderId, "int021", NOW.plusSeconds(3600));
+		Notification owned = fixtures.directionPostNotification(recipientId, postId, NOW);
+
+		assertThatThrownBy(() -> inboxService.markRead(outsiderId, owned.id()))
+			.isInstanceOf(NotificationException.class)
+			.hasFieldOrPropertyWithValue("errorCode", NotificationErrorCode.NOTIFICATION_NOT_FOUND);
+
+		String status = jdbc.queryForObject(
+			"SELECT status FROM notification WHERE id = ?", String.class, owned.id());
+		Timestamp readAt = jdbc.queryForObject(
+			"SELECT read_at FROM notification WHERE id = ?", Timestamp.class, owned.id());
+		assertThat(status).isEqualTo("UNREAD");
+		assertThat(readAt).isNull();
+	}
+
+	private Instant readAtOf(long notificationId) {
+		Timestamp readAt = jdbc.queryForObject(
+			"SELECT read_at FROM notification WHERE id = ?", Timestamp.class, notificationId);
+		return readAt == null ? null : readAt.toInstant();
 	}
 }
