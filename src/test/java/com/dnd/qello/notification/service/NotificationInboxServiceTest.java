@@ -205,7 +205,7 @@ class NotificationInboxServiceTest {
 		Notification unowned = notification(NotificationStatus.UNREAD, null);
 		when(notificationRepository.findById(NOTIFICATION_ID)).thenReturn(Optional.of(
 			new Notification(unowned.id(), 999L, unowned.outboxEventId(), unowned.notificationType(),
-				unowned.dedupKey(), unowned.directionPostId(), unowned.answerId(), unowned.status(),
+				unowned.dedupKey(), unowned.directionPostId(), unowned.answerId(), unowned.reportId(), unowned.status(),
 				unowned.createdAt(), unowned.readAt())));
 
 		assertThatThrownBy(() -> service.markRead(RECIPIENT_ID, NOTIFICATION_ID))
@@ -251,7 +251,7 @@ class NotificationInboxServiceTest {
 
 	private static Notification notification(NotificationStatus status, Instant readAt) {
 		return new Notification(NOTIFICATION_ID, RECIPIENT_ID, 1L, NotificationType.DIRECTION_POST_RECEIVED,
-			"gh176-unit-dedup", 771L, null, status, NOW.minusSeconds(120), readAt);
+			"gh176-unit-dedup", 771L, null, null, status, NOW.minusSeconds(120), readAt);
 	}
 
 	private static NotificationCard card() {

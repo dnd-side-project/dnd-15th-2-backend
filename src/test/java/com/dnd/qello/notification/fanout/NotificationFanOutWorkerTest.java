@@ -268,7 +268,7 @@ class NotificationFanOutWorkerTest {
 	}
 
 	private static Notification notification(long id, long recipientId, NotificationType type, String dedupKey) {
-		return new Notification(id, recipientId, 1L, type, dedupKey, null, null,
+		return new Notification(id, recipientId, 1L, type, dedupKey, null, null, null,
 			com.dnd.qello.notification.domain.NotificationStatus.UNREAD, NOW, null);
 	}
 

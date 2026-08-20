@@ -70,7 +70,7 @@
 
 ### Infrastructure and resource limits
 
-- 특이사항 없음. `V23`은 신규 테이블 1개와 부분 인덱스 1개만 추가한다.
+- 특이사항 없음. `V24`는 신규 테이블 1개와 부분 인덱스 1개만 추가한다.
 
 ### Database and migrations
 

@@ -189,27 +189,27 @@ final class Notification176IntegrationFixtures {
 	Notification directionPostNotification(long recipientId, long directionPostId, Instant createdAt) {
 		return notifications.saveIfAbsent(new Notification(
 			null, recipientId, sourceEventId(), NotificationType.DIRECTION_POST_RECEIVED, nextDedupKey(),
-			directionPostId, null, NotificationStatus.UNREAD, createdAt, null));
+			directionPostId, null, null, NotificationStatus.UNREAD, createdAt, null));
 	}
 
 	/** ANSWER 대상 알림. N1이 소비자를 만들지 않는 타입(ANSWER_RECEIVED 등)의 목록·판정 동작만 확인하는 용도다. */
 	Notification answerNotification(long recipientId, long answerId, Instant createdAt) {
 		return notifications.saveIfAbsent(new Notification(
 			null, recipientId, sourceEventId(), NotificationType.ANSWER_RECEIVED, nextDedupKey(),
-			null, answerId, NotificationStatus.UNREAD, createdAt, null));
+			null, answerId, null, NotificationStatus.UNREAD, createdAt, null));
 	}
 
 	/** 대상 없는 알림(NONE). #177 이전에는 ANSWER_REACTED 등 5종이 전부 이 모양이다. */
 	Notification targetlessNotification(long recipientId, NotificationType type, Instant createdAt) {
 		return notifications.saveIfAbsent(new Notification(
 			null, recipientId, sourceEventId(), type, nextDedupKey(),
-			null, null, NotificationStatus.UNREAD, createdAt, null));
+			null, null, null, NotificationStatus.UNREAD, createdAt, null));
 	}
 
 	Notification withStatus(Notification notification, NotificationStatus status, Instant readAt) {
 		Notification updated = new Notification(
 			notification.id(), notification.recipientId(), notification.outboxEventId(), notification.notificationType(),
-			notification.dedupKey(), notification.directionPostId(), notification.answerId(), status,
+			notification.dedupKey(), notification.directionPostId(), notification.answerId(), notification.reportId(), status,
 			notification.createdAt(), readAt);
 		notifications.update(updated);
 		return updated;

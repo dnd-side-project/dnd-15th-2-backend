@@ -26,7 +26,8 @@
    이 이슈를 막지 않는 것으로 판정(§12 참조)
 
 §2의 실측은 2026-08-20 `origin/main`(`028a863`)에서 재확인했다. 마이그레이션 최신은
-`V22`이므로 `V23` 자리가 비어 있고, `NotificationErrorCode`에 `NOT-APP-*`·`NOT-VAL-006`·
+`V23`은 신고자 답변 집계 제외 인덱스가 사용하므로, 알림함 읽음 상태는 `V24`로 둔다.
+`NotificationErrorCode`에 `NOT-APP-*`·`NOT-VAL-006`·
 `NOT-VAL-007`이 없으며, `feed.service.AccountEligibilityGate`는 여전히 package-private
 `void require(long)`이고, `RecipientNotificationFanOutWorker.isEligible`이 여전히
 `isPreferenceEnabled`를 물고 있다. 설계의 전제가 모두 유효하다.
@@ -307,7 +308,7 @@ cursor는 불투명 토큰이 아니라 명시적 두 파라미터다 — 정렬
 
 ## 9. 스키마 변경
 
-`V23__add_notification_inbox_read_state.sql`
+`V24__add_notification_inbox_read_state.sql`
 
 ```sql
 CREATE TABLE notification_seen_state (
@@ -549,7 +550,7 @@ NotificationInboxService → NotificationException(NOT-APP-001) / NotificationEx
 #### S2 — 스키마
 
 ```text
-+ src/main/resources/db/migration/V23__add_notification_inbox_read_state.sql
++ src/main/resources/db/migration/V24__add_notification_inbox_read_state.sql
 ```
 
 내용은 §9 그대로다. `notification_seen_state` 테이블과

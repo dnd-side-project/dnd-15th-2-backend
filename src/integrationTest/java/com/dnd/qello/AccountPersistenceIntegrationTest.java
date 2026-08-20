@@ -116,7 +116,7 @@ class AccountPersistenceIntegrationTest extends PostgisContainerIntegrationTestS
 		// migration이 먼저 적용된 뒤 이 테스트가 실행되므로 V14~V19가 만든 테이블도
 		// 이 count에 포함된다.
 		// + operator_action_audit(V20, #113 — 운영자 행위 감사 원장)
-		// + notification_seen_state(V23, #176 — 알림함 열람 기준선)
+		// + notification_seen_state(V24, #176 — 알림함 열람 기준선)
 		assertThat(applicationTableCount).isEqualTo(50);
 	}
 

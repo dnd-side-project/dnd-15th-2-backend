@@ -161,7 +161,7 @@ public class NotificationFanOutWorker {
 
 	private Notification newNotification(OutboxEvent event, FanOutInstruction instruction, Instant at) {
 		return new Notification(null, instruction.recipientId(), event.id(), instruction.notificationType(),
-			instruction.dedupKey(), null, instruction.answerId(), NotificationStatus.UNREAD, at, null);
+			instruction.dedupKey(), null, instruction.answerId(), null, NotificationStatus.UNREAD, at, null);
 	}
 
 	private long requireNotificationId(Notification notification) {

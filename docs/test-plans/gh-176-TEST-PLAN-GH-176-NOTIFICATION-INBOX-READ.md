@@ -31,7 +31,7 @@
 - `notification.service.NotificationInboxService`의 인가·검증·시각 처리
 - `notification.repository`의 cursor 페이징, 대상 상태 판정 SQL, `seen_at` upsert
 - `notification.view` 불변식
-- `V23__add_notification_inbox_read_state.sql` 적용과
+- `V24__add_notification_inbox_read_state.sql` 적용과
   `notification_recipient_feed_idx` 사용 여부
 - `account.service.AccountEligibilityGate` 승격 후 `FED-APP-001`·`FED-APP-002` 불변
 - `RecipientNotificationFanOutWorker`의 preference 게이트 재배치와 그로 인해 계약이
@@ -86,7 +86,7 @@
 | R12 목록 쿼리가 `notification_recipient_feed_idx`를 쓰지 않는다 | 알림이 쌓일수록 목록이 느려진다 | 중 | P1 | `EXPLAIN` 결과에 인덱스 이름 |
 | R13 `limit`·cursor 검증이 controller와 service로 갈라진다 | `#177` 이후 진입점이 늘면 검증이 새 경로에서만 빠진다 | 중 | P1 | service 계층 단독 호출에서 검증 동작 |
 | R14 `hasUnseen`과 `unreadCount`의 기준이 같아진다 | 알림함을 열어도 점이 안 사라지거나, 카운터가 0이 된다 | 중 | P1 | 두 값이 갈리는 상태를 만들어 동시 확인 |
-| R15 `V23` 부분 인덱스의 술어와 쿼리 술어가 어긋난다 | 인덱스가 있어도 선택되지 않는다 | 중 | P1 | R12와 같은 증거로 확인 |
+| R15 `V24` 부분 인덱스의 술어와 쿼리 술어가 어긋난다 | 인덱스가 있어도 선택되지 않는다 | 중 | P1 | R12와 같은 증거로 확인 |
 
 ## 5. Unit scenarios
 
@@ -169,7 +169,7 @@ HTTP 계약은 UNIT-016~018이 담당한다.
 - `markRead`는 조회와 상태 전이가 같은 트랜잭션이어야 INT-021의 "거부 전 부작용
   없음"이 성립한다.
 - `notification_seen_state`의 FK는 `ON DELETE CASCADE`다. 계정 삭제 시 기준선이 함께
-  사라지는 것이 의도인지 INT 시나리오에서는 다루지 않되, `V23` 적용 후
+  사라지는 것이 의도인지 INT 시나리오에서는 다루지 않되, `V24` 적용 후
   `FlywayMigrationIntegrationTest`가 통과하는지 확인한다.
 - 목록 쿼리의 상태 술어(`status IN ('UNREAD','READ')`)와 부분 인덱스의 술어가
   문자열 수준에서 같아야 한다(R15). INT-024가 이 어긋남을 잡는다.
@@ -197,7 +197,7 @@ HTTP 계약은 UNIT-016~018이 담당한다.
   `RecipientNotificationFanOutWorkerConcurrencyIntegrationTest`와 `OutboxLease
   IntegrationTest`가 이미 덮는다. preference 게이트 이동이 그 경로를 건드리지
   않는지 확인하기 위해 두 테스트를 **수정 없이 재실행**하는 것을 검증에 포함한다.
-- `V23`은 테이블·인덱스 추가만 하므로 롤백 시나리오가 없다. 되돌리려면 `DROP`이고
+- `V24`는 테이블·인덱스 추가만 하므로 롤백 시나리오가 없다. 되돌리려면 `DROP`이고
   데이터 손실은 읽음 기준선뿐이다 — 다음 열람에서 복구된다. 이 사실을 테스트
   보고서에 기록한다.
 
