@@ -203,13 +203,14 @@ class RecipientNotificationFanOutWorkerTest {
 	}
 
 	@Test
-	@DisplayName("설정 행 없음과 활성 설정의 enabled 결과는 fan-out하고 비활성 설정은 성공 억제한다")
+	@DisplayName("설정 행 없음과 활성 설정은 delivery까지 만들고, 비활성 설정은 알림함 행은 만들되 delivery는 억제한다(#176)")
 	void appliesPreferenceDefaultAndSuppression() {
 		Context enabled = eligibleContext();
 		givenClaimed(enabled, confirmedEvent(1L, POST_RECIPIENT_ID, "{}"));
 		assertThat(enabled.worker.processBatch(command()).outcomes())
 			.containsExactly(RecipientNotificationFanOutWorker.Outcome.PROCESSED);
 		verify(enabled.notifications).saveIfAbsent(any(Notification.class));
+		verify(enabled.notifications).findActiveDeviceIdsByUserId(RECIPIENT_ID);
 
 		Context disabled = eligibleContext();
 		givenClaimed(disabled, confirmedEvent(2L, POST_RECIPIENT_ID, "{}"));
@@ -217,7 +218,11 @@ class RecipientNotificationFanOutWorkerTest {
 			NotificationType.DIRECTION_POST_RECEIVED)).thenReturn(false);
 		assertThat(disabled.worker.processBatch(command()).outcomes())
 			.containsExactly(RecipientNotificationFanOutWorker.Outcome.PROCESSED);
-		verify(disabled.notifications, never()).saveIfAbsent(any(Notification.class));
+		// #176 결정 10: preference는 delivery만 막는다. 차단·계정·만료와 달리 알림함
+		// 기록 자체는 preference와 무관하게 남아야 한다.
+		verify(disabled.notifications).saveIfAbsent(any(Notification.class));
+		verify(disabled.notifications, never()).findActiveDeviceIdsByUserId(RECIPIENT_ID);
+		verify(disabled.notifications, never()).saveDeliveryIfAbsent(any(NotificationDelivery.class));
 		verify(disabled.outbox).complete(2L, "notification-worker", 1L, NOW);
 	}
 

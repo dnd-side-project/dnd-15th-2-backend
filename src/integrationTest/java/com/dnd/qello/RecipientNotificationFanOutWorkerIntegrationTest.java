@@ -157,20 +157,22 @@ class RecipientNotificationFanOutWorkerIntegrationTest extends PostgisContainerI
 		assertThat(receiveStateSnapshot(fixture.recipientId())).isEqualTo(stateBefore);
 	}
 
-	@ParameterizedTest(name = "preference={0}, notification={1}")
+	@ParameterizedTest(name = "preference={0}, delivery={1}")
 	@MethodSource("preferenceCases")
-	@DisplayName("설정 행 없음과 enabled는 fan-out하고 disabled는 알림 없이 source만 완료한다")
-	void appliesPreferenceDefaultAndSuppression(Boolean preference, long expectedNotifications) {
+	@DisplayName("설정 행 없음과 enabled·disabled 모두 알림함 행은 1건 만들고, delivery는 disabled에서만 억제한다(#176)")
+	void appliesPreferenceDefaultAndSuppression(Boolean preference, long expectedDeliveries) {
 		Fixture fixture = fixture("int002-" + String.valueOf(preference), PostRecipientStatus.AVAILABLE);
 		if (preference != null) {
 			notifications.savePreference(new NotificationPreference(NotificationType.DIRECTION_POST_RECEIVED,
 				fixture.recipientId(), preference, null, null));
 		}
+		device(fixture.recipientId(), PushDeviceStatus.ACTIVE, "int002-device-" + String.valueOf(preference));
 
 		assertThat(worker.processBatch(command(10)).outcomes())
 			.containsExactly(RecipientNotificationFanOutWorker.Outcome.PROCESSED);
-		assertThat(notificationCount(fixture)).isEqualTo(expectedNotifications);
-		assertThat(deliveryCount(fixture)).isZero();
+		// #176 결정 10: preference와 무관하게 알림함 행은 항상 1건 생긴다.
+		assertThat(notificationCount(fixture)).isEqualTo(1L);
+		assertThat(deliveryCount(fixture)).isEqualTo(expectedDeliveries);
 		assertThat(sourceStatus(fixture.sourceId())).isEqualTo(OutboxStatus.PROCESSED);
 	}
 
@@ -374,7 +376,9 @@ class RecipientNotificationFanOutWorkerIntegrationTest extends PostgisContainerI
 				RecipientNotificationFanOutWorker.Outcome.RETRYABLE,
 				RecipientNotificationFanOutWorker.Outcome.DEAD);
 		assertThat(notificationCount(normal)).isEqualTo(1);
-		assertThat(notificationCount(disabled)).isZero();
+		// #176 결정 10: preference disabled도 알림함 행은 만든다. delivery만 억제된다.
+		assertThat(notificationCount(disabled)).isEqualTo(1);
+		assertThat(deliveryCount(disabled)).isZero();
 		assertThat(notificationCount(retryable)).isZero();
 		assertThat(notificationCount(permanent)).isZero();
 		assertThat(sourceStatus(normal.sourceId())).isEqualTo(OutboxStatus.PROCESSED);

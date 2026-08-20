@@ -158,11 +158,16 @@ public class RecipientNotificationFanOutWorker {
 			.orElseThrow(() -> new PermanentFanOutException("direction post does not exist"));
 	}
 
+	/**
+	 * preference는 여기서 검사하지 않는다(#176 결정 10). 차단·계정·만료는 알림함 기록
+	 * 자체를 막아야 하지만, preference는 푸시 전달만 막아야 한다 — 사용자가 알림을
+	 * 전부 꺼도 알림함은 채워진다. preference 검사는 {@link #persistPendingDeliveries}
+	 * 직전으로 옮겼다.
+	 */
 	private boolean isEligible(FanOutTarget target, Instant at) {
 		if (!isDeliverablePost(target.post(), at)) return false;
 		if (!bothAccountsAreActive(target)) return false;
-		if (!hasNoActiveBlock(target)) return false;
-		return isPreferenceEnabled(target.recipientId());
+		return hasNoActiveBlock(target);
 	}
 
 	private boolean isDeliverablePost(DirectionPost post, Instant at) {
@@ -216,7 +221,9 @@ public class RecipientNotificationFanOutWorker {
 		return notification.id();
 	}
 
+	/** preference가 꺼져 있으면 알림함 행은 이미 만들어졌어도 delivery는 만들지 않는다. */
 	private void persistPendingDeliveries(long notificationId, long recipientId, Instant at) {
+		if (!isPreferenceEnabled(recipientId)) return;
 		for (long deviceId : notificationRepository.findActiveDeviceIdsByUserId(recipientId)) {
 			notificationRepository.saveDeliveryIfAbsent(NotificationDelivery.pending(notificationId, deviceId, at));
 		}
