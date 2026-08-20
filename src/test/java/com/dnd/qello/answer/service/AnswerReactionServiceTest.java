@@ -104,6 +104,7 @@ class AnswerReactionServiceTest {
 		assertThat(events.getValue().aggregateType()).isEqualTo(OutboxAggregateType.ANSWER);
 		assertThat(events.getValue().aggregateId()).isEqualTo(ANSWER_ID);
 		assertThat(events.getValue().eventType()).isEqualTo(OutboxEventType.ANSWER_REACTED);
+		assertThat(events.getValue().dedupKey()).isEqualTo("answer-reacted:91:7:2026-08-19T06:00:00Z");
 		assertThat(events.getValue().payload()).contains("\"answerId\":91").contains("\"reactorId\":7");
 	}
 

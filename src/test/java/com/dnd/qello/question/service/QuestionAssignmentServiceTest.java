@@ -74,5 +74,7 @@ class QuestionAssignmentServiceTest {
 		assertThat(events.getValue().aggregateId()).isEqualTo(30L);
 		assertThat(events.getValue().eventType()).isEqualTo(OutboxEventType.QUESTION_RECOMMENDED);
 		assertThat(events.getValue().dedupKey()).isEqualTo("question-recommended:30");
+		assertThat(events.getValue().payload()).isEqualTo("{\"assignmentId\":30}");
+		assertThat(events.getValue().createdAt()).isEqualTo(START);
 	}
 }

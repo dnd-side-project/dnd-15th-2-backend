@@ -28,6 +28,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.RecoverableDataAccessException;
 import org.springframework.dao.TransientDataAccessResourceException;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionStatus;
@@ -207,6 +208,26 @@ class NotificationFanOutWorkerTest {
 		when(accounts.findById(42L)).thenReturn(Optional.of(account(42L)));
 		when(notifications.saveIfAbsent(any(Notification.class)))
 			.thenThrow(new TransientDataAccessResourceException("connection reset"));
+		when(outbox.fail(anyLong(), any(String.class), anyLong(), any(Instant.class), any())).thenReturn(true);
+
+		assertThat(worker.processBatch(command()).outcomes())
+			.containsExactly(NotificationFanOutWorker.Outcome.RETRYABLE);
+	}
+
+	@Test
+	@DisplayName("recoverable data access 실패는 retry policy를 적용해 RETRYABLE로 분류한다")
+	void classifiesRecoverableStorageFailureAsRetryable() {
+		when(resolver.eventTypes()).thenReturn(Set.of(OutboxEventType.QUESTION_RECOMMENDED));
+		NotificationFanOutWorker worker = worker();
+		OutboxEvent event = claimedEvent(OutboxEventType.QUESTION_RECOMMENDED, 30L,
+			"{\"assignmentId\":30}");
+		when(outbox.claimDue(any(), any(Integer.class), any(String.class), any(Instant.class), any(Instant.class)))
+			.thenReturn(List.of(event));
+		when(resolver.resolve(event)).thenReturn(FanOutInstruction.notification(
+			NotificationType.QUESTION_RECOMMENDED, 42L, null, null, "question-recommended:30"));
+		when(accounts.findById(42L)).thenReturn(Optional.of(account(42L)));
+		when(notifications.saveIfAbsent(any(Notification.class)))
+			.thenThrow(new RecoverableDataAccessException("recoverable connection"));
 		when(outbox.fail(anyLong(), any(String.class), anyLong(), any(Instant.class), any())).thenReturn(true);
 
 		assertThat(worker.processBatch(command()).outcomes())

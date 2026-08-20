@@ -7,6 +7,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.dao.RecoverableDataAccessException;
 import org.springframework.dao.TransientDataAccessException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -33,6 +36,8 @@ import com.dnd.qello.safety.repository.SafetyRepository;
 
 @Service
 public class NotificationFanOutWorker {
+
+	private static final Logger log = LoggerFactory.getLogger(NotificationFanOutWorker.class);
 
 	private final OutboxEventRepository outboxEventRepository;
 	private final NotificationRepository notificationRepository;
@@ -92,6 +97,8 @@ public class NotificationFanOutWorker {
 		try {
 			return recordFailure(event, command.retryPolicy(), processingAt, failureKind(failure));
 		} catch (RuntimeException failureRecordingFailure) {
+			log.warn("Failed to record notification fan-out failure for event id={} type={}",
+				event.id(), event.eventType(), failureRecordingFailure);
 			return Outcome.FAILURE_RECORDING_FAILED;
 		}
 	}
@@ -187,9 +194,11 @@ public class NotificationFanOutWorker {
 	}
 
 	private OutboxFailureKind failureKind(RuntimeException failure) {
-		return failure instanceof TransientDataAccessException
-			? OutboxFailureKind.RETRYABLE
-			: OutboxFailureKind.PERMANENT;
+		if (failure instanceof TransientDataAccessException
+			|| failure instanceof RecoverableDataAccessException) {
+			return OutboxFailureKind.RETRYABLE;
+		}
+		return OutboxFailureKind.PERMANENT;
 	}
 
 	private static Map<OutboxEventType, NotificationFanOutResolver> indexResolvers(
