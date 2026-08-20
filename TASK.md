@@ -190,4 +190,4 @@ git diff --check
 - [x] `FED-APP-001`·`FED-APP-002` 응답이 게이트 승격 후에도 바뀌지 않는다.
 - [x] 응답에 질문·답변 본문, 닉네임, 계정 식별자, 정확 위치, 대략 지역·거리가 실리지 않는다.
 - [x] 모든 테스트에 `@DisplayName`과 클래스 헤더(ISO 8601 생성 시각, `Source scenario`)가 있다.
-- [ ] `./harness check`와 `./harness pr-ready --project-tests`가 통과한다. (`test-run` 실행 중)
+- [x] `./harness check`와 `./harness pr-ready --project-tests`가 통과한다.
