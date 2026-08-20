@@ -5,6 +5,8 @@ import java.util.List;
 
 import com.dnd.qello.notification.view.NotificationListing;
 
+import io.swagger.v3.oas.annotations.media.Schema;
+
 public record NotificationListingResponse(List<NotificationCardResponse> notifications, Cursor nextCursor) {
 
 	public NotificationListingResponse {
@@ -17,6 +19,7 @@ public record NotificationListingResponse(List<NotificationCardResponse> notific
 			listing.nextCursor() == null ? null : Cursor.from(listing.nextCursor()));
 	}
 
+	@Schema(name = "NotificationCursor")
 	public record Cursor(Instant createdAt, long notificationId) {
 		static Cursor from(NotificationListing.Cursor cursor) {
 			return new Cursor(cursor.createdAt(), cursor.notificationId());
