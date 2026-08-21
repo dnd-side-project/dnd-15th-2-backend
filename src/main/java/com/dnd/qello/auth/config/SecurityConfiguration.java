@@ -27,6 +27,7 @@ public class SecurityConfiguration {
 	public static final String LOGOUT_PATH = "/admin/logout";
 	public static final String CSRF_PATH = "/admin/csrf";
 	public static final String API_PATH = "/api/**";
+	public static final String OPERATOR_API_PATH = "/api/v1/operator/**";
 	public static final String DEVICE_REGISTRATION_PATH = "/api/v1/auth/devices";
 	public static final String DEVICE_TOKEN_PATH = "/api/v1/auth/token";
 	public static final String API_DOCS_PATH = "/v3/api-docs";
@@ -88,8 +89,35 @@ public class SecurityConfiguration {
 			.build();
 	}
 
+	// 이슈 #156 본문이 명시한 대로 /api/v1/operator/**를 쓰지만, 인증은 /api/**의
+	// JWT bearer(appApiSecurityFilterChain)가 아니라 백오피스와 같은 세션 기반이다
+	// (TASK.md Scope decision 2). API_PATH("/api/**")보다 더 구체적인 매처를 먼저
+	// 두지 않으면 appApiSecurityFilterChain이 이 경로까지 삼켜 앱 JWT로 운영자
+	// API에 접근할 수 있게 된다 — 그래서 @Order를 appApiSecurityFilterChain보다
+	// 앞세운다.
 	@Bean
 	@Order(2)
+	SecurityFilterChain operatorReportCaseSecurityFilterChain(HttpSecurity http) throws Exception {
+		return http
+			.securityMatcher(OPERATOR_API_PATH)
+			.sessionManagement(session -> session
+				.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))
+			.csrf(csrf -> csrf
+				// /admin/login이 발급한 세션의 CSRF 토큰을 그대로 재사용한다 — 별도
+				// 로그인 엔드포인트가 이 체인에는 없다.
+				.csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse()))
+			.authorizeHttpRequests(requests -> requests.anyRequest().hasRole("OPERATOR"))
+			.exceptionHandling(handling -> handling
+				.authenticationEntryPoint(authEntryPoints.unauthorized())
+				.accessDeniedHandler(authEntryPoints.forbidden()))
+			.formLogin(form -> form.disable())
+			.httpBasic(basic -> basic.disable())
+			.logout(logout -> logout.disable())
+			.build();
+	}
+
+	@Bean
+	@Order(3)
 	SecurityFilterChain appApiSecurityFilterChain(HttpSecurity http) throws Exception {
 		return http
 			.securityMatcher(API_PATH)
