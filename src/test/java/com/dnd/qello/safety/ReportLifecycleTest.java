@@ -32,10 +32,10 @@ class ReportLifecycleTest {
 	}
 
 	@Test
-	@DisplayName("ReportSubReason은 즉시 대응 항목 3종뿐이다")
-	void reportSubReasonHasExactlyThreeValues() {
+	@DisplayName("ReportSubReason은 즉시 대응 항목 4종뿐이다(#157: SELF_HARM_RISK 추가)")
+	void reportSubReasonHasExactlyFourValues() {
 		assertThat(ReportSubReason.values()).extracting(Enum::name)
-			.containsExactlyInAnyOrder("CSAM", "NCII", "CREDIBLE_THREAT");
+			.containsExactlyInAnyOrder("CSAM", "NCII", "CREDIBLE_THREAT", "SELF_HARM_RISK");
 	}
 
 	@Test
