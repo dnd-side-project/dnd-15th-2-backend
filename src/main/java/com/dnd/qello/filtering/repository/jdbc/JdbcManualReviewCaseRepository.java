@@ -93,6 +93,21 @@ public class JdbcManualReviewCaseRepository implements ManualReviewCaseRepositor
 	}
 
 	@Override
+	public Optional<ManualReviewCase> findLatestByTarget(FilterTarget target) {
+		return jdbc.query("""
+			SELECT * FROM manual_review_case
+			WHERE target_type = :targetType AND target_id = :targetId AND target_version = :targetVersion
+			ORDER BY created_at DESC, id DESC
+			LIMIT 1
+			""",
+			new MapSqlParameterSource()
+				.addValue("targetType", target.targetType().name())
+				.addValue("targetId", target.targetId())
+				.addValue("targetVersion", target.targetVersion()),
+			JdbcManualReviewCaseRepository::mapOptional);
+	}
+
+	@Override
 	public List<ManualReviewCase> findOpenQueue(Instant agedBeforeThreshold, int limit) {
 		if (limit <= 0) {
 			throw new FilteringException(FilteringErrorCode.INVALID_VALUE_RANGE, "limit", "limit은 양수여야 합니다");
