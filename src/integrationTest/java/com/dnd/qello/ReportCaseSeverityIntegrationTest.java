@@ -49,6 +49,7 @@ import com.dnd.qello.safety.domain.ReportReason;
 import com.dnd.qello.safety.domain.ReportSubReason;
 import com.dnd.qello.safety.domain.ReportSubmission;
 import com.dnd.qello.safety.repository.ReportCaseRepository;
+import com.dnd.qello.safety.service.ReportCaseAutoSuppressionEvaluator;
 import com.dnd.qello.safety.service.ReportOutcome;
 import com.dnd.qello.safety.service.SafetyReportService;
 
@@ -71,6 +72,8 @@ class ReportCaseSeverityIntegrationTest extends PostgisContainerIntegrationTestS
 	private FilterJobRepository filterJobRepository;
 	@Autowired
 	private ManualReviewCaseRepository manualReviewCaseRepository;
+	@Autowired
+	private ReportCaseAutoSuppressionEvaluator autoSuppressionEvaluator;
 
 	private long authorId;
 	private long senderId;
@@ -214,6 +217,28 @@ class ReportCaseSeverityIntegrationTest extends PostgisContainerIntegrationTestS
 		assertThat(resolved.status()).isEqualTo(ReportCaseStatus.RESOLVED);
 		Answer answer = answerRepository.findById(answerId).orElseThrow();
 		assertThat(answer.getStatus()).isEqualTo(AnswerStatus.HIDDEN);
+	}
+
+	@Test
+	@DisplayName("이미 종결된 사건에 자동 숨김 평가가 재호출돼도(동시 경합 재현) 예외 없이 멱등하게 넘어간다")
+	void autoSuppressionEvaluationIsIdempotentOnAlreadyResolvedCase() {
+		long answerId = publishedAnswer("gh156-int005-idempotent");
+		long caseId = -1;
+		for (int i = 0; i < 5; i++) {
+			long reporter = reporter("idempotent-reporter-" + i);
+			ReportOutcome outcome = safetyReportService.submitAnswerReport(
+				reporter, answerId, normalSubmission(), false, NOW.plusSeconds(i));
+			caseId = outcome.report().caseId();
+		}
+		assertThat(reportCaseRepository.findById(caseId).orElseThrow().status())
+			.isEqualTo(ReportCaseStatus.RESOLVED);
+
+		// 두 신고가 임계값 도달을 동시에 관측했다가 한쪽만 먼저 종결에 성공하는
+		// 경합을 재현한다 — 패자 쪽 evaluate() 재호출이 예외를 던지면 안 된다.
+		autoSuppressionEvaluator.evaluate(caseId, answerId, NOW.plusSeconds(100));
+
+		assertThat(reportCaseRepository.findById(caseId).orElseThrow().status())
+			.isEqualTo(ReportCaseStatus.RESOLVED);
 	}
 
 	@Test

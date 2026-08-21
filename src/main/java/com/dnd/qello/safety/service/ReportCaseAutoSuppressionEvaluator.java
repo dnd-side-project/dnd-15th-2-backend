@@ -18,6 +18,9 @@ import com.dnd.qello.safety.domain.AutoSuppressionPolicy;
 import com.dnd.qello.safety.domain.ModerationDecision;
 import com.dnd.qello.safety.domain.Report;
 import com.dnd.qello.safety.domain.ReportCase;
+import com.dnd.qello.safety.domain.ReportCaseStatus;
+import com.dnd.qello.safety.error.SafetyErrorCode;
+import com.dnd.qello.safety.error.SafetyException;
 import com.dnd.qello.safety.repository.ReportCaseRepository;
 import com.dnd.qello.safety.repository.SafetyRepository;
 
@@ -52,17 +55,38 @@ public class ReportCaseAutoSuppressionEvaluator {
 
 	public void evaluate(long caseId, Long answerId, Instant now) {
 		if (hasReachedDistinctReporterThreshold(caseId)) {
-			safetyCaseResolutionService.resolveCase(caseId, ModerationDecision.ACTIONED, now);
+			resolveIfStillOpen(caseId, now);
 			return;
 		}
 		if (answerId == null) {
 			return;
 		}
 		findAlreadyFlaggedManualReviewCase(answerId).ifPresent(manualReviewCase -> {
-			ReportCase current = reportCaseRepository.findById(caseId).orElseThrow();
-			reportCaseRepository.update(current.withLinkedManualReviewCase(manualReviewCase.id()));
-			safetyCaseResolutionService.resolveCase(caseId, ModerationDecision.ACTIONED, now);
+			// findByIdForUpdate로 잠근다 — 잠금 없이 읽으면 같은 사건을 동시에
+			// escalate()하는 다른 트랜잭션의 커밋을 이 update()가 통째로 덮어써
+			// 승격이 조용히 사라질 수 있다(escalateIfMoreSevere도 같은 잠금을 쓴다).
+			ReportCase locked = reportCaseRepository.findByIdForUpdate(caseId).orElseThrow();
+			if (locked.status() == ReportCaseStatus.RESOLVED) {
+				return;
+			}
+			reportCaseRepository.update(locked.withLinkedManualReviewCase(manualReviewCase.id()));
+			resolveIfStillOpen(caseId, now);
 		});
+	}
+
+	// 자동 숨김은 신고 접수 트랜잭션의 부수효과다 — 서로 다른 두 신고가 거의
+	// 동시에 같은 사건을 각자 종결 조건에 도달시키면 한쪽만 실제로 종결에
+	// 성공하고 다른 쪽은 REPORT_CASE_ALREADY_RESOLVED를 받는다. 이 경합은
+	// 자동 숨김의 목표(콘텐츠 숨김)가 이미 달성됐다는 뜻이라 조용히 넘어간다 —
+	// 그대로 전파하면 신고 접수 자체가 롤백돼 정상적인 신고까지 사라진다.
+	private void resolveIfStillOpen(long caseId, Instant now) {
+		try {
+			safetyCaseResolutionService.resolveCase(caseId, ModerationDecision.ACTIONED, now);
+		} catch (SafetyException exception) {
+			if (exception.getErrorCode() != SafetyErrorCode.REPORT_CASE_ALREADY_RESOLVED) {
+				throw exception;
+			}
+		}
 	}
 
 	private boolean hasReachedDistinctReporterThreshold(long caseId) {
