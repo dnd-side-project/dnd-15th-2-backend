@@ -2,7 +2,8 @@
  * Created at: 2026-08-07T22:20:16+09:00
  * Source scenario: TEST-PLAN-GH-82-OPENAPI-SPEC-INT-001 through INT-004,
  * TEST-PLAN-GH-121-ACTIVE-USER-PRESENCE-API-INT-011 (added 2026-08-14T00:51:11+09:00),
- * TEST-PLAN-GH-122-DIRECTION-PREVIEW-SUBMISSION-API-INT-019 (added 2026-08-14T12:27:28+09:00)
+ * TEST-PLAN-GH-122-DIRECTION-PREVIEW-SUBMISSION-API-INT-019 (added 2026-08-14T12:27:28+09:00),
+ * TEST-PLAN-GH-178-NOTIFICATION-PREFERENCES-INT-012 (added 2026-08-21T21:25:00+09:00)
  */
 package com.dnd.qello;
 
@@ -14,6 +15,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -200,6 +202,65 @@ class OpenApiSpecificationIntegrationTest extends PostgisContainerIntegrationTes
 		assertNoPrivateFields(operation);
 	}
 
+	@Test
+	@DisplayName("notification preference GET·PUT은 본인 전용 snapshot 계약과 6종 enum을 문서화한다")
+	void documentsNotificationPreferenceContract() throws Exception {
+		JsonNode specification = objectMapper.readTree(fetchSpecification());
+		JsonNode getOperation = operation(specification, "/api/v1/notifications/preferences", "get");
+		JsonNode putOperation = operation(specification, "/api/v1/notifications/preferences", "put");
+
+		assertThat(getOperation.isMissingNode()).isFalse();
+		assertAppAuthentication(getOperation);
+		assertResponses(getOperation, "200", "401", "403", "404");
+
+		JsonNode getSuccessEnvelope = resolveSchema(specification,
+			getOperation.at("/responses/200/content/application~1json/schema"));
+		JsonNode getResponseData = resolveSchema(specification, getSuccessEnvelope.at("/properties/data"));
+		assertThat(fieldNames(getResponseData))
+			.containsExactlyInAnyOrder("pushEnabled", "quietHours", "preferences", "inboxRecordingPolicy");
+		assertThat(enumValues(getResponseData.at("/properties/inboxRecordingPolicy")))
+			.containsExactly("ALWAYS_RECORD");
+		JsonNode responsePreferenceItemSchema = resolveSchema(specification,
+			getResponseData.at("/properties/preferences/items"));
+		assertThat(enumValues(responsePreferenceItemSchema.at("/properties/type")))
+			.containsExactly(
+				"ANSWER_RECEIVED",
+				"ANSWER_REACTED",
+				"DIRECTION_POST_RECEIVED",
+				"REPORT_RESOLVED",
+				"QUESTION_PROPOSAL_REVIEWED",
+				"QUESTION_RECOMMENDED");
+
+		assertThat(putOperation.isMissingNode()).isFalse();
+		assertAppAuthentication(putOperation);
+		assertResponses(putOperation, "200", "400", "401", "403", "404");
+
+		JsonNode requestSchema = resolveSchema(specification,
+			putOperation.at("/requestBody/content/application~1json/schema"));
+		assertThat(fieldNames(requestSchema))
+			.containsExactlyInAnyOrder("pushEnabled", "quietHours", "preferences");
+		assertThat(requiredFields(requestSchema)).containsExactlyInAnyOrder("pushEnabled", "preferences");
+
+		JsonNode quietHoursSchema = resolveSchema(specification, requestSchema.at("/properties/quietHours"));
+		assertThat(fieldNames(quietHoursSchema)).containsExactlyInAnyOrder("start", "end", "zoneId");
+		assertThat(requiredFields(quietHoursSchema)).containsExactlyInAnyOrder("start", "end", "zoneId");
+
+		JsonNode preferenceItemSchema = resolveSchema(specification,
+			requestSchema.at("/properties/preferences/items"));
+		assertThat(fieldNames(preferenceItemSchema)).containsExactlyInAnyOrder("type", "enabled");
+		assertThat(requiredFields(preferenceItemSchema)).containsExactlyInAnyOrder("type", "enabled");
+		assertThat(enumValues(preferenceItemSchema.at("/properties/type")))
+			.containsExactly(
+				"ANSWER_RECEIVED",
+				"ANSWER_REACTED",
+				"DIRECTION_POST_RECEIVED",
+				"REPORT_RESOLVED",
+				"QUESTION_PROPOSAL_REVIEWED",
+				"QUESTION_RECOMMENDED");
+		assertNoPrivateFields(getOperation);
+		assertNoPrivateFields(putOperation);
+	}
+
 	private JsonNode operation(JsonNode specification, String path, String method) {
 		// RFC 6901에서 path key의 slash만 escape한다. `{mediaId}`는 JSON Pointer에서
 		// 특별한 문자가 아니므로 그대로 둬야 springdoc 경로를 찾을 수 있다.
@@ -253,6 +314,18 @@ class OpenApiSpecificationIntegrationTest extends PostgisContainerIntegrationTes
 		Set<String> names = new java.util.LinkedHashSet<>();
 		schema.path("properties").fieldNames().forEachRemaining(names::add);
 		return names;
+	}
+
+	private Set<String> requiredFields(JsonNode schema) {
+		Set<String> names = new java.util.LinkedHashSet<>();
+		schema.path("required").forEach(node -> names.add(node.asText()));
+		return names;
+	}
+
+	private List<String> enumValues(JsonNode schema) {
+		List<String> values = new java.util.ArrayList<>();
+		schema.path("enum").forEach(node -> values.add(node.asText()));
+		return values;
 	}
 
 	/**

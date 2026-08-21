@@ -7,14 +7,17 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 
 import com.dnd.qello.common.openapi.OpenApiConfiguration;
 import com.dnd.qello.common.web.response.ApiErrorResponse;
 import com.dnd.qello.common.web.response.ApiResponse;
+import com.dnd.qello.notification.web.request.UpdateNotificationPreferencesRequest;
 import com.dnd.qello.notification.web.response.NotificationCardResponse;
 import com.dnd.qello.notification.web.response.NotificationListingResponse;
+import com.dnd.qello.notification.web.response.NotificationPreferenceResponse;
 import com.dnd.qello.notification.web.response.NotificationSeenResponse;
 import com.dnd.qello.notification.web.response.NotificationTargetResponse;
 import com.dnd.qello.notification.web.response.UnreadSignalResponse;
@@ -26,6 +29,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 
 @Tag(name = "알림함", description = "알림함 목록·미읽음 신호 조회, 열람 기준선 전진, 줄 단위 읽음, 진입 판정 (#176)")
 @SecurityRequirement(name = OpenApiConfiguration.APP_ACCESS_TOKEN_SCHEME)
@@ -61,6 +65,34 @@ public interface NotificationApiSpec {
 	})
 	@GetMapping("/notifications/unread-count")
 	ResponseEntity<ApiResponse<UnreadSignalResponse>> unreadCount(
+		@Parameter(hidden = true) Authentication authentication);
+
+	@Operation(
+		summary = "알림 설정 조회",
+		description = "인증 사용자 본인의 전역 push, 6종별 push, 방해 금지 시간과 알림함 원장 정책을 조회합니다.")
+	@ApiResponses({
+		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "현재 알림 설정 snapshot을 반환합니다."),
+		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "앱 액세스 토큰이 유효하지 않습니다.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
+		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "현재 계정은 알림함을 사용할 수 없습니다. (NOT-APP-002)", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
+		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "인증 사용자 계정을 찾을 수 없습니다. (NOT-APP-001)", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class)))
+	})
+	@GetMapping("/notifications/preferences")
+	ResponseEntity<ApiResponse<NotificationPreferenceResponse>> preferences(
+		@Parameter(hidden = true) Authentication authentication);
+
+	@Operation(
+		summary = "알림 설정 전체 교체",
+		description = "인증 사용자 본인의 전역 push, 6종별 push와 방해 금지 시간 snapshot을 완전 교체하고 canonical 응답을 반환합니다.")
+	@ApiResponses({
+		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "저장된 알림 설정 snapshot을 반환합니다."),
+		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "요청한 알림 설정 값이 계약을 만족하지 않습니다. (NOT-VAL-008)", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
+		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "앱 액세스 토큰이 유효하지 않습니다.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
+		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "현재 계정은 알림함을 사용할 수 없습니다. (NOT-APP-002)", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
+		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "인증 사용자 계정을 찾을 수 없습니다. (NOT-APP-001)", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class)))
+	})
+	@PutMapping("/notifications/preferences")
+	ResponseEntity<ApiResponse<NotificationPreferenceResponse>> replacePreferences(
+		@Valid @RequestBody(required = false) UpdateNotificationPreferencesRequest request,
 		@Parameter(hidden = true) Authentication authentication);
 
 	@Operation(
