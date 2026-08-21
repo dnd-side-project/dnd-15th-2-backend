@@ -6,8 +6,6 @@ import java.util.Optional;
 
 import com.dnd.qello.notification.domain.Notification;
 import com.dnd.qello.notification.domain.NotificationDelivery;
-import com.dnd.qello.notification.domain.NotificationPreference;
-import com.dnd.qello.notification.domain.NotificationType;
 import com.dnd.qello.notification.domain.PushDevice;
 
 public interface NotificationRepository {
@@ -37,8 +35,4 @@ public interface NotificationRepository {
 	PushDevice saveDevice(PushDevice device);
 
 	List<Long> findActiveDeviceIdsByUserId(long userId);
-
-	NotificationPreference savePreference(NotificationPreference preference);
-
-	boolean isPreferenceEnabled(long userId, NotificationType notificationType);
 }

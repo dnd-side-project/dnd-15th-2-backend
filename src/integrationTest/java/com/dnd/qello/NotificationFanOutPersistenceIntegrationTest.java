@@ -1,6 +1,7 @@
 /**
  * Created at: 2026-08-14T17:46:34+09:00
- * Source scenario: TEST-PLAN-GH-123-DIRECTION-NOTIFICATION-FANOUT-INT-020 through INT-023
+ * Source scenario: TEST-PLAN-GH-123-DIRECTION-NOTIFICATION-FANOUT-INT-020 through INT-023,
+ * TEST-PLAN-GH-178-NOTIFICATION-PREFERENCES-INT-013
  */
 package com.dnd.qello;
 
@@ -10,7 +11,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.EnumMap;
 import java.util.List;
+import java.util.Map;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -26,7 +29,6 @@ import com.dnd.qello.direction.domain.PostRecipient;
 import com.dnd.qello.direction.repository.PostRecipientRepository;
 import com.dnd.qello.notification.domain.Notification;
 import com.dnd.qello.notification.domain.NotificationDelivery;
-import com.dnd.qello.notification.domain.NotificationPreference;
 import com.dnd.qello.notification.domain.NotificationStatus;
 import com.dnd.qello.notification.domain.NotificationType;
 import com.dnd.qello.notification.domain.OutboxAggregateType;
@@ -35,6 +37,7 @@ import com.dnd.qello.notification.domain.OutboxEventType;
 import com.dnd.qello.notification.domain.PushDevice;
 import com.dnd.qello.notification.domain.PushDeviceStatus;
 import com.dnd.qello.notification.domain.PushPlatform;
+import com.dnd.qello.notification.repository.NotificationPreferenceRepository;
 import com.dnd.qello.notification.repository.NotificationRepository;
 import com.dnd.qello.notification.repository.OutboxEventRepository;
 
@@ -49,6 +52,8 @@ class NotificationFanOutPersistenceIntegrationTest extends PostgisContainerInteg
 	private JdbcTemplate jdbc;
 	@Autowired
 	private NotificationRepository notifications;
+	@Autowired
+	private NotificationPreferenceRepository preferences;
 	@Autowired
 	private OutboxEventRepository outboxEvents;
 	@Autowired
@@ -65,6 +70,7 @@ class NotificationFanOutPersistenceIntegrationTest extends PostgisContainerInteg
 	void resetFixtures() {
 		jdbc.update("DELETE FROM notification_delivery");
 		jdbc.update("DELETE FROM notification");
+		jdbc.update("DELETE FROM notification_user_setting");
 		jdbc.update("DELETE FROM notification_preference");
 		jdbc.update("DELETE FROM push_device");
 		jdbc.update("DELETE FROM post_recipient");
@@ -113,17 +119,29 @@ class NotificationFanOutPersistenceIntegrationTest extends PostgisContainerInteg
 	@DisplayName("알림 설정 행이 없으면 활성이고 저장된 enabled 값은 그대로 조회한다")
 	void readsAbsentPreferenceAsEnabled() {
 		long disabledUserId = account("gh123-disabled");
-		notifications.savePreference(new NotificationPreference(NotificationType.DIRECTION_POST_RECEIVED,
-			senderId, true, null, null));
-		notifications.savePreference(new NotificationPreference(NotificationType.DIRECTION_POST_RECEIVED,
-			disabledUserId, false, null, null));
+		preferences.replaceTypePreferences(senderId, typePreferences(NotificationType.DIRECTION_POST_RECEIVED, true));
+		preferences.replaceTypePreferences(disabledUserId,
+			typePreferences(NotificationType.DIRECTION_POST_RECEIVED, false));
 
-		assertThat(notifications.isPreferenceEnabled(recipientId,
+		assertThat(preferences.isPushEnabled(recipientId,
 			NotificationType.DIRECTION_POST_RECEIVED)).isTrue();
-		assertThat(notifications.isPreferenceEnabled(senderId,
+		assertThat(preferences.isPushEnabled(senderId,
 			NotificationType.DIRECTION_POST_RECEIVED)).isTrue();
-		assertThat(notifications.isPreferenceEnabled(disabledUserId,
+		assertThat(preferences.isPushEnabled(disabledUserId,
 			NotificationType.DIRECTION_POST_RECEIVED)).isFalse();
+	}
+
+	@Test
+	@DisplayName("V25 이후 전용 preference repository는 enabled를 저장하고 다시 읽을 수 있다")
+	void savesPreferenceEnabledRoundTripAfterV25() {
+		preferences.replaceTypePreferences(recipientId, typePreferences(NotificationType.ANSWER_RECEIVED, false));
+
+		assertThat(preferences.isPushEnabled(recipientId, NotificationType.ANSWER_RECEIVED)).isFalse();
+		assertThat(jdbc.queryForObject("""
+			SELECT enabled
+			FROM notification_preference
+			WHERE notification_type = 'ANSWER_RECEIVED' AND user_id = ?
+			""", Boolean.class, recipientId)).isFalse();
 	}
 
 	@Test
@@ -225,5 +243,14 @@ class NotificationFanOutPersistenceIntegrationTest extends PostgisContainerInteg
 
 	private String notificationDedupKey() {
 		return "direction-post-received:" + postRecipientId;
+	}
+
+	private Map<NotificationType, Boolean> typePreferences(NotificationType targetType, boolean enabled) {
+		EnumMap<NotificationType, Boolean> preferencesByType = new EnumMap<>(NotificationType.class);
+		for (NotificationType notificationType : NotificationType.values()) {
+			preferencesByType.put(notificationType, true);
+		}
+		preferencesByType.put(targetType, enabled);
+		return preferencesByType;
 	}
 }

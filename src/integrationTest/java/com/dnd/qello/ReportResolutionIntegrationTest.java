@@ -1,6 +1,7 @@
 /**
  * Created at: 2026-08-19T00:00:00+09:00
- * Source scenario: TEST-PLAN-GH-155-REPORT-SUPPRESSION-NOTIFICATIONS-INT-011 through INT-017
+ * Source scenario: TEST-PLAN-GH-155-REPORT-SUPPRESSION-NOTIFICATIONS-INT-011 through INT-017,
+ * TEST-PLAN-GH-178-NOTIFICATION-PREFERENCES-INT-008 through INT-009
  */
 package com.dnd.qello;
 
@@ -14,6 +15,7 @@ import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
@@ -21,10 +23,14 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Stream;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -34,13 +40,13 @@ import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 
 import com.dnd.qello.answer.domain.Answer;
 import com.dnd.qello.answer.repository.AnswerRepository;
-import com.dnd.qello.notification.domain.NotificationPreference;
 import com.dnd.qello.notification.domain.NotificationType;
 import com.dnd.qello.notification.domain.PushDevice;
 import com.dnd.qello.notification.domain.PushDeviceStatus;
 import com.dnd.qello.notification.domain.PushPlatform;
 import com.dnd.qello.notification.fanout.ReportResolutionFanOutWorker;
 import com.dnd.qello.notification.domain.OutboxRetryPolicy;
+import com.dnd.qello.notification.repository.NotificationPreferenceRepository;
 import com.dnd.qello.notification.repository.NotificationRepository;
 import com.dnd.qello.notification.repository.OutboxEventRepository;
 import com.dnd.qello.safety.domain.ModerationDecision;
@@ -78,6 +84,8 @@ class ReportResolutionIntegrationTest extends PostgisContainerIntegrationTestSup
 	private SafetyCaseResolutionService resolutionService;
 	@Autowired
 	private NotificationRepository notificationRepository;
+	@Autowired
+	private NotificationPreferenceRepository preferences;
 	@MockitoSpyBean
 	private OutboxEventRepository outboxEventRepository;
 	@Autowired
@@ -91,6 +99,7 @@ class ReportResolutionIntegrationTest extends PostgisContainerIntegrationTestSup
 		jdbc.update("TRUNCATE report_content_snapshot");
 		jdbc.update("DELETE FROM notification_delivery");
 		jdbc.update("DELETE FROM notification");
+		jdbc.update("DELETE FROM notification_user_setting");
 		jdbc.update("DELETE FROM notification_preference");
 		jdbc.update("DELETE FROM push_device");
 		jdbc.update("DELETE FROM outbox_event");
@@ -197,14 +206,14 @@ class ReportResolutionIntegrationTest extends PostgisContainerIntegrationTestSup
 		assertThat(deliveryCount(reporterA)).isEqualTo(deliveriesAfterFirst);
 	}
 
-	@Test
-	@DisplayName("INT-015: push 선호가 꺼져 있어도 인앱 알림 행은 생성되고 push 전달만 게이트된다")
-	void inAppNotificationIsCreatedEvenWhenPushPreferenceDisabled() {
+	@ParameterizedTest(name = "global={0}, type={1}")
+	@MethodSource("disabledPushGateCases")
+	@DisplayName("INT-015: global OFF 또는 type OFF여도 인앱 알림 행은 생성되고 push 전달만 게이트된다")
+	void inAppNotificationIsCreatedWhenPushGateDisablesDelivery(boolean globalEnabled, boolean typeEnabled) {
 		Fixture fixture = fixture();
 		long reporterA = account("reporterA");
 		device(reporterA);
-		notificationRepository.savePreference(
-			new NotificationPreference(NotificationType.REPORT_RESOLVED, reporterA, false, null, null));
+		savePushGate(reporterA, globalEnabled, typeEnabled);
 		long caseId = openCase(fixture.answerId());
 		attachReport(reporterA, fixture.answerId(), caseId);
 		resolutionService.resolveCase(caseId, ModerationDecision.NO_VIOLATION, NOW.plusSeconds(10));
@@ -297,6 +306,26 @@ class ReportResolutionIntegrationTest extends PostgisContainerIntegrationTestSup
 	private long device(long userId) {
 		return notificationRepository.saveDevice(new PushDevice(null, userId, PushPlatform.ANDROID,
 			new byte[] {1, 2}, "fingerprint-" + userId, PushDeviceStatus.ACTIVE, NOW, null)).id();
+	}
+
+	private static Stream<Arguments> disabledPushGateCases() {
+		return Stream.of(
+			Arguments.of(false, true),
+			Arguments.of(true, false));
+	}
+
+	private void savePushGate(long userId, boolean globalEnabled, boolean typeEnabled) {
+		preferences.saveUserSetting(userId, globalEnabled, null);
+		preferences.replaceTypePreferences(userId, typePreferences(NotificationType.REPORT_RESOLVED, typeEnabled));
+	}
+
+	private Map<NotificationType, Boolean> typePreferences(NotificationType targetType, boolean enabled) {
+		EnumMap<NotificationType, Boolean> preferencesByType = new EnumMap<>(NotificationType.class);
+		for (NotificationType notificationType : NotificationType.values()) {
+			preferencesByType.put(notificationType, true);
+		}
+		preferencesByType.put(targetType, enabled);
+		return preferencesByType;
 	}
 
 	private long openCase(long answerId) {

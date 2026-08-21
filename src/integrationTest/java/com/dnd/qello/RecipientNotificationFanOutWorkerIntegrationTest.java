@@ -1,7 +1,8 @@
 /**
  * Created at: 2026-08-14T18:01:54+09:00
  * Source scenario: TEST-PLAN-GH-123-DIRECTION-NOTIFICATION-FANOUT-INT-001 through INT-012,
- * INT-017 through INT-019, INT-024 through INT-025, INT-027 through INT-030
+ * INT-017 through INT-019, INT-024 through INT-025, INT-027 through INT-030,
+ * TEST-PLAN-GH-178-NOTIFICATION-PREFERENCES-INT-008 through INT-009
  */
 package com.dnd.qello;
 
@@ -14,6 +15,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.Arrays;
+import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -51,7 +53,6 @@ import com.dnd.qello.feed.service.InboxQueryService;
 import com.dnd.qello.notification.domain.DeliveryStatus;
 import com.dnd.qello.notification.domain.Notification;
 import com.dnd.qello.notification.domain.NotificationDelivery;
-import com.dnd.qello.notification.domain.NotificationPreference;
 import com.dnd.qello.notification.domain.NotificationStatus;
 import com.dnd.qello.notification.domain.NotificationType;
 import com.dnd.qello.notification.domain.OutboxAggregateType;
@@ -63,6 +64,7 @@ import com.dnd.qello.notification.domain.PushDevice;
 import com.dnd.qello.notification.domain.PushDeviceStatus;
 import com.dnd.qello.notification.domain.PushPlatform;
 import com.dnd.qello.notification.fanout.RecipientNotificationFanOutWorker;
+import com.dnd.qello.notification.repository.NotificationPreferenceRepository;
 import com.dnd.qello.notification.repository.NotificationRepository;
 import com.dnd.qello.notification.repository.OutboxEventRepository;
 import com.dnd.qello.safety.repository.SafetyRepository;
@@ -90,6 +92,8 @@ class RecipientNotificationFanOutWorkerIntegrationTest extends PostgisContainerI
 	@Autowired
 	private NotificationRepository notifications;
 	@Autowired
+	private NotificationPreferenceRepository preferences;
+	@Autowired
 	private PostRecipientRepository postRecipients;
 	@Autowired
 	private DirectionPostRepository posts;
@@ -107,6 +111,7 @@ class RecipientNotificationFanOutWorkerIntegrationTest extends PostgisContainerI
 		dropFailureInjection();
 		jdbc.update("DELETE FROM notification_delivery");
 		jdbc.update("DELETE FROM notification");
+		jdbc.update("DELETE FROM notification_user_setting");
 		jdbc.update("DELETE FROM notification_preference");
 		jdbc.update("DELETE FROM push_device");
 		jdbc.update("DELETE FROM answer_reaction");
@@ -157,16 +162,17 @@ class RecipientNotificationFanOutWorkerIntegrationTest extends PostgisContainerI
 		assertThat(receiveStateSnapshot(fixture.recipientId())).isEqualTo(stateBefore);
 	}
 
-	@ParameterizedTest(name = "preference={0}, delivery={1}")
-	@MethodSource("preferenceCases")
-	@DisplayName("설정 행 없음과 enabled·disabled 모두 알림함 행은 1건 만들고, delivery는 disabled에서만 억제한다(#176)")
-	void appliesPreferenceDefaultAndSuppression(Boolean preference, long expectedDeliveries) {
-		Fixture fixture = fixture("int002-" + String.valueOf(preference), PostRecipientStatus.AVAILABLE);
-		if (preference != null) {
-			notifications.savePreference(new NotificationPreference(NotificationType.DIRECTION_POST_RECEIVED,
-				fixture.recipientId(), preference, null, null));
+	@ParameterizedTest(name = "global={0}, type={1}, delivery={2}")
+	@MethodSource("pushGateCases")
+	@DisplayName("global/type gate 조합별로 알림함 행은 1건 만들고 delivery만 global&&type일 때 생성한다")
+	void appliesGlobalAndTypePushGate(Boolean globalEnabled, Boolean typeEnabled, long expectedDeliveries) {
+		Fixture fixture = fixture("int002-" + String.valueOf(globalEnabled) + "-" + String.valueOf(typeEnabled),
+			PostRecipientStatus.AVAILABLE);
+		if (globalEnabled != null || typeEnabled != null) {
+			savePushGate(fixture.recipientId(), globalEnabled, typeEnabled);
 		}
-		device(fixture.recipientId(), PushDeviceStatus.ACTIVE, "int002-device-" + String.valueOf(preference));
+		device(fixture.recipientId(), PushDeviceStatus.ACTIVE,
+			"int002-device-" + String.valueOf(globalEnabled) + "-" + String.valueOf(typeEnabled));
 
 		assertThat(worker.processBatch(command(10)).outcomes())
 			.containsExactly(RecipientNotificationFanOutWorker.Outcome.PROCESSED);
@@ -364,8 +370,7 @@ class RecipientNotificationFanOutWorkerIntegrationTest extends PostgisContainerI
 	void isolatesMixedBatchFailures() {
 		Fixture normal = fixture("int012-normal", PostRecipientStatus.AVAILABLE);
 		Fixture disabled = fixture("int012-disabled", PostRecipientStatus.AVAILABLE);
-		notifications.savePreference(new NotificationPreference(NotificationType.DIRECTION_POST_RECEIVED,
-			disabled.recipientId(), false, null, null));
+		savePushGate(disabled.recipientId(), false, true);
 		Fixture retryable = fixture("int012-retry", PostRecipientStatus.AVAILABLE);
 		Fixture permanent = fixture("int012-permanent", PostRecipientStatus.AVAILABLE);
 		installNotificationFailures(retryable.recipientId(), permanent.recipientId(), -1);
@@ -597,7 +602,7 @@ class RecipientNotificationFanOutWorkerIntegrationTest extends PostgisContainerI
 		AccountRepository snapshotAccounts = snapshotAccountRepository(snapshotBeforeChange.recipientId(),
 			snapshotRead, allowWorker);
 		RecipientNotificationFanOutWorker controlledWorker = new RecipientNotificationFanOutWorker(
-			outboxEvents, notifications, postRecipients, posts, snapshotAccounts, safety,
+			outboxEvents, notifications, preferences, postRecipients, posts, snapshotAccounts, safety,
 			transactionManager, Clock.fixed(NOW, ZoneOffset.UTC));
 		ExecutorService executor = Executors.newSingleThreadExecutor();
 		try {
@@ -639,7 +644,7 @@ class RecipientNotificationFanOutWorkerIntegrationTest extends PostgisContainerI
 		DirectionPostRepository snapshotPosts = snapshotPostRepository(snapshotBeforeChange.postId(),
 			snapshotRead, allowWorker);
 		RecipientNotificationFanOutWorker controlledWorker = new RecipientNotificationFanOutWorker(
-			outboxEvents, notifications, postRecipients, snapshotPosts, accounts, safety,
+			outboxEvents, notifications, preferences, postRecipients, snapshotPosts, accounts, safety,
 			transactionManager, Clock.fixed(NOW, ZoneOffset.UTC));
 		ExecutorService executor = Executors.newSingleThreadExecutor();
 		try {
@@ -679,8 +684,12 @@ class RecipientNotificationFanOutWorkerIntegrationTest extends PostgisContainerI
 		assertThat(sourceStatus(malformed)).isEqualTo(OutboxStatus.DEAD);
 	}
 
-	private static Stream<Arguments> preferenceCases() {
-		return Stream.of(Arguments.of(null, 1L), Arguments.of(true, 1L), Arguments.of(false, 0L));
+	private static Stream<Arguments> pushGateCases() {
+		return Stream.of(
+			Arguments.of(null, null, 1L),
+			Arguments.of(true, true, 1L),
+			Arguments.of(false, true, 0L),
+			Arguments.of(true, false, 0L));
 	}
 
 	private static Stream<Arguments> recipientStatusCases() {
@@ -811,6 +820,25 @@ class RecipientNotificationFanOutWorkerIntegrationTest extends PostgisContainerI
 		return notifications.saveDevice(new PushDevice(null, userId, PushPlatform.ANDROID,
 			new byte[] {1, 2, 3, 4}, fingerprint, status, NOW,
 			status == PushDeviceStatus.REVOKED ? NOW : null)).id();
+	}
+
+	private void savePushGate(long userId, Boolean globalEnabled, Boolean typeEnabled) {
+		if (globalEnabled != null) {
+			preferences.saveUserSetting(userId, globalEnabled, null);
+		}
+		if (typeEnabled != null) {
+			preferences.replaceTypePreferences(userId,
+				typePreferences(NotificationType.DIRECTION_POST_RECEIVED, typeEnabled));
+		}
+	}
+
+	private Map<NotificationType, Boolean> typePreferences(NotificationType targetType, boolean enabled) {
+		EnumMap<NotificationType, Boolean> preferencesByType = new EnumMap<>(NotificationType.class);
+		for (NotificationType notificationType : NotificationType.values()) {
+			preferencesByType.put(notificationType, true);
+		}
+		preferencesByType.put(targetType, enabled);
+		return preferencesByType;
 	}
 
 	private void presence(long userId, String region, double longitude, double latitude) {

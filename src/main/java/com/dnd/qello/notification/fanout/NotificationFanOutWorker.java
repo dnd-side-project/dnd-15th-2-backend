@@ -29,6 +29,7 @@ import com.dnd.qello.notification.domain.OutboxRetryPolicy;
 import com.dnd.qello.notification.domain.OutboxStatus;
 import com.dnd.qello.notification.error.NotificationErrorCode;
 import com.dnd.qello.notification.error.NotificationException;
+import com.dnd.qello.notification.repository.NotificationPreferenceRepository;
 import com.dnd.qello.notification.repository.NotificationRepository;
 import com.dnd.qello.notification.repository.OutboxEventRepository;
 import com.dnd.qello.safety.domain.UserBlock;
@@ -41,6 +42,7 @@ public class NotificationFanOutWorker {
 
 	private final OutboxEventRepository outboxEventRepository;
 	private final NotificationRepository notificationRepository;
+	private final NotificationPreferenceRepository preferenceRepository;
 	private final Map<OutboxEventType, NotificationFanOutResolver> resolvers;
 	private final AccountRepository accountRepository;
 	private final SafetyRepository safetyRepository;
@@ -50,6 +52,7 @@ public class NotificationFanOutWorker {
 	public NotificationFanOutWorker(
 		OutboxEventRepository outboxEventRepository,
 		NotificationRepository notificationRepository,
+		NotificationPreferenceRepository preferenceRepository,
 		List<NotificationFanOutResolver> resolvers,
 		AccountRepository accountRepository,
 		SafetyRepository safetyRepository,
@@ -58,6 +61,7 @@ public class NotificationFanOutWorker {
 	) {
 		this.outboxEventRepository = outboxEventRepository;
 		this.notificationRepository = notificationRepository;
+		this.preferenceRepository = preferenceRepository;
 		this.resolvers = indexResolvers(resolvers);
 		this.accountRepository = accountRepository;
 		this.safetyRepository = safetyRepository;
@@ -170,7 +174,7 @@ public class NotificationFanOutWorker {
 	}
 
 	private void persistPendingDeliveries(long notificationId, FanOutInstruction instruction, Instant at) {
-		if (!notificationRepository.isPreferenceEnabled(instruction.recipientId(), instruction.notificationType())) {
+		if (!preferenceRepository.isPushEnabled(instruction.recipientId(), instruction.notificationType())) {
 			return;
 		}
 		for (long deviceId : notificationRepository.findActiveDeviceIdsByUserId(instruction.recipientId())) {

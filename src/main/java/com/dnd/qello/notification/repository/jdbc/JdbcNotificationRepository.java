@@ -211,28 +211,11 @@ public class JdbcNotificationRepository implements OutboxEventRepository, Notifi
                 device.status(), device.lastSeenAt(), device.revokedAt());
     }
 
-    @Override
-    public List<Long> findActiveDeviceIdsByUserId(long userId) {
-        return jdbc.queryForList(NotificationSql.FIND_ACTIVE_PUSH_DEVICE_IDS,
-                new MapSqlParameterSource("userId", userId), Long.class);
-    }
-
-    @Override
-    public NotificationPreference savePreference(NotificationPreference preference) {
-        jdbc.update(NotificationSql.UPSERT_NOTIFICATION_PREFERENCE,
-                new MapSqlParameterSource().addValue("notificationType", preference.notificationType().name())
-                .addValue("userId", preference.userId()).addValue("enabled", preference.enabled())
-                .addValue("quietStart", preference.quietStart() == null ? null : Time.valueOf(preference.quietStart()))
-                .addValue("quietEnd", preference.quietEnd() == null ? null : Time.valueOf(preference.quietEnd())));
-        return preference;
-    }
-
-    @Override
-    public boolean isPreferenceEnabled(long userId, NotificationType notificationType) {
-        return Boolean.TRUE.equals(jdbc.queryForObject(NotificationSql.FIND_NOTIFICATION_PREFERENCE_ENABLED,
-                new MapSqlParameterSource().addValue("userId", userId)
-                        .addValue("notificationType", notificationType.name()), Boolean.class));
-    }
+	@Override
+	public List<Long> findActiveDeviceIdsByUserId(long userId) {
+		return jdbc.queryForList(NotificationSql.FIND_ACTIVE_PUSH_DEVICE_IDS,
+				new MapSqlParameterSource("userId", userId), Long.class);
+	}
 
     private Optional<NotificationDelivery> findDeliveryById(long id) {
         return jdbc.query("SELECT * FROM notification_delivery WHERE id = :id",

@@ -988,9 +988,7 @@ Table push_device [headercolor: #B07AA1] {
 Table notification_preference [headercolor: #B07AA1] {
   notification_type notification_type [not null, note: '사용자가 설정하는 알림 종류']
   user_id bigint [not null, note: '대상 사용자 식별자']
-  enabled boolean [not null, default: true, note: '외부 알림 수신 허용 여부']
-  quiet_start time [note: '푸시를 즉시 보내지 않을 시간대 시작']
-  quiet_end time [note: '조용한 시간대 종료']
+  enabled boolean [not null, default: true, note: '사용자 공통 push master와 별도로 유지되는 종류별 push enabled override']
   updated_at timestamptz [not null, default: `clock_timestamp()`, note: '마지막으로 변경된 시각']
 
   indexes {
@@ -998,11 +996,23 @@ Table notification_preference [headercolor: #B07AA1] {
     user_id [name: 'notification_preference_user_idx', note: 'PK의 선두 컬럼이 notification_type이라 user_id 단독 조회를 커버하지 못한다. 사용자별 설정 일괄 조회와 CASCADE 삭제용']
   }
 
+  Note: '테이블 설명: 사용자별 알림 종류 수신 여부 override를 관리하는 설정 테이블이다. 필요 이유: 사용자 공통 push master와 quiet schedule은 notification_user_setting이 맡고, 이 테이블은 종류별 enabled만 독립적으로 저장한다.'
+}
+
+Table notification_user_setting [headercolor: #B07AA1] {
+  user_id bigint [pk, not null, note: '대상 사용자 식별자']
+  push_enabled boolean [not null, default: true, note: '사용자 공통 push master switch']
+  quiet_start time [note: '푸시를 즉시 보내지 않을 시간대 시작']
+  quiet_end time [note: '조용한 시간대 종료']
+  quiet_zone_id varchar(50) [note: 'quiet start/end를 해석하는 IANA Zone ID']
+  updated_at timestamptz [not null, default: `clock_timestamp()`, note: '마지막으로 변경된 시각']
+
   checks {
-    `num_nonnulls(quiet_start, quiet_end) IN (0, 2)` [name: 'ck_notification_preference_quiet_hours']
+    `num_nonnulls(quiet_start, quiet_end, quiet_zone_id) IN (0, 3)` [name: 'ck_notification_user_setting_quiet_hours']
+    `(quiet_start IS NULL OR quiet_start <> quiet_end)` [name: 'ck_notification_user_setting_distinct_quiet_hours']
   }
 
-  Note: '테이블 설명: 사용자별 알림 종류 수신 여부와 조용한 시간대를 관리하는 설정 테이블이다. 필요 이유: 사용자가 알림 종류별 수신 여부와 조용한 시간대를 독립적으로 설정하게 한다.'
+  Note: '테이블 설명: 사용자 공통 push master와 quiet schedule을 관리하는 설정 테이블이다. 필요 이유: 아직 배포되지 않은 notification_preference.quiet_* 계약을 사용자 단위 설정으로 치환하고 종류별 enabled와 책임을 분리한다.'
 }
 
 Table outbox_event [headercolor: #B07AA1] {
@@ -1146,6 +1156,7 @@ Ref fk_moderation_review_report: moderation_review.report_id > report.id [delete
 Ref fk_moderation_review_reviewer: moderation_review.reviewer_id > user_account.id [delete: restrict]
 
 Ref fk_push_device_user: push_device.user_id > user_account.id [delete: cascade]
+Ref fk_notification_user_setting_user: notification_user_setting.user_id > user_account.id [delete: cascade]
 Ref fk_notification_preference_user: notification_preference.user_id > user_account.id [delete: cascade]
 Ref fk_notification_recipient: notification.recipient_id > user_account.id [delete: restrict]
 Ref fk_notification_outbox: notification.outbox_event_id > outbox_event.id [delete: restrict]
@@ -1200,6 +1211,7 @@ TableGroup safety_and_moderation [color: #F8D7DA, note: '차단, 신고, 운영 
 
 TableGroup notification_and_outbox [color: #EADCF0, note: '앱 내 알림, 푸시 기기·전달, 트랜잭셔널 Outbox'] {
   push_device
+  notification_user_setting
   notification_preference
   outbox_event
   notification

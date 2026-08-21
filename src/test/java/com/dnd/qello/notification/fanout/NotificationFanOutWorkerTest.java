@@ -43,6 +43,7 @@ import com.dnd.qello.notification.domain.OutboxAggregateType;
 import com.dnd.qello.notification.domain.OutboxEvent;
 import com.dnd.qello.notification.domain.OutboxEventType;
 import com.dnd.qello.notification.domain.OutboxRetryPolicy;
+import com.dnd.qello.notification.repository.NotificationPreferenceRepository;
 import com.dnd.qello.notification.repository.NotificationRepository;
 import com.dnd.qello.notification.repository.OutboxEventRepository;
 import com.dnd.qello.safety.repository.SafetyRepository;
@@ -54,6 +55,7 @@ class NotificationFanOutWorkerTest {
 
 	@Mock private OutboxEventRepository outbox;
 	@Mock private NotificationRepository notifications;
+	@Mock private NotificationPreferenceRepository preferences;
 	@Mock private NotificationFanOutResolver resolver;
 	@Mock private com.dnd.qello.account.repository.AccountRepository accounts;
 	@Mock private SafetyRepository safety;
@@ -111,7 +113,7 @@ class NotificationFanOutWorkerTest {
 		when(accounts.findById(42L)).thenReturn(Optional.of(account(42L)));
 		when(notifications.saveIfAbsent(any(Notification.class))).thenReturn(notification(900L, 42L,
 			NotificationType.QUESTION_RECOMMENDED, "question-recommended:30"));
-		when(notifications.isPreferenceEnabled(42L, NotificationType.QUESTION_RECOMMENDED)).thenReturn(true);
+		when(preferences.isPushEnabled(42L, NotificationType.QUESTION_RECOMMENDED)).thenReturn(true);
 		when(notifications.findActiveDeviceIdsByUserId(42L)).thenReturn(List.of(1001L, 1002L));
 		when(outbox.complete(anyLong(), any(String.class), anyLong(), any(Instant.class))).thenReturn(true);
 
@@ -140,7 +142,7 @@ class NotificationFanOutWorkerTest {
 		when(accounts.findById(42L)).thenReturn(Optional.of(account(42L)));
 		when(notifications.saveIfAbsent(any(Notification.class))).thenReturn(notification(900L, 42L,
 			NotificationType.QUESTION_RECOMMENDED, "question-recommended:30"));
-		when(notifications.isPreferenceEnabled(42L, NotificationType.QUESTION_RECOMMENDED)).thenReturn(false);
+		when(preferences.isPushEnabled(42L, NotificationType.QUESTION_RECOMMENDED)).thenReturn(false);
 		when(outbox.complete(anyLong(), any(String.class), anyLong(), any(Instant.class))).thenReturn(true);
 
 		var result = worker.processBatch(command());
@@ -253,7 +255,7 @@ class NotificationFanOutWorkerTest {
 
 	private NotificationFanOutWorker worker() {
 		givenTransactionRunsInline();
-		return new NotificationFanOutWorker(outbox, notifications, List.of(resolver),
+		return new NotificationFanOutWorker(outbox, notifications, preferences, List.of(resolver),
 			accounts, safety, transactionManager,
 			Clock.fixed(NOW, ZoneOffset.UTC));
 	}

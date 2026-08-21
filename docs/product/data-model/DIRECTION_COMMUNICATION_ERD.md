@@ -271,6 +271,7 @@ erDiagram
     USER_ACCOUNT ||--o| ACTIVE_USER_PRESENCE : publishes
     USER_ACCOUNT ||--|| RECIPIENT_RECEIVE_STATE : controls_capacity
     USER_ACCOUNT ||--o{ PUSH_DEVICE : owns
+    USER_ACCOUNT ||--o| NOTIFICATION_USER_SETTING : configures
     USER_ACCOUNT ||--o{ NOTIFICATION_PREFERENCE : configures
 
     USER_ACCOUNT ||--o{ QUESTION_PROPOSAL : proposes
@@ -738,12 +739,19 @@ erDiagram
         timestamptz revoked_at
     }
 
+    NOTIFICATION_USER_SETTING {
+        bigint user_id PK,FK
+        boolean push_enabled
+        time quiet_start
+        time quiet_end
+        varchar quiet_zone_id
+        timestamptz updated_at
+    }
+
     NOTIFICATION_PREFERENCE {
         bigint user_id PK,FK
         varchar notification_type PK
         boolean enabled
-        time quiet_start
-        time quiet_end
         timestamptz updated_at
     }
 
@@ -792,6 +800,7 @@ erDiagram
     REPORT ||--o{ MODERATION_REVIEW : reviewed
     USER_ACCOUNT ||--o{ MODERATION_REVIEW : operates
     USER_ACCOUNT ||--o{ PUSH_DEVICE : owns
+    USER_ACCOUNT ||--o| NOTIFICATION_USER_SETTING : configures
     USER_ACCOUNT ||--o{ NOTIFICATION_PREFERENCE : configures
     OUTBOX_EVENT ||--o{ NOTIFICATION : creates
     USER_ACCOUNT ||--o{ NOTIFICATION : receives
@@ -802,6 +811,7 @@ erDiagram
 - 차단은 삭제하지 않고 `released_at`으로 해제 이력을 남길 수 있다. 현재 차단 여부는 `released_at IS NULL`이다.
 - 신고 대상 FK인 `direction_post_id`, `answer_id`, `target_user_id` 중 정확히 하나만 값이 있어야 한다. 질문 제안은 현재 신고 대상이 아니다.
 - `notification`의 이동 대상은 `direction_post_id`와 `answer_id` 중 **최대** 하나다. `QUESTION_RECOMMENDED`처럼 이동 대상이 없는 종류가 있어 "정확히 하나"가 아니다.
+- `notification_user_setting`은 사용자 공통 push master와 quiet schedule을 저장하고, `notification_preference`는 알림 종류별 `enabled` override만 저장한다.
 
 알림 종류는 여섯이다(2026-08-04 기준).
 
@@ -1024,6 +1034,10 @@ ALTER TABLE notification
 ALTER TABLE notification_preference
     ADD CONSTRAINT pk_notification_preference
     PRIMARY KEY (notification_type, user_id);
+
+ALTER TABLE notification_user_setting
+    ADD CONSTRAINT fk_notification_user_setting_user
+    FOREIGN KEY (user_id) REFERENCES user_account (id) ON DELETE CASCADE;
 ```
 
 동일 신고자의 같은 대상에 대한 미처리 신고 중복 방지는 대상별 partial unique index로 강제한다.
