@@ -14,7 +14,7 @@ public record ReportReasonResponse(String code, String label, List<String> subRe
 		of(ReportReason.PRIVACY_VIOLATION, "개인정보 유출"),
 		of(ReportReason.SPAM_OR_ADVERTISING, "스팸, 광고"),
 		of(ReportReason.IMPERSONATION, "사칭"),
-		of(ReportReason.ILLEGAL_OR_DANGEROUS, "불법 거래 또는 위험 행동"),
+		of(ReportReason.ILLEGAL_OR_DANGEROUS, "불법 거래 또는 위험 행동", ReportSubReason.SELF_HARM_RISK),
 		of(ReportReason.OTHER, "기타"));
 
 	public static List<ReportReasonResponse> catalog() {
