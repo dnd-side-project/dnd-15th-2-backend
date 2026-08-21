@@ -1,197 +1,190 @@
-# GitHub Issue #156 Task Contract
+# GitHub Issue #157 Task Contract
 
-> Generated at: `2026-08-20T21:00:00+09:00`
+> Generated at: `2026-08-21T18:46:10+09:00` (harness task-init) / decisions
+> recorded `2026-08-21`
 >
 > 이 파일은 현재 작업 브랜치의 계약이다. 저장소 전역 정책은 `AGENTS.md`를
 > 따른다.
 
 ## Work gate
 
-- Title: `신고 시스템 — 심각도·긴급 대기열과 운영자 판정 API (R03)`
-- GitHub Issue: `#156`
-- Branch: `feat/gh-156-report-severity-operator-review`
+- Title: `[D] 신고 시스템 — 법률·안전 검토와 production gate (R04)`
+- GitHub Issue: `#157`
+- Branch: `feat/gh-157-report-legal-production-gate`
 - Base branch: `main`
-- 선행 이슈 `#153`, `#154`, `#155`(PR #173) 전부 병합 확인
-  (`origin/main` 최신 커밋 `bbecf3e`, `SafetyCaseResolutionService`·
-  `ReportCaseRepository.findByIdForUpdate` 존재 확인 완료).
-- Test plan: `TEST-PLAN-GH-156-REPORT-SEVERITY-OPERATOR-REVIEW`
-  (`docs/test-plans/gh-156-TEST-PLAN-GH-156-REPORT-SEVERITY-OPERATOR-REVIEW.md`)
-- Test plan approval: `APPROVED` — 사용자가 2026-08-20 "승인"으로 계획과
-  TASK.md의 Scope decision 1~4를 승인했다.
+- 선행 이슈 `#153`~`#156` 전부 병합 확인
+  (`origin/main` 최신 커밋 `f26118c`, PR #186으로 `#156` 병합됨).
+- 참조 설계 문서: `docs/product/ANSWER_REPORT_DESIGN.md` §4.1, §10, §11.2, §12.
+- Test plan: `TEST-PLAN-GH-157-REPORT-LEGAL-PRODUCTION-GATE`
+  (`docs/test-plans/gh-157-TEST-PLAN-GH-157-REPORT-LEGAL-PRODUCTION-GATE.md`)
+- Test plan approval: `APPROVED` — 사용자가 2026-08-21 "진행"으로 계획을
+  승인했다.
 
-## Objective
+## 결정 게이트에 대한 중요한 주의
 
-즉시 대응이 필요한 신고(CSAM·NCII·CREDIBLE_THREAT)를 일반 대기열과 분리해
-`URGENT` 큐로 라우팅하고, 운영자가 사건을 검토·판정하는 내부 API 경로를
-만든다. `#155`가 만든 `SafetyCaseResolutionService.resolveCase(...)`가 이
-경로의 실행부를 담당하지만 REST 진입점이 없다 — `#156`이 그 진입점과, 그
-앞단의 심각도 산출·대기열 라우팅·사건 승격·SLA·자동 숨김 조건을 채운다.
+이 이슈의 완료 조건 중 "법률·안전 담당자의 검토 증거가 이 이슈에 연결됐다"는
+AI 에이전트가 대신 만들어낼 수 없다. 아래 결정들은 **저장소 소유자
+`tkv00`이 2026-08-21 대화에서 제품/정책 결정권자로서 직접 내린 값**이며,
+별도의 공식 법무 검토 절차가 조직에 존재한다면 그 서명은 이 이슈 밖에서
+별도로 받아야 한다. 그 전까지 아래에서 신규로 만드는 "즉시 전역 숨김"
+동작은 반드시 기능 플래그로 감싸 기본값 OFF로 두고, 운영 활성화는 별도
+승인 후 값을 켜는 것으로 한다(§ Scope 6 참고).
 
-## Scope decision (사용자 승인 완료)
+## Decisions (사용자 승인, 2026-08-21)
 
-1. **브랜치 기반**: `#155`(PR #173)가 이미 `main`에 병합된 것을 확인했다 —
-   `feat/gh-156-...`을 `main`에서 새로 분기한다(stacked 브랜치 불필요).
-2. **운영자 API 경로**: 이슈 본문 그대로 `/api/v1/operator/report-cases…`를
-   쓴다. 기존 운영자 API(`OperatorQuestionProposalController` 등)는
-   `/admin/**` + `backofficeSecurityFilterChain`(세션 기반, OPERATOR role)을
-   쓰는데, 이 경로는 그 패턴과 다르므로 **`SecurityConfiguration`에 새
-   `SecurityFilterChain`을 추가한다** — `securityMatcher("/api/v1/operator/**")`,
-   세션 기반 인증(백오피스와 동일하게 `OperatorLoginController`가 발급한
-   세션 사용), OPERATOR role 요구, CSRF는 백오피스와 동일하게 적용한다.
-   기존 `appApiSecurityFilterChain`(`/api/**`, JWT bearer, `@Order(2)`)보다
-   우선 평가되도록 `@Order`를 그 앞에 둔다(예: 기존 체인들의 순서를 밀고 새
-   체인을 `@Order(2)`로, 기존 app API 체인을 `@Order(3)`으로).
-3. **판정 감사 기록**: 기존 `moderation_review` 테이블(`report_id`·
-   `reviewer_id`·`decision`·`internal_note`·`reviewed_at` 이미 보유)만
-   쓴다. `operator_action_audit`(V20)는 `target_type` CHECK에
-   `REPORT_CASE`가 없고 이 이슈에서 확장하지 않는다 — 별도 이슈로 미룬다.
-4. **SLA 에스컬레이션 "알림"**: 별도 발송 채널을 만들지 않는다. 대기열 조회
-   API 응답에서 `sla_due_at`이 지난 사건을 `overdue` 플래그로만 표시하고,
-   `ReportCaseEventType.ESCALATED`는 심각도 승격(§ Scope 1항)에만 쓴다.
-   Push/Slack 실제 발송은 이 이슈 범위 밖이다(`notification_event`가
-   `manual_review_case`에만 연결된 `UNIQUE` FK라 그대로 재사용하기 위험하고,
-   운영자는 `push_device`를 가진 사용자 계정이 아니라 기존 in-app
-   notification/outbox 경로도 맞지 않는다는 점을 확인했다).
+| # | 항목 | 결정 | 근거 |
+| --- | --- | --- | --- |
+| 1 | CRITICAL 1건 즉시 전역 숨김 (설계 §4.1) | **A안 채택** — 즉시 전역 숨김 + 남용 통제 | 피해 확산 방지 우선. 통제 장치: 계정당 CRITICAL 일일 쿼터(#4) |
+| 2 | 판정 노출 수준 (설계 §10) | **3단계 유지** | 이미 `ReportDetailResponse.status`가 `Report.status`(RECEIVED/AUTO_HIDDEN/UNDER_REVIEW/ACTIONED/NO_VIOLATION/MORE_INFO_REQUIRED) 전체를 그대로 노출 중 — **CONFIRMED, 추가 구현 불필요** |
+| 3 | 자해·자살 위험 사유 추가 | **추가한다** — `ReportSubReason.SELF_HARM_RISK`, 상위 `ReportReason.ILLEGAL_OR_DANGEROUS`, severity `CRITICAL` | 생명 위험은 CSAM·협박과 동급 긴급도로 판단 |
+| 4 | 국가별 신고 의무 분기 | **범위 밖** — 이번 이슈에서 구현 안 함 | 법적 요건 미확정. 별도 이슈로 미룸 |
+| 5 | 증거 보존 기간(`purge_after`) | **180일** (스냅샷 `capturedAt + 180일`) | 재신고·이의제기 대응에 충분한 중간값 |
+| 6 | 이의제기 경로 (설계 §11.2) | **범위 밖** — 별도 이슈로 미룸 | `AppealCase.filterDecisionId` 확장은 스키마·도메인 변경이 필요한 별도 설계 |
+| 7 | 운영자 role 정책 | **현재 단일 `OPERATOR` role로 충분** — CONFIRMED | `#156`이 만든 세션 기반 OPERATOR role이 CRITICAL/URGENT 큐도 처리 |
+| 8a | 자동 숨김 임계값(서로 다른 신고자 수) | **3명** (기존 개발 임시값 5명 → 변경) | 운영 확정값 |
+| 8b | SLA (URGENT/STANDARD) | **유지** — URGENT 4시간 / STANDARD 72시간 | 기존 개발값이 합리적 |
+| 8c | 신고 rate limit | **유지** — 60분당 10건 | 기존 개발값이 합리적 |
+| 8d | CRITICAL 일일 신고 쿼터 | **5건/일** (신규 구현) | 설계 §4.1 남용 통제 장치 (a) |
+| 9 | `report_content_snapshot` append-only 트리거와 purge 배치의 충돌 | **트리거에 `media_object_keys`만 비우는 예외 경로 추가** | 증거 메타데이터(본문 등)는 영구 불변 유지, 미디어만 정리 가능하게 좁은 예외를 DB 레벨에서 강제 |
+
+트리거 충돌(#9)은 코드 조사 중 발견한 사실이며 이슈 본문에 명시되지 않았던
+추가 제약이다 — 사용자에게 별도로 확인받았다.
 
 ## Scope
 
-### 1. 심각도·큐 산출과 사건 승격
+### 1. `ReportSubReason.SELF_HARM_RISK` 추가 (Decision #3)
 
-- `ReportCaseSeverity`/`ReportCaseQueue`는 이미 있다(둘 다 항상
-  NORMAL/STANDARD로 여는 자리표시자 — 주석에 "#156이 실제 산출한다"라고
-  명시돼 있음, **확인 완료**).
-- 순수 함수로 `subReason(ReportSubReason) → ReportCaseSeverity`
-  (CSAM/NCII/CREDIBLE_THREAT → CRITICAL, 그 외/null → NORMAL)와
-  `severity → ReportCaseQueue`(CRITICAL → URGENT, NORMAL → STANDARD)를
-  만든다. `ReportSubReason` enum이 정확히 그 3값만 가짐을 확인했다.
-- `ReportCase.open(...)`(현재 `safety/domain/ReportCase.java`, 항상
-  NORMAL/STANDARD로 생성)을 초기 severity/queue를 인자로 받도록 바꾼다 —
-  새 사건이 CRITICAL 신고로 열리면 처음부터 URGENT로 열리고, 굳이
-  ESCALATED 이벤트를 만들지 않는다(승격은 "이미 열린 NORMAL 사건에 나중에
-  CRITICAL 신고가 붙는" 경우로 한정, 이슈 본문과 일치).
-- `ReportCase`에 `escalate(Instant at)` 전이 메서드를 추가한다 — OPEN·
-  UNDER_REVIEW에서만 허용, severity를 CRITICAL·queue를 URGENT로 바꾼다.
-  RESOLVED에서 호출하면 `REPORT_CASE_ALREADY_RESOLVED`.
-- `ReportCase`에 `deescalate(Instant at)` 전이 메서드도 추가한다 — 운영자
-  전용 강등(URGENT→STANDARD). 신고 접수 경로에서는 호출하지 않는다.
-- `SafetyReportService.mergeCase(...)`(현재 `safety/service/
-  SafetyReportService.java:159`)를 확장한다:
-  - `tryOpen` 성공 경로(신규 사건): 산출된 severity/queue로 연다.
-  - `existing.isPresent()` 경로(기존 열린 사건에 병합): 새로 붙는 신고의
-    severity가 기존 사건의 severity보다 높으면(NORMAL→CRITICAL만 해당,
-    강등은 없음) `findByIdForUpdate`로 행 잠금 후 `escalate(now)`,
-    `reportCaseEventRepository.save(... ESCALATED ...)`를 `REPORT_ATTACHED`
-    이벤트와 함께 남긴다. 잠금 없이 read-then-write하면 두 CRITICAL 신고가
-    동시에 붙을 때 ESCALATED 이벤트가 중복되거나 유실될 수 있다 — 이
-    잠금이 `INV-RPT` 계열 신규 불변식이다.
+- `ReportSubReason`에 `SELF_HARM_RISK` 추가. `ReportCaseSeverity.of(...)`의
+  `switch`가 exhaustive라 컴파일러가 누락을 잡아준다 — `CSAM, NCII,
+  CREDIBLE_THREAT, SELF_HARM_RISK -> CRITICAL`로 확장.
+- Flyway `V26`: `ck_report_sub_reason` CHECK에
+  `(reason_code = 'ILLEGAL_OR_DANGEROUS' AND sub_reason_code = 'SELF_HARM_RISK')`
+  절 추가. `ck_report_reason`은 이미 `ILLEGAL_OR_DANGEROUS`를 포함하므로
+  변경 없음.
+- `ReportReasonResponse`/`GET /report-reasons` 카탈로그에 신규 하위 사유
+  노출 확인(기존 구조를 그대로 따르면 자동 반영되는지 확인 필요).
 
-### 2. SLA
+### 2. 즉시 전역 숨김 — CRITICAL 사건 자동 숨김 (Decision #1)
 
-- Flyway 신규 마이그레이션(다음 여유 번호 확인 필요 — `main`이 현재
-  `V23`까지이므로 이 브랜치가 최종 push되는 시점에 `V24`가 비어 있는지
-  다시 확인하고 번호를 정한다) — `report_case.sla_due_at TIMESTAMPTZ`
-  추가. NULL 허용하지 않는다(모든 사건은 여는 순간 SLA를 갖는다).
-- `SlaPolicy`(신규, `ReportRateLimitPolicy`/`SafetyReportConfiguration`
-  패턴을 따르는 `@ConfigurationProperties` 또는 `@Value` 기반 설정
-  클래스) — `queue → Duration` 매핑. 실제 운영 SLA 값은 미정이므로 기본값은
-  개발 편의용 임시값이라고 주석에 명시한다(기존 rate-limit 설정 클래스와
-  동일한 관례).
-- 사건을 열 때 `sla_due_at = now + slaPolicy.of(queue)`로 계산해 저장한다.
-  승격(escalate) 시 큐가 바뀌므로 `sla_due_at`도 새 큐 기준으로
-  재계산한다(**ASSUMED** — 이슈 본문이 명시하지 않음, 승격되면 더 급해지는
-  게 자연스러우므로 재계산 쪽으로 가정. 승인 필요하면 사용자에게 확인).
-- 대기열 조회 API가 `sla_due_at < now`인 사건에 `overdue: true`를 계산해
-  응답에 포함한다(§ Scope decision 4).
+- `ReportCaseAutoSuppressionEvaluator.evaluate(...)`에 3번째 트리거 조건
+  추가: 사건의 최종 severity가 `CRITICAL`이면(신규 오픈이든 승격이든)
+  `resolveIfStillOpen`을 호출한다. 기존 두 조건(서로 다른 신고자 수,
+  이미 flagged된 manual review case)과 동일하게
+  `SafetyCaseResolutionService.resolveCase(caseId, ACTIONED, now)`를
+  재사용한다(#155 자원 재사용, 신규 숨김 로직 없음).
+- `SafetyReportService.mergeCase(...)`가 반환하는 caseId만으로는 최종
+  severity를 알 수 없으므로, `mergeCase`가
+  `record CaseMergeResult(long caseId, ReportCaseSeverity resolvedSeverity)`를
+  반환하도록 바꾼다(신규 오픈 시 산출된 severity, 병합 시
+  `escalateIfMoreSevere` 이후의 실제 severity).
+- **기능 플래그**: `qello.safety.report-case.auto-suppress.critical-enabled`
+  (`@Value`, 기본값 `false`). 꺼져 있으면 CRITICAL 사건도 URGENT 큐로는
+  라우팅되지만(`#156`이 이미 구현) 자동 전역 숨김은 트리거하지 않는다 —
+  운영 활성화는 별도 승인 후 값을 `true`로 바꾸는 것으로 한다(§ 결정
+  게이트 참고).
 
-### 3. 자동 전역 숨김
+### 3. CRITICAL 일일 신고 쿼터 (Decision #8d, 설계 §4.1 남용 통제 (a))
 
-- 세 조건 중 하나라도 만족하면 자동으로 `SafetyCaseResolutionService`와
-  같은 방식으로 전역 숨김한다(운영자 조치에 의한 숨김은 이미 `#155`가
-  구현한 `resolveCase(ACTIONED)` 경로 그대로 재사용 — 세 번째 조건은 이미
-  구현됨, 나머지 둘이 신규):
-  1. **서로 다른 신고자 수 임계 도달** — 같은 사건에 달린 `report` 중
-     서로 다른 `reporter_id` 개수가 주입된 임계값 이상이면 트리거.
-  2. **같은 대상의 `filter_job` 판정이 이미 숨김·수동검토** — `report_case`의
-     대상(`answer_id` 등)과 같은 `target_type`+`target_id`로
-     `filter_job`/`manual_review_case`(둘 다 `filtering` 스키마, `V10`)를
-     조회해 이미 HIDDEN 판정이거나 수동검토 중이면 트리거. 이때
-     `report_case.linked_manual_review_case_id`에 찾은
-     `manual_review_case.id`를 기록한다(상관관계만, 테이블 통합 없음).
-- `AutoSuppressionPolicy`(신규, 같은 설정 패턴) — 신고자 수 임계값을
-  주입값으로 받는다.
-- 자동 숨김은 신고 접수(`mergeCase`/`REPORT_ATTACHED` 직후) 시점에
-  평가한다 — 매 신고마다 재계산하되, 이미 숨김된 사건은 재평가하지
-  않는다(멱등).
-- `linked_manual_review_case_id` 컬럼도 같은 §2 마이그레이션에 추가한다.
-  `filtering.manual_review_case`를 참조하는 FK를 걸지, opaque id로만
-  둘지는 스키마 소유 경계 문제라 테스트 계획 단계에서 확정한다
-  (**ASSUMED**: FK 없이 opaque id — `report_case`와 `filtering` 스키마
-  간 직접 FK가 기존 저장소에 선례가 없다).
+- 신규 `CriticalReportQuotaPolicy`(record, `maxPerDay` — 다른 Policy
+  클래스와 동일 패턴)와 `SafetyReportConfiguration`에 `@Bean` 추가
+  (`@Value("${qello.safety.report.critical-daily-quota.max-requests:5}")`).
+- `SafetyRepository`에 `countCriticalReportsByReporterSince(reporterId,
+  since)` 추가 — `countReportsByReporterSince`와 동일 패턴, `sub_reason_code
+  IN ('CSAM','NCII','CREDIBLE_THREAT','SELF_HARM_RISK')` 조건 추가.
+- `SafetyReportService.submit(...)`에서 `severity == CRITICAL`일 때만
+  `enforceRateLimit`과 별도로 `enforceCriticalDailyQuota`를 호출, 초과 시
+  신규 오류 코드 `SAF-APP-005 CRITICAL_REPORT_DAILY_QUOTA_EXCEEDED`
+  (`429`) 발생. 하루 경계는 UTC 자정이 아니라 `now.minus(Duration.ofDays(1))`
+  롤링 윈도우로 계산한다(기존 rate limit과 동일 방식, 자정 경계보다 우회가
+  어렵다).
 
-### 4. 운영자 판정 API (`/api/v1/operator/report-cases`)
+### 4. 증거 보존 기간과 purge 배치 (Decision #5, #9)
 
-- 신규 패키지 `safety/web`(`SafetyReportService`/`SafetyCaseResolutionService`
-  패턴을 따른다).
-- 엔드포인트:
-  1. `GET /api/v1/operator/report-cases` — `queue` 필터, 페이지네이션,
-     `overdue` 플래그 포함 목록.
-  2. `POST /api/v1/operator/report-cases/{id}/review` — `startReview()`
-     호출(OPEN→UNDER_REVIEW).
-  3. `POST /api/v1/operator/report-cases/{id}/decision` — 판정
-     (`ACTIONED`/`NO_VIOLATION`), 내부적으로 `SafetyCaseResolutionService.
-     resolveCase(...)`를 호출하고 `moderation_review`에 `internal_note`
-     포함해 기록한다.
-  4. `POST /api/v1/operator/report-cases/{id}/more-info` — `MORE_INFO_REQUIRED`
-     비종결 판정(신규 `ReportCase.requestMoreInfo(Instant)` 도메인
-     메서드 필요 — `decision`만 세팅, `status`는 그대로, `resolved_at`은
-     null 유지. `ck_report_case_resolution` CHECK가 이미 이 조합을
-     허용함을 확인했다).
-  5. `POST /api/v1/operator/report-cases/{id}/restore` — 이미 숨김된
-     콘텐츠의 복원, `#155`가 만든 `Answer.restore(at)` 재사용.
-- 두 운영자 동시 판정 방지: `SafetyCaseResolutionService.resolveCase`가
-  이미 `findByIdForUpdate` 행 잠금 + 상태 전이 검사를 하므로(**확인
-  완료**, `#155`), 신규 코드가 이 보장을 다시 만들 필요는 없다 — 동시성
-  테스트만 이 계약을 검증하면 된다. `startReview`/`more-info`/`restore`
-  경로도 같은 잠금 패턴을 새로 적용해야 한다(현재는 `resolveCase`에만
-  있음).
-- 신고자에게 노출되는 어떤 조회에도 `moderation_review`를 조인하지
-  않는다(완료 조건 그대로 유지 — 기존 `findMyReports` 등 신고자 경로는
-  이 이슈에서 건드리지 않는다).
+- `SafetyReportConfiguration`에 `EvidenceRetentionPolicy`(record,
+  `retentionPeriod: Duration`) 추가,
+  `@Value("${qello.safety.report.evidence.retention-days:180}")`.
+- `ReportContentSnapshot.capture(...)` 호출부(`SafetyReportService.submit`)에서
+  `purgeAfter = capturedAt.plus(retentionPolicy.retentionPeriod())`로 계산해
+  전달 — 현재 `capture()`는 항상 `purgeAfter=null`이므로 팩토리 메서드
+  시그니처에 `purgeAfter` 파라미터 추가 필요.
+- Flyway `V26`(§1과 같은 마이그레이션 파일)에 트리거 함수 교체:
+  - `report_content_snapshot` 전용 신규 함수
+    `enforce_report_snapshot_immutability_except_purge()` 작성.
+    DELETE는 항상 거부. UPDATE는 오직 `media_object_keys`만 바뀌고 나머지
+    전체 컬럼이 `OLD`와 동일하며, `NEW.media_object_keys = '{}'`이고
+    `OLD.legal_hold = FALSE`일 때만 허용한다.
+  - `tr_report_content_snapshot_immutable` 트리거를 이 신규 함수로
+    교체(`DROP TRIGGER` + `CREATE TRIGGER`). `report_case_event`의
+    트리거는 기존 `enforce_report_evidence_immutability()`를 그대로
+    쓴다(변경 없음, append-only 완전 유지).
+- 신규 `ReportEvidencePurgeSweepWorker`(`safety/sweep` 패키지, `#158`
+  `RecipientExpirationSweepWorker` 패턴 그대로 — batch 조회 + 행별 처리,
+  **`@Scheduled` 없음, 운영 주기 실행 활성화는 이 이슈 범위 밖**):
+  - `ReportContentSnapshotRepository.findPurgeable(now, limit)` —
+    `legal_hold = FALSE AND purge_after < :now AND media_object_keys <> '{}'`.
+  - `ReportContentSnapshotRepository.purgeMedia(reportId)` — 신규 UPDATE,
+    트리거가 허용하는 정확히 그 형태(`media_object_keys = '{}'`, 나머지
+    컬럼 미변경)로 실행.
+  - S3 등 실제 오브젝트 스토리지에서 미디어 파일 자체를 지우는 것은 이
+    이슈 범위 밖 — DB 레코드가 더 이상 그 미디어를 "보존 중"이라고
+    표시하지 않게 되는 것까지만 다룬다(§ Explicit exclusions).
+
+### 5. 운영 기본값 반영 (Decision #8a~8c)
+
+- `SafetyReportConfiguration`의 `@Value` 기본값 변경:
+  - `qello.safety.report-case.auto-suppress.reporter-threshold` 기본값
+    `5` → `3`.
+  - SLA·rate limit 기존값 유지, 단 주석의 "실제 운영 수치는 미정" 문구를
+    "운영 기본값 확정(#157)"으로 갱신.
+
+### 6. 기능 플래그와 관측 (설계 "운영 반영" 항목)
+
+- § Scope 2의 `critical-enabled` 플래그가 이 항목의 핵심 산출물.
+- 신규 관측 지표는 이 이슈에서 새 대시보드·알람 인프라를 만들지 않는다 —
+  기존 로깅 패턴(`RecipientExpirationSweepWorker`의 batch 요약 로그
+  스타일)을 `ReportEvidencePurgeSweepWorker`에도 적용하는 선까지만 한다.
+  Prometheus·CloudWatch 알람 등 실제 인프라 변경은 범위 밖(§ AGENTS.md
+  §4의 인프라 게이트 대상이며 이 이슈는 애플리케이션 코드 이슈다).
 
 ## Explicit exclusions
 
-- `CRITICAL` 1건으로 즉시 전역 숨김할지 여부(R04, 법무 결정) — 이슈 본문
-  명시 제외.
-- 운영자 백오피스 화면 — 이슈 본문 명시 제외.
-- 허위 신고자 제재 정책 — 이슈 본문 명시 제외.
-- SLA 초과 알림의 실제 발송(push/Slack/이메일) — § Scope decision 4,
-  `overdue` 플래그 표시까지만.
-- `operator_action_audit`(V20) 확장 — § Scope decision 3.
-- `SafetyService`의 미사용 `report`/`startReview`/`resolve`/`review`/
-  `reviewAndResolve` 메서드 — 어떤 컨트롤러도 호출하지 않는 죽은 코드임을
-  확인했다. 제거도 재활용도 하지 않고 그대로 둔다(범위 밖 정리는 별도
-  이슈).
+- 국가별 신고 의무 분기 구현(Decision #4).
+- 신고 기반 숨김의 작성자 이의제기 경로, `AppealCase` 확장(Decision #6).
+- 운영자 role 세분화(Decision #7).
+- 계정 삭제 요청 시 증거 보존 우선순위 관련 신규 코드 — 계정 삭제 기능
+  자체가 저장소에 아직 없고, `report_content_snapshot`이 이미 `author_id`에
+  FK 없이 비정규화 사본을 갖고 있어(증거가 이긴다) 설계상 이미 해결됨.
+  신규 구현 없음, 결정만 문서화.
+- 실제 미디어 오브젝트(S3 등) 삭제 — DB 보존 표시 해제까지만.
+- `ReportEvidencePurgeSweepWorker`의 실제 주기 실행 트리거(`@Scheduled`,
+  운영 스케줄러 배선) — `#158` 선례와 동일하게 범위 밖.
+- 허위 CRITICAL 신고에 대한 신규 `report_case_event` 타입 — 기존
+  `REPORT_ATTACHED`/`CASE_OPENED` 이벤트가 이미 사건과 신고를 연결해
+  기록하므로 신규 이벤트 타입 불필요(CONFIRMED, 추가 구현 없음).
 - 인프라 apply, 배포, 프로덕션 변경은 별도 승인 없이는 실행하지 않는다.
+- `qello.safety.report-case.auto-suppress.critical-enabled`를 실제
+  프로덕션에서 `true`로 켜는 것은 이 이슈의 코드 변경에 포함되지 않는다
+  (기본값 `false`로 머지) — 활성화는 별도 승인 절차.
 - Secret, 계정 식별자, 토큰, `.env` 값은 기록하지 않는다.
 
 ## Ownership
 
 | Area | Owner | Required review |
 | --- | --- | --- |
-| `ReportCase` 도메인 확장(escalate/deescalate/requestMoreInfo), 심각도·큐·SLA·자동숨김 정책 클래스, `SafetyReportService.mergeCase` 확장, 신규 `safety/web` 운영자 API, `SecurityConfiguration` 신규 필터체인, Flyway 마이그레이션, 단위·통합 테스트 | Feature executor | `INV-RPT-007`(재개방 금지) 검증, `#155` `SafetyCaseResolutionService`/`findByIdForUpdate` 계약과의 호환성 리뷰, 동시 판정 방지 동시성 테스트, 신규 보안 필터체인이 기존 `/admin/**`·`/api/**` 체인과 충돌하지 않는지 리뷰 |
+| `ReportSubReason` 확장, CRITICAL 자동 숨김 트리거 조건, `CriticalReportQuotaPolicy`, `EvidenceRetentionPolicy`, evidence purge 트리거 예외·`ReportEvidencePurgeSweepWorker`, `SafetyReportConfiguration` 운영값 변경, 신규 Flyway `V26`, 단위·통합 테스트 | Feature executor | 트리거 예외 로직이 `legal_hold` 행을 확실히 보호하는지, `media_object_keys`만 바뀌는 UPDATE 외에는 전부 거부하는지 통합 테스트로 검증. `critical-enabled` 플래그 OFF/ON 양쪽 동작 검증. 기존 `INV-RPT-004`(증거 불변성)가 여전히 성립하는지(본문·해시 등은 절대 안 바뀜) 확인 |
 
 ## Existing user-owned changes
 
-- `git status --short` 결과 없음(clean). `origin/main`(`bbecf3e`, `#173`
-  병합 이후)에서 새로 분기했다.
+- `git status --short` 결과 없음(clean). `origin/main`(`f26118c`, `#186`
+  병합 이후)에서 `./harness start`로 새로 분기했다.
 
 ## Validation
 
 ```bash
 ./gradlew test --tests "com.dnd.qello.safety.*" --console=plain
-./gradlew test --tests "com.dnd.qello.notification.*" --console=plain
 ./gradlew integrationTest --tests "com.dnd.qello.*ReportCase*" --console=plain
-./gradlew integrationTest --tests "com.dnd.qello.*OperatorReview*" --console=plain
+./gradlew integrationTest --tests "com.dnd.qello.*ReportContentSnapshot*" --console=plain
+./gradlew integrationTest --tests "com.dnd.qello.*Purge*" --console=plain
 ./gradlew integrationTest --tests "*Flyway*" --console=plain
 ./harness test-run --id <TEST-PLAN-ID>
 ./harness check
@@ -201,32 +194,79 @@ git diff --check
 
 ## Completion criteria
 
-- [x] `CRITICAL` 하위 사유가 `URGENT` 대기열로 라우팅된다 —
-      `ReportCaseSeverityIntegrationTest#newCaseOpensAsCriticalWhenSubReasonIsCsam`(INT-001).
-- [x] `NORMAL` 사건에 `CRITICAL` 신고가 붙으면 승격되고 `ESCALATED` 이벤트가
-      남는다 — `#escalatesExistingNormalCaseWhenCriticalReportAttaches`(INT-002).
-- [x] 두 운영자가 같은 사건을 동시에 판정해도 판정은 한 번만 기록된다
-      (PostgreSQL 동시성 테스트) —
-      `OperatorReportCaseIntegrationTest#concurrentDecisionResolvesOnce`(INT-017).
-- [x] 사건은 재개방되지 않고 재발은 새 사건이 된다(`INV-RPT-007`) — 기존
-      `ReportCaseFoundationIntegrationTest#allowsNewCaseForTargetWithResolvedCase`(#154)가
-      검증, #156은 이 계약을 변경하지 않았다.
-- [x] 임계값·SLA가 전부 주입값이고 코드에 상수로 박히지 않았다 —
-      `SafetyReportConfiguration`의 `slaPolicy`/`autoSuppressionPolicy`
-      `@Bean`, 둘 다 `@Value` 기반.
-- [x] 운영자 응답에만 `internal_note`가 포함되고 신고자 경로에는 어떤
-      쿼리에서도 `moderation_review`를 조인하지 않는다 —
-      `#decideActionedHidesAnswerAndRecordsInternalNote`(INT-013)가
-      운영자 쪽 기록을 확인, 신고자 응답 DTO는 구조적으로 그 필드가 없음을
-      코드로 확인(보고서 §4 INT-020 참고).
-- [x] 서로 다른 신고자 수 임계 도달 시 자동 전역 숨김된다 —
-      `ReportCaseSeverityIntegrationTest#autoSuppressesWhenDistinctReporterThresholdIsReached`(INT-005).
-- [x] 같은 대상의 `filter_job`/`manual_review_case`가 이미 숨김·수동검토면
-      자동 전역 숨김되고 `linked_manual_review_case_id`가 기록된다 —
-      `#autoSuppressesWhenManualReviewCaseIsOpen`(INT-007).
-- [x] 대기열 조회 API가 `sla_due_at`을 넘긴 사건을 `overdue: true`로
-      표시한다 — `OperatorReportCaseIntegrationTest#queueMarksOverdueCases`(INT-010).
-- [x] 실행하지 못한 검증과 남은 위험을 보고서에 기록한다 — 상세는
-      `docs/reports/tests/gh-156-TEST-PLAN-GH-156-REPORT-SEVERITY-OPERATOR-REVIEW.md`
-      §6·§7 참고. N-way(3+) 동시성 미실측, `linked_manual_review_case_id`
-      FK 부재(ASSUMED 결정), SLA 알림 실제 발송 범위 밖.
+- [x] `ReportSubReason.SELF_HARM_RISK`가 `ILLEGAL_OR_DANGEROUS`와 조합되어
+      CHECK를 통과하고 severity `CRITICAL`로 산출된다 —
+      `ReportContentSnapshotImmutabilityIntegrationTest#selfHarmRiskCombinationIsAccepted`(INT-014),
+      `#invalidSelfHarmRiskCombinationIsRejected`(INT-015),
+      `ReportCaseAndEvidenceTest#selfHarmRiskSubReasonProducesCriticalSeverity`(UNIT-001).
+- [x] `critical-enabled` 플래그가 `true`일 때 CRITICAL 사건(신규 오픈 또는
+      승격)이 자동으로 전역 숨김·RESOLVED 처리된다. 플래그가 `false`이면
+      URGENT 큐 라우팅만 되고 자동 숨김은 트리거되지 않는다 —
+      `ReportCaseCriticalAutoSuppressionIntegrationTest`(INT-001~003, `@TestPropertySource`로
+      플래그 켬), `ReportCaseSeverityIntegrationTest#newCaseOpensAsCriticalWhenSubReasonIsCsam`(기본값
+      꺼짐에서 OPEN·PUBLISHED 유지 확인).
+- [x] 계정당 CRITICAL 신고가 일일 쿼터(5건)를 넘으면
+      `CRITICAL_REPORT_DAILY_QUOTA_EXCEEDED`로 거부된다 —
+      `ReportCaseSeverityIntegrationTest#rejectsCriticalReportBeyondDailyQuota`(GH157-INT-004),
+      롤링 24시간 윈도우는 `#rollingWindowExcludesReportsOlderThan24Hours`(GH157-INT-005)가 확인.
+- [x] 신규 스냅샷의 `purge_after`가 `capturedAt + 180일`로 저장된다 —
+      `ReportCaseAndEvidenceTest#captureStoresGivenPurgeAfter`(UNIT-005, 도메인),
+      `SafetyReportService.submit`이 `EvidenceRetentionPolicy` 기반으로 계산해 전달.
+- [x] `legal_hold=true`인 스냅샷은 purge 대상에서 제외된다 —
+      `ReportEvidencePurgeSweepWorkerIntegrationTest#purgesOnlyEligibleSnapshots`(INT-012),
+      `ReportContentSnapshotImmutabilityIntegrationTest#purgeMediaRejectsLegalHoldSnapshot`(INT-007).
+- [x] purge 배치가 만료된 스냅샷의 `media_object_keys`만 비우고 나머지
+      컬럼(본문, 해시 등)은 절대 바뀌지 않는다 — 트리거가 그 외 모든
+      UPDATE·모든 DELETE를 거부함을 통합 테스트로 확인한다 —
+      `ReportContentSnapshotImmutabilityIntegrationTest`(INT-006 media만 변경 허용,
+      INT-008 본문 변경 거부, INT-009 동시 변경 거부, INT-010 DELETE 거부,
+      INT-011 `report_case_event` 트리거 회귀 없음).
+- [x] 자동 숨김 임계값이 3명, SLA·rate limit이 기존 값 유지로 설정값에
+      반영된다 — `ReportCaseSeverityIntegrationTest#autoSuppressionThresholdDefaultsToThree`(GH157-INT-016),
+      `SafetyReportConfiguration` `@Value` 기본값 변경.
+- [x] 실행하지 못한 검증과 남은 위험을 보고서에 기록한다 — 아래 "실행 결과"
+      절 참고.
+
+## 실행 결과 (2026-08-21)
+
+- `./gradlew test` — 전체 단위 테스트 통과.
+- `./gradlew integrationTest` — 전체 통합 테스트 스위트 통과(9분, 기존 회귀
+  없음 확인). 개별로도 `ReportCaseSeverityIntegrationTest`,
+  `ReportCaseCriticalAutoSuppressionIntegrationTest`,
+  `ReportContentSnapshotImmutabilityIntegrationTest`,
+  `ReportEvidencePurgeSweepWorkerIntegrationTest`, `*Flyway*`,
+  `com.dnd.qello.*Report*` 각각 통과 확인.
+- `./harness check` — Secret preflight, JUnit 정책, convention, commit
+  형식, workflow, label, Husky 검증 전부 통과.
+- `./harness pr-ready --project-tests` — 통과.
+- `npm run hooks:validate` — 통과.
+- `git diff --check` — whitespace 오류 없음.
+- 구현 중 발견해 즉시 고친 결함 2건(둘 다 실제 테스트 실행으로 발견,
+  코드 리뷰만으로는 놓쳤을 것):
+  1. `ReportSubmission`의 도메인 레벨 reason/subReason 조합 검증 맵에
+     `ILLEGAL_OR_DANGEROUS`→`SELF_HARM_RISK`를 추가하지 않아 DB CHECK는
+     통과해도 서비스 계층에서 `INVALID_REPORT_SUB_REASON`으로 거부되고
+     있었다 — `ReportSubmission.ALLOWED_SUB_REASONS`에 추가로 해결.
+  2. 자동 숨김 임계값을 5→3으로 낮추자 기존 `#156` 테스트(`정확히 5명`
+     루프)가 3번째 신고에서 이미 답변이 HIDDEN돼 4·5번째 신고가
+     `REPORT_TARGET_NOT_FOUND`로 실패했다 — 루프를
+     `autoSuppressionPolicy.distinctReporterThreshold()` 기준으로 바꿔
+     운영값이 바뀌어도 깨지지 않게 했다.
+- 실행하지 못한 검증: 없음(계획한 모든 시나리오를 구현하고 실행했다).
+- 남은 위험: `critical-enabled` 실제 프로덕션 활성화는 이 PR에 포함되지
+  않는다(기본값 `false`로 머지) — § 결정 게이트 참고. `report_case_event`와
+  달리 `report_content_snapshot` 트리거를 이번에 처음으로 부분적으로
+  약화시켰다(media_object_keys 예외) — 통합 테스트로 그 예외의 경계를
+  직접 검증했지만, 새 트리거 함수 자체의 장기 유지보수 부담(향후 컬럼
+  추가 시 트리거 조건도 함께 갱신해야 함)은 남는다.
+
+## 남은 위험 / 후속 결정 필요
+
+- `critical-enabled` 플래그를 실제 프로덕션에서 켜는 시점은 이 이슈
+  머지와 별개로, 공식 법무·안전 검토(있다면)를 거친 뒤 사람이 결정해야
+  한다.
+- `ReportEvidencePurgeSweepWorker`를 실제로 주기 실행하려면 별도 스케줄러
+  배선(운영 이슈)이 필요하다 — 지금은 코드만 존재하고 자동으로 돌지
+  않는다.
+- 국가별 신고 의무·이의제기 경로·계정 삭제 시 증거 우선순위·운영자 role
+  세분화는 전부 별도 이슈로 미뤄졌다(Decision #4, #6, #7, 계정삭제 항목).
