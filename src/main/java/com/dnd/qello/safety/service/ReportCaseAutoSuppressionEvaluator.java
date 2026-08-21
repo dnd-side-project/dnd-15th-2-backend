@@ -6,6 +6,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import com.dnd.qello.filtering.domain.FilterTarget;
@@ -18,6 +19,7 @@ import com.dnd.qello.safety.domain.AutoSuppressionPolicy;
 import com.dnd.qello.safety.domain.ModerationDecision;
 import com.dnd.qello.safety.domain.Report;
 import com.dnd.qello.safety.domain.ReportCase;
+import com.dnd.qello.safety.domain.ReportCaseSeverity;
 import com.dnd.qello.safety.domain.ReportCaseStatus;
 import com.dnd.qello.safety.error.SafetyErrorCode;
 import com.dnd.qello.safety.error.SafetyException;
@@ -25,10 +27,10 @@ import com.dnd.qello.safety.repository.ReportCaseRepository;
 import com.dnd.qello.safety.repository.SafetyRepository;
 
 /**
- * 신고 접수 직후 자동 전역 숨김 조건을 평가한다(#156). 운영자 조치에 의한
- * 숨김은 {@link SafetyCaseResolutionService#resolveCase}가 이미 처리하므로
- * (#155), 이 클래스는 그 트리거를 자동으로 만드는 역할만 한다 — 숨김 로직
- * 자체는 재사용한다.
+ * 신고 접수 직후 자동 전역 숨김 조건을 평가한다(#156, CRITICAL 조건은 #157).
+ * 운영자 조치에 의한 숨김은 {@link SafetyCaseResolutionService#resolveCase}가
+ * 이미 처리하므로(#155), 이 클래스는 그 트리거를 자동으로 만드는 역할만
+ * 한다 — 숨김 로직 자체는 재사용한다.
  *
  * 호출자({@link SafetyReportService#submit}) 트랜잭션 안에서 실행돼야 한다 —
  * 신고 저장과 자동 숨김이 같은 커밋 경계를 공유해야 반쪽 상태(신고는 저장,
@@ -42,18 +44,33 @@ public class ReportCaseAutoSuppressionEvaluator {
 	private final ManualReviewCaseRepository manualReviewCaseRepository;
 	private final SafetyCaseResolutionService safetyCaseResolutionService;
 	private final AutoSuppressionPolicy autoSuppressionPolicy;
+	private final boolean criticalAutoSuppressEnabled;
 
 	public ReportCaseAutoSuppressionEvaluator(SafetyRepository safetyRepository,
 		ReportCaseRepository reportCaseRepository, ManualReviewCaseRepository manualReviewCaseRepository,
-		SafetyCaseResolutionService safetyCaseResolutionService, AutoSuppressionPolicy autoSuppressionPolicy) {
+		SafetyCaseResolutionService safetyCaseResolutionService, AutoSuppressionPolicy autoSuppressionPolicy,
+		@Value("${qello.safety.report-case.auto-suppress.critical-enabled:false}")
+		boolean criticalAutoSuppressEnabled) {
 		this.safetyRepository = safetyRepository;
 		this.reportCaseRepository = reportCaseRepository;
 		this.manualReviewCaseRepository = manualReviewCaseRepository;
 		this.safetyCaseResolutionService = safetyCaseResolutionService;
 		this.autoSuppressionPolicy = autoSuppressionPolicy;
+		this.criticalAutoSuppressEnabled = criticalAutoSuppressEnabled;
 	}
 
-	public void evaluate(long caseId, Long answerId, Instant now) {
+	/**
+	 * severity는 이번 신고 접수 이후 사건의 최종 심각도다(신규 오픈 또는 승격
+	 * 반영 완료 상태, {@link SafetyReportService} 참고). {@code
+	 * critical-enabled} 플래그가 꺼져 있으면(기본값) CRITICAL 사건도 URGENT
+	 * 큐 라우팅만 되고 이 조건으로는 자동 숨김되지 않는다 — 설계 문서 §4.1
+	 * A안의 프로덕션 활성화는 법률·안전 검토 이후 사람이 결정한다(#157).
+	 */
+	public void evaluate(long caseId, Long answerId, ReportCaseSeverity severity, Instant now) {
+		if (criticalAutoSuppressEnabled && severity == ReportCaseSeverity.CRITICAL) {
+			resolveIfStillOpen(caseId, now);
+			return;
+		}
 		if (hasReachedDistinctReporterThreshold(caseId)) {
 			resolveIfStillOpen(caseId, now);
 			return;

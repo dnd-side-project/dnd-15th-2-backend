@@ -63,6 +63,10 @@ public enum SafetyErrorCode implements ErrorCode {
 	// 신고자당 rate limit 초과
 	REPORT_RATE_LIMIT_EXCEEDED(HttpStatus.TOO_MANY_REQUESTS, "SAF-APP-004", ErrorCategory.APP, "신고 요청이 너무 많습니다."),
 
+	// 계정당 CRITICAL 신고 일일 쿼터 초과(#157, 설계 문서 §4.1 남용 통제)
+	CRITICAL_REPORT_DAILY_QUOTA_EXCEEDED(
+		HttpStatus.TOO_MANY_REQUESTS, "SAF-APP-005", ErrorCategory.APP, "긴급 신고 요청이 너무 많습니다."),
+
 	// 같은 대상에 대한 처리 중 신고 중복. DB 유일성 제약에서 감지
 	DUPLICATED_OPEN_REPORT(HttpStatus.CONFLICT, "SAF-INFRA-001", ErrorCategory.INFRA, "이미 접수된 신고가 있습니다."),
 
