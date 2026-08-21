@@ -15,6 +15,7 @@ import com.dnd.qello.safety.domain.ReportCase;
 import com.dnd.qello.safety.domain.ReportCaseEvent;
 import com.dnd.qello.safety.domain.ReportCaseEventType;
 import com.dnd.qello.safety.domain.ReportCaseQueue;
+import com.dnd.qello.safety.domain.ReportCaseStatus;
 import com.dnd.qello.safety.error.SafetyErrorCode;
 import com.dnd.qello.safety.error.SafetyException;
 import com.dnd.qello.safety.repository.ReportCaseEventRepository;
@@ -80,13 +81,20 @@ public class OperatorReportCaseService {
 
 	@Transactional
 	public Answer restore(long caseId, Instant now) {
-		ReportCase current = reportCaseRepository.findById(caseId)
-			.orElseThrow(() -> new SafetyException(SafetyErrorCode.INVALID_ID, "caseId", "사건을 찾을 수 없습니다"));
-		if (current.answerId() == null) {
+		ReportCase locked = lockOrThrow(caseId);
+		if (locked.answerId() == null) {
 			throw new SafetyException(
 				SafetyErrorCode.INVALID_REPORT_TARGET, "caseId", "답변을 대상으로 하는 사건이 아닙니다");
 		}
-		Answer answer = answerRepository.findById(current.answerId())
+		// 같은 답변을 가리키는 사건은 여러 개(재발마다 새 사건, INV-RPT-007) 있을 수
+		// 있다 — answerId만 확인하면 무관한 사건 id로도 복원이 통과해 그 답변을 실제로
+		// 숨긴 판정과 다른 사건을 근거로 복원하는 권한 우회가 생긴다. 이 사건 자체가
+		// ACTIONED로 종결됐는지까지 확인한다.
+		if (locked.status() != ReportCaseStatus.RESOLVED || locked.decision() != ModerationDecision.ACTIONED) {
+			throw new SafetyException(
+				SafetyErrorCode.INVALID_REPORT_STATUS, "caseId", "ACTIONED로 종결된 사건만 복원할 수 있습니다");
+		}
+		Answer answer = answerRepository.findById(locked.answerId())
 			.orElseThrow(() -> new SafetyException(
 				SafetyErrorCode.REPORT_TARGET_NOT_FOUND, "answerId", "복원할 답변을 찾을 수 없습니다"));
 		return answerRepository.save(answer.restore(now));

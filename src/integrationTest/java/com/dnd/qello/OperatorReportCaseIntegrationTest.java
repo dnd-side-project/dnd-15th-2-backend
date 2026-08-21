@@ -272,6 +272,44 @@ class OperatorReportCaseIntegrationTest extends PostgisContainerIntegrationTestS
 	}
 
 	@Test
+	@DisplayName("같은 답변을 가리키는 다른 사건(ACTIONED가 아닌)으로는 복원할 수 없다")
+	void restoreRejectsUnrelatedCaseForTheSameAnswer() throws Exception {
+		long answerId = publishedAnswer("gh156-api-restore-wrong-case");
+		long noViolationCaseId = openCase(answerId, NOW.plus(Duration.ofDays(3)));
+		OperatorSession session = login();
+		mockMvc.perform(withCsrf(post("/api/v1/operator/report-cases/" + noViolationCaseId + "/decision"), session)
+				.cookie(session.sessionCookie())
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"decision\":\"NO_VIOLATION\",\"internalNote\":\"위반 아님\"}"))
+			.andExpect(status().isOk());
+		long actionedCaseId = openCase(answerId, NOW.plus(Duration.ofDays(3)));
+		mockMvc.perform(withCsrf(post("/api/v1/operator/report-cases/" + actionedCaseId + "/decision"), session)
+				.cookie(session.sessionCookie())
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"decision\":\"ACTIONED\",\"internalNote\":\"숨김\"}"))
+			.andExpect(status().isOk());
+
+		mockMvc.perform(withCsrf(post("/api/v1/operator/report-cases/" + noViolationCaseId + "/restore"), session)
+				.cookie(session.sessionCookie()))
+			.andExpect(status().isBadRequest());
+
+		Answer stillHidden = answerRepository.findById(answerId).orElseThrow();
+		assertThat(stillHidden.getStatus()).isEqualTo(AnswerStatus.HIDDEN);
+	}
+
+	@Test
+	@DisplayName("아직 종결되지 않은 사건으로는 복원할 수 없다")
+	void restoreRejectsCaseThatIsNotResolved() throws Exception {
+		long answerId = publishedAnswer("gh156-api-restore-open-case");
+		long caseId = openCase(answerId, NOW.plus(Duration.ofDays(3)));
+		OperatorSession session = login();
+
+		mockMvc.perform(withCsrf(post("/api/v1/operator/report-cases/" + caseId + "/restore"), session)
+				.cookie(session.sessionCookie()))
+			.andExpect(status().isBadRequest());
+	}
+
+	@Test
 	@DisplayName("INT-017: 같은 사건을 동시에 판정해도 판정은 한 번만 기록된다")
 	void concurrentDecisionResolvesOnce() throws Exception {
 		long answerId = publishedAnswer("gh156-api-int017");
