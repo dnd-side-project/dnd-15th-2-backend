@@ -9,6 +9,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.math.BigDecimal;
 import java.sql.Timestamp;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
@@ -33,6 +34,8 @@ import com.dnd.qello.answer.repository.AnswerRepository;
 import com.dnd.qello.safety.domain.ModerationDecision;
 import com.dnd.qello.safety.domain.Report;
 import com.dnd.qello.safety.domain.ReportCase;
+import com.dnd.qello.safety.domain.ReportCaseQueue;
+import com.dnd.qello.safety.domain.ReportCaseSeverity;
 import com.dnd.qello.safety.domain.ReportContentSnapshot;
 import com.dnd.qello.safety.domain.ReportTargetType;
 import com.dnd.qello.safety.repository.ReportCaseRepository;
@@ -133,19 +136,19 @@ class ReportCaseFoundationIntegrationTest extends PostgisContainerIntegrationTes
 	@Test
 	@DisplayName("이미 열린 사건이 있는 대상에 새 OPEN 사건을 삽입하면 unique violation이 발생한다")
 	void rejectsSecondOpenCaseForSameTarget() {
-		reportCaseRepository.save(ReportCase.open(null, postId, null, NOW));
+		reportCaseRepository.save(open(null, postId, null, NOW));
 
-		assertThatThrownBy(() -> reportCaseRepository.save(ReportCase.open(null, postId, null, NOW)))
+		assertThatThrownBy(() -> reportCaseRepository.save(open(null, postId, null, NOW)))
 			.isInstanceOf(DataIntegrityViolationException.class);
 	}
 
 	@Test
 	@DisplayName("종결된 사건이 있는 대상에는 새 OPEN 사건을 만들 수 있다 — 재발은 새 사건이다")
 	void allowsNewCaseForTargetWithResolvedCase() {
-		ReportCase opened = reportCaseRepository.save(ReportCase.open(null, null, answerId, NOW));
+		ReportCase opened = reportCaseRepository.save(open(null, null, answerId, NOW));
 		reportCaseRepository.update(opened.resolve(ModerationDecision.NO_VIOLATION, NOW.plusSeconds(10)));
 
-		ReportCase reopened = reportCaseRepository.save(ReportCase.open(null, null, answerId, NOW.plusSeconds(20)));
+		ReportCase reopened = reportCaseRepository.save(open(null, null, answerId, NOW.plusSeconds(20)));
 
 		assertThat(reopened.id()).isNotEqualTo(opened.id());
 	}
@@ -188,7 +191,7 @@ class ReportCaseFoundationIntegrationTest extends PostgisContainerIntegrationTes
 	@Test
 	@DisplayName("사건 이력은 저장된 뒤 UPDATE·DELETE할 수 없다 (INV-RPT-004)")
 	void caseEventCannotBeUpdatedOrDeletedAfterCreation() {
-		ReportCase reportCase = reportCaseRepository.save(ReportCase.open(null, null, answerId, NOW));
+		ReportCase reportCase = reportCaseRepository.save(open(null, null, answerId, NOW));
 		long eventId = jdbc.queryForObject("""
 			INSERT INTO report_case_event (case_id, event_type, occurred_at)
 			VALUES (?, 'CASE_OPENED', ?) RETURNING id
@@ -293,7 +296,7 @@ class ReportCaseFoundationIntegrationTest extends PostgisContainerIntegrationTes
 		start.await(5, TimeUnit.SECONDS);
 		try {
 			return transactionTemplate.execute(status -> {
-				reportCaseRepository.save(ReportCase.open(null, null, answerId, NOW));
+				reportCaseRepository.save(open(null, null, answerId, NOW));
 				return true;
 			});
 		} catch (DataIntegrityViolationException exception) {
@@ -311,6 +314,11 @@ class ReportCaseFoundationIntegrationTest extends PostgisContainerIntegrationTes
 	private ReportContentSnapshot snapshot(long reportId) {
 		return ReportContentSnapshot.capture(reportId, NOW, ReportTargetType.ANSWER, answerId, authorId,
 			"신고 시점 본문", List.of("media-b", "media-a"), 0, NOW);
+	}
+
+	private static ReportCase open(Long targetUserId, Long directionPostId, Long answerId, Instant now) {
+		return ReportCase.open(targetUserId, directionPostId, answerId,
+			ReportCaseSeverity.NORMAL, ReportCaseQueue.STANDARD, now, now.plus(Duration.ofDays(3)));
 	}
 
 	private long account(String nickname) {

@@ -4,6 +4,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
@@ -32,14 +33,17 @@ public class JdbcReportCaseRepository implements ReportCaseRepository {
 	public ReportCase save(ReportCase reportCase) {
 		Long id = jdbc.queryForObject("""
 			INSERT INTO report_case (target_user_id, direction_post_id, answer_id,
-				status, severity, queue, decision, created_at, resolved_at)
+				status, severity, queue, decision, created_at, resolved_at,
+				sla_due_at, linked_manual_review_case_id)
 			VALUES (:targetUserId, :directionPostId, :answerId,
-				:status, :severity, :queue, :decision, :createdAt, :resolvedAt)
+				:status, :severity, :queue, :decision, :createdAt, :resolvedAt,
+				:slaDueAt, :linkedManualReviewCaseId)
 			RETURNING id
 			""", params(reportCase), Long.class);
 		return new ReportCase(id, reportCase.targetUserId(), reportCase.directionPostId(),
 			reportCase.answerId(), reportCase.status(), reportCase.severity(), reportCase.queue(),
-			reportCase.decision(), reportCase.createdAt(), reportCase.resolvedAt());
+			reportCase.decision(), reportCase.createdAt(), reportCase.resolvedAt(),
+			reportCase.slaDueAt(), reportCase.linkedManualReviewCaseId());
 	}
 
 	@Override
@@ -62,7 +66,8 @@ public class JdbcReportCaseRepository implements ReportCaseRepository {
 		jdbc.update("""
 			UPDATE report_case
 			SET status = :status, severity = :severity, queue = :queue,
-				decision = :decision, resolved_at = :resolvedAt
+				decision = :decision, resolved_at = :resolvedAt,
+				sla_due_at = :slaDueAt, linked_manual_review_case_id = :linkedManualReviewCaseId
 			WHERE id = :id
 			""", params(reportCase).addValue("id", reportCase.id()));
 		return reportCase;
@@ -73,9 +78,11 @@ public class JdbcReportCaseRepository implements ReportCaseRepository {
 		String conflictTarget = conflictTargetFor(reportCase);
 		Long id = jdbc.query("""
 			INSERT INTO report_case (target_user_id, direction_post_id, answer_id,
-				status, severity, queue, decision, created_at, resolved_at)
+				status, severity, queue, decision, created_at, resolved_at,
+				sla_due_at, linked_manual_review_case_id)
 			VALUES (:targetUserId, :directionPostId, :answerId,
-				:status, :severity, :queue, :decision, :createdAt, :resolvedAt)
+				:status, :severity, :queue, :decision, :createdAt, :resolvedAt,
+				:slaDueAt, :linkedManualReviewCaseId)
 			ON CONFLICT (%s) WHERE %s IS NOT NULL AND status IN ('OPEN', 'UNDER_REVIEW') DO NOTHING
 			RETURNING id
 			""".formatted(conflictTarget, conflictTarget), params(reportCase),
@@ -85,7 +92,8 @@ public class JdbcReportCaseRepository implements ReportCaseRepository {
 		}
 		return Optional.of(new ReportCase(id, reportCase.targetUserId(), reportCase.directionPostId(),
 			reportCase.answerId(), reportCase.status(), reportCase.severity(), reportCase.queue(),
-			reportCase.decision(), reportCase.createdAt(), reportCase.resolvedAt()));
+			reportCase.decision(), reportCase.createdAt(), reportCase.resolvedAt(),
+			reportCase.slaDueAt(), reportCase.linkedManualReviewCaseId()));
 	}
 
 	@Override
@@ -102,6 +110,24 @@ public class JdbcReportCaseRepository implements ReportCaseRepository {
 				.addValue("directionPostId", directionPostId)
 				.addValue("answerId", answerId),
 			(rs, row) -> mapReportCase(rs)).stream().findFirst();
+	}
+
+	@Override
+	public List<ReportCase> findQueue(ReportCaseQueue queue, Instant cursorSlaDueAt, Long cursorId, int limit) {
+		return jdbc.query("""
+			SELECT * FROM report_case
+			WHERE status IN ('OPEN', 'UNDER_REVIEW')
+			  AND (:queue::text IS NULL OR queue = :queue)
+			  AND (:cursorSlaDueAt::timestamptz IS NULL
+			       OR (sla_due_at, id) > (:cursorSlaDueAt, :cursorId))
+			ORDER BY sla_due_at ASC, id ASC
+			LIMIT :limit
+			""", new MapSqlParameterSource()
+				.addValue("queue", queue == null ? null : queue.name())
+				.addValue("cursorSlaDueAt", timestamp(cursorSlaDueAt))
+				.addValue("cursorId", cursorId)
+				.addValue("limit", limit),
+			(rs, row) -> mapReportCase(rs));
 	}
 
 	private static String conflictTargetFor(ReportCase reportCase) {
@@ -124,7 +150,9 @@ public class JdbcReportCaseRepository implements ReportCaseRepository {
 			.addValue("queue", reportCase.queue().name())
 			.addValue("decision", reportCase.decision() == null ? null : reportCase.decision().name())
 			.addValue("createdAt", Timestamp.from(reportCase.createdAt()))
-			.addValue("resolvedAt", timestamp(reportCase.resolvedAt()));
+			.addValue("resolvedAt", timestamp(reportCase.resolvedAt()))
+			.addValue("slaDueAt", Timestamp.from(reportCase.slaDueAt()))
+			.addValue("linkedManualReviewCaseId", reportCase.linkedManualReviewCaseId());
 	}
 
 	private static ReportCase mapReportCase(ResultSet rs) throws SQLException {
@@ -133,7 +161,8 @@ public class JdbcReportCaseRepository implements ReportCaseRepository {
 			ReportCaseStatus.valueOf(rs.getString("status")),
 			ReportCaseSeverity.valueOf(rs.getString("severity")),
 			ReportCaseQueue.valueOf(rs.getString("queue")),
-			nullableDecision(rs), instant(rs, "created_at"), instant(rs, "resolved_at"));
+			nullableDecision(rs), instant(rs, "created_at"), instant(rs, "resolved_at"),
+			instant(rs, "sla_due_at"), nullableLong(rs, "linked_manual_review_case_id"));
 	}
 
 	private static ModerationDecision nullableDecision(ResultSet rs) throws SQLException {

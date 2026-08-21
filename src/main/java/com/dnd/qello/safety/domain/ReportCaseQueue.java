@@ -1,7 +1,14 @@
 package com.dnd.qello.safety.domain;
 
-// #156이 severity 기반으로 실제 라우팅한다. 이 이슈는 항상 STANDARD로 사건을 연다.
 public enum ReportCaseQueue {
 	STANDARD,
-	URGENT
+	URGENT;
+
+	/** CRITICAL은 URGENT, NORMAL은 STANDARD로 라우팅한다(#156). */
+	public static ReportCaseQueue of(ReportCaseSeverity severity) {
+		return switch (severity) {
+			case CRITICAL -> URGENT;
+			case NORMAL -> STANDARD;
+		};
+	}
 }

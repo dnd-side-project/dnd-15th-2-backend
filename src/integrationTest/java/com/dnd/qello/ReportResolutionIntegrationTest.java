@@ -46,6 +46,8 @@ import com.dnd.qello.notification.repository.OutboxEventRepository;
 import com.dnd.qello.safety.domain.ModerationDecision;
 import com.dnd.qello.safety.domain.Report;
 import com.dnd.qello.safety.domain.ReportCase;
+import com.dnd.qello.safety.domain.ReportCaseQueue;
+import com.dnd.qello.safety.domain.ReportCaseSeverity;
 import com.dnd.qello.safety.domain.ReportCaseStatus;
 import com.dnd.qello.safety.domain.ReportStatus;
 import com.dnd.qello.safety.error.SafetyErrorCode;
@@ -298,7 +300,8 @@ class ReportResolutionIntegrationTest extends PostgisContainerIntegrationTestSup
 	}
 
 	private long openCase(long answerId) {
-		return reportCaseRepository.save(ReportCase.open(null, null, answerId, NOW)).id();
+		return reportCaseRepository.save(ReportCase.open(null, null, answerId,
+			ReportCaseSeverity.NORMAL, ReportCaseQueue.STANDARD, NOW, NOW.plus(Duration.ofDays(3)))).id();
 	}
 
 	private long attachReport(long reporterId, long answerId, long caseId) {
