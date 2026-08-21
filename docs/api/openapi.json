@@ -78,6 +78,18 @@
         },
         "type" : "object"
       },
+      "AnswerRestoreResponse" : {
+        "properties" : {
+          "answerId" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "status" : {
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
       "AnswerSubmissionResponse" : {
         "properties" : {
           "answerId" : {
@@ -143,6 +155,25 @@
         "properties" : {
           "data" : {
             "$ref" : "#/components/schemas/AnswerListingResponse"
+          },
+          "status" : {
+            "enum" : [
+              "success",
+              "error"
+            ],
+            "type" : "string"
+          },
+          "timestamp" : {
+            "format" : "date-time",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "ApiResponseAnswerRestoreResponse" : {
+        "properties" : {
+          "data" : {
+            "$ref" : "#/components/schemas/AnswerRestoreResponse"
           },
           "status" : {
             "enum" : [
@@ -747,6 +778,44 @@
         "properties" : {
           "data" : {
             "$ref" : "#/components/schemas/ReactionResponse"
+          },
+          "status" : {
+            "enum" : [
+              "success",
+              "error"
+            ],
+            "type" : "string"
+          },
+          "timestamp" : {
+            "format" : "date-time",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "ApiResponseReportCasePageResponse" : {
+        "properties" : {
+          "data" : {
+            "$ref" : "#/components/schemas/ReportCasePageResponse"
+          },
+          "status" : {
+            "enum" : [
+              "success",
+              "error"
+            ],
+            "type" : "string"
+          },
+          "timestamp" : {
+            "format" : "date-time",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "ApiResponseReportCaseResponse" : {
+        "properties" : {
+          "data" : {
+            "$ref" : "#/components/schemas/ReportCaseResponse"
           },
           "status" : {
             "enum" : [
@@ -1938,6 +2007,107 @@
         ],
         "type" : "object"
       },
+      "ReportCaseDecisionRequest" : {
+        "properties" : {
+          "decision" : {
+            "description" : "ACTIONED 또는 NO_VIOLATION",
+            "example" : "ACTIONED",
+            "type" : "string"
+          },
+          "internalNote" : {
+            "description" : "운영자 내부 메모. 신고자에게 노출되지 않는다",
+            "example" : "명백한 스팸으로 판단해 콘텐츠를 숨김",
+            "maxLength" : 2000,
+            "minLength" : 0,
+            "type" : "string"
+          }
+        },
+        "required" : [
+          "decision"
+        ],
+        "type" : "object"
+      },
+      "ReportCaseMoreInfoRequest" : {
+        "properties" : {
+          "internalNote" : {
+            "description" : "무엇이 더 필요한지 남기는 내부 메모",
+            "example" : "원본 미디어 확인이 더 필요함",
+            "maxLength" : 2000,
+            "minLength" : 0,
+            "type" : "string"
+          }
+        },
+        "required" : [
+          "internalNote"
+        ],
+        "type" : "object"
+      },
+      "ReportCasePageResponse" : {
+        "properties" : {
+          "items" : {
+            "items" : {
+              "$ref" : "#/components/schemas/ReportCaseResponse"
+            },
+            "type" : "array"
+          },
+          "nextCursor" : {
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "ReportCaseResponse" : {
+        "properties" : {
+          "answerId" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "createdAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "decision" : {
+            "type" : "string"
+          },
+          "directionPostId" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "id" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "linkedManualReviewCaseId" : {
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "overdue" : {
+            "type" : "boolean"
+          },
+          "queue" : {
+            "type" : "string"
+          },
+          "resolvedAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "severity" : {
+            "type" : "string"
+          },
+          "slaDueAt" : {
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "status" : {
+            "type" : "string"
+          },
+          "targetUserId" : {
+            "format" : "int64",
+            "type" : "integer"
+          }
+        },
+        "type" : "object"
+      },
       "ReportDetailResponse" : {
         "properties" : {
           "createdAt" : {
@@ -2419,7 +2589,7 @@
     "/admin/filtering/appeal-cases" : {
       "get" : {
         "description" : "OPEN 상태의 이의제기를 접수 순서(FIFO)로 반환합니다.",
-        "operationId" : "findQueue_1",
+        "operationId" : "findQueue_2",
         "parameters" : [
           {
             "description" : "최대 반환 개수",
@@ -2479,7 +2649,7 @@
     "/admin/filtering/appeal-cases/{appealCaseId}/decide" : {
       "post" : {
         "description" : "이의제기를 UPHOLD_HIDDEN(비공개 유지) 또는 OVERTURN_HIDDEN(비공개 취소)으로 종결합니다.\n\nOVERTURN_HIDDEN이면 복원 콜백을 내보내기 전에 다른 공개 금지 사유(계정 차단·삭제 등)를\n다시 확인합니다. 남아 있는 사유가 있으면 결정은 그대로 기록하되 복원 콜백을 내보내지 않고\n         restoreBlockedReasonCode에 사유를 남깁니다.\n\n답변의 공개 상태를 실제로 되돌리는 것은 이 API가 아니라 콜백을 받는 답변 담당 코드입니다.",
-        "operationId" : "decide_1",
+        "operationId" : "decide_2",
         "parameters" : [
           {
             "description" : "appeal case id",
@@ -2657,7 +2827,7 @@
     "/admin/filtering/manual-review-cases" : {
       "get" : {
         "description" : "OPEN case를 effectiveBand 내림차순 + band 내 created_at 오름차순(FIFO)으로 반환한다.\nagingThresholdSeconds는 저장된 band가 STANDARD인 case를 얼마나 오래 대기하면 HIGH로\n취급할지를 호출자가 명시한다 — 실제 운영 aging 시간이 미결정이라 서버가 값을 고정하지\n않는다.",
-        "operationId" : "findQueue",
+        "operationId" : "findQueue_1",
         "parameters" : [
           {
             "description" : "aging 임계값(초)",
@@ -2727,7 +2897,7 @@
     "/admin/filtering/manual-review-cases/{caseId}/decide" : {
       "post" : {
         "description" : "case를 ALLOW 또는 BLOCK으로 종결한다. 자동 결과가 이미 도착해 job이 RESOLVED라면\njob은 건드리지 않고 그 기존 판정으로 case만 종료한다(INV-MAN-003).",
-        "operationId" : "decide",
+        "operationId" : "decide_1",
         "parameters" : [
           {
             "description" : "manual review case id",
@@ -3780,7 +3950,7 @@
     "/admin/questions/proposals/{proposalId}/review" : {
       "post" : {
         "description" : "SUBMITTED 제안을 UNDER_REVIEW로 전이합니다. 승인·반려 전 반드시 거쳐야 합니다.",
-        "operationId" : "startReview",
+        "operationId" : "startReview_1",
         "parameters" : [
           {
             "description" : "질문 제안 id",
@@ -6746,6 +6916,344 @@
         ]
       }
     },
+    "/api/v1/operator/report-cases" : {
+      "get" : {
+        "description" : "OPEN·UNDER_REVIEW 사건만 SLA가 급한 순으로 반환합니다. queue를 생략하면 STANDARD·URGENT 모두 포함합니다.",
+        "operationId" : "findQueue",
+        "parameters" : [
+          {
+            "description" : "STANDARD 또는 URGENT. 생략 시 전체",
+            "in" : "query",
+            "name" : "queue",
+            "required" : false,
+            "schema" : {
+              "type" : "string"
+            }
+          },
+          {
+            "in" : "query",
+            "name" : "cursor",
+            "required" : false,
+            "schema" : {
+              "type" : "string"
+            }
+          },
+          {
+            "in" : "query",
+            "name" : "limit",
+            "required" : false,
+            "schema" : {
+              "default" : 20,
+              "format" : "int32",
+              "type" : "integer"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiResponseReportCasePageResponse"
+                }
+              }
+            },
+            "description" : "조회했습니다."
+          },
+          "400" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "요청 값이 올바르지 않습니다. 오류 코드는 docs/error-codes.md를 따른다."
+          },
+          "500" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "서버 내부 오류가 발생했습니다."
+          }
+        },
+        "security" : [
+          {
+            "operatorSession" : [ ]
+          }
+        ],
+        "summary" : "대기열 조회",
+        "tags" : [
+          "신고 사건 운영자 판정"
+        ]
+      }
+    },
+    "/api/v1/operator/report-cases/{caseId}/decision" : {
+      "post" : {
+        "description" : "ACTIONED 또는 NO_VIOLATION으로 사건을 종결합니다. ACTIONED고 대상이 답변이면 그 답변을 전역 숨김합니다.",
+        "operationId" : "decide",
+        "parameters" : [
+          {
+            "in" : "path",
+            "name" : "caseId",
+            "required" : true,
+            "schema" : {
+              "format" : "int64",
+              "type" : "integer"
+            }
+          }
+        ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/ReportCaseDecisionRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiResponseReportCaseResponse"
+                }
+              }
+            },
+            "description" : "판정을 기록했습니다."
+          },
+          "400" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "이미 종결된 사건이거나(SAF-DOM-005) decision이 올바르지 않습니다."
+          },
+          "500" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "서버 내부 오류가 발생했습니다."
+          }
+        },
+        "security" : [
+          {
+            "operatorSession" : [ ]
+          }
+        ],
+        "summary" : "사건 판정",
+        "tags" : [
+          "신고 사건 운영자 판정"
+        ]
+      }
+    },
+    "/api/v1/operator/report-cases/{caseId}/more-info" : {
+      "post" : {
+        "description" : "사건을 종결하지 않고 MORE_INFO_REQUIRED로 표시합니다.",
+        "operationId" : "requestMoreInfo",
+        "parameters" : [
+          {
+            "in" : "path",
+            "name" : "caseId",
+            "required" : true,
+            "schema" : {
+              "format" : "int64",
+              "type" : "integer"
+            }
+          }
+        ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/ReportCaseMoreInfoRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiResponseReportCaseResponse"
+                }
+              }
+            },
+            "description" : "추가 정보를 요청했습니다."
+          },
+          "400" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "이미 종결된 사건입니다(SAF-DOM-005)."
+          },
+          "500" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "서버 내부 오류가 발생했습니다."
+          }
+        },
+        "security" : [
+          {
+            "operatorSession" : [ ]
+          }
+        ],
+        "summary" : "추가 정보 요청",
+        "tags" : [
+          "신고 사건 운영자 판정"
+        ]
+      }
+    },
+    "/api/v1/operator/report-cases/{caseId}/restore" : {
+      "post" : {
+        "description" : "ACTIONED로 전역 숨김된 답변을 다시 PUBLISHED로 되돌립니다.",
+        "operationId" : "restore",
+        "parameters" : [
+          {
+            "in" : "path",
+            "name" : "caseId",
+            "required" : true,
+            "schema" : {
+              "format" : "int64",
+              "type" : "integer"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiResponseAnswerRestoreResponse"
+                }
+              }
+            },
+            "description" : "복원했습니다."
+          },
+          "400" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "답변이 HIDDEN 상태가 아니거나 답변 대상이 아닌 사건입니다."
+          },
+          "404" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "사건 또는 답변을 찾을 수 없습니다."
+          },
+          "500" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "서버 내부 오류가 발생했습니다."
+          }
+        },
+        "security" : [
+          {
+            "operatorSession" : [ ]
+          }
+        ],
+        "summary" : "숨김 답변 복원",
+        "tags" : [
+          "신고 사건 운영자 판정"
+        ]
+      }
+    },
+    "/api/v1/operator/report-cases/{caseId}/review" : {
+      "post" : {
+        "description" : "OPEN 사건을 UNDER_REVIEW로 전이합니다.",
+        "operationId" : "startReview",
+        "parameters" : [
+          {
+            "in" : "path",
+            "name" : "caseId",
+            "required" : true,
+            "schema" : {
+              "format" : "int64",
+              "type" : "integer"
+            }
+          }
+        ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiResponseReportCaseResponse"
+                }
+              }
+            },
+            "description" : "검토를 시작했습니다."
+          },
+          "400" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "이미 종결된 사건입니다(SAF-DOM-005)."
+          },
+          "500" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "서버 내부 오류가 발생했습니다."
+          }
+        },
+        "security" : [
+          {
+            "operatorSession" : [ ]
+          }
+        ],
+        "summary" : "검토 시작",
+        "tags" : [
+          "신고 사건 운영자 판정"
+        ]
+      }
+    },
     "/api/v1/questions/proposals" : {
       "post" : {
         "description" : "제안을 생성과 동시에 제출 상태로 전이합니다. 임시저장 단계는 없습니다.",
@@ -7462,6 +7970,10 @@
     {
       "description" : "질문글 이미지 업로드 예약과 완료 확인",
       "name" : "미디어"
+    },
+    {
+      "description" : "심각도·긴급 대기열 조회와 사건 검토·판정 (#156)",
+      "name" : "신고 사건 운영자 판정"
     },
     {
       "description" : "사용자가 질문 문구를 제안하고 자신의 제안 이력을 조회",

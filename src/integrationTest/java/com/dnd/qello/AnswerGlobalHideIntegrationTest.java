@@ -9,6 +9,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.math.BigDecimal;
 import java.sql.Timestamp;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
@@ -44,6 +45,8 @@ import com.dnd.qello.notification.repository.OutboxEventRepository;
 import com.dnd.qello.safety.domain.ModerationDecision;
 import com.dnd.qello.safety.domain.Report;
 import com.dnd.qello.safety.domain.ReportCase;
+import com.dnd.qello.safety.domain.ReportCaseQueue;
+import com.dnd.qello.safety.domain.ReportCaseSeverity;
 import com.dnd.qello.safety.repository.ReportCaseRepository;
 import com.dnd.qello.safety.repository.SafetyRepository;
 import com.dnd.qello.safety.service.SafetyCaseResolutionService;
@@ -197,7 +200,8 @@ class AnswerGlobalHideIntegrationTest extends PostgisContainerIntegrationTestSup
 	private void resolveWithActionedDecision(long reporterId, long answerId, Instant at) {
 		Report saved = safetyRepository.saveReport(
 			Report.forAnswer(reporterId, answerId, "SPAM_OR_ADVERTISING", null, NOW));
-		ReportCase opened = reportCaseRepository.save(ReportCase.open(null, null, answerId, NOW));
+		ReportCase opened = reportCaseRepository.save(ReportCase.open(null, null, answerId,
+			ReportCaseSeverity.NORMAL, ReportCaseQueue.STANDARD, NOW, NOW.plus(Duration.ofDays(3))));
 		safetyRepository.updateReport(saved.attachToCase(opened.id()));
 		resolutionService.resolveCase(opened.id(), ModerationDecision.ACTIONED, at);
 	}

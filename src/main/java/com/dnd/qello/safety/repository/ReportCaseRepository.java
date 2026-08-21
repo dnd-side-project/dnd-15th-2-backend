@@ -1,8 +1,11 @@
 package com.dnd.qello.safety.repository;
 
+import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 
 import com.dnd.qello.safety.domain.ReportCase;
+import com.dnd.qello.safety.domain.ReportCaseQueue;
 
 public interface ReportCaseRepository {
 
@@ -23,4 +26,11 @@ public interface ReportCaseRepository {
 	Optional<ReportCase> tryOpen(ReportCase reportCase);
 
 	Optional<ReportCase> findOpenByTarget(Long targetUserId, Long directionPostId, Long answerId);
+
+	/**
+	 * 운영자 대기열 조회(#156). OPEN·UNDER_REVIEW만 대상이다 — 종결된 사건은
+	 * 대기열이 아니다. queue가 null이면 STANDARD·URGENT 모두 포함한다. SLA가
+	 * 급한 순(sla_due_at 오름차순)으로 정렬한다.
+	 */
+	List<ReportCase> findQueue(ReportCaseQueue queue, Instant cursorSlaDueAt, Long cursorId, int limit);
 }

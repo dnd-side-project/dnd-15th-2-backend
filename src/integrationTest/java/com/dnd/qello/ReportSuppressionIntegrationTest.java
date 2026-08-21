@@ -8,6 +8,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.math.BigDecimal;
 import java.sql.Timestamp;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
@@ -32,6 +33,8 @@ import com.dnd.qello.feed.view.SentPostFilter;
 import com.dnd.qello.safety.domain.ModerationDecision;
 import com.dnd.qello.safety.domain.Report;
 import com.dnd.qello.safety.domain.ReportCase;
+import com.dnd.qello.safety.domain.ReportCaseQueue;
+import com.dnd.qello.safety.domain.ReportCaseSeverity;
 import com.dnd.qello.safety.repository.ReportCaseRepository;
 import com.dnd.qello.safety.repository.SafetyRepository;
 import com.dnd.qello.safety.service.SafetyCaseResolutionService;
@@ -176,7 +179,8 @@ class ReportSuppressionIntegrationTest extends PostgisContainerIntegrationTestSu
 		long answerId = publishedAnswer(postRecipientId, author, "답변 본문");
 		Report saved = safetyRepository.saveReport(
 			Report.forAnswer(reporterA, answerId, "SPAM_OR_ADVERTISING", null, NOW));
-		ReportCase opened = reportCaseRepository.save(ReportCase.open(null, null, answerId, NOW));
+		ReportCase opened = reportCaseRepository.save(ReportCase.open(null, null, answerId,
+			ReportCaseSeverity.NORMAL, ReportCaseQueue.STANDARD, NOW, NOW.plus(Duration.ofDays(3))));
 		safetyRepository.updateReport(saved.attachToCase(opened.id()));
 
 		resolutionService.resolveCase(opened.id(), ModerationDecision.NO_VIOLATION, NOW.plusSeconds(10));
