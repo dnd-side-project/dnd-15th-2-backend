@@ -241,6 +241,7 @@
 | `NOT-VAL-005` | INVALID_VALUE_RANGE | 400 | VAL | 알림 값이 허용 범위를 벗어났습니다. |
 | `NOT-VAL-006` | INVALID_LIMIT | 400 | VAL | limit 값이 올바르지 않습니다. |
 | `NOT-VAL-007` | INVALID_CURSOR | 400 | VAL | cursor 파라미터가 올바르지 않습니다. |
+| `NOT-VAL-008` | INVALID_PREFERENCE | 400 | VAL | 알림 설정 값이 올바르지 않습니다. |
 | `NOT-DOM-001` | INVALID_NOTIFICATION_TARGET | 400 | DOM | 알림 대상이 올바르지 않습니다. |
 | `NOT-DOM-002` | INVALID_NOTIFICATION_STATE | 400 | DOM | 알림 상태와 값이 맞지 않습니다. |
 | `NOT-DOM-003` | INVALID_NOTIFICATION_STATUS | 409 | DOM | 현재 알림 상태로는 요청을 처리할 수 없습니다. |
