@@ -41,7 +41,7 @@ class NotificationPreferenceMigrationIntegrationTest extends PostgisContainerInt
 	void setUp() {
 		int sequence = SCHEMA_SEQUENCE.incrementAndGet();
 		schemaName = "notification_preference_v25_" + sequence;
-		regionCode = "NPV25R" + sequence;
+		regionCode = "NPV26R" + sequence;
 	}
 
 	@AfterEach
@@ -50,7 +50,7 @@ class NotificationPreferenceMigrationIntegrationTest extends PostgisContainerInt
 	}
 
 	@Test
-	@DisplayName("V25는 미배포 quiet 값을 버리고 종류별 enabled 값은 그대로 보존한다")
+	@DisplayName("V26은 미배포 quiet 값을 버리고 종류별 enabled 값은 그대로 보존한다")
 	void preservesEnabledAndDropsLegacyQuietValues() {
 		migrateTo("24");
 		long userId = insertUser("migration-user");
@@ -64,7 +64,7 @@ class NotificationPreferenceMigrationIntegrationTest extends PostgisContainerInt
 
 		MigrateResult result = migrateToLatest();
 
-		assertThat(result.migrationsExecuted).isEqualTo(1);
+		assertThat(result.migrationsExecuted).isEqualTo(2);
 		for (Map.Entry<String, Boolean> entry : ENABLED_BY_TYPE.entrySet()) {
 			assertThat(enabled(userId, entry.getKey())).isEqualTo(entry.getValue());
 		}
@@ -76,7 +76,7 @@ class NotificationPreferenceMigrationIntegrationTest extends PostgisContainerInt
 	}
 
 	@Test
-	@DisplayName("V25는 사용자 설정 FK와 quiet 삼중값 CHECK를 만들고 재실행할 migration이 없다")
+	@DisplayName("V26은 사용자 설정 FK와 quiet 삼중값 CHECK를 만들고 재실행할 migration이 없다")
 	void createsUserSettingContractAndIsFullyApplied() {
 		migrateToLatest();
 		long validUserId = insertUser("valid-user");

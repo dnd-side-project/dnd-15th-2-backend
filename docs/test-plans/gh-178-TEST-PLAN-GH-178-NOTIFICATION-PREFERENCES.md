@@ -23,7 +23,7 @@ delivery만 억제되는 계약을 검증한다. 미배포 quiet 값은 이관�
 - 본인 전용 GET·PUT API와 정확히 6종인 완성 snapshot
 - quiet pair/zone, 자정 통과, 같은 시작·종료 검증
 - global/type effective push gate와 알림함 원장 선저장
-- V25 이후 기존 preference 저장 SQL이 제거된 quiet 컬럼을 참조하지 않는지 검증
+- V26 이후 기존 preference 저장 SQL이 제거된 quiet 컬럼을 참조하지 않는지 검증
 - transaction rollback, 동시 PUT 직렬화, OpenAPI와 데이터 모델 계약
 
 ### Excluded
@@ -48,7 +48,7 @@ delivery만 억제되는 계약을 검증한다. 미배포 quiet 값은 이관�
 
 | Risk | Impact | Likelihood | Priority | Evidence needed |
 | --- | --- | --- | --- | --- |
-| migration이 종류별 `enabled`를 잃거나 기본값으로 덮음 | 사용자 선택 유실 | 중간 | P0 | V24 fixture에 서로 다른 6종 값을 넣고 V25 후 동일 비교 |
+| migration이 종류별 `enabled`를 잃거나 기본값으로 덮음 | 사용자 선택 유실 | 중간 | P0 | V24 fixture에 서로 다른 6종 값을 넣고 V26 후 동일 비교 |
 | global OFF가 종류별 선택을 false로 덮음 | 다시 켰을 때 개인화 유실 | 중간 | P0 | OFF→ON round-trip 전후 6종 값 동일 |
 | preference를 notification 저장 전에 검사 | 알림함 원장 누락 | 중간 | P0 | global/type OFF에서 notification 1, delivery 0 PostgreSQL 증거 |
 | PUT 일부만 커밋 | 전역·종류별 설정 불일치 | 중간 | P0 | 중간 실패 주입 후 전체 snapshot 불변 |
@@ -86,9 +86,9 @@ delivery만 억제되는 계약을 검증한다. 미배포 quiet 값은 이관�
 
 | Scenario ID | Components | Setup | Action | Expected result | Cleanup |
 | --- | --- | --- | --- | --- | --- |
-| TEST-PLAN-GH-178-NOTIFICATION-PREFERENCES-INT-001 | Flyway V24→V25 | 6종 `enabled`를 혼합해 V24 schema에 저장하고 quiet에는 임의값 저장 | V25 migrate | 6종 enabled 동일, old quiet 컬럼·CHECK 제거, 신규 테이블 생성; quiet 값은 이관하지 않음 | 전용 schema drop |
+| TEST-PLAN-GH-178-NOTIFICATION-PREFERENCES-INT-001 | Flyway V24→V26 | 6종 `enabled`를 혼합해 V24 schema에 저장하고 quiet에는 임의값 저장 | V25·V26 migrate | 6종 enabled 동일, old quiet 컬럼·CHECK 제거, 신규 테이블 생성; quiet 값은 이관하지 않음 | 전용 schema drop |
 | TEST-PLAN-GH-178-NOTIFICATION-PREFERENCES-INT-002 | PostgreSQL catalog | 최신 migration 적용 | table·column·FK·CHECK 조회 | 세 quiet 필드는 0개 또는 3개이고 신규 PK/FK가 정확하다 | transaction rollback |
-| TEST-PLAN-GH-178-NOTIFICATION-PREFERENCES-INT-003 | Flyway | V25까지 적용된 schema | migrate 재실행 | 추가 migration 0건이고 schema 불변 | 전용 schema drop |
+| TEST-PLAN-GH-178-NOTIFICATION-PREFERENCES-INT-003 | Flyway | V26까지 적용된 schema | migrate 재실행 | 추가 migration 0건이고 schema 불변 | 전용 schema drop |
 | TEST-PLAN-GH-178-NOTIFICATION-PREFERENCES-INT-004 | repository·service·GET API | ACTIVE USER, 설정 행 없음 | 본인 GET | global ON, 6종 ON, quiet null, `ALWAYS_RECORD` | 계정·설정 삭제 |
 | TEST-PLAN-GH-178-NOTIFICATION-PREFERENCES-INT-005 | PUT·repository·GET | ACTIVE USER | global OFF, 6종 혼합, overnight quiet 저장 후 GET | 입력과 canonical snapshot이 동일하고 종류별 값이 보존된다 | 계정·설정 삭제 |
 | TEST-PLAN-GH-178-NOTIFICATION-PREFERENCES-INT-006 | PUT·repository | quiet가 저장된 사용자 | quiet null인 완성 snapshot 저장 | quiet 세 컬럼이 모두 null이고 종류별 값은 유지된다 | 계정·설정 삭제 |
@@ -98,13 +98,13 @@ delivery만 억제되는 계약을 검증한다. 미배포 quiet 값은 이관�
 | TEST-PLAN-GH-178-NOTIFICATION-PREFERENCES-INT-010 | Security·GET·PUT | ACTIVE USER A·B와 비활성 USER | A 인증으로 호출 | A만 조회·변경되고 비활성 사용자는 403; request/path에 target user ID 없음 | 계정·설정 삭제 |
 | TEST-PLAN-GH-178-NOTIFICATION-PREFERENCES-INT-011 | 두 transaction·row lock | 같은 사용자에 서로 다른 완성 snapshot A·B | PUT을 barrier로 경합 | 최종값은 A 또는 B 전체와 일치하고 혼합되지 않는다 | executor 종료·계정 삭제 |
 | TEST-PLAN-GH-178-NOTIFICATION-PREFERENCES-INT-012 | springdoc·OpenAPI | application context | 스펙 재생성 | GET·PUT operation, 6종 enum, request/response와 400/401/403/404가 문서화된다 | 생성 diff 검토 |
-| TEST-PLAN-GH-178-NOTIFICATION-PREFERENCES-INT-013 | V25 schema·전용 preference repository | V25 적용 후 설정 행이 없는 사용자 | `replaceTypePreferences` 호출 | 제거된 quiet 컬럼을 참조하지 않고 종류별 `enabled`가 저장·재조회된다 | 설정·계정 삭제 |
+| TEST-PLAN-GH-178-NOTIFICATION-PREFERENCES-INT-013 | V26 schema·전용 preference repository | V26 적용 후 설정 행이 없는 사용자 | `replaceTypePreferences` 호출 | 제거된 quiet 컬럼을 참조하지 않고 종류별 `enabled`가 저장·재조회된다 | 설정·계정 삭제 |
 
 ## 7. Cross-cutting scenarios
 
 ### Database and transactions
 
-- V25는 PostgreSQL transactional migration으로 수행하고 `enabled` 보존을 값 단위로 비교한다.
+- V26은 PostgreSQL transactional migration으로 수행하고 `enabled` 보존을 값 단위로 비교한다.
 - PUT은 사용자 설정 row 또는 사용자 식별자를 먼저 lock한 뒤 global→6종 고정 순서로
   저장하고 canonical snapshot을 같은 transaction에서 다시 읽는다.
 - quiet 값은 미배포 데이터이므로 이관하지 않는다. 이 결정은 데이터 손실 예외가 아니라

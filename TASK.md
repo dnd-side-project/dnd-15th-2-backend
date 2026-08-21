@@ -49,7 +49,7 @@
 9. 신규 요청 오류는 `NOT-VAL-008`로 매핑하고 field/reason으로 세부 원인을 구분한다.
 10. Flyway, domain/repository/service/web, OpenAPI, ERD/DBML/schema manifest와 JUnit 5
     단위·PostgreSQL 통합 테스트를 함께 갱신한다.
-11. V25 이후에도 기존 preference 저장 bridge가 quiet 컬럼을 참조하지 않도록 SQL을
+11. V26 이후에도 기존 preference 저장 bridge가 quiet 컬럼을 참조하지 않도록 SQL을
     함께 갱신하고, 실제 repository 저장 회귀를 검증한다.
 
 ## Approved design decisions
@@ -108,14 +108,14 @@ git diff --check
 
 - `./harness test-run --id TEST-PLAN-GH-178-NOTIFICATION-PREFERENCES` 실행 결과 `FAIL`.
   `FlywayMigrationContractTest.migrationsMatchAcceptedContent`가 실제 목록의
-  `V25__split_notification_user_setting.sql`을 기존 expected migration 목록에서
+  `V26__split_notification_user_setting.sql`을 기존 expected migration 목록에서
   누락한 구현·테스트 계약 불일치를 재현했다(859개 완료, 1개 실패, exit 1).
 - 위 구현 실패로 지시된 후속 단위·PostgreSQL 통합·fan-out·OpenAPI·저장소 완료 검증
   명령은 실행하지 않았다. 따라서 완료 체크박스는 유지하며 PASS로 표시하지 않는다.
 - 상세 증거: `docs/test-reports/gh-178-TEST-REPORT-GH-178-NOTIFICATION-PREFERENCES.md`.
 - migration expected 목록을 보강한 뒤 동일 harness 명령을 재실행했다. unit 단계는
   성공했으나 integration 단계에서 `AccountPersistenceIntegrationTest`가
-  `expected: 50 but was: 51`로 실패했다. V25의 `notification_user_setting` 신규
+  `expected: 50 but was: 51`로 실패했다. V26의 `notification_user_setting` 신규
   테이블을 기존 table-count assertion이 반영하지 않은 구현·테스트 계약 불일치다.
 - 두 번째 구현 실패로 승인된 targeted unit/integration·fan-out·OpenAPI 및 저장소 완료
   검증 명령은 다시 실행하지 않았다.
@@ -123,9 +123,10 @@ git diff --check
   notification unit 147개, NotificationPreference integration 9개, fan-out integration
   44개, OpenAPI integration 10개, `./harness check`, `npm run hooks:validate`,
   `git diff --check`가 모두 성공했다.
-- `./harness pr-ready --project-tests`만 branch가 `origin/main`보다 뒤처져 exit 2로
-  BLOCKED되었다. 별도 sync/rebase 승인 없이는 실행하지 않았으므로 최종 완료 상태는
-  아직 PASS가 아니다. 상세 증거는 테스트 보고서에 누적했다.
+- V26 rebase 후 승인된 순서를 다시 실행했다. 전체 harness test-run은 5분 25초,
+  `./harness pr-ready --project-tests`는 전체 check를 포함해 5분 33초에 성공했고
+  `Local PR readiness checks passed`를 확인했다. `harness check`, hooks, diff도
+  성공했다. 상세 증거는 테스트 보고서에 누적했다.
 
 ## Completion criteria
 
@@ -141,4 +142,4 @@ git diff --check
 - [x] 단위·MockMvc 18개와 PostgreSQL 통합 13개 계획의 P0가 모두 통과한다.
 - [x] 모든 신규 테스트에 `@DisplayName`과 정확한 ISO 8601·Source scenario 헤더가 있다.
 - [x] 테스트 보고서와 잠재 문제 분석을 작성한다.
-- [ ] 완료 전 검증을 모두 실행하고 실패·미실행 범위를 구분해 기록한다.
+- [x] 완료 전 검증을 모두 실행하고 실패·미실행 범위를 구분해 기록한다.

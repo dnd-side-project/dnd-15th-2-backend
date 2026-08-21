@@ -27,7 +27,7 @@
 ### Task 1: V25 사용자 공통 설정 migration
 
 **Files:**
-- Create: `src/main/resources/db/migration/V25__split_notification_user_setting.sql`
+- Create: `src/main/resources/db/migration/V26__split_notification_user_setting.sql`
 - Create: `src/integrationTest/java/com/dnd/qello/NotificationPreferenceMigrationIntegrationTest.java`
 - Modify: `src/integrationTest/java/com/dnd/qello/FlywayMigrationIntegrationTest.java`
 - Modify: `src/main/java/com/dnd/qello/notification/repository/jdbc/sql/NotificationSql.java`
@@ -40,11 +40,11 @@
 - Consumes: V24 `notification_preference(notification_type, user_id, enabled, quiet_start, quiet_end, updated_at)`.
 - Produces: `notification_user_setting`과 quiet 필드가 제거된 `notification_preference`.
 
-- [ ] **Step 1: V24→V25 enabled 보존 실패 테스트 작성**
+- [ ] **Step 1: V24→V26 enabled 보존 실패 테스트 작성**
 
 ```java
 @Test
-@DisplayName("V25는 미배포 quiet 값은 버리고 종류별 enabled 값은 그대로 보존한다")
+@DisplayName("V26은 미배포 quiet 값은 버리고 종류별 enabled 값은 그대로 보존한다")
 void preservesEnabledAndDropsLegacyQuietValues() {
     migrateTo("24");
     insertPreference("ANSWER_RECEIVED", false, "22:00", "07:00");
@@ -60,7 +60,7 @@ void preservesEnabledAndDropsLegacyQuietValues() {
 }
 ```
 
-- [ ] **Step 2: migration 테스트가 V25 부재로 실패하는지 실행**
+- [ ] **Step 2: migration 테스트가 V26 부재로 실패하는지 실행**
 
 Run:
 
@@ -68,9 +68,9 @@ Run:
 ./gradlew integrationTest --tests "com.dnd.qello.NotificationPreferenceMigrationIntegrationTest" --console=plain
 ```
 
-Expected: 신규 테이블 또는 V25 migration 부재로 FAIL.
+Expected: 신규 테이블 또는 V26 migration 부재로 FAIL.
 
-- [ ] **Step 3: V25 DDL 작성**
+- [ ] **Step 3: V26 DDL 작성**
 
 ```sql
 CREATE TABLE notification_user_setting (
@@ -101,7 +101,7 @@ ALTER TABLE notification_preference
 
 ```java
 @Test
-@DisplayName("V25는 사용자 설정 FK와 quiet 삼중값 CHECK를 만들고 재실행할 migration이 없다")
+@DisplayName("V26은 사용자 설정 FK와 quiet 삼중값 CHECK를 만들고 재실행할 migration이 없다")
 void createsUserSettingContractAndIsFullyApplied() {
     migrateToLatest();
     assertThat(constraintDefinition("ck_notification_user_setting_quiet_hours"))
@@ -128,12 +128,12 @@ notification_preference: 알림 종류별 push enabled override
 
 Expected: PASS, `enabled` 값 단위 비교 성공.
 
-- [ ] **Step 7: V25 이후 기존 preference 저장 bridge 회귀 테스트 추가**
+- [ ] **Step 7: V26 이후 기존 preference 저장 bridge 회귀 테스트 추가**
 
-`NotificationFanOutPersistenceIntegrationTest`에 V25 schema에서 전용
+`NotificationFanOutPersistenceIntegrationTest`에 V26 schema에서 전용
 `NotificationPreferenceRepository.replaceTypePreferences`를 호출해 `enabled`가
 저장되는 시나리오를 유지한다. Task 1의 bridge 회귀는 이미 RED/GREEN으로 확인했고,
-Task 5에서 bridge를 제거했으므로 최종 계획의 INT-013은 전용 repository의 V25 저장
+Task 5에서 bridge를 제거했으므로 최종 계획의 INT-013은 전용 repository의 V26 저장
 경로를 검증한다.
 
 ```sql
@@ -164,7 +164,7 @@ migration integration test에서 `notification_user_setting_pkey`와 기존
 검토 파일을 named path로 제시한 뒤 승인되면 다음 형식으로 커밋한다.
 
 ```bash
-git add -- src/main/resources/db/migration/V25__split_notification_user_setting.sql src/integrationTest/java/com/dnd/qello/NotificationPreferenceMigrationIntegrationTest.java src/integrationTest/java/com/dnd/qello/FlywayMigrationIntegrationTest.java src/main/java/com/dnd/qello/notification/repository/jdbc/sql/NotificationSql.java src/integrationTest/java/com/dnd/qello/NotificationFanOutPersistenceIntegrationTest.java docs/product/data-model/direction_communication.dbml docs/product/data-model/DIRECTION_COMMUNICATION_ERD.md docs/product/data-model/schema-manifest.md
+git add -- src/main/resources/db/migration/V26__split_notification_user_setting.sql src/integrationTest/java/com/dnd/qello/NotificationPreferenceMigrationIntegrationTest.java src/integrationTest/java/com/dnd/qello/FlywayMigrationIntegrationTest.java src/main/java/com/dnd/qello/notification/repository/jdbc/sql/NotificationSql.java src/integrationTest/java/com/dnd/qello/NotificationFanOutPersistenceIntegrationTest.java docs/product/data-model/direction_communication.dbml docs/product/data-model/DIRECTION_COMMUNICATION_ERD.md docs/product/data-model/schema-manifest.md
 git commit -m "feat(database): split user notification settings (#178)"
 ```
 
@@ -286,10 +286,10 @@ SELECT
 
 `replaceTypePreferences`는 enum 이름 순으로 6종을 upsert해 lock 순서를 고정한다.
 
-- [ ] **Step 6: 기존 repository를 V25와 호환되는 임시 bridge로 유지**
+- [ ] **Step 6: 기존 repository를 V26과 호환되는 임시 bridge로 유지**
 
 Task 5에서 모든 call site를 한 번에 옮기기 전까지 기존 `savePreference`와
-`isPreferenceEnabled`는 유지한다. 단, V25에서 quiet 컬럼이 사라지므로 기존 upsert SQL은
+`isPreferenceEnabled`는 유지한다. 단, V26에서 quiet 컬럼이 사라지므로 기존 upsert SQL은
 `notification_type`, `user_id`, `enabled`만 쓰게 바꾸고 quiet parameter는 무시한다.
 `NotificationPreference`의 3-field 변경과 bridge 제거도 Task 5에서 call site와 함께 한다.
 

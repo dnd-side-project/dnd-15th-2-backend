@@ -116,10 +116,10 @@ class AccountPersistenceIntegrationTest extends PostgisContainerIntegrationTestS
 		// migration이 먼저 적용된 뒤 이 테스트가 실행되므로 V14~V19가 만든 테이블도
 		// 이 count에 포함된다.
 		// + operator_action_audit(V20, #113 — 운영자 행위 감사 원장)
-			// + notification_seen_state(V24, #176 — 알림함 열람 기준선)
-			// + notification_user_setting(V25, #178 — 사용자 공통 알림 설정)
-			assertThat(applicationTableCount).isEqualTo(51);
-		}
+		// + notification_seen_state(V24, #176 — 알림함 열람 기준선)
+		// + notification_user_setting(V26, #178 — 사용자 공통 알림 설정)
+		assertThat(applicationTableCount).isEqualTo(51);
+	}
 
 	@Test
 	@DisplayName("일반 사용자 Account를 저장하고 identity ID와 auditing 시각을 포함해 다시 조회한다")

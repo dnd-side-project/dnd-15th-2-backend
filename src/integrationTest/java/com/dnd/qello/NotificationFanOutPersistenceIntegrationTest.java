@@ -132,7 +132,7 @@ class NotificationFanOutPersistenceIntegrationTest extends PostgisContainerInteg
 	}
 
 	@Test
-	@DisplayName("V25 이후 전용 preference repository는 enabled를 저장하고 다시 읽을 수 있다")
+	@DisplayName("V26 이후 전용 preference repository는 enabled를 저장하고 다시 읽을 수 있다")
 	void savesPreferenceEnabledRoundTripAfterV25() {
 		preferences.replaceTypePreferences(recipientId, typePreferences(NotificationType.ANSWER_RECEIVED, false));
 

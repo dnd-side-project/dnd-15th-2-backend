@@ -121,12 +121,12 @@ V1~V9(2026-08-08) 전체를 반영한다. `V7`(#81, `device_credential`)과 `V8`
 | Object | Count | Notes |
 | --- | ---: | --- |
 | DBML enums | 28 | SQL에서는 `VARCHAR + CHECK`로 표현. `V3`~`V7`(운영자 인증, Spring Session, 기기 자격증명)은 vault DBML이 다루는 범위 밖이라 이 수치에 영향이 없다 |
-| Tables | 33 | 모든 테이블에 논리 PK 존재. `V5`가 `operator_credential`, `V6`이 `spring_session`/`spring_session_attributes`, `V7`이 `device_credential`, `V25`가 `notification_user_setting`을 추가 |
+| Tables | 33 | 모든 테이블에 논리 PK 존재. `V5`가 `operator_credential`, `V6`이 `spring_session`/`spring_session_attributes`, `V7`이 `device_credential`, `V26`이 `notification_user_setting`을 추가 |
 | Primary keys | 33 | 29개는 단일 컬럼 inline, 4개는 명시적으로 이름 붙인 복합 PK(`pk_user_block`, `pk_notification_preference`, `pk_post_reaction`, `pk_answer_reaction`) |
-| Foreign keys | 53 | named `fk_*` constraints. `V5`가 `fk_operator_credential_user`, `V6`이 `spring_session_attributes_fk`, `V7`이 `fk_device_credential_user`, `V9`가 `fk_user_account_country`, `V25`가 `fk_notification_user_setting_user`를 추가 |
+| Foreign keys | 53 | named `fk_*` constraints. `V5`가 `fk_operator_credential_user`, `V6`이 `spring_session_attributes_fk`, `V7`이 `fk_device_credential_user`, `V9`가 `fk_user_account_country`, `V26`이 `fk_notification_user_setting_user`를 추가 |
 | Unique constraints | 21 | named `uq_*` constraints. `V5`가 `uq_user_account_id_role`, `uq_operator_credential_login_id`, `V9`가 `uq_region_code_code_level`을 추가. `V7`은 named unique 제약이 아니라 `CREATE UNIQUE INDEX` 2개를 추가해 이 수치에 영향이 없다 |
 | Unique indexes | 12 | `CREATE UNIQUE INDEX`로 만든 것만 센다(named unique 테이블 제약이 만드는 인덱스는 위 "Unique constraints"에서 센다). `V6`이 `spring_session_ix1`, `V7`이 `uq_device_credential_secret`/`uq_active_device_installation`, `V12`가 `uq_outbox_event_direction_matching_round`를 추가 |
-| Check constraints | 114 | named `ck_*` constraints. `V3`이 추가한 `ck_user_account_password_hash`는 `V5`가 제거해 순증감 없음. `V5`가 operator_credential 관련 4개, `V7`이 device_credential 관련 4개, `V8`이 6개(방향·거리·수정 이력 컬럼), `V9`가 USER 국가 필수·국가 코드 형식 2개를 추가했다. `V25`는 `notification_user_setting`에 quiet 3값·동일 시각 금지 CHECK 2개를 추가하고 `ck_notification_preference_quiet_hours`를 제거해 순증 1이다 |
+| Check constraints | 114 | named `ck_*` constraints. `V3`이 추가한 `ck_user_account_password_hash`는 `V5`가 제거해 순증감 없음. `V5`가 operator_credential 관련 4개, `V7`이 device_credential 관련 4개, `V8`이 6개(방향·거리·수정 이력 컬럼), `V9`가 USER 국가 필수·국가 코드 형식 2개를 추가했다. `V26`은 `notification_user_setting`에 quiet 3값·동일 시각 금지 CHECK 2개를 추가하고 `ck_notification_preference_quiet_hours`를 제거해 순증 1이다 |
 | Non-unique indexes | 47 | GiST, partial, sort-order index 포함. `V6`이 `spring_session_ix2`, `spring_session_ix3`, `V7`이 `device_credential_user_idx`, `V9`가 `user_account_country_idx`, `V12`가 `outbox_event_claim_idx`를 추가 |
 | Functions | 11 | trigger support functions. `V8`이 `enforce_answer_reaction_reactor_is_sender`를 `enforce_answer_reaction_reactor_can_view`로 교체(개수 불변) |
 | Triggers | 10 | 2 regular + 8 constraint triggers. `V8`이 `ct_answer_reaction_reactor_is_sender`를 `ct_answer_reaction_reactor_can_view`로 교체(개수 불변) |
@@ -189,7 +189,7 @@ DBML/ERD를 대조해 기록하며, 실제 PostgreSQL catalog 적용 여부는 �
 - `report`
 - `moderation_review`
 - `push_device`
-- `notification_user_setting` (`V25`)
+- `notification_user_setting` (`V26`)
 - `notification_preference`
 - `outbox_event`
 - `notification`
