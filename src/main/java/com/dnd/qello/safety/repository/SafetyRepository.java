@@ -34,6 +34,12 @@ public interface SafetyRepository {
 	int countReportsByReporterSince(long reporterId, Instant since);
 
 	/**
+	 * CRITICAL 일일 쿼터 판정용. since 이후 이 신고자가 접수한 CRITICAL 하위
+	 * 사유(CSAM/NCII/CREDIBLE_THREAT/SELF_HARM_RISK) 신고 수(#157).
+	 */
+	int countCriticalReportsByReporterSince(long reporterId, Instant since);
+
+	/**
 	 * 같은 신고자의 동시 제출을 직렬화한다(트랜잭션 종료 시 자동 해제). rate limit
 	 * count-then-insert와 findOpenReport-then-insert가 각각 별도 연산이라 생기는
 	 * 경합을 이 잠금으로 없앤다 — 두 번째 트랜잭션은 첫 번째가 커밋한 뒤에야
