@@ -17,6 +17,7 @@ import java.time.ZoneId;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import com.dnd.qello.notification.error.NotificationErrorCode;
 import com.dnd.qello.notification.error.NotificationException;
 
 class NotificationQuietHoursTest {
@@ -41,7 +42,8 @@ class NotificationQuietHoursTest {
 			null,
 			LocalTime.of(7, 0),
 			ZoneId.of("Asia/Seoul")))
-			.isInstanceOf(NotificationException.class);
+			.isInstanceOf(NotificationException.class)
+			.hasFieldOrPropertyWithValue("errorCode", NotificationErrorCode.INVALID_PREFERENCE);
 	}
 
 	@Test
@@ -51,7 +53,8 @@ class NotificationQuietHoursTest {
 			LocalTime.of(22, 0),
 			null,
 			ZoneId.of("Asia/Seoul")))
-			.isInstanceOf(NotificationException.class);
+			.isInstanceOf(NotificationException.class)
+			.hasFieldOrPropertyWithValue("errorCode", NotificationErrorCode.INVALID_PREFERENCE);
 	}
 
 	@Test
@@ -61,7 +64,8 @@ class NotificationQuietHoursTest {
 			LocalTime.of(22, 0),
 			LocalTime.of(7, 0),
 			null))
-			.isInstanceOf(NotificationException.class);
+			.isInstanceOf(NotificationException.class)
+			.hasFieldOrPropertyWithValue("errorCode", NotificationErrorCode.INVALID_PREFERENCE);
 	}
 
 	@Test
@@ -71,6 +75,18 @@ class NotificationQuietHoursTest {
 			LocalTime.NOON,
 			LocalTime.NOON,
 			ZoneId.of("Asia/Seoul")))
-			.isInstanceOf(NotificationException.class);
+			.isInstanceOf(NotificationException.class)
+			.hasFieldOrPropertyWithValue("errorCode", NotificationErrorCode.INVALID_PREFERENCE);
+	}
+
+	@Test
+	@DisplayName("고정 offset 시간대는 IANA 지역 기반 Zone ID가 아니므로 거부한다")
+	void rejectsFixedOffsetZoneId() {
+		assertThatThrownBy(() -> new NotificationQuietHours(
+			LocalTime.of(22, 0),
+			LocalTime.of(7, 0),
+			ZoneId.of("+09:00")))
+			.isInstanceOf(NotificationException.class)
+			.hasFieldOrPropertyWithValue("errorCode", NotificationErrorCode.INVALID_PREFERENCE);
 	}
 }

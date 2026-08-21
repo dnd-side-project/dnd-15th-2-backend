@@ -8,8 +8,12 @@ package com.dnd.qello.notification.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -109,8 +113,9 @@ class NotificationPreferenceServiceTest {
 		NotificationPreferenceSnapshot result = service.replaceMine(USER_ID, command);
 
 		assertThat(result).isSameAs(saved);
-		InOrder inOrder = inOrder(preferences);
+		InOrder inOrder = inOrder(preferences, accountEligibilityGate);
 		inOrder.verify(preferences).lockUser(USER_ID);
+		inOrder.verify(accountEligibilityGate).requireActiveUser(eq(USER_ID), any(), any());
 		inOrder.verify(preferences).saveUserSetting(USER_ID, false, null);
 		inOrder.verify(preferences).replaceTypePreferences(USER_ID, mixedTypes);
 		inOrder.verify(preferences).findByUserId(USER_ID);
@@ -134,7 +139,7 @@ class NotificationPreferenceServiceTest {
 	}
 
 	@Test
-	@DisplayName("UNIT-012 존재하지 않는 계정이면 GET과 PUT 모두 NOT-APP-001이고 repository는 호출되지 않는다")
+	@DisplayName("UNIT-012 존재하지 않는 계정이면 GET과 PUT 모두 NOT-APP-001이고 PUT은 저장하지 않는다")
 	void rejectsUnknownAccountAcrossGetAndPut() {
 		stubGateToInvoke(1);
 		UpdateNotificationPreferences command = command(true, mixedTypes(), null);
@@ -142,14 +147,20 @@ class NotificationPreferenceServiceTest {
 		assertThatThrownBy(() -> service.findMine(USER_ID))
 			.isInstanceOf(NotificationException.class)
 			.hasFieldOrPropertyWithValue("errorCode", NotificationErrorCode.ACCOUNT_NOT_FOUND);
+		verifyNoInteractions(preferences);
+
+		doThrow(new NotificationException(NotificationErrorCode.ACCOUNT_NOT_FOUND))
+			.when(preferences).lockUser(USER_ID);
 		assertThatThrownBy(() -> service.replaceMine(USER_ID, command))
 			.isInstanceOf(NotificationException.class)
 			.hasFieldOrPropertyWithValue("errorCode", NotificationErrorCode.ACCOUNT_NOT_FOUND);
-		verifyNoInteractions(preferences);
+		verify(preferences).lockUser(USER_ID);
+		verify(preferences, never()).saveUserSetting(anyLong(), anyBoolean(), any());
+		verify(preferences, never()).replaceTypePreferences(anyLong(), any());
 	}
 
 	@Test
-	@DisplayName("UNIT-013 USER가 아니거나 비활성 계정이면 GET과 PUT 모두 NOT-APP-002다")
+	@DisplayName("UNIT-013 USER가 아니거나 비활성 계정이면 GET과 PUT 모두 NOT-APP-002이고 PUT은 저장하지 않는다")
 	void rejectsIneligibleAccountAcrossGetAndPut() {
 		stubGateToInvoke(2);
 		UpdateNotificationPreferences command = command(true, mixedTypes(), null);
@@ -160,7 +171,9 @@ class NotificationPreferenceServiceTest {
 		assertThatThrownBy(() -> service.replaceMine(USER_ID, command))
 			.isInstanceOf(NotificationException.class)
 			.hasFieldOrPropertyWithValue("errorCode", NotificationErrorCode.ACCOUNT_NOT_ELIGIBLE);
-		verifyNoInteractions(preferences);
+		verify(preferences).lockUser(USER_ID);
+		verify(preferences, never()).saveUserSetting(anyLong(), anyBoolean(), any());
+		verify(preferences, never()).replaceTypePreferences(anyLong(), any());
 	}
 
 	private void stubEligibleAccount() {

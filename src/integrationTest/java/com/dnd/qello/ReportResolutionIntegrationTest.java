@@ -5,6 +5,7 @@
  */
 package com.dnd.qello;
 
+import static com.dnd.qello.NotificationPreferenceIntegrationFixtures.typePreferences;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -15,7 +16,6 @@ import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
-import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
@@ -317,15 +317,6 @@ class ReportResolutionIntegrationTest extends PostgisContainerIntegrationTestSup
 	private void savePushGate(long userId, boolean globalEnabled, boolean typeEnabled) {
 		preferences.saveUserSetting(userId, globalEnabled, null);
 		preferences.replaceTypePreferences(userId, typePreferences(NotificationType.REPORT_RESOLVED, typeEnabled));
-	}
-
-	private Map<NotificationType, Boolean> typePreferences(NotificationType targetType, boolean enabled) {
-		EnumMap<NotificationType, Boolean> preferencesByType = new EnumMap<>(NotificationType.class);
-		for (NotificationType notificationType : NotificationType.values()) {
-			preferencesByType.put(notificationType, true);
-		}
-		preferencesByType.put(targetType, enabled);
-		return preferencesByType;
 	}
 
 	private long openCase(long answerId) {

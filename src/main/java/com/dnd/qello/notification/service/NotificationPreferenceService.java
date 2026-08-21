@@ -26,9 +26,9 @@ public class NotificationPreferenceService {
 
 	@Transactional
 	public NotificationPreferenceSnapshot replaceMine(long userId, UpdateNotificationPreferences command) {
-		requireEligibleAccount(userId);
 		command.requireCompleteTypeSet();
 		preferences.lockUser(userId);
+		requireEligibleAccount(userId);
 		preferences.saveUserSetting(userId, command.pushEnabled(), command.quietHours());
 		preferences.replaceTypePreferences(userId, command.typeEnabled());
 		return preferences.findByUserId(userId);

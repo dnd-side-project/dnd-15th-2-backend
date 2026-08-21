@@ -5,17 +5,21 @@ import java.sql.SQLException;
 import java.sql.Time;
 import java.time.LocalTime;
 import java.time.ZoneId;
+import java.util.Arrays;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
+import org.springframework.jdbc.core.namedparam.SqlParameterSource;
 import org.springframework.stereotype.Repository;
 
 import com.dnd.qello.notification.domain.NotificationPreferenceSnapshot;
 import com.dnd.qello.notification.domain.NotificationQuietHours;
 import com.dnd.qello.notification.domain.NotificationType;
+import com.dnd.qello.notification.error.NotificationErrorCode;
+import com.dnd.qello.notification.error.NotificationException;
 import com.dnd.qello.notification.repository.NotificationPreferenceRepository;
 import com.dnd.qello.notification.repository.jdbc.sql.NotificationPreferenceSql;
 
@@ -42,7 +46,12 @@ public class JdbcNotificationPreferenceRepository implements NotificationPrefere
 
 	@Override
 	public void lockUser(long userId) {
-		jdbc.queryForObject(NotificationPreferenceSql.LOCK_USER, new MapSqlParameterSource("userId", userId), Long.class);
+		List<Long> locked = jdbc.queryForList(NotificationPreferenceSql.LOCK_USER,
+			new MapSqlParameterSource("userId", userId), Long.class);
+		if (locked.isEmpty()) {
+			throw new NotificationException(NotificationErrorCode.ACCOUNT_NOT_FOUND, "userId",
+				"대상 사용자를 찾을 수 없습니다.");
+		}
 	}
 
 	@Override
@@ -58,13 +67,13 @@ public class JdbcNotificationPreferenceRepository implements NotificationPrefere
 
 	@Override
 	public void replaceTypePreferences(long userId, Map<NotificationType, Boolean> typeEnabled) {
-		for (NotificationType notificationType : NotificationType.values()) {
-			jdbc.update(NotificationPreferenceSql.UPSERT_TYPE_PREFERENCE,
-				new MapSqlParameterSource()
-					.addValue("notificationType", notificationType.name())
-					.addValue("userId", userId)
-					.addValue("enabled", typeEnabled.get(notificationType)));
-		}
+		SqlParameterSource[] batch = Arrays.stream(NotificationType.values())
+			.map(notificationType -> new MapSqlParameterSource()
+				.addValue("notificationType", notificationType.name())
+				.addValue("userId", userId)
+				.addValue("enabled", typeEnabled.get(notificationType)))
+			.toArray(SqlParameterSource[]::new);
+		jdbc.batchUpdate(NotificationPreferenceSql.UPSERT_TYPE_PREFERENCE, batch);
 	}
 
 	@Override

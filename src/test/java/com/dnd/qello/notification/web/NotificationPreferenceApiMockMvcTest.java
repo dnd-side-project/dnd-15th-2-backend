@@ -192,11 +192,19 @@ class NotificationPreferenceApiMockMvcTest {
 	}
 
 	@Test
-	@DisplayName("pushEnabled null, quiet 일부 누락, invalid Zone ID, same-time은 400 NOT-VAL-008이다")
+	@DisplayName("pushEnabled null, enabled null, quiet 일부 누락, invalid Zone ID, same-time은 400 NOT-VAL-008이다")
 	void rejectsInvalidQuietHoursAndMissingPushEnabled() throws Exception {
 		mockMvc.perform(put("/api/v1/notifications/preferences")
 				.contentType("application/json")
 				.content(validRequestJson().replace("\"pushEnabled\": false", "\"pushEnabled\": null")))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.errorDetail.code").value("NOT-VAL-008"));
+
+		mockMvc.perform(put("/api/v1/notifications/preferences")
+				.contentType("application/json")
+				.content(validRequestJson().replace(
+					"{\"type\": \"ANSWER_RECEIVED\", \"enabled\": true}",
+					"{\"type\": \"ANSWER_RECEIVED\", \"enabled\": null}")))
 			.andExpect(status().isBadRequest())
 			.andExpect(jsonPath("$.errorDetail.code").value("NOT-VAL-008"));
 
@@ -209,6 +217,12 @@ class NotificationPreferenceApiMockMvcTest {
 		mockMvc.perform(put("/api/v1/notifications/preferences")
 				.contentType("application/json")
 				.content(validRequestJson().replace("\"zoneId\": \"Asia/Seoul\"", "\"zoneId\": \"Mars/Olympus\"")))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.errorDetail.code").value("NOT-VAL-008"));
+
+		mockMvc.perform(put("/api/v1/notifications/preferences")
+				.contentType("application/json")
+				.content(validRequestJson().replace("\"zoneId\": \"Asia/Seoul\"", "\"zoneId\": \"+09:00\"")))
 			.andExpect(status().isBadRequest())
 			.andExpect(jsonPath("$.errorDetail.code").value("NOT-VAL-008"));
 

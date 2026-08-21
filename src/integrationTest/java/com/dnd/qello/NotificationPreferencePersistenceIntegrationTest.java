@@ -31,8 +31,8 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.dao.DataAccessException;
 import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
+import org.springframework.jdbc.core.namedparam.SqlParameterSource;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -40,6 +40,8 @@ import org.springframework.transaction.support.TransactionTemplate;
 import com.dnd.qello.notification.domain.NotificationPreferenceSnapshot;
 import com.dnd.qello.notification.domain.NotificationQuietHours;
 import com.dnd.qello.notification.domain.NotificationType;
+import com.dnd.qello.notification.error.NotificationErrorCode;
+import com.dnd.qello.notification.error.NotificationException;
 import com.dnd.qello.notification.repository.NotificationPreferenceRepository;
 import com.dnd.qello.notification.repository.jdbc.sql.NotificationPreferenceSql;
 import com.dnd.qello.notification.service.NotificationPreferenceService;
@@ -142,12 +144,13 @@ class NotificationPreferencePersistenceIntegrationTest extends PostgisContainerI
 	void rollsBackWholeSnapshotOnTypeWriteFailure() {
 		NotificationPreferenceSnapshot original = persist(snapshot(false, mixedTypesA(), overnightQuietHours()));
 		doAnswer(invocation -> {
-			MapSqlParameterSource parameters = invocation.getArgument(1);
-			if (NotificationType.QUESTION_RECOMMENDED.name().equals(parameters.getValue("notificationType"))) {
+			SqlParameterSource[] batch = invocation.getArgument(1);
+			if (containsType(batch, NotificationType.QUESTION_RECOMMENDED)) {
 				throw new DataAccessResourceFailureException("forced last type write failure");
 			}
 			return invocation.callRealMethod();
-		}).when(namedJdbc).update(eq(NotificationPreferenceSql.UPSERT_TYPE_PREFERENCE), any(MapSqlParameterSource.class));
+		}).when(namedJdbc).batchUpdate(
+			eq(NotificationPreferenceSql.UPSERT_TYPE_PREFERENCE), any(SqlParameterSource[].class));
 
 		try {
 			assertThatThrownBy(() -> preferenceService.replaceMine(userId, command(true, mixedTypesB(), null)))
@@ -157,6 +160,16 @@ class NotificationPreferencePersistenceIntegrationTest extends PostgisContainerI
 		} finally {
 			reset(namedJdbc);
 		}
+	}
+
+	@Test
+	@DisplayName("존재하지 않는 사용자 row lock은 NOT-APP-001로 거부한다")
+	void lockUserRejectsMissingAccountWithDomainError() {
+		long missingUserId = userId + 9_999L;
+
+		assertThatThrownBy(() -> transactions.executeWithoutResult(status -> preferences.lockUser(missingUserId)))
+			.isInstanceOf(NotificationException.class)
+			.hasFieldOrPropertyWithValue("errorCode", NotificationErrorCode.ACCOUNT_NOT_FOUND);
 	}
 
 	@Test
@@ -227,6 +240,49 @@ class NotificationPreferencePersistenceIntegrationTest extends PostgisContainerI
 		}
 	}
 
+	@Test
+	@DisplayName("계정 상태 변경이 먼저 커밋되면 lock 이후 자격 재검증으로 PUT을 거부한다")
+	void replaceRechecksAccountEligibilityAfterWaitingForUserLock() throws Exception {
+		NotificationPreferenceSnapshot original = persist(snapshot(false, mixedTypesA(), overnightQuietHours()));
+		UpdateNotificationPreferences replacement = command(true, mixedTypesB(), null);
+		ExecutorService executor = Executors.newFixedThreadPool(2);
+		CountDownLatch lockedAndBlocked = new CountDownLatch(1);
+		CountDownLatch commitStateChange = new CountDownLatch(1);
+		try {
+			Future<?> stateChange = executor.submit(() -> transactions.executeWithoutResult(status -> {
+				preferences.lockUser(userId);
+				jdbc.update("UPDATE user_account SET status = 'BLOCKED' WHERE id = ?", userId);
+				lockedAndBlocked.countDown();
+				awaitOrFail(commitStateChange, "commitStateChange");
+			}));
+			assertThat(lockedAndBlocked.await(5, TimeUnit.SECONDS)).isTrue();
+
+			Future<Throwable> blockedReplace = executor.submit(() -> {
+				try {
+					preferenceService.replaceMine(userId, replacement);
+					return null;
+				} catch (Throwable exception) {
+					return exception;
+				}
+			});
+
+			assertThatThrownBy(() -> blockedReplace.get(300, TimeUnit.MILLISECONDS))
+				.isInstanceOf(TimeoutException.class);
+			assertThat(preferences.findByUserId(userId)).isEqualTo(original);
+
+			commitStateChange.countDown();
+			stateChange.get(5, TimeUnit.SECONDS);
+			Throwable rejection = blockedReplace.get(5, TimeUnit.SECONDS);
+
+			assertThat(rejection)
+				.isInstanceOf(NotificationException.class)
+				.hasFieldOrPropertyWithValue("errorCode", NotificationErrorCode.ACCOUNT_NOT_ELIGIBLE);
+			assertThat(preferences.findByUserId(userId)).isEqualTo(original);
+		} finally {
+			executor.shutdownNow();
+		}
+	}
+
 	private NotificationPreferenceSnapshot replaceAfterSignal(
 		UpdateNotificationPreferences command,
 		CountDownLatch ready,
@@ -254,6 +310,15 @@ class NotificationPreferencePersistenceIntegrationTest extends PostgisContainerI
 			Thread.currentThread().interrupt();
 			throw new IllegalStateException(exception);
 		}
+	}
+
+	private boolean containsType(SqlParameterSource[] batch, NotificationType type) {
+		for (SqlParameterSource parameters : batch) {
+			if (type.name().equals(parameters.getValue("notificationType"))) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	private NotificationPreferenceSnapshot snapshot(

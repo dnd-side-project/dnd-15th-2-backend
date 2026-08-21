@@ -40,7 +40,7 @@ class NotificationPreferenceMigrationIntegrationTest extends PostgisContainerInt
 	@BeforeEach
 	void setUp() {
 		int sequence = SCHEMA_SEQUENCE.incrementAndGet();
-		schemaName = "notification_preference_v25_" + sequence;
+		schemaName = "notification_preference_v26_" + sequence;
 		regionCode = "NPV26R" + sequence;
 	}
 

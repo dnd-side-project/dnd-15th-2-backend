@@ -6,6 +6,7 @@
  */
 package com.dnd.qello;
 
+import static com.dnd.qello.NotificationPreferenceIntegrationFixtures.typePreferences;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.math.BigDecimal;
@@ -15,7 +16,6 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.Arrays;
-import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -830,15 +830,6 @@ class RecipientNotificationFanOutWorkerIntegrationTest extends PostgisContainerI
 			preferences.replaceTypePreferences(userId,
 				typePreferences(NotificationType.DIRECTION_POST_RECEIVED, typeEnabled));
 		}
-	}
-
-	private Map<NotificationType, Boolean> typePreferences(NotificationType targetType, boolean enabled) {
-		EnumMap<NotificationType, Boolean> preferencesByType = new EnumMap<>(NotificationType.class);
-		for (NotificationType notificationType : NotificationType.values()) {
-			preferencesByType.put(notificationType, true);
-		}
-		preferencesByType.put(targetType, enabled);
-		return preferencesByType;
 	}
 
 	private void presence(long userId, String region, double longitude, double latitude) {

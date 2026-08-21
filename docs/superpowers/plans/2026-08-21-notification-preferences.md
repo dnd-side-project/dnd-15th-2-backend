@@ -24,7 +24,7 @@
 
 ---
 
-### Task 1: V25 사용자 공통 설정 migration
+### Task 1: V26 사용자 공통 설정 migration
 
 **Files:**
 - Create: `src/main/resources/db/migration/V26__split_notification_user_setting.sql`

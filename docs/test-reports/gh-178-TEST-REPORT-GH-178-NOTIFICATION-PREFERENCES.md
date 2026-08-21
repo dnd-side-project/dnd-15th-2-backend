@@ -1,15 +1,15 @@
 # Test Report: TEST-PLAN-GH-178-NOTIFICATION-PREFERENCES
 
 > Created at: `2026-08-21T18:21:33+09:00`
-> Updated at: `2026-08-21T20:02:00+09:00`
+> Updated at: `2026-08-21T20:47:14+09:00`
 > GitHub Issue: `#178`
 > Branch: `feat/gh-178-notification-preferences`
-> Commit: `31596d1` (V26 reconciliation commit; verification ran on this tree)
+> Commit: review-fix follow-up working tree before commit; final PR-ready verification is recorded in this report
 
 ## 1. Executive summary
 
 - Result: `PASS`
-- Tested scope: Final V26 rerun of the complete approved unit, NotificationPreference integration, fan-out integration, OpenAPI, harness, hooks, diff, and `pr-ready` commands. Earlier V25-era stale-contract failures remain recorded as historical diagnostics.
+- Tested scope: Final V26 rerun of the complete approved unit, NotificationPreference integration, fan-out integration, OpenAPI, harness, hooks, diff, and `pr-ready` commands. Post-review targeted unit/MockMvc and Testcontainers integration suites were rerun after account-lock, IANA Zone ID, quiet validation, and test-fixture fixes. Earlier V25-era stale-contract failures remain recorded as historical diagnostics.
 - Unverified scope: Push provider behavior, dispatch-time preference recheck, quiet suppression, and OS permissions remain excluded by the approved plan.
 - Release recommendation: The approved local verification sequence and PR readiness checks passed. CI, push/provider behavior, `#179` dispatch-time recheck, `#180` quiet suppression, and client OS permission behavior remain separate scope.
 
@@ -44,6 +44,9 @@ Two earlier runs failed on stale migration contracts before the migration was re
 | Final V26 `./harness pr-ready --project-tests` | `PASS` | Local PR readiness checks passed; full check task successful | 5m 33s | Harness output |
 | Final `npm run hooks:validate` | `PASS` | Husky validation passed | <1s | npm output |
 | Final `git diff --check` | `PASS` | No whitespace errors | <1s | Empty output, exit 0 |
+| Post-review `./gradlew test --tests "com.dnd.qello.notification.domain.NotificationQuietHoursTest" --tests "com.dnd.qello.notification.service.NotificationPreferenceServiceTest" --tests "com.dnd.qello.notification.web.NotificationPreferenceApiMockMvcTest" --console=plain` | `PASS` | Quiet hours, preference service, and MockMvc review-fix scenarios passed | 4s | Gradle exit 0 |
+| Post-review `./gradlew integrationTest --tests "com.dnd.qello.NotificationPreferencePersistenceIntegrationTest" --tests "com.dnd.qello.NotificationFanOutPersistenceIntegrationTest" --tests "com.dnd.qello.RecipientNotificationFanOutWorkerIntegrationTest" --tests "com.dnd.qello.ReportResolutionIntegrationTest" --console=plain` | `PASS` after environment retry | Preference persistence, fan-out persistence, recipient fan-out, and report fan-out suites passed | 23s | Initial Docker daemon absence was corrected by starting Docker Desktop; rerun exited 0 |
+| Post-review `./harness pr-ready --project-tests` | `PASS` | Repository policy, JUnit policy, workflow, label, Husky, unit, integration, and Gradle `check` gates passed | 5m 45s | Harness output |
 
 ### Initial-run evidence
 
@@ -101,7 +104,8 @@ The final targeted suites provide evidence for all planned P0 behavior. The two 
 - Initial reproduction: Run `./harness test-run --id TEST-PLAN-GH-178-NOTIFICATION-PREFERENCES`; failing assertion was `FlywayMigrationContractTest.java:53`, exact migration list assertion.
 - Rerun reproduction: Run the same command after adding the notification migration to the expected list; failing assertion was `AccountPersistenceIntegrationTest.java:120`, `expected: 50 but was: 51`.
 - Final status: no implementation or environment failures occurred in the V26 final sequence; `./harness pr-ready --project-tests` passed.
-- No production or test implementation code was changed during this verification.
+- Post-review status: targeted unit/MockMvc and integration suites passed after fixing review findings. The first post-review integration attempt failed before tests ran because Docker was not running; Docker Desktop was started and the same command then passed.
+- Production and test code changed during post-review verification to address the reviewed account-lock, IANA Zone ID, quiet validation, batch update, and coverage issues.
 - `omo ulw-loop status --json` could not provide an attempt directory because the installed OMO runtime was missing. This did not cause the Gradle failure; the report is the available evidence artifact.
 
 ## 6. Potential issues
@@ -150,7 +154,7 @@ The final targeted suites provide evidence for all planned P0 behavior. The two 
 - HTML test report: `docs/reports/tests/gh-178-TEST-PLAN-GH-178-NOTIFICATION-PREFERENCES.md`
 - CI run: Not run
 - Related ADR: None supplied by the approved plan
-- PR: Not created
+- PR: `#187`
 
 ## 9. Manual QA matrix
 
@@ -168,13 +172,13 @@ The final targeted suites provide evidence for all planned P0 behavior. The two 
 
 | Scenario ID | Criterion reference | Adversarial class | Expected behavior | Verdict | ArtifactRefs |
 | --- | --- | --- | --- | --- | --- |
-| ADV-178-001 | AGENTS.md verification contract | Implementation failure must stop verification; no code patch by verifier | `PASS` | `ART-178-001` |
-| ADV-178-002 | INT-001 | Migration/version contract must include V26 | `PASS` final; historical contract failure fixed | `ART-178-001` |
-| ADV-178-007 | Rerun integration regression | Application table-count contract must include V26's table | `PASS` final; historical assertion fixed | `ART-178-001` |
-| ADV-178-003 | INT-007/INT-011 | Transaction rollback and concurrent PUT | `PASS` | `ART-178-005` |
-| ADV-178-004 | INT-008/INT-009 | Global/type OFF must preserve notification and suppress only new delivery | `PASS` | `ART-178-005` |
-| ADV-178-005 | Approved exclusions / residual risk | Existing PENDING/FAILED delivery dispatch-time recheck | `not_applicable` — #178 excludes dispatch-time recheck; #179 owns it | `ART-178-001` |
-| ADV-178-006 | Approved exclusions / residual risk | OS permission versus server preference mismatch | `not_applicable` — client/OS permission behavior is outside #178 | `ART-178-001` |
+| ADV-178-001 | AGENTS.md verification contract | Implementation failure must stop verification; no code patch by verifier | Verification stops on implementation failure | `PASS` | `ART-178-001` |
+| ADV-178-002 | INT-001 | Migration/version contract must include V26 | V26 is present and historical stale contract is fixed | `PASS` final | `ART-178-001` |
+| ADV-178-007 | Rerun integration regression | Application table-count contract must include V26's table | Table-count contract includes `notification_user_setting` | `PASS` final | `ART-178-001` |
+| ADV-178-003 | INT-007/INT-011 | Transaction rollback and concurrent PUT | Rollback preserves the prior snapshot and concurrent PUT leaves a complete snapshot | `PASS` | `ART-178-005` |
+| ADV-178-004 | INT-008/INT-009 | Global/type OFF must preserve notification and suppress only new delivery | `notification` remains and new `notification_delivery` is suppressed | `PASS` | `ART-178-005` |
+| ADV-178-005 | Approved exclusions / residual risk | Existing PENDING/FAILED delivery dispatch-time recheck | #178 excludes dispatch-time recheck; #179 owns it | `not_applicable` | `ART-178-001` |
+| ADV-178-006 | Approved exclusions / residual risk | OS permission versus server preference mismatch | Client/OS permission behavior is outside #178 | `not_applicable` | `ART-178-001` |
 
 ## 10. Artifact references
 

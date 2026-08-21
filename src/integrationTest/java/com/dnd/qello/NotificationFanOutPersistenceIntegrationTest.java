@@ -5,13 +5,13 @@
  */
 package com.dnd.qello;
 
+import static com.dnd.qello.NotificationPreferenceIntegrationFixtures.typePreferences;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
-import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 
@@ -133,7 +133,7 @@ class NotificationFanOutPersistenceIntegrationTest extends PostgisContainerInteg
 
 	@Test
 	@DisplayName("V26 이후 전용 preference repository는 enabled를 저장하고 다시 읽을 수 있다")
-	void savesPreferenceEnabledRoundTripAfterV25() {
+	void savesPreferenceEnabledRoundTripAfterV26() {
 		preferences.replaceTypePreferences(recipientId, typePreferences(NotificationType.ANSWER_RECEIVED, false));
 
 		assertThat(preferences.isPushEnabled(recipientId, NotificationType.ANSWER_RECEIVED)).isFalse();
@@ -245,12 +245,4 @@ class NotificationFanOutPersistenceIntegrationTest extends PostgisContainerInteg
 		return "direction-post-received:" + postRecipientId;
 	}
 
-	private Map<NotificationType, Boolean> typePreferences(NotificationType targetType, boolean enabled) {
-		EnumMap<NotificationType, Boolean> preferencesByType = new EnumMap<>(NotificationType.class);
-		for (NotificationType notificationType : NotificationType.values()) {
-			preferencesByType.put(notificationType, true);
-		}
-		preferencesByType.put(targetType, enabled);
-		return preferencesByType;
-	}
 }
