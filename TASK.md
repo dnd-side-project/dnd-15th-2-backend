@@ -121,25 +121,31 @@ git diff --check
 
 Java 코드 변경이 없으므로 Gradle 테스트는 대상이 아니다.
 
-### Validation evidence (2026-08-22)
+### Validation evidence (2026-08-22, 1차)
 
 - `git diff --check`: 통과.
 - `./harness check`: 통과 (secret preflight 1156개 파일, JUnit 정책 222개 파일,
   convention·workflow·label·husky 검증 모두 통과).
 - `npm run hooks:validate`: 통과.
 - `./harness pr-ready --project-tests`: **FAIL.** 원인은 이 브랜치의 변경이 아니라
-  테스트 환경 문제다 — 이 워크트리에 Docker 데몬 자체가 없다(`docker: command not
-  found`). Testcontainers 기반 통합 테스트 76개가 `DockerClientProviderStrategy`
+  테스트 환경 문제였다 — 이 워크트리에 Docker 데몬 자체가 없었다(`docker: command
+  not found`). Testcontainers 기반 통합 테스트 76개가 `DockerClientProviderStrategy`
   초기화 단계에서 전부 `initializationError`로 실패했다. 이 브랜치는 Java 소스를
   전혀 변경하지 않았고(`docs/`, `templates/`, `.claude/`, `.agents/`, `agents/`,
-  `CODEX.md`만 변경) 실패한 테스트 76개는 모두 이 변경과 무관한 기존 통합 테스트다.
-  - 실행 못한 범위: 통합 테스트 전체(76개), 그리고 그 안에 포함되는
-    `./gradlew integrationTest --tests "*OpenApiSpecificationIntegrationTest"`
-    (`docs/api/openapi.json` 재생성·diff 확인). 이 검증은 `#189`에서 실제
-    `*ApiSpec` 문장을 반영하는 PR이 실행해야 한다.
-  - 남은 위험: 이번 변경 자체는 코드 동작에 영향이 없어 위험은 낮다. 다만 Docker가
-    구성된 환경에서 재검증하지 않았으므로 "통합 테스트가 실제로 통과한다"는 것을
-    확인했다고 보고하지 않는다.
+  `CODEX.md`만 변경) 실패한 테스트 76개는 모두 이 변경과 무관한 기존 통합 테스트였다.
+
+### Validation evidence (2026-08-23, 2차 — Docker 재설치 후)
+
+Docker를 재설치한 뒤 `./harness pr-ready --project-tests`를 재실행했다.
+
+- `docker info` 확인: Docker 데몬 정상 동작.
+- `./harness pr-ready --project-tests`: **통과.** `BUILD SUCCESSFUL in 7m 47s`,
+  `Local PR readiness checks passed`. `./harness check`(secret preflight, JUnit
+  정책, convention·workflow·label·husky) 전부 통과, 단위 테스트(`:test`)와 통합
+  테스트(`:integrationTest`, `OpenApiSpecificationIntegrationTest` 포함) 전부
+  통과, `:check` 통과.
+- 미실행 범위 없음. 1차에서 남겨뒀던 위험("Docker가 구성된 환경에서 재검증하지
+  않았다")이 이번 재실행으로 해소됐다.
 
 ## Completion criteria
 
@@ -159,5 +165,6 @@ Java 코드 변경이 없으므로 Gradle 테스트는 대상이 아니다.
 - [x] `docs/api-response.md`, `docs/harness/WORKFLOW_SKILLS.md`, `CODEX.md`에서
       새 가이드와 review 모드를 찾아갈 수 있다.
 - [x] 완료 전 검증을 모두 실행하고 실패·미실행 범위를 구분해 기록한다.
-      `./harness pr-ready --project-tests`는 Docker 미가용으로 통합 테스트 단계에서
-      FAIL했다 — 위 Validation evidence 절에 원인·미실행 범위·남은 위험을 기록함.
+      1차 실행은 Docker 미가용으로 통합 테스트 단계에서 FAIL했고, Docker 재설치 후
+      2차 실행에서 `./harness pr-ready --project-tests`가 전부 통과했다(위 2026-08-23
+      Validation evidence 참고). 미실행 범위 없음.
