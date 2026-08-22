@@ -68,6 +68,7 @@ class FlywayMigrationContractTest {
 			"V23__add_report_reporter_answer_suppression_index.sql",
 			"V24__add_notification_inbox_read_state.sql",
 			"V25__add_report_case_sla_and_manual_review_link.sql",
+			"V26__split_notification_user_setting.sql",
 			"V2__add_reactions_and_skip_pending.sql",
 			"V3__add_user_account_password_hash.sql",
 			"V4__add_user_account_optimistic_lock.sql",

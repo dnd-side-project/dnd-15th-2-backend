@@ -10,9 +10,14 @@ import org.springframework.web.bind.annotation.RestController;
 import com.dnd.qello.common.web.AuthenticatedUserId;
 import com.dnd.qello.common.web.response.ApiResponse;
 import com.dnd.qello.common.web.response.ApiResponseFactory;
+import com.dnd.qello.notification.error.NotificationErrorCode;
+import com.dnd.qello.notification.error.NotificationException;
 import com.dnd.qello.notification.service.NotificationInboxService;
+import com.dnd.qello.notification.service.NotificationPreferenceService;
+import com.dnd.qello.notification.web.request.UpdateNotificationPreferencesRequest;
 import com.dnd.qello.notification.web.response.NotificationCardResponse;
 import com.dnd.qello.notification.web.response.NotificationListingResponse;
+import com.dnd.qello.notification.web.response.NotificationPreferenceResponse;
 import com.dnd.qello.notification.web.response.NotificationSeenResponse;
 import com.dnd.qello.notification.web.response.NotificationTargetResponse;
 import com.dnd.qello.notification.web.response.UnreadSignalResponse;
@@ -26,6 +31,7 @@ import lombok.RequiredArgsConstructor;
 public class NotificationController implements NotificationApiSpec {
 
 	private final NotificationInboxService inboxService;
+	private final NotificationPreferenceService preferenceService;
 	private final ApiResponseFactory responseFactory;
 
 	@Override
@@ -41,6 +47,19 @@ public class NotificationController implements NotificationApiSpec {
 		long recipientId = AuthenticatedUserId.require(authentication);
 		return ResponseEntity.ok(responseFactory.success(
 			UnreadSignalResponse.from(inboxService.unreadSignal(recipientId))));
+	}
+
+	@Override
+	public ResponseEntity<ApiResponse<NotificationPreferenceResponse>> preferences(Authentication authentication) {
+		return ResponseEntity.ok(responseFactory.success(NotificationPreferenceResponse.from(
+			preferenceService.findMine(AuthenticatedUserId.require(authentication)))));
+	}
+
+	@Override
+	public ResponseEntity<ApiResponse<NotificationPreferenceResponse>> replacePreferences(
+		UpdateNotificationPreferencesRequest request, Authentication authentication) {
+		return ResponseEntity.ok(responseFactory.success(NotificationPreferenceResponse.from(
+			preferenceService.replaceMine(AuthenticatedUserId.require(authentication), requireRequest(request).toCommand()))));
 	}
 
 	@Override
@@ -64,5 +83,15 @@ public class NotificationController implements NotificationApiSpec {
 		long recipientId = AuthenticatedUserId.require(authentication);
 		return ResponseEntity.ok(responseFactory.success(
 			NotificationTargetResponse.from(inboxService.target(recipientId, notificationId))));
+	}
+
+	private UpdateNotificationPreferencesRequest requireRequest(UpdateNotificationPreferencesRequest request) {
+		if (request == null) {
+			throw new NotificationException(
+				NotificationErrorCode.INVALID_PREFERENCE,
+				"request",
+				"알림 설정 요청 본문은 필수입니다.");
+		}
+		return request;
 	}
 }

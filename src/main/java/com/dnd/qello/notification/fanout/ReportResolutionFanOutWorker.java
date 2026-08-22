@@ -23,6 +23,7 @@ import com.dnd.qello.notification.domain.OutboxRetryPolicy;
 import com.dnd.qello.notification.domain.OutboxStatus;
 import com.dnd.qello.notification.error.NotificationErrorCode;
 import com.dnd.qello.notification.error.NotificationException;
+import com.dnd.qello.notification.repository.NotificationPreferenceRepository;
 import com.dnd.qello.notification.repository.NotificationRepository;
 import com.dnd.qello.notification.repository.OutboxEventRepository;
 import com.dnd.qello.safety.domain.Report;
@@ -46,6 +47,7 @@ public class ReportResolutionFanOutWorker {
 
 	private final OutboxEventRepository outboxEventRepository;
 	private final NotificationRepository notificationRepository;
+	private final NotificationPreferenceRepository preferenceRepository;
 	private final SafetyRepository safetyRepository;
 	private final PlatformTransactionManager transactionManager;
 	private final Clock clock;
@@ -124,9 +126,7 @@ public class ReportResolutionFanOutWorker {
 		Notification notification = notificationRepository.saveIfAbsent(newNotification(event, report, at));
 		long notificationId = requireNotificationId(notification);
 		// 인앱 알림은 선호와 무관하게 항상 만든다 — push 전달만 선호로 게이트한다(#155).
-		if (isPreferenceEnabled(report.reporterId())) {
-			persistPendingDeliveries(notificationId, report.reporterId(), at);
-		}
+		persistPendingDeliveries(notificationId, report.reporterId(), at);
 	}
 
 	private Notification newNotification(OutboxEvent event, Report report, Instant at) {
@@ -142,11 +142,10 @@ public class ReportResolutionFanOutWorker {
 		return notification.id();
 	}
 
-	private boolean isPreferenceEnabled(long recipientId) {
-		return notificationRepository.isPreferenceEnabled(recipientId, FAN_OUT_TYPE);
-	}
-
 	private void persistPendingDeliveries(long notificationId, long recipientId, Instant at) {
+		if (!preferenceRepository.isPushEnabled(recipientId, FAN_OUT_TYPE)) {
+			return;
+		}
 		for (long deviceId : notificationRepository.findActiveDeviceIdsByUserId(recipientId)) {
 			notificationRepository.saveDeliveryIfAbsent(NotificationDelivery.pending(notificationId, deviceId, at));
 		}

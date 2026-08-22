@@ -1,7 +1,8 @@
 /**
  * Created at: 2026-08-20T19:25:00+09:00
  * Source scenario: TEST-PLAN-GH-177-NOTIFICATION-FANOUT-EXPANSION-INT-001,
- * INT-002, INT-003, INT-005, INT-006, INT-009, INT-011, INT-012, INT-014
+ * INT-002, INT-003, INT-005, INT-006, INT-009, INT-011, INT-012, INT-014,
+ * TEST-PLAN-GH-178-NOTIFICATION-PREFERENCES-INT-008 through INT-009
  */
 package com.dnd.qello;
 
@@ -13,16 +14,21 @@ import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.stream.Stream;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -37,9 +43,14 @@ import com.dnd.qello.notification.domain.OutboxAggregateType;
 import com.dnd.qello.notification.domain.OutboxEvent;
 import com.dnd.qello.notification.domain.OutboxEventType;
 import com.dnd.qello.notification.domain.OutboxRetryPolicy;
+import com.dnd.qello.notification.domain.PushDevice;
+import com.dnd.qello.notification.domain.PushDeviceStatus;
+import com.dnd.qello.notification.domain.PushPlatform;
 import com.dnd.qello.notification.fanout.NotificationFanOutWorker;
 import com.dnd.qello.notification.fanout.RecipientNotificationFanOutWorker;
 import com.dnd.qello.notification.repository.NotificationInboxQueryRepository;
+import com.dnd.qello.notification.repository.NotificationPreferenceRepository;
+import com.dnd.qello.notification.repository.NotificationRepository;
 import com.dnd.qello.notification.repository.OutboxEventRepository;
 import com.dnd.qello.question.service.QuestionAssignmentService;
 import com.dnd.qello.question.service.QuestionReviewService;
@@ -60,6 +71,8 @@ class NotificationFanOutExpansionIntegrationTest extends PostgisContainerIntegra
 	@Autowired private QuestionReviewService questionReviewService;
 	@Autowired private QuestionAssignmentService questionAssignmentService;
 	@Autowired private NotificationInboxQueryRepository inboxQuery;
+	@Autowired private NotificationRepository notifications;
+	@Autowired private NotificationPreferenceRepository preferences;
 	@Autowired private OutboxEventRepository outboxEvents;
 
 	private long questionAuthorId;
@@ -254,6 +267,24 @@ class NotificationFanOutExpansionIntegrationTest extends PostgisContainerIntegra
 			Long.class)).isEqualTo(1L);
 	}
 
+	@ParameterizedTest(name = "global={0}, type={1}, delivery={2}")
+	@MethodSource("answerPushGateCases")
+	@DisplayName("ANSWER_RECEIVED fan-out은 global/type gate에 따라 notification은 남기고 delivery만 제어한다")
+	void appliesGlobalAndTypePushGateForAnswerReceived(Boolean globalEnabled, Boolean typeEnabled,
+		long expectedDeliveries) {
+		activeDevice(questionAuthorId, "gate-answer-received");
+		if (globalEnabled != null || typeEnabled != null) {
+			savePushGate(questionAuthorId, NotificationType.ANSWER_RECEIVED, globalEnabled, typeEnabled);
+		}
+		publishAnswer();
+
+		NotificationFanOutWorker.BatchResult result = worker.processBatch(command());
+
+		assertThat(result.outcomes()).containsExactly(NotificationFanOutWorker.Outcome.PROCESSED);
+		assertThat(count(questionAuthorId, NotificationType.ANSWER_RECEIVED)).isEqualTo(1L);
+		assertThat(deliveryCount(questionAuthorId, NotificationType.ANSWER_RECEIVED)).isEqualTo(expectedDeliveries);
+	}
+
 	private Answer publishAnswer() {
 		return publishAnswer(postRecipientId, answerAuthorId, "answer-177", 30);
 	}
@@ -311,9 +342,23 @@ class NotificationFanOutExpansionIntegrationTest extends PostgisContainerIntegra
 			""", Long.class, role, role.equals("USER") ? "KR" : null, REGION, "gh177-" + nickname);
 	}
 
+	private PushDevice activeDevice(long userId, String fingerprint) {
+		return notifications.saveDevice(new PushDevice(null, userId, PushPlatform.ANDROID, new byte[] {1, 2, 3},
+			"gh177-" + fingerprint, PushDeviceStatus.ACTIVE, NOW, null));
+	}
+
 	private long count(long recipientId, NotificationType type) {
 		return jdbc.queryForObject("""
 			SELECT count(*) FROM notification WHERE recipient_id = ? AND notification_type = ?
+			""", Long.class, recipientId, type.name());
+	}
+
+	private long deliveryCount(long recipientId, NotificationType type) {
+		return jdbc.queryForObject("""
+			SELECT count(*)
+			FROM notification_delivery nd
+			JOIN notification n ON n.id = nd.notification_id
+			WHERE n.recipient_id = ? AND n.notification_type = ?
 			""", Long.class, recipientId, type.name());
 	}
 
@@ -332,6 +377,28 @@ class NotificationFanOutExpansionIntegrationTest extends PostgisContainerIntegra
 	private RecipientNotificationFanOutWorker.BatchCommand recipientCommand() {
 		return new RecipientNotificationFanOutWorker.BatchCommand(10, OWNER + "-recipient", NOW.plusSeconds(50),
 			NOW.plusSeconds(110), new OutboxRetryPolicy(3, attempt -> java.time.Duration.ofSeconds(1)));
+	}
+
+	private static Stream<Arguments> answerPushGateCases() {
+		return Stream.of(
+			Arguments.of(null, null, 1L),
+			Arguments.of(true, true, 1L),
+			Arguments.of(false, true, 0L),
+			Arguments.of(true, false, 0L));
+	}
+
+	private void savePushGate(long userId, NotificationType type, Boolean globalEnabled, Boolean typeEnabled) {
+		if (globalEnabled != null) {
+			preferences.saveUserSetting(userId, globalEnabled, null);
+		}
+		if (typeEnabled != null) {
+			EnumMap<NotificationType, Boolean> preferencesByType = new EnumMap<>(NotificationType.class);
+			for (NotificationType notificationType : NotificationType.values()) {
+				preferencesByType.put(notificationType, true);
+			}
+			preferencesByType.put(type, typeEnabled);
+			preferences.replaceTypePreferences(userId, preferencesByType);
+		}
 	}
 
 	private void ensureRegion() {
@@ -364,13 +431,17 @@ class NotificationFanOutExpansionIntegrationTest extends PostgisContainerIntegra
 			   OR direction_post_id IN (SELECT id FROM direction_post WHERE coarse_region_code = ?)
 			   OR answer_id IN (SELECT id FROM answer WHERE coarse_region_code = ?)
 			""", REGION, REGION, REGION);
-		jdbc.update("""
-			DELETE FROM notification_preference
-			WHERE user_id IN (SELECT id FROM user_account WHERE coarse_region_code = ?)
-			""", REGION);
-		jdbc.update("""
-			DELETE FROM push_device
-			WHERE user_id IN (SELECT id FROM user_account WHERE coarse_region_code = ?)
+			jdbc.update("""
+				DELETE FROM notification_preference
+				WHERE user_id IN (SELECT id FROM user_account WHERE coarse_region_code = ?)
+				""", REGION);
+			jdbc.update("""
+				DELETE FROM notification_user_setting
+				WHERE user_id IN (SELECT id FROM user_account WHERE coarse_region_code = ?)
+				""", REGION);
+			jdbc.update("""
+				DELETE FROM push_device
+				WHERE user_id IN (SELECT id FROM user_account WHERE coarse_region_code = ?)
 			""", REGION);
 		jdbc.update("""
 			DELETE FROM outbox_event

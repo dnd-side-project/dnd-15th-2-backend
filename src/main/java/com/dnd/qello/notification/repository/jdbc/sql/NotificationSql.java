@@ -155,23 +155,6 @@ public final class NotificationSql {
 		ORDER BY id
 		""";
 
-	public static final String FIND_NOTIFICATION_PREFERENCE_ENABLED = """
-		SELECT COALESCE((
-			SELECT enabled
-			FROM notification_preference
-			WHERE notification_type = :notificationType AND user_id = :userId
-		), TRUE)
-		""";
-
-	public static final String UPSERT_NOTIFICATION_PREFERENCE = """
-		INSERT INTO notification_preference
-			(notification_type, user_id, enabled, quiet_start, quiet_end)
-		VALUES (:notificationType, :userId, :enabled, :quietStart, :quietEnd)
-		ON CONFLICT (notification_type, user_id) DO UPDATE SET
-			enabled = EXCLUDED.enabled, quiet_start = EXCLUDED.quiet_start,
-			quiet_end = EXCLUDED.quiet_end, updated_at = clock_timestamp()
-		""";
-
 	public static final String INSERT_NOTIFICATION_EVENT = """
 		INSERT INTO notification_event
 			(case_id, admin_link_path, status, attempt_count, next_attempt_at, created_at,

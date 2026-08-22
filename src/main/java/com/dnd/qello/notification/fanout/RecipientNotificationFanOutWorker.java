@@ -32,6 +32,7 @@ import com.dnd.qello.notification.domain.OutboxRetryPolicy;
 import com.dnd.qello.notification.domain.OutboxStatus;
 import com.dnd.qello.notification.error.NotificationErrorCode;
 import com.dnd.qello.notification.error.NotificationException;
+import com.dnd.qello.notification.repository.NotificationPreferenceRepository;
 import com.dnd.qello.notification.repository.NotificationRepository;
 import com.dnd.qello.notification.repository.OutboxEventRepository;
 import com.dnd.qello.safety.domain.UserBlock;
@@ -57,6 +58,7 @@ public class RecipientNotificationFanOutWorker {
 
 	private final OutboxEventRepository outboxEventRepository;
 	private final NotificationRepository notificationRepository;
+	private final NotificationPreferenceRepository preferenceRepository;
 	private final PostRecipientRepository recipientRepository;
 	private final DirectionPostRepository postRepository;
 	private final AccountRepository accountRepository;
@@ -200,7 +202,7 @@ public class RecipientNotificationFanOutWorker {
 
 	/** 알림함 기록과 별개로, 이 수신자에게 실제로 푸시를 시도해도 되는지 판정한다. */
 	private boolean isPushEnabled(long recipientId) {
-		return notificationRepository.isPreferenceEnabled(recipientId, FAN_OUT_TYPE);
+		return preferenceRepository.isPushEnabled(recipientId, FAN_OUT_TYPE);
 	}
 
 	private void persistFanOut(OutboxEvent event, FanOutTarget target, Instant at) {

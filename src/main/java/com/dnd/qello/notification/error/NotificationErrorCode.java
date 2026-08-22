@@ -33,6 +33,9 @@ public enum NotificationErrorCode implements ErrorCode {
 	// cursor 두 파라미터 중 한쪽만 지정됨
 	INVALID_CURSOR(HttpStatus.BAD_REQUEST, "NOT-VAL-007", ErrorCategory.VAL, "cursor 파라미터가 올바르지 않습니다."),
 
+	// 전역/종류별/quiet 설정 snapshot이나 quiet 값 자체가 계약을 만족하지 않음
+	INVALID_PREFERENCE(HttpStatus.BAD_REQUEST, "NOT-VAL-008", ErrorCategory.VAL, "알림 설정 값이 올바르지 않습니다."),
+
 	// 알림 대상이 게시글과 답변 중 최대 하나라는 규칙 위반
 	INVALID_NOTIFICATION_TARGET(HttpStatus.BAD_REQUEST, "NOT-DOM-001", ErrorCategory.DOM, "알림 대상이 올바르지 않습니다."),
 

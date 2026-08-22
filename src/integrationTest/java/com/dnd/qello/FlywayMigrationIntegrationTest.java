@@ -53,6 +53,7 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 		"report",
 		"moderation_review",
 		"push_device",
+		"notification_user_setting",
 		"notification_preference",
 		"outbox_event",
 		"notification",
@@ -167,7 +168,7 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 	private JdbcTemplate jdbcTemplate;
 
 	@Test
-	@DisplayName("빈 PostGIS 데이터베이스의 startup에서 V1부터 V25까지 migration을 적용한다")
+	@DisplayName("빈 PostGIS 데이터베이스의 startup에서 V1부터 V26까지 migration을 적용한다")
 	void appliesAllMigrationsOnApplicationStartup() {
 		Integer successfulV1 = jdbcTemplate.queryForObject("""
 			SELECT count(*)
@@ -294,6 +295,11 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 			FROM flyway_schema_history
 			WHERE version = '25' AND success
 			""", Integer.class);
+		Integer successfulV26 = jdbcTemplate.queryForObject("""
+			SELECT count(*)
+			FROM flyway_schema_history
+			WHERE version = '26' AND success
+			""", Integer.class);
 		String postgisVersion = jdbcTemplate.queryForObject(
 			"SELECT PostGIS_Version()", String.class);
 
@@ -322,7 +328,8 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 		assertThat(successfulV23).isEqualTo(1);
 		assertThat(successfulV24).isEqualTo(1);
 		assertThat(successfulV25).isEqualTo(1);
-		assertThat(flyway.info().applied()).hasSize(25);
+		assertThat(successfulV26).isEqualTo(1);
+		assertThat(flyway.info().applied()).hasSize(26);
 		assertThat(postgisVersion).isNotBlank();
 	}
 
@@ -386,7 +393,8 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 		// EXPECTED_TABLES 밖이라 총계에 반영되지 않는다.
 		// V22(#166)이 user_account.fk_user_account_profile_image를 추가해 54에서 55가 됐다.
 		// user_account는 V1 catalog에 속하므로 이 FK는 총계에 반영된다.
-		assertThat(countConstraints(constraints, "f")).isEqualTo(55);
+		// V26(#178)이 fk_notification_user_setting_user 1개를 추가해 55에서 56이 됐다.
+		assertThat(countConstraints(constraints, "f")).isEqualTo(56);
 		assertThat(countConstraints(constraints, "u")).isEqualTo(21);
 		// V7(#81, device_credential)이 4개, V8(#78)이 ck_post_recipient_inbound_bearing,
 		// ck_post_recipient_distance_m, ck_post_recipient_answers_read_at,
@@ -398,7 +406,10 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 		// V20(#113)이 operator_action_audit의 CHECK 7개(operator_user_id, target_key,
 		// reason_code, reason_text, policy_version, action_type, target_type)를 추가해
 		// 117에서 124가 됐다.
-		assertThat(countConstraints(constraints, "c")).isEqualTo(124);
+		// V26(#178)이 notification_user_setting의 CHECK 2개를 추가하고
+		// notification_preference의 ck_notification_preference_quiet_hours 1개를 제거해
+		// 124에서 125가 됐다.
+		assertThat(countConstraints(constraints, "c")).isEqualTo(125);
 		// V20(#113)이 operator_action_audit의 조회 인덱스 2개를 추가해 62에서 64가 됐다.
 		// V21(#168)이 uq_user_account_nickname_ci 1개를 추가해 64에서 65가 됐다.
 		// CREATE UNIQUE INDEX로 만든 부분 인덱스라 pg_constraint에는 잡히지 않는다 —

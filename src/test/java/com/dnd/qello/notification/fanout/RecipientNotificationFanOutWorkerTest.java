@@ -60,6 +60,7 @@ import com.dnd.qello.notification.domain.OutboxRetryDecision;
 import com.dnd.qello.notification.domain.OutboxRetryPolicy;
 import com.dnd.qello.notification.error.NotificationErrorCode;
 import com.dnd.qello.notification.error.NotificationException;
+import com.dnd.qello.notification.repository.NotificationPreferenceRepository;
 import com.dnd.qello.notification.repository.NotificationRepository;
 import com.dnd.qello.notification.repository.OutboxEventRepository;
 import com.dnd.qello.safety.domain.UserBlock;
@@ -214,10 +215,10 @@ class RecipientNotificationFanOutWorkerTest {
 
 		Context disabled = eligibleContext();
 		givenClaimed(disabled, confirmedEvent(2L, POST_RECIPIENT_ID, "{}"));
-		when(disabled.notifications.isPreferenceEnabled(RECIPIENT_ID,
-			NotificationType.DIRECTION_POST_RECEIVED)).thenReturn(false);
-		assertThat(disabled.worker.processBatch(command()).outcomes())
-			.containsExactly(RecipientNotificationFanOutWorker.Outcome.PROCESSED);
+			when(disabled.preferences.isPushEnabled(RECIPIENT_ID,
+				NotificationType.DIRECTION_POST_RECEIVED)).thenReturn(false);
+			assertThat(disabled.worker.processBatch(command()).outcomes())
+				.containsExactly(RecipientNotificationFanOutWorker.Outcome.PROCESSED);
 		// #176 결정 10: preference는 delivery만 막는다. 차단·계정·만료와 달리 알림함
 		// 기록 자체는 preference와 무관하게 남아야 한다.
 		verify(disabled.notifications).saveIfAbsent(any(Notification.class));
@@ -324,7 +325,7 @@ class RecipientNotificationFanOutWorkerTest {
 		givenClaimed(context, first, second);
 		givenEligible(context, 301L, 101L, 22L, PostRecipientStatus.AVAILABLE);
 		givenEligible(context, 302L, 102L, 23L, PostRecipientStatus.AVAILABLE);
-		when(context.notifications.isPreferenceEnabled(anyLong(), eq(NotificationType.DIRECTION_POST_RECEIVED)))
+		when(context.preferences.isPushEnabled(anyLong(), eq(NotificationType.DIRECTION_POST_RECEIVED)))
 			.thenReturn(false);
 		when(context.outbox.complete(anyLong(), eq("notification-worker"), eq(1L), any(Instant.class)))
 			.thenReturn(true);
@@ -456,7 +457,7 @@ class RecipientNotificationFanOutWorkerTest {
 		when(context.accounts.findById(recipientId)).thenReturn(Optional.of(account(recipientId, AccountStatus.ACTIVE)));
 		when(context.safety.findBlock(recipientId, SENDER_ID)).thenReturn(Optional.empty());
 		when(context.safety.findBlock(SENDER_ID, recipientId)).thenReturn(Optional.empty());
-		when(context.notifications.isPreferenceEnabled(recipientId, NotificationType.DIRECTION_POST_RECEIVED))
+		when(context.preferences.isPushEnabled(recipientId, NotificationType.DIRECTION_POST_RECEIVED))
 			.thenReturn(true);
 		when(context.notifications.findActiveDeviceIdsByUserId(recipientId)).thenReturn(List.of());
 		when(context.notifications.saveIfAbsent(any(Notification.class))).thenAnswer(invocation -> {
@@ -476,6 +477,7 @@ class RecipientNotificationFanOutWorkerTest {
 	private Context context(Clock clock) {
 		OutboxEventRepository outbox = mock(OutboxEventRepository.class);
 		NotificationRepository notifications = mock(NotificationRepository.class);
+		NotificationPreferenceRepository preferences = mock(NotificationPreferenceRepository.class);
 		PostRecipientRepository recipients = mock(PostRecipientRepository.class);
 		DirectionPostRepository posts = mock(DirectionPostRepository.class);
 		AccountRepository accounts = mock(AccountRepository.class);
@@ -483,8 +485,8 @@ class RecipientNotificationFanOutWorkerTest {
 		PlatformTransactionManager transactions = mock(PlatformTransactionManager.class);
 		when(transactions.getTransaction(any())).thenReturn(mock(TransactionStatus.class));
 		RecipientNotificationFanOutWorker worker = new RecipientNotificationFanOutWorker(outbox, notifications,
-			recipients, posts, accounts, safety, transactions, clock);
-		return new Context(worker, outbox, notifications, recipients, posts, accounts, safety);
+			preferences, recipients, posts, accounts, safety, transactions, clock);
+		return new Context(worker, outbox, notifications, preferences, recipients, posts, accounts, safety);
 	}
 
 	private void givenClaimed(Context context, OutboxEvent... events) {
@@ -590,7 +592,8 @@ class RecipientNotificationFanOutWorkerTest {
 	}
 
 	private record Context(RecipientNotificationFanOutWorker worker, OutboxEventRepository outbox,
-		NotificationRepository notifications, PostRecipientRepository recipients,
+		NotificationRepository notifications, NotificationPreferenceRepository preferences,
+		PostRecipientRepository recipients,
 		DirectionPostRepository posts, AccountRepository accounts, SafetyRepository safety) {
 	}
 

@@ -117,7 +117,8 @@ class AccountPersistenceIntegrationTest extends PostgisContainerIntegrationTestS
 		// 이 count에 포함된다.
 		// + operator_action_audit(V20, #113 — 운영자 행위 감사 원장)
 		// + notification_seen_state(V24, #176 — 알림함 열람 기준선)
-		assertThat(applicationTableCount).isEqualTo(50);
+		// + notification_user_setting(V26, #178 — 사용자 공통 알림 설정)
+		assertThat(applicationTableCount).isEqualTo(51);
 	}
 
 	@Test
