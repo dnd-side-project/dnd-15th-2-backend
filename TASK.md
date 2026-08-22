@@ -1,145 +1,163 @@
-# GitHub Issue #178 Task Contract
+# GitHub Issue #190 Task Contract
 
-> Generated at: `2026-08-21T16:31:50+09:00`
+> Generated at: `2026-08-22T23:31:21+09:00`
 >
 > 이 파일은 현재 작업 브랜치의 계약이다. 저장소 전역 정책은 `AGENTS.md`를
 > 따른다.
 
 ## Work gate
 
-- Title: `알림 설정 API와 방해 금지 시간`
-- GitHub Issue: `#178`
-- Branch: `feat/gh-178-notification-preferences`
+- Title: `Codex·Claude OpenAPI 설명 가이드`
+- GitHub Issue: `#190`
+- Branch: `docs/gh-190-openapi-writing-guide`
 - Base branch: `main`
-- 선행 이슈: `#176`, 관련 fan-out 확장 `#177`은 `main` 반영 완료.
-- Product design: `docs/product/NOTIFICATION_INBOX_DESIGN.md` §1, §3, §10, §12-2.
-- Test plan: `docs/test-plans/gh-178-TEST-PLAN-GH-178-NOTIFICATION-PREFERENCES.md`
-  (`Status: Approved`, 2026-08-21 사용자 구현 승인).
-- Planning approval: 2026-08-21 사람 승인. 기존 quiet 값은 아직 배포되지 않은
-  데이터이므로 이관하지 않고 신규 사용자 단위 계약으로 교체한다.
+- 선행 이슈: `#189` (OpenAPI 설명 개선 및 GitHub Pages 문서 제공). 이 이슈는 `#189`가
+  쓸 기준·절차·양식만 만든다. `*ApiSpec` 문장 자체는 고치지 않는다.
+- Planning approval: 2026-08-22 사용자 대화에서 계획 확정. `FilterReleaseApiSpec`을
+  예시로 3라운드 반복 검토(추상화 과다 → 괄호로 맥락 보강)를 거쳐 문장 기준에 합의했다.
 
 ## Objective
 
-- 사용자가 앱 푸시 전체 on/off, 알림 6종별 on/off와 사용자 공통 방해 금지 시간을
-  본인 계정에서 조회·변경할 수 있게 한다.
-- 푸시 설정과 알림함 원장을 분리해 어떤 설정에서도 `notification`은 남기고 실제
-  `notification_delivery` 생성만 억제한다.
-- 종류별 행마다 중복된 quiet 필드를 사용자 단위 설정으로 분리한다.
+- Codex와 Claude 양쪽에서 도메인 담당자가 같은 기준으로 `*ApiSpec` 설명을 작성·검토할
+  수 있도록 공통 가이드, 체크리스트, 실행 절차를 만든다.
+- 문장 톤, 용어 선택, 누락된 인증·오류 응답·필드 설명을 점검하는 절차를 표준화해
+  `#189`의 도메인별 검토 편차를 줄인다.
 
 ## Scope
 
-1. `notification_user_setting`을 추가한다. 사용자별 `push_enabled`, `quiet_start`,
-   `quiet_end`, `quiet_zone_id`, `updated_at`을 저장하며 행이 없으면 전체 푸시 ON,
-   방해 금지 OFF로 해석한다.
-2. `notification_preference`에서는 `quiet_start`, `quiet_end`와
-   `ck_notification_preference_quiet_hours`를 제거한다. 기존 quiet 값은 이관하지 않고
-   종류별 `enabled` 값만 보존한다.
-3. `NotificationPreference`에서 quiet 필드를 분리하고 사용자 공통 설정과 quiet value
-   object를 추가한다.
-4. `GET /api/v1/notifications/preferences`로 전역 설정, 6종 설정, quiet 설정과
-   `inboxRecordingPolicy=ALWAYS_RECORD`를 반환한다. 저장 행이 없는 종류는 ON이다.
-5. `PUT /api/v1/notifications/preferences`는 인증 사용자의 전역 설정, 정확히 6종의
-   설정과 quiet 설정을 한 트랜잭션에서 완전 교체하고 canonical 응답을 반환한다.
-6. 전체 푸시 OFF는 종류별 선택을 덮어쓰지 않는다. 전체를 다시 켜면 이전 종류별
-   선택이 복원된다.
-7. quiet 설정은 시작·종료·IANA Zone ID를 모두 지정하거나 모두 비운다. 시작은 포함,
-   종료는 미포함이며 자정 통과를 허용하고 같은 시작·종료는 400이다.
-8. fan-out의 effective push gate를 `globalEnabled && typeEnabled`로 바꾼다. gate는
-   `notification` 저장 뒤 `notification_delivery` 생성 직전에 유지한다.
-9. 신규 요청 오류는 `NOT-VAL-008`로 매핑하고 field/reason으로 세부 원인을 구분한다.
-10. Flyway, domain/repository/service/web, OpenAPI, ERD/DBML/schema manifest와 JUnit 5
-    단위·PostgreSQL 통합 테스트를 함께 갱신한다.
-11. V26 이후에도 기존 preference 저장 bridge가 quiet 컬럼을 참조하지 않도록 SQL을
-    함께 갱신하고, 실제 repository 저장 회귀를 검증한다.
+1. `docs/api/OPENAPI_WRITING_GUIDE.md`를 신설한다. 단일 원본이며 Codex·Claude 스킬은
+   본문을 복제하지 않고 이 문서를 참조한다. 최소 다음을 담는다.
+   - 적용 범위와 `docs/api-response.md` §5(애노테이션 배치 규칙)와의 경계.
+   - 문장 종결 기준: `합니다`체로 통일 (24개 기존 `*ApiSpec` 중 18개가 이미 준수).
+   - `summary` 작성 기준: 기본은 쉬운 명사구. 팀 용어·상태 전이처럼 명사구로 뭉치면
+     오히려 낯선 단어가 쌓이는 경우에는 `-하기` 동사구를 허용한다.
+   - `description` 문단 순서: 무엇을 하는가 → 선행 조건·인증 → 성공 시 결과 →
+     주요 실패 조건 → 주의점.
+   - 낯선 단어를 쌓지 않는 규칙과 분류 이름 대신 하는 일로 부르는 규칙.
+   - 괄호 표기 규칙: 상태를 바꾸는 API는 바뀐 뒤 `status` 값을 `(→ PROMOTED)`처럼,
+     팀이 영어로 부르는 개념은 `(offline evaluation)`처럼 처음 나오는 곳에 한 번만,
+     오류 응답에는 오류 코드를 `(FLT-DOM-004)`로 적는다. 붙일 값이 없으면 괄호를
+     비워서라도 채우지 않는다. 한 줄에 괄호는 하나만 쓴다.
+   - 금지 문장: 내부 정책 코드·상태값만으로 의미 설명, 미번역 내부 불변식 ID
+     노출(`INV-REL-007` 등), 요청·응답 DTO에 없는 사실을 지어내는 표현,
+     `@Schema(example)`에 비밀값.
+   - 6점 대조 체크리스트: Controller↔ApiSpec, ApiSpec↔DTO, ApiSpec↔Service(실제
+     `throw` 근거), ApiSpec↔`docs/error-codes.md`, ApiSpec↔SecurityConfiguration,
+     ApiSpec↔`docs/api/openapi.json`(재생성 후 diff).
+2. `templates/api-docs-review.md`를 신설한다. 엔드포인트별 행에 6점 대조 결과와
+   before/after 제안 문장을 기록하는 양식이며 `#189` 담당자에게 그대로 넘긴다.
+3. `.claude/skills/harness-api-docs/SKILL.md`와 `.agents/skills/harness-api-docs/SKILL.md`에
+   `review` 모드를 추가한다. 기존 모드(누락 보강, 코드 수정)와 분리하고, `review`
+   모드는 `*ApiSpec`을 수정하지 않고 `templates/api-docs-review.md` 산출물만
+   만든다. 문장 기준은 본문에 복제하지 않고 `docs/api/OPENAPI_WRITING_GUIDE.md`를
+   참조한다. 두 스킬 파일은 frontmatter만 다르고 본문은 동일하게 유지한다.
+4. `agents/api-docs-executor.md`와 `.claude/agents/api-docs-executor.md`를 갱신한다.
+   Enrichment targets에 문장 품질·용어 일관성 항목을 추가하고, `review` 모드의
+   allowed scope를 `docs/reports/**`로 한정한다(`*ApiSpec` 수정 금지).
+5. `FilterReleaseApiSpec` 1건으로 6점 대조·문장 재작성 절차 전체를 시험 적용해
+   점검 흐름이 실제로 작동하는지 확인한다(404 누락 5건, 401/403 누락 8건, DTO
+   `@Schema` 누락 12건, 내부 불변식 ID 3곳, `findAll()`의 `@ApiResponses` 누락
+   1건 등을 실제 코드 대조로 발견함). 결과는 이 대화 안에서 검증하는 데 쓰고
+   저장소에 영구 산출물로 커밋하지 않는다. `docs/reports/**`는 `#189`에서 각
+   도메인 담당자가 `review` 모드를 직접 실행해 만드는 산출물이 쌓이는 자리이며,
+   `#190`(가이드·절차 제작)이 그 자리를 먼저 채우면 담당자가 자기 도메인의 실제
+   리뷰와 `#190`이 만든 데모 중 무엇이 유효한지 혼동한다. `*ApiSpec` 원본 파일도
+   수정하지 않는다.
+6. 진입점을 연결한다.
+   - `docs/api-response.md` §5 말미에 가이드 링크를 추가한다.
+   - `docs/harness/WORKFLOW_SKILLS.md`의 역할 스킬 목록(13~15행)에 빠져 있는
+     `harness-api-docs`를 추가한다. 이 문서는 이슈·커밋·PR 3종 스킬 전용이고
+     역할 스킬 내용은 각 스킬 문서가 원본이므로, 새 절을 만들어 `review` 모드
+     절차를 중복 설명하지 않는다.
+   - `CODEX.md` 스킬 목록에 빠져 있는 `$harness-api-docs`를 추가한다.
 
 ## Approved design decisions
 
-- 기본값: 전체 푸시 ON, 6종 모두 ON, 방해 금지 OFF.
-- 전체 OFF: 종류별 설정을 보존하고 모든 신규 delivery 생성만 막는다.
-- PUT concurrency: 사용자 설정 단위로 직렬화하고 마지막으로 lock을 획득한 완성
-  snapshot이 남는다. 부분 snapshot은 허용하지 않는다.
-- quiet 표현: `quietHours=null` 또는 start/end/zoneId가 모두 있는 object.
-- 기존 quiet 데이터: 미배포 상태이므로 이관·충돌 판정 없이 제거한다.
-- 이미 만들어진 PENDING/FAILED delivery: 이 이슈에서 삭제·취소하지 않는다. `#179`
-  발송기가 발송 직전에 최신 설정을 재검사해야 한다.
+- 문장 종결: `합니다`체로 통일. 기존 24개 중 18개가 이미 준수해 재작업량이 가장 적다.
+- `summary` 규칙: 기본은 명사구, 낯선 개념이 몰릴 때만 `-하기` 동사구 허용 (전면
+  동사구 통일은 하지 않는다).
+- 괄호는 상태값·팀 용어·오류 코드 세 경우에만 쓰고, 빈 괄호를 채우려고 말을
+  지어내지 않는다.
+- 쉬운 말로 바꾸며 DTO에 없는 사실을 만들지 않는다. `markOfflineEvaluated`가
+  실제로는 사유(reasonCode·reasonText)만 받고 평가 점수 필드를 받지 않는다는
+  사실을 확인한 뒤 "성능 검사 결과 등록" 같은 표현을 "평가를 마쳤다고 표시"로
+  정정했다 — 이 정정 과정 자체가 가이드의 "쉽게 쓰다가 사실을 바꾸지 않는다"
+  규칙의 근거다.
+- 문장 기준의 단일 원본은 `docs/api/OPENAPI_WRITING_GUIDE.md` 하나이며 두 스킬
+  파일에 복제하지 않는다. Codex·Claude가 다른 기준으로 검토하는 드리프트를 막는다.
+- 자동 검사 스크립트(lint)는 이번 범위에서 제외한다. 별도 이슈로 미룬다.
 
 ## Explicit exclusions
 
-- 방해 금지 시간의 실제 발송 억제·묶음·일 상한 — `#180`.
-- Push provider 호출, 토큰 등록, 발송 스케줄링과 발송 직전 preference 재검사 —
-  `#179`, `#182`.
-- 운영체제 알림 권한과 클라이언트 UI 구현.
-- 기존 quiet 값의 이관. 아직 배포되지 않은 컬럼의 값은 신규 계약의 근거로 사용하지 않는다.
-- 이미 생성된 notification 삭제·REVOKED 전이 또는 delivery 일괄 취소.
-- 인프라 apply, 배포, 프로덕션 변경은 별도 승인 없이는 실행하지 않는다.
-- Secret, 계정 식별자, 토큰, `.env` 값은 기록하지 않는다.
+- 실제 `*ApiSpec` 문장 수정. `#189` 담당자(도메인별)의 몫이다.
+- GitHub Pages 정적 문서 제공. `#189`의 별도 항목이다.
+- OpenAPI 산출물 생성 workflow 변경.
+- API 동작이나 비즈니스 로직 변경.
+- `docs/reports/**`에 도메인 리뷰 결과를 커밋하는 것. 그 자리는 `#189`에서 각
+  도메인 담당자가 `review` 모드를 실행해 만드는 산출물의 몫이다. `#190`은
+  절차가 작동함을 확인만 하고 결과물을 저장소에 남기지 않는다.
 
 ## Ownership
 
 | Area | Owner | Required review |
 | --- | --- | --- |
-| Flyway·데이터 모델 문서 | Database executor | `enabled` 보존, quiet 컬럼 제거, 신규 CHECK/FK, migration 재실행 안전성 |
-| preference domain·repository·service | Notification executor | sparse defaults, complete snapshot, transaction·concurrency, account eligibility |
-| web·OpenAPI | API executor | 인증 subject 전용, 6종 완전성, 400/401/403/404 계약, 민감정보 비노출 |
-| fan-out gate | Fan-out verifier | notification 선저장, global/type OFF delivery 0, 기존 retry·dedup 회귀 없음 |
+| 문장 기준·체크리스트 (`docs/api/OPENAPI_WRITING_GUIDE.md`) | API docs 작업자 | 3라운드 대화에서 합의한 괄호·용어·종결 규칙과 일치 |
+| 검토 양식 (`templates/api-docs-review.md`) | API docs 작업자 | 6점 대조 항목 누락 없음 |
+| 스킬·역할 문서 (`.claude/**`, `agents/**`) | API docs 작업자 | `CLAUDE.md` 파일 수정 범위상 별도 승인 대상 — 사용자 승인 완료 |
+| 절차 시험 적용 (`FilterReleaseApiSpec`, 비산출물) | API docs 작업자 | `*ApiSpec` 원본 미수정, 코드 근거(서비스 throw, DTO 필드) 재확인, 결과를 저장소에 커밋하지 않음 |
 
 ## Existing user-owned changes
 
-- 2026-08-21 작업 시작 시 `main`은 `origin/main`과 일치했고
-  `git status --short`는 clean이었다.
-- `./harness start`와 `task-init` 이후 생긴 `TASK.md`·테스트 계획·구현 계획만 #178이
-  소유한다. 범위 밖 변경은 정리하거나 되돌리지 않는다.
+- 작업 시작 시 `git status --short`는 clean이었다. 범위 밖 변경은 없다.
 
 ## Validation
 
 ```bash
-./gradlew test --tests "com.dnd.qello.notification.*" --console=plain
-./gradlew integrationTest --tests "com.dnd.qello.NotificationPreference*" --console=plain
-./gradlew integrationTest --tests "com.dnd.qello.*NotificationFanOut*" --console=plain
-./gradlew integrationTest --tests "com.dnd.qello.OpenApiSpecificationIntegrationTest" --console=plain
-./harness test-run --id TEST-PLAN-GH-178-NOTIFICATION-PREFERENCES
 ./harness check
-./harness pr-ready --project-tests
 npm run hooks:validate
 git diff --check
+./harness pr-ready --project-tests
 ```
 
-### Task 7 verification evidence (2026-08-21)
+Java 코드 변경이 없으므로 Gradle 테스트는 대상이 아니다.
 
-- `./harness test-run --id TEST-PLAN-GH-178-NOTIFICATION-PREFERENCES` 실행 결과 `FAIL`.
-  `FlywayMigrationContractTest.migrationsMatchAcceptedContent`가 실제 목록의
-  `V26__split_notification_user_setting.sql`을 기존 expected migration 목록에서
-  누락한 구현·테스트 계약 불일치를 재현했다(859개 완료, 1개 실패, exit 1).
-- 위 구현 실패로 지시된 후속 단위·PostgreSQL 통합·fan-out·OpenAPI·저장소 완료 검증
-  명령은 실행하지 않았다. 따라서 완료 체크박스는 유지하며 PASS로 표시하지 않는다.
-- 상세 증거: `docs/test-reports/gh-178-TEST-REPORT-GH-178-NOTIFICATION-PREFERENCES.md`.
-- migration expected 목록을 보강한 뒤 동일 harness 명령을 재실행했다. unit 단계는
-  성공했으나 integration 단계에서 `AccountPersistenceIntegrationTest`가
-  `expected: 50 but was: 51`로 실패했다. V26의 `notification_user_setting` 신규
-  테이블을 기존 table-count assertion이 반영하지 않은 구현·테스트 계약 불일치다.
-- 두 번째 구현 실패로 승인된 targeted unit/integration·fan-out·OpenAPI 및 저장소 완료
-  검증 명령은 다시 실행하지 않았다.
-- 두 stale contract를 보강한 뒤 승인된 순서로 최종 재실행했다. harness test-run,
-  notification unit 147개, NotificationPreference integration 9개, fan-out integration
-  44개, OpenAPI integration 10개, `./harness check`, `npm run hooks:validate`,
-  `git diff --check`가 모두 성공했다.
-- V26 rebase 후 승인된 순서를 다시 실행했다. 전체 harness test-run은 5분 25초,
-  `./harness pr-ready --project-tests`는 전체 check를 포함해 5분 33초에 성공했고
-  `Local PR readiness checks passed`를 확인했다. `harness check`, hooks, diff도
-  성공했다. 상세 증거는 테스트 보고서에 누적했다.
+### Validation evidence (2026-08-22)
+
+- `git diff --check`: 통과.
+- `./harness check`: 통과 (secret preflight 1156개 파일, JUnit 정책 222개 파일,
+  convention·workflow·label·husky 검증 모두 통과).
+- `npm run hooks:validate`: 통과.
+- `./harness pr-ready --project-tests`: **FAIL.** 원인은 이 브랜치의 변경이 아니라
+  테스트 환경 문제다 — 이 워크트리에 Docker 데몬 자체가 없다(`docker: command not
+  found`). Testcontainers 기반 통합 테스트 76개가 `DockerClientProviderStrategy`
+  초기화 단계에서 전부 `initializationError`로 실패했다. 이 브랜치는 Java 소스를
+  전혀 변경하지 않았고(`docs/`, `templates/`, `.claude/`, `.agents/`, `agents/`,
+  `CODEX.md`만 변경) 실패한 테스트 76개는 모두 이 변경과 무관한 기존 통합 테스트다.
+  - 실행 못한 범위: 통합 테스트 전체(76개), 그리고 그 안에 포함되는
+    `./gradlew integrationTest --tests "*OpenApiSpecificationIntegrationTest"`
+    (`docs/api/openapi.json` 재생성·diff 확인). 이 검증은 `#189`에서 실제
+    `*ApiSpec` 문장을 반영하는 PR이 실행해야 한다.
+  - 남은 위험: 이번 변경 자체는 코드 동작에 영향이 없어 위험은 낮다. 다만 Docker가
+    구성된 환경에서 재검증하지 않았으므로 "통합 테스트가 실제로 통과한다"는 것을
+    확인했다고 보고하지 않는다.
 
 ## Completion criteria
 
-- [x] 설정 행이 없는 사용자는 전체 ON, 6종 ON, quiet OFF로 조회된다.
-- [x] 전체 OFF 후 다시 ON해도 종류별 선택값이 보존된다.
-- [x] quiet 시작·종료·Zone ID 중 일부만 있거나 시작과 종료가 같으면 400이다.
-- [x] 자정 통과 quiet 구간이 저장·조회된다.
-- [x] PUT은 정확히 6종을 중복 없이 받고 실패 시 어떤 설정도 부분 반영하지 않는다.
-- [x] migration이 기존 `notification_preference.enabled` 값을 보존하고 quiet 컬럼·CHECK를 제거한다.
-- [x] global 또는 type OFF에서도 `notification`은 1건이고 신규 delivery는 0건이다.
-- [x] 인증 subject 외 사용자 식별자를 조회·변경 입력으로 받지 않는다.
-- [x] 응답은 `inboxRecordingPolicy=ALWAYS_RECORD`를 명시한다.
-- [x] 단위·MockMvc 18개와 PostgreSQL 통합 13개 계획의 P0가 모두 통과한다.
-- [x] 모든 신규 테스트에 `@DisplayName`과 정확한 ISO 8601·Source scenario 헤더가 있다.
-- [x] 테스트 보고서와 잠재 문제 분석을 작성한다.
+- [x] `docs/api/OPENAPI_WRITING_GUIDE.md`가 문장 기준·용어 규칙·괄호 규칙·6점
+      체크리스트를 모두 포함한다.
+- [x] `templates/api-docs-review.md`가 엔드포인트별 6점 대조와 before/after 제안을
+      기록할 수 있는 양식이다.
+- [x] `.claude/skills/harness-api-docs/SKILL.md`와
+      `.agents/skills/harness-api-docs/SKILL.md`에 `review` 모드가 추가되고 두 파일의
+      본문이 동일하다(frontmatter만 다르다). `diff`로 본문 동일성 확인함.
+- [x] `agents/api-docs-executor.md`와 `.claude/agents/api-docs-executor.md`가 `review`
+      모드의 allowed scope와 enrichment target을 반영한다.
+- [x] `FilterReleaseApiSpec` 8개 엔드포인트 전체로 6점 대조·문장 재작성 절차를
+      시험 적용해 실제로 작동함을 확인했다(대화 기록에 남김). `*ApiSpec` 원본은
+      변경되지 않았고(`git status`로 확인) 결과를 `docs/reports/**`에 커밋하지
+      않았다 — 그 자리는 `#189` 도메인 담당자의 실제 산출물 몫이다.
+- [x] `docs/api-response.md`, `docs/harness/WORKFLOW_SKILLS.md`, `CODEX.md`에서
+      새 가이드와 review 모드를 찾아갈 수 있다.
 - [x] 완료 전 검증을 모두 실행하고 실패·미실행 범위를 구분해 기록한다.
+      `./harness pr-ready --project-tests`는 Docker 미가용으로 통합 테스트 단계에서
+      FAIL했다 — 위 Validation evidence 절에 원인·미실행 범위·남은 위험을 기록함.
