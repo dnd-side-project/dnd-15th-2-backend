@@ -34,7 +34,7 @@ public interface AnswerReactionApiSpec {
 			+ "없습니다. 이미 공감한 상태에서 다시 호출해도 상태와 공감 수는 바뀌지 않습니다.")
 	@ApiResponses({
 		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "공감 상태와 공감 수를 반환합니다."),
-		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "답변 식별자가 올바르지 않습니다. (ANS-VAL-001)", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
+		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "답변 식별자가 올바르지 않거나 그런 답변이 없습니다. (ANS-VAL-001)", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
 		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "앱 액세스 토큰이 유효하지 않습니다.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
 		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "그 질문글을 볼 수 있는 사람만 답변에 공감할 수 있습니다. (ANS-DOM-004)", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class)))
 	})
