@@ -5,6 +5,16 @@
 springdoc이 추출한 OpenAPI 스펙을 저장소 산출물로 유지하고, 스펙만으로는 부족한
 설명·예시·오류 응답을 `*ApiSpec` 인터페이스 애노테이션으로 보강한다.
 
+두 모드가 있다.
+
+| 모드 | 산출물 | `*ApiSpec` 수정 |
+| --- | --- | --- |
+| 보강(enrich) | 코드 diff + 재생성된 `docs/api/openapi.json` | 한다 |
+| 검토(review) | `docs/reports/gh-<ISSUE>-API-DOCS-REVIEW-<DOMAIN>.md` | 하지 않는다 |
+
+검토 모드의 문장 기준은 `docs/api/OPENAPI_WRITING_GUIDE.md`가 원본이다. 이 문서에
+복제하지 않는다.
+
 ## Source of truth
 
 스펙은 손으로 쓰지 않는다. `docs/api/openapi.json`은
@@ -43,6 +53,8 @@ springdoc이 알 수 없는 정보를 애노테이션으로 채우는 것이다.
 
 ## Allowed scope
 
+보강 모드의 수정 범위다.
+
 ```text
 docs/api/**
 docs/api-response.md
@@ -50,6 +62,12 @@ src/main/java/**/web/*ApiSpec.java
 src/main/java/**/web/**          문서 애노테이션과 DTO 주석만
 src/main/java/com/dnd/qello/common/openapi/**
 src/integrationTest/java/com/dnd/qello/OpenApiSpecificationIntegrationTest.java
+```
+
+검토 모드는 이 범위 전체를 수정하지 않는다. 산출물은 다음뿐이다.
+
+```text
+docs/reports/gh-<ISSUE>-API-DOCS-REVIEW-<DOMAIN>.md
 ```
 
 ## Forbidden scope
@@ -64,6 +82,9 @@ src/main/resources/db/migration/**
 서비스, 도메인, repository 계층
 ```
 
+검토 모드는 위에 더해 `*ApiSpec`, 컨트롤러, DTO를 포함한 어떤 소스 코드도
+금지 범위에 넣는다.
+
 ## Enrichment targets
 
 커스터마이저가 처리하지 못하는, 엔드포인트마다 다른 정보다. 우선순위 순이다.
@@ -76,9 +97,24 @@ src/main/resources/db/migration/**
    permitAll 경로에는 붙이지 않는다.
 4. **내부 타입 누출.** 프레임워크 타입이 파라미터로 잡혀 스키마에 나타나면
    `@Parameter(hidden = true)`로 감춘다.
+5. **문장 품질·용어 일관성.** 종결어미, 낯선 단어 나열, 내부 불변식 ID 노출,
+   분류 이름 대신 하는 일로 부르기. 기준은 `docs/api/OPENAPI_WRITING_GUIDE.md`.
+   보강 모드에서는 승인받은 범위 안에서 직접 고치고, 검토 모드에서는 제안만 한다.
 
 content type과 공통 400·500은 `OpenApiConventionCustomizer`가 이미 넣는다.
 `*ApiSpec`에 다시 적지 않는다.
+
+## Review mode
+
+`docs/api/OPENAPI_WRITING_GUIDE.md` §10의 절차(R1~R5)를 따른다. 핵심 제약:
+
+- `*ApiSpec`, 컨트롤러, DTO를 수정하지 않는다. 발견한 문제와 제안 문장은
+  `templates/api-docs-review.md`를 복사한 보고서에만 적는다.
+- 오류 응답 제안은 서비스 코드의 `throw new XxxException(...)` 없이 추측하지 않는다.
+- 쉬운 말로 다시 쓰는 과정에서 DTO에 없는 사실을 지어내지 않는다. 문장을 바꾸면
+  반드시 관련 request/response record 필드를 다시 열어 대조한다.
+- 보고서 산출 후 `*ApiSpec` 반영은 도메인 담당자의 후속 작업이다. 이 역할이
+  대신 반영하지 않는다.
 
 ## Secret handling
 
