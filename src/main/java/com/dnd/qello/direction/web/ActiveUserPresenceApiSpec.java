@@ -28,12 +28,21 @@ public interface ActiveUserPresenceApiSpec {
 	@Operation(
 		summary = "현재 위치 갱신",
 		description = """
-			인증 사용자의 최신 위치와 질문 수신 허용 상태를 갱신한다.
-			사용자와 지역은 서버에서 결정하고, 관측 시각이 같거나 더 오래된 재시도는 적용하지 않는다.
-			정확 좌표는 성공 응답에 반환하지 않는다.""")
+			내 최신 위치와 질문을 받을지 여부를 저장합니다.
+
+			앱 로그인이 필요합니다. 방향 미리보기와 질문글 보내기가 이 위치를 씁니다.
+
+			이미 저장된 것보다 오래되거나 같은 시각의 위치는 적용하지 않고 applied를 \
+			false로 돌려줍니다. 이때도 요청은 성공(200)입니다.
+
+			정확한 좌표는 응답에 돌려주지 않습니다.""")
 	@ApiResponses({
 		@io.swagger.v3.oas.annotations.responses.ApiResponse(
 			responseCode = "200", description = "갱신 결과를 반환합니다."),
+		@io.swagger.v3.oas.annotations.responses.ApiResponse(
+			responseCode = "400", description = "위치 값이 없거나 정확도 또는 관측 시각이 허용 범위를 벗어났습니다. (DIR-VAL-002, DIR-VAL-007, DIR-VAL-008)",
+			content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE,
+				schema = @Schema(implementation = ApiErrorResponse.class))),
 		@io.swagger.v3.oas.annotations.responses.ApiResponse(
 			responseCode = "401", description = "앱 액세스 토큰이 유효하지 않습니다.",
 			content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE,
