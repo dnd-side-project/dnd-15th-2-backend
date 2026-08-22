@@ -8,6 +8,7 @@ Codex는 먼저 `AGENTS.md`, `TASK.md`, 해당 `agents/` 역할 문서를 읽는
 - `$harness-infra-design`
 - `$harness-infra-build`
 - `$harness-review`
+- `$harness-api-docs`
 
 ## 시작 명령
 

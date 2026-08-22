@@ -37,6 +37,16 @@ OpenAPI 스펙을 코드와 일치시키고, 스펙만으로는 알 수 없는 �
 `@RestController`, 클래스 수준 `@RequestMapping`과 `@Override` 구현만 남는다.
 근거와 확인된 제약은 `docs/api-response.md` 5절에 있다.
 
+## 모드
+
+| 모드 | 무엇을 하는가 | 산출물 | `*ApiSpec` 수정 |
+| --- | --- | --- | --- |
+| 보강(enrich) | 코드에 실제로 있는데 스펙에 없는 오류 응답·설명·인증 요구를 승인받아 애노테이션으로 채운다 | 코드 diff, 재생성된 `docs/api/openapi.json` | 한다 |
+| 검토(review) | `docs/api/OPENAPI_WRITING_GUIDE.md` 기준으로 기존 설명 문장·용어를 점검하고 제안만 만든다 | `templates/api-docs-review.md` 사본 (`docs/reports/gh-<ISSUE>-API-DOCS-REVIEW-<DOMAIN>.md`) | 하지 않는다 |
+
+기본은 보강 모드다. "검토", "리뷰", "문장 점검", "가이드대로 봐줘" 같은 요청이면
+검토 모드로 전환한다. 두 모드 모두 0단계(컨텍스트 수집)를 공유한다.
+
 ## 0. 컨텍스트 수집
 
 ```bash
@@ -130,6 +140,48 @@ diff에 의도하지 않은 변경이 섞였으면 멈추고 보고한다.
 그것을 바꾼 코드 변경을 같은 커밋에 담는 편이 검토하기 쉽지만, 잊어도 PR의
 `sync-api-docs` job이 산출물을 따라 붙인다.
 
+## 검토 모드
+
+문장 기준은 `docs/api/OPENAPI_WRITING_GUIDE.md`가 원본이다. 이 절은 절차만
+정의하고 기준 자체를 복제하지 않는다.
+
+### R1. 대상 도메인 확인
+
+검토할 `*ApiSpec` 하나 또는 도메인 하나를 사용자와 확정한다. 대상 컨트롤러,
+DTO, 서비스 파일 경로를 함께 확인한다.
+
+### R2. 6점 대조
+
+`docs/api/OPENAPI_WRITING_GUIDE.md` §9 체크리스트를 순서대로 실행한다.
+
+1. Controller ↔ ApiSpec: 메서드·매핑 수 일치 확인
+2. ApiSpec ↔ DTO: 필드별 `@Schema(description)` 존재 확인
+3. ApiSpec ↔ Service: `throw new XxxException(...)`를 전수 grep해 실제로 낼 수
+   있는 오류 응답을 확인한다. **DTO나 상상만으로 오류 응답을 만들지 않는다.**
+4. ApiSpec ↔ `docs/error-codes.md`: 코드·HTTP 상태 일치 확인
+5. ApiSpec ↔ SecurityConfiguration: 인증 스킴과 `permitAll` 경로 확인
+6. ApiSpec ↔ `docs/api/openapi.json`: 재생성 후 diff로 실제 반영 여부 확인
+
+### R3. 문장 재작성 제안
+
+`docs/api/OPENAPI_WRITING_GUIDE.md` §1~§8 기준(종결어미, `summary` 형식, 문단
+순서, 낯선 단어, 괄호 규칙, 금지 문장)으로 엔드포인트별 before/after를 작성한다.
+
+쉬운 말로 바꾸는 과정에서 DTO에 없는 사실을 지어내지 않는다. 필드를 다시 확인하지
+않고 요청·응답에 없는 내용을 있는 것처럼 쓰면 문장은 쉬워져도 틀린 문서가 된다.
+
+### R4. 보고서 작성
+
+`templates/api-docs-review.md`를 복사해
+`docs/reports/gh-<ISSUE>-API-DOCS-REVIEW-<DOMAIN>.md`로 저장하고 R2·R3 결과를
+채운다. **`*ApiSpec` 원본은 이 모드에서 수정하지 않는다.** 제안 문장은 보고서
+안에만 있는다.
+
+### R5. 완료 보고
+
+대조 결과, 제안 건수, 실행하지 못한 검증(예: Docker 미가용으로 스펙 재생성
+불가)을 구분해 보고한다. `*ApiSpec` 적용은 도메인 담당자의 후속 작업임을 명시한다.
+
 ## 금지
 
 - `docs/api/openapi.json`을 직접 편집하지 않는다.
@@ -139,3 +191,6 @@ diff에 의도하지 않은 변경이 섞였으면 멈추고 보고한다.
 - 스펙 생성 테스트가 실패한 상태에서 산출물을 손으로 채우지 않는다.
 - 서비스, 도메인, repository, 마이그레이션을 수정하지 않는다.
 - 예시 값에 `.env` 값, 토큰, 계정 식별자를 쓰지 않는다.
+- 검토 모드에서는 `*ApiSpec`, 컨트롤러, DTO, 어떤 소스 코드도 수정하지 않는다.
+  산출물은 `docs/reports/**`의 보고서 하나뿐이다.
+- 검토 모드에서 오류 응답을 제안할 때 서비스 코드의 `throw` 없이 추측해 적지 않는다.

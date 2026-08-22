@@ -244,6 +244,11 @@ swagger의 `@ApiResponse`는 이 저장소의 응답 래퍼와 이름이 겹친�
 
 `/harness-api-docs` 스킬과 `agents/api-docs-executor.md`가 이 작업을 돕는다.
 
+문장 톤·용어·괄호 표기 같은 작성 기준은 이 문서가 아니라
+`docs/api/OPENAPI_WRITING_GUIDE.md`가 원본이다. `/harness-api-docs`의 검토(review)
+모드가 그 기준으로 `*ApiSpec`을 점검해 `templates/api-docs-review.md` 형식의
+보고서를 만든다.
+
 ## 6. 아직 정하지 않은 것
 
 - **목록 응답과 페이지네이션.** 목록 API가 생길 때 `data` 안에 들어갈

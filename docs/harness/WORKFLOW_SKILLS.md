@@ -11,8 +11,8 @@ Issue → 브랜치 → 커밋 → PR을 질문형 대화로 진행하는 Claude
 | `/harness-pr` | 로컬 검증 + PR 생성 | push, Pull Request |
 
 기존 역할 스킬(`/harness-test-plan`, `/harness-test-run`, `/harness-infra-design`,
-`/harness-infra-build`, `/harness-review`)과는 층이 다르다. 이 3종은 **작업의
-포장 단계**를, 역할 스킬은 **작업의 내용**을 다룬다.
+`/harness-infra-build`, `/harness-review`, `/harness-api-docs`)과는 층이 다르다.
+이 3종은 **작업의 포장 단계**를, 역할 스킬은 **작업의 내용**을 다룬다.
 
 ## 전체 흐름
 
