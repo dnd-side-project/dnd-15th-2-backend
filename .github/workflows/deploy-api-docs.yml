@@ -1,0 +1,43 @@
+name: Deploy API Docs
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "docs/api/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 같은 배포가 겹치면 마지막 것만 반영되면 되므로 새 실행이 오면 진행 중인
+# 배포를 취소한다. sync-api-docs가 만드는 커밋이 여러 번 연달아 push되는
+# 경우를 대비한 것이다.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload API docs artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/api
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
