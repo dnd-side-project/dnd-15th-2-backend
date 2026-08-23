@@ -6,7 +6,7 @@ import jakarta.validation.constraints.NotBlank;
 // 닉네임 변경 요청 본문.
 public record ChangeNicknameRequest(
 	@NotBlank(message = "nickname은 필수입니다")
-	@Schema(requiredMode = Schema.RequiredMode.REQUIRED, example = "여름바람")
+	@Schema(description = "변경할 닉네임. 앞뒤 공백은 제거한 뒤 저장합니다.", requiredMode = Schema.RequiredMode.REQUIRED, example = "여름바람")
 	String nickname
 ) {
 }
