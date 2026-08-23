@@ -31,14 +31,21 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 
-@Tag(name = "알림함", description = "알림함 목록·미읽음 신호 조회, 열람 기준선 전진, 줄 단위 읽음, 진입 판정 (#176)")
+@Tag(name = "알림함", description = "받은 알림을 확인하고, 알림 점을 끄고, 알림에서 원래 글로 넘어갈 수 있는지 확인합니다. 알림을 어떻게 받을지 설정하는 것도 여기서 합니다.")
 @SecurityRequirement(name = OpenApiConfiguration.APP_ACCESS_TOKEN_SCHEME)
 public interface NotificationApiSpec {
 
 	@Operation(
 		summary = "알림함 목록 조회",
-		description = "인증 사용자의 알림을 최신순으로 조회합니다. REVOKED·DISMISSED 줄은 제외됩니다. "
-			+ "cursorCreatedAt과 cursorNotificationId는 둘 다 지정하거나 둘 다 생략해야 합니다.")
+		description = """
+			받은 알림을 최신순으로 보여줍니다.
+
+			앱 로그인이 필요하며 본인이 받은 알림만 나옵니다.
+
+			한 번에 1개에서 50개까지 받을 수 있고 기본값은 20개입니다.
+
+			다음 쪽을 부를 때는 앞 응답 nextCursor의 두 값을 cursorCreatedAt과 \
+			cursorNotificationId에 함께 넣습니다. 둘 중 하나만 넣으면 오류입니다.""")
 	@ApiResponses({
 		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "알림함 목록을 반환합니다."),
 		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "limit 또는 cursor 파라미터가 올바르지 않습니다. (NOT-VAL-006, NOT-VAL-007)", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
@@ -48,15 +55,26 @@ public interface NotificationApiSpec {
 	})
 	@GetMapping("/notifications")
 	ResponseEntity<ApiResponse<NotificationListingResponse>> list(
+		@Parameter(description = "다음 쪽 조회에 쓸 알림 도착 시각. 앞 응답 nextCursor.createdAt을 그대로 넣습니다. cursorNotificationId와 함께 지정해야 합니다")
 		@RequestParam(required = false) Instant cursorCreatedAt,
+		@Parameter(description = "다음 쪽 조회에 쓸 알림 식별자. 앞 응답 nextCursor.notificationId를 그대로 넣습니다. cursorCreatedAt과 함께 지정해야 합니다")
 		@RequestParam(required = false) Long cursorNotificationId,
+		@Parameter(description = "한 번에 받을 알림 수. 1 이상 50 이하이며 기본값은 20입니다")
 		@RequestParam(defaultValue = "20") int limit,
 		@Parameter(hidden = true) Authentication authentication);
 
 	@Operation(
-		summary = "미읽음 신호 조회",
-		description = "지도 홈의 알림 점(hasUnseen)과 카운터(unreadCount)를 조회합니다. 두 값의 기준선이 다릅니다 — "
-			+ "hasUnseen은 열람 기준선(seenAt) 이후 도착한 UNREAD 존재 여부이고, unreadCount는 톱하지 않은 줄의 개수입니다.")
+		summary = "알림 점과 안 읽은 알림 수 조회",
+		description = """
+			지도 홈에 띄울 알림 점과 아직 읽지 않은 알림 개수를 함께 돌려줍니다.
+
+			앱 로그인이 필요합니다.
+
+			두 값은 기준이 달라 서로 어긋나 보일 수 있습니다.
+			알림 점(hasUnseen)은 알림함을 마지막으로 연 뒤에 새 알림이 왔는지만 봅니다.
+			개수(unreadCount)는 아직 읽지 않은 알림을 전부 셉니다.
+
+			알림함을 열기만 하고 아무것도 읽지 않으면 점은 꺼지지만 개수는 그대로입니다.""")
 	@ApiResponses({
 		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "미읽음 신호를 반환합니다."),
 		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "앱 액세스 토큰이 유효하지 않습니다.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
@@ -69,9 +87,18 @@ public interface NotificationApiSpec {
 
 	@Operation(
 		summary = "알림 설정 조회",
-		description = "인증 사용자 본인의 전역 push, 6종별 push, 방해 금지 시간과 알림함 원장 정책을 조회합니다.")
+		description = """
+			지금 저장된 알림 설정을 보여줍니다. 앱 푸시를 전부 받을지, 알림 6종을 \
+			각각 받을지, 알림을 받지 않을 시간대를 언제로 둘지가 들어 있습니다.
+
+			앱 로그인이 필요합니다.
+
+			설정을 한 번도 저장한 적이 없어도 기본값이 채워져 돌아옵니다. \
+			기본값은 전부 켜짐이고 알림을 받지 않을 시간대는 없습니다.
+
+			푸시를 꺼도 알림함에는 그대로 쌓입니다. 이 설정은 푸시를 보낼지만 정합니다.""")
 	@ApiResponses({
-		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "현재 알림 설정 snapshot을 반환합니다."),
+		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "현재 알림 설정을 반환합니다."),
 		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "앱 액세스 토큰이 유효하지 않습니다.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
 		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "현재 계정은 알림함을 사용할 수 없습니다. (NOT-APP-002)", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
 		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "인증 사용자 계정을 찾을 수 없습니다. (NOT-APP-001)", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class)))
@@ -81,10 +108,21 @@ public interface NotificationApiSpec {
 		@Parameter(hidden = true) Authentication authentication);
 
 	@Operation(
-		summary = "알림 설정 전체 교체",
-		description = "인증 사용자 본인의 전역 push, 6종별 push와 방해 금지 시간 snapshot을 완전 교체하고 canonical 응답을 반환합니다.")
+		summary = "알림 설정 통째로 바꾸기",
+		description = """
+			알림 설정을 보낸 값으로 통째로 바꿉니다.
+
+			앱 로그인이 필요합니다.
+
+			일부만 보내 고칠 수 없습니다. 푸시 전체 허용 여부와 알림 6종 설정을 매번 \
+			전부 보내야 합니다. 6종을 빠뜨리거나 같은 종류를 두 번 보내면 저장하지 않습니다.
+
+			알림을 받지 않을 시간대는 보내지 않거나 null로 두면 꺼집니다. 켜려면 시작 \
+			시각, 종료 시각, 시간대를 모두 채워야 하고 시작과 종료가 같으면 안 됩니다.
+
+			저장한 뒤에는 조회 API와 같은 형식으로 저장된 설정을 돌려줍니다.""")
 	@ApiResponses({
-		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "저장된 알림 설정 snapshot을 반환합니다."),
+		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "저장된 알림 설정을 반환합니다."),
 		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "요청한 알림 설정 값이 계약을 만족하지 않습니다. (NOT-VAL-008)", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
 		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "앱 액세스 토큰이 유효하지 않습니다.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
 		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "현재 계정은 알림함을 사용할 수 없습니다. (NOT-APP-002)", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
@@ -96,11 +134,19 @@ public interface NotificationApiSpec {
 		@Parameter(hidden = true) Authentication authentication);
 
 	@Operation(
-		summary = "알림함 열람 기준선 전진",
-		description = "지도 홈의 알림 점을 해제합니다. 서버 시각으로만 전진하며(GREATEST), 반복·역순 호출이 "
-			+ "기준선을 과거로 되돌리지 않습니다. 목록의 줄 자체는 지워지지 않습니다.")
+		summary = "알림 점 끄기",
+		description = """
+			지도 홈에 떠 있는 알림 점을 끕니다.
+
+			앱 로그인이 필요합니다.
+
+			알림함을 마지막으로 연 시각을 지금 시각으로 올립니다. 이 시각은 서버가 \
+			정하므로 요청 본문이 없고, 여러 번 불러도 시각이 과거로 돌아가지 않습니다.
+
+			알림을 읽음으로 바꾸지는 않습니다. 목록의 알림은 그대로 남고 안 읽은 알림 \
+			개수도 줄지 않습니다. 읽음으로 바꾸려면 읽음 처리 API를 따로 부릅니다.""")
 	@ApiResponses({
-		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "전진된 열람 기준선을 반환합니다."),
+		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "새로 기록된 시각을 반환합니다."),
 		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "앱 액세스 토큰이 유효하지 않습니다.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
 		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "현재 계정은 알림함을 사용할 수 없습니다. (NOT-APP-002)", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
 		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "인증 사용자 계정을 찾을 수 없습니다. (NOT-APP-001)", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class)))
@@ -111,14 +157,21 @@ public interface NotificationApiSpec {
 
 	@Operation(
 		summary = "알림 읽음 처리",
-		description = "알림 한 줄을 읽음 처리합니다. 멱등입니다 — 이미 READ면 상태를 바꾸지 않고 현재 값을 반환합니다. "
-			+ "REVOKED 줄은 409입니다.")
+		description = """
+			알림 하나를 읽음으로 표시합니다.
+
+			앱 로그인이 필요하고 본인이 받은 알림만 바꿀 수 있습니다.
+
+			읽음으로 바뀐 알림과 읽은 시각을 돌려줍니다. 안 읽은 알림 개수도 그만큼 줄어듭니다.
+
+			같은 알림을 여러 번 불러도 안전합니다. 이미 읽은 알림이면 읽은 시각을 \
+			다시 쓰지 않고 지금 값을 그대로 돌려줍니다.""")
 	@ApiResponses({
-		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "읽음 처리된 알림 줄을 반환합니다."),
+		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "읽음 처리된 알림을 반환합니다."),
 		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "앱 액세스 토큰이 유효하지 않습니다.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
 		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "현재 계정은 알림함을 사용할 수 없습니다. (NOT-APP-002)", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
-		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "알림이 없거나 남의 알림입니다. (NOT-APP-001, NOT-DOM-004)", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
-		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "409", description = "취소된(REVOKED) 알림은 읽음 처리할 수 없습니다. (NOT-DOM-003)", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class)))
+		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "그런 알림이 없거나 본인이 받은 알림이 아닙니다. 인증 사용자 계정을 찾을 수 없을 때도 같습니다. (NOT-APP-001, NOT-DOM-004)", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
+		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "409", description = "내려간 알림이라 읽음으로 바꿀 수 없습니다. (NOT-DOM-003)", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class)))
 	})
 	@PutMapping("/notifications/{notificationId}/read")
 	ResponseEntity<ApiResponse<NotificationCardResponse>> markRead(
@@ -126,14 +179,23 @@ public interface NotificationApiSpec {
 		@Parameter(hidden = true) Authentication authentication);
 
 	@Operation(
-		summary = "알림 진입 판정",
-		description = "알림 한 줄의 대상 생존 상태를 다시 평가합니다. 알림함을 열고 수 분 뒤 톱했을 수 있으므로 "
-			+ "목록의 판정을 그대로 믿지 않습니다.")
+		summary = "알림에서 원래 글로 갈 수 있는지 확인",
+		description = """
+			이 알림이 가리키는 글로 지금 넘어갈 수 있는지 확인합니다.
+
+			앱 로그인이 필요하고 본인이 받은 알림만 확인할 수 있습니다.
+
+			넘어갈 수 있으면 navigable이 true입니다.
+			갈 수 없으면 false와 함께 갈 수 없는 이유가 reason에 담기고, \
+			대신 보여줄 화면이 fallback에 담깁니다.
+
+			알림함을 연 뒤 시간이 지나 원래 글이 지워지거나 기간이 끝났을 수 있습니다. \
+			목록에 담긴 판정을 그대로 쓰지 말고 누르는 순간 이 API로 다시 확인합니다.""")
 	@ApiResponses({
-		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "진입 판정을 반환합니다."),
+		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "지금 넘어갈 수 있는지에 대한 판정을 반환합니다."),
 		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "앱 액세스 토큰이 유효하지 않습니다.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
 		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "현재 계정은 알림함을 사용할 수 없습니다. (NOT-APP-002)", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
-		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "알림이 없거나 남의 알림입니다. (NOT-APP-001, NOT-DOM-004)", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class)))
+		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "그런 알림이 없거나 본인이 받은 알림이 아닙니다. 인증 사용자 계정을 찾을 수 없을 때도 같습니다. (NOT-APP-001, NOT-DOM-004)", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class)))
 	})
 	@GetMapping("/notifications/{notificationId}/target")
 	ResponseEntity<ApiResponse<NotificationTargetResponse>> target(
