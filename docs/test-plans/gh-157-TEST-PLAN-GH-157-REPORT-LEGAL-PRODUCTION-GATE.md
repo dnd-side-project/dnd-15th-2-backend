@@ -41,7 +41,7 @@ production 설정으로 반영한다. 이 계획이 검증할 사용자 가치�
   `SafetyErrorCode.CRITICAL_REPORT_DAILY_QUOTA_EXCEEDED`.
 - `EvidenceRetentionPolicy`와 `ReportContentSnapshot.capture(...)`의
   `purgeAfter` 계산.
-- Flyway `V26`: CHECK 확장 + `report_content_snapshot` 전용 트리거 함수
+- Flyway `V27`: CHECK 확장 + `report_content_snapshot` 전용 트리거 함수
   교체(`report_case_event` 트리거는 불변).
 - `ReportContentSnapshotRepository.findPurgeable`/`purgeMedia`와
   `ReportEvidencePurgeSweepWorker`(batch 처리기, `@Scheduled` 없음).
@@ -82,7 +82,7 @@ production 설정으로 반영한다. 이 계획이 검증할 사용자 가치�
 | CRITICAL 일일 쿼터 카운트가 자정 경계로 계산되어 자정 직전/직후 우회 가능 | 중간 — 남용 통제 무력화 | 중간 | P1 | 롤링 24시간 윈도우로 구현하고 경계 케이스 테스트 |
 | purge sweep이 이미 비워진 스냅샷을 재처리하거나, `purge_after`가 아직 안 지난 행을 잘못 포함 | 중간 — 불필요한 UPDATE 반복 또는 조기 purge | 낮음 | P1 | `findPurgeable` 쿼리 경계 테스트(정확히 `purge_after`, 이미 빈 `media_object_keys`) |
 | 두 신고가 거의 동시에 같은 사건을 CRITICAL로 만들며 각각 자동 숨김을 트리거 | 낮음(기존 `resolveIfStillOpen`의 멱등 처리 재사용) | 낮음 | P2 | 동시성 테스트로 기존 멱등 스왈로우 경로가 CRITICAL 트리거에도 적용되는지 확인 |
-| Flyway `V26`이 기존 데이터와 충돌(예: 이미 존재하는 `sub_reason_code` 값과 CHECK 불일치) | 낮음 — 순수 추가 조건이라 기존 행에 영향 없음 | 낮음 | P2 | 마이그레이션 적용 후 기존 통합 테스트 스위트(`*Flyway*`) 재실행 |
+| Flyway `V27`이 기존 데이터와 충돌(예: 이미 존재하는 `sub_reason_code` 값과 CHECK 불일치) | 낮음 — 순수 추가 조건이라 기존 행에 영향 없음 | 낮음 | P2 | 마이그레이션 적용 후 기존 통합 테스트 스위트(`*Flyway*`) 재실행 |
 
 ## 5. Unit scenarios
 

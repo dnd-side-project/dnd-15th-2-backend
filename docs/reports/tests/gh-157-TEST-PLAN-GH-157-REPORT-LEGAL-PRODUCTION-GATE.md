@@ -12,7 +12,7 @@
   추가와 severity 매핑, `critical-enabled` 기능 플래그(기본값 OFF)와 즉시
   전역 숨김 트리거, CRITICAL 일일 신고 쿼터(5건, 롤링 24시간 윈도우),
   증거 스냅샷 `purge_after`(180일) 계산, append-only 트리거의
-  media_object_keys 전용 예외(V26), `ReportEvidencePurgeSweepWorker`,
+  media_object_keys 전용 예외(V27), `ReportEvidencePurgeSweepWorker`,
   운영 설정값 변경(자동 숨김 임계값 5→3, SLA·rate limit 유지).
 - Unverified scope: 없음 — 계획한 P0/P1 시나리오를 전부 구현하고 실행했다.
   N-way(3+) 동시 CRITICAL 신고 경합, SLA 알림 실제 발송, 국가별 분기,
@@ -40,13 +40,40 @@
 | `./gradlew integrationTest` (전체 통합 테스트) | PASS | 전체 스위트, 신규 4개 클래스 포함 | ~9m 8s | 로컬 실행(Testcontainers PostGIS), 실패 0 |
 | `./gradlew integrationTest --tests "com.dnd.qello.ReportCaseSeverityIntegrationTest"` | PASS | 16 | ~13s | 개별 확인, 임계값 회귀 수정 후 |
 | `./gradlew integrationTest --tests "com.dnd.qello.ReportCaseCriticalAutoSuppressionIntegrationTest" --tests "com.dnd.qello.ReportContentSnapshotImmutabilityIntegrationTest" --tests "com.dnd.qello.ReportEvidencePurgeSweepWorkerIntegrationTest"` | PASS | 13 | ~26s | 개별 확인, SELF_HARM_RISK 검증 코드 수정 후 |
-| `./gradlew integrationTest --tests "*Flyway*"` | PASS | 전체 | ~26s | V26 migration count/manifest 반영 확인 |
+| `./gradlew integrationTest --tests "*Flyway*"` | PASS | 전체 | ~26s | V27 migration count/manifest 반영 확인 |
 | `./gradlew integrationTest --tests "com.dnd.qello.*ReportCase*" --tests "com.dnd.qello.*Report*"` | PASS | 전체 | ~1m 29s | 회귀 없음 |
 | `./gradlew test --tests "com.dnd.qello.notification.*"` | PASS | 전체 | ~3s | 회귀 없음 |
 | `./harness check` | PASS | Secret preflight, JUnit 정책, convention, commit 형식, workflow, label, Husky | ~수초 | 헤더 위치 수정 후 통과 |
 | `./harness pr-ready --project-tests` | PASS | 위 test+integrationTest 재확인 포함 | ~수초(UP-TO-DATE) | |
 | `npm run hooks:validate` | PASS | Husky 설정 검증 | ~1s | |
 | `git diff --check` | PASS | whitespace 오류 없음 | 즉시 | |
+
+### 3.1 `main` rebase 후 재검증 (2026-08-23)
+
+PR #188을 최신 `origin/main` 위로 rebase하면서 다음 두 가지를 조정했고, 조정
+후 아래 명령을 다시 실행했다.
+
+1. `main`이 먼저 `V26__split_notification_user_setting.sql`을 병합해 이 이슈의
+   마이그레이션과 버전 번호가 겹쳤다. Flyway는 같은 버전을 두 개 두면 기동에
+   실패하므로 이 이슈의 마이그레이션을 `V27`로 다시 번호를 매겼다. 파일 내용은
+   바뀌지 않았다(rename 100%).
+2. `NotificationPreferenceMigrationIntegrationTest`는 V24에서 최신까지 실행되는
+   마이그레이션 수를 2로 단언하고 있었다. `V27`이 늘어나 3이 되었으므로 이
+   단언만 갱신했다. 이 테스트가 검증하는 quiet 값 폐기·enabled 보존 계약은
+   그대로다.
+
+| Command / suite | Result | Tests | Duration | Evidence |
+| --- | --- | --- | --- | --- |
+| `./gradlew compileJava compileTestJava compileIntegrationTestJava` | PASS | - | ~13s | rebase 후 전체 소스셋 컴파일 |
+| `./gradlew test` (전체 단위 테스트) | PASS | 전체 스위트 | ~10s | `FlywayMigrationContractTest`의 V26·V27 카탈로그 포함 |
+| `./gradlew integrationTest --tests "com.dnd.qello.FlywayMigration*"` | PASS | 전체 | ~46s | `V27`까지 27개 migration 적용 확인 |
+| `./gradlew integrationTest` (전체 통합 테스트) | PASS | 656 | ~11m 19s | 로컬 실행(Testcontainers PostGIS), 실패 0 |
+| `./harness check` | PASS | Secret preflight, JUnit 정책, convention, commit 형식, workflow, label, Husky | ~수초 | rebase 후 재실행 |
+| `npm run hooks:validate` | PASS | Husky 설정 검증 | ~1s | |
+| `git diff --check` | PASS | whitespace 오류 없음 | 즉시 | |
+
+rebase 직전 한 번은 전체 통합 테스트가 `NotificationPreferenceMigrationIntegrationTest`
+1건으로 실패했다(656개 중 1건). 위 2번 조정 후 재실행에서 656개 전부 통과했다.
 
 ## 4. Scenario results
 
@@ -93,7 +120,7 @@
 
 1. **도메인 레벨 검증 공백** — `ReportSubmission.ALLOWED_SUB_REASONS`
    맵에 `ILLEGAL_OR_DANGEROUS`→`SELF_HARM_RISK` 조합을 추가하지 않아,
-   DB `ck_report_sub_reason` CHECK는 통과하도록 V26에서 고쳤지만 그
+   DB `ck_report_sub_reason` CHECK는 통과하도록 V27에서 고쳤지만 그
    앞단인 서비스 계층 `ReportSubmission` 생성자가 `SAF-VAL-007
    INVALID_REPORT_SUB_REASON`으로 먼저 거부하고 있었다.
    `ReportCaseCriticalAutoSuppressionIntegrationTest#newSelfHarmRiskCaseIsAutoSuppressedWhenFlagIsEnabled`
@@ -136,12 +163,12 @@
 
 ### Database and migrations
 
-- V26이 `report_content_snapshot`의 append-only 트리거를 부분적으로
+- V27이 `report_content_snapshot`의 append-only 트리거를 부분적으로
   약화시킨다(media_object_keys 예외). 트리거 함수가 `OLD`/`NEW`의 모든
   다른 컬럼을 명시적으로 비교하는 방식이라, **향후 이 테이블에 컬럼을
   추가하면 트리거 함수도 함께 갱신해야 한다** — 그렇지 않으면 새 컬럼은
   트리거의 "허용되지 않은 변경" 검사에서 누락돼 의도치 않게 변경 가능한
-  구멍이 생긴다. 이 유지보수 부담을 코드 주석으로 남겼다(V26 마이그레이션
+  구멍이 생긴다. 이 유지보수 부담을 코드 주석으로 남겼다(V27 마이그레이션
   파일).
 - `report_content_snapshot`에 대한 실제 프로덕션 미디어 오브젝트(S3 등)
   정리는 이 이슈 범위 밖이다 — `purgeMedia`는 DB 컬럼만 비운다.
@@ -187,7 +214,7 @@
   decision 4에 따라 계속 범위 밖이다.
 - `critical-enabled` 플래그의 실제 프로덕션 활성화 — 코드는 이 PR에
   포함되지만 값을 `true`로 바꾸는 운영 변경은 별도 승인이 필요하다.
-- V26 트리거 함수의 컬럼 목록이 하드코딩돼 있어(§6 Database and
+- V27 트리거 함수의 컬럼 목록이 하드코딩돼 있어(§6 Database and
   migrations) 향후 스키마 변경 시 함께 갱신해야 하는 결합이 생겼다 —
   후속 이슈에서 컬럼 추가 시 체크리스트 항목으로 남겨야 한다.
 

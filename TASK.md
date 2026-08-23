@@ -57,7 +57,7 @@ AI 에이전트가 대신 만들어낼 수 없다. 아래 결정들은 **저장�
 - `ReportSubReason`에 `SELF_HARM_RISK` 추가. `ReportCaseSeverity.of(...)`의
   `switch`가 exhaustive라 컴파일러가 누락을 잡아준다 — `CSAM, NCII,
   CREDIBLE_THREAT, SELF_HARM_RISK -> CRITICAL`로 확장.
-- Flyway `V26`: `ck_report_sub_reason` CHECK에
+- Flyway `V27`: `ck_report_sub_reason` CHECK에
   `(reason_code = 'ILLEGAL_OR_DANGEROUS' AND sub_reason_code = 'SELF_HARM_RISK')`
   절 추가. `ck_report_reason`은 이미 `ILLEGAL_OR_DANGEROUS`를 포함하므로
   변경 없음.
@@ -107,7 +107,7 @@ AI 에이전트가 대신 만들어낼 수 없다. 아래 결정들은 **저장�
   `purgeAfter = capturedAt.plus(retentionPolicy.retentionPeriod())`로 계산해
   전달 — 현재 `capture()`는 항상 `purgeAfter=null`이므로 팩토리 메서드
   시그니처에 `purgeAfter` 파라미터 추가 필요.
-- Flyway `V26`(§1과 같은 마이그레이션 파일)에 트리거 함수 교체:
+- Flyway `V27`(§1과 같은 마이그레이션 파일)에 트리거 함수 교체:
   - `report_content_snapshot` 전용 신규 함수
     `enforce_report_snapshot_immutability_except_purge()` 작성.
     DELETE는 항상 거부. UPDATE는 오직 `media_object_keys`만 바뀌고 나머지
@@ -171,7 +171,7 @@ AI 에이전트가 대신 만들어낼 수 없다. 아래 결정들은 **저장�
 
 | Area | Owner | Required review |
 | --- | --- | --- |
-| `ReportSubReason` 확장, CRITICAL 자동 숨김 트리거 조건, `CriticalReportQuotaPolicy`, `EvidenceRetentionPolicy`, evidence purge 트리거 예외·`ReportEvidencePurgeSweepWorker`, `SafetyReportConfiguration` 운영값 변경, 신규 Flyway `V26`, 단위·통합 테스트 | Feature executor | 트리거 예외 로직이 `legal_hold` 행을 확실히 보호하는지, `media_object_keys`만 바뀌는 UPDATE 외에는 전부 거부하는지 통합 테스트로 검증. `critical-enabled` 플래그 OFF/ON 양쪽 동작 검증. 기존 `INV-RPT-004`(증거 불변성)가 여전히 성립하는지(본문·해시 등은 절대 안 바뀜) 확인 |
+| `ReportSubReason` 확장, CRITICAL 자동 숨김 트리거 조건, `CriticalReportQuotaPolicy`, `EvidenceRetentionPolicy`, evidence purge 트리거 예외·`ReportEvidencePurgeSweepWorker`, `SafetyReportConfiguration` 운영값 변경, 신규 Flyway `V27`, 단위·통합 테스트 | Feature executor | 트리거 예외 로직이 `legal_hold` 행을 확실히 보호하는지, `media_object_keys`만 바뀌는 UPDATE 외에는 전부 거부하는지 통합 테스트로 검증. `critical-enabled` 플래그 OFF/ON 양쪽 동작 검증. 기존 `INV-RPT-004`(증거 불변성)가 여전히 성립하는지(본문·해시 등은 절대 안 바뀜) 확인 |
 
 ## Existing user-owned changes
 
@@ -259,6 +259,27 @@ git diff --check
   약화시켰다(media_object_keys 예외) — 통합 테스트로 그 예외의 경계를
   직접 검증했지만, 새 트리거 함수 자체의 장기 유지보수 부담(향후 컬럼
   추가 시 트리거 조건도 함께 갱신해야 함)은 남는다.
+
+## `main` rebase 결과 (2026-08-23)
+
+PR #188을 최신 `origin/main` 위로 rebase했다. 충돌과 조정은 다음 세 가지다.
+
+1. `TASK.md` — `main`에는 다른 이슈(#190)의 계약이 올라와 있었다. 이 파일은
+   브랜치별 작업 계약이므로 #157 계약을 유지했다.
+2. Flyway 버전 충돌 — `main`이 먼저 `V26__split_notification_user_setting.sql`을
+   병합했다. 같은 버전이 둘이면 Flyway 기동이 실패하므로 이 이슈의
+   마이그레이션을 `V27__add_self_harm_sub_reason_and_evidence_purge_exception.sql`로
+   다시 번호를 매겼다(내용 변경 없음). `FlywayMigrationContractTest` 카탈로그와
+   `FlywayMigrationIntegrationTest`의 적용 수(26→27)도 함께 맞췄다.
+3. `NotificationPreferenceMigrationIntegrationTest` — V24에서 최신까지 실행되는
+   마이그레이션 수 단언이 2였는데 `V27`이 늘어 3이 되었다. 이 단언만 갱신했고
+   해당 테스트가 지키는 계약 자체는 건드리지 않았다.
+
+`docs/api/openapi.json`은 충돌 없이 병합됐고, 이 브랜치가 더한 변경은
+`ReportSubReason` enum의 `SELF_HARM_RISK` 한 건뿐임을 diff로 확인했다.
+
+재검증 결과는 테스트 보고서 §3.1에 기록했다. 전체 단위 테스트와 전체 통합
+테스트(656건) 모두 통과했다.
 
 ## 남은 위험 / 후속 결정 필요
 
