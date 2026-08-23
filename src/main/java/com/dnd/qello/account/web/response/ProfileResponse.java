@@ -6,6 +6,8 @@ import com.dnd.qello.account.domain.Account;
 import com.dnd.qello.account.service.ProfileImageResolver.ResolvedProfileImage;
 import com.dnd.qello.account.service.ProfileService;
 
+import io.swagger.v3.oas.annotations.media.Schema;
+
 /**
  * 본인 프로필 응답.
  *
@@ -13,10 +15,15 @@ import com.dnd.qello.account.service.ProfileService;
  * 하나이며, private 버킷의 내부 주소는 API 경계 밖으로 나가지 않는다.
  */
 public record ProfileResponse(
+	@Schema(description = "프로필 소유자의 식별자.")
 	long userId,
+	@Schema(description = "현재 닉네임.")
 	String nickname,
+	@Schema(description = "일정 시간이 지나면 만료되는 프로필 이미지 조회 URL.")
 	String profileImageUrl,
+	@Schema(description = "프로필 이미지 조회 URL이 만료되는 시각.")
 	Instant profileImageExpiresAt,
+	@Schema(description = "프로필 이미지가 없거나 사용할 수 없어 기본 이미지를 쓰는지 여부.")
 	boolean usesDefaultProfileImage
 ) {
 	public static ProfileResponse from(ProfileService.Profile profile) {
