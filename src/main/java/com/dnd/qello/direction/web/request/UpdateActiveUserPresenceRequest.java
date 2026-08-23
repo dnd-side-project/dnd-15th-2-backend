@@ -28,9 +28,11 @@ public record UpdateActiveUserPresenceRequest(
 	BigDecimal accuracyMeters,
 
 	@NotNull(message = "receiveAllowed는 필수입니다")
+	@Schema(description = "이 위치에서 질문을 받을지 여부")
 	Boolean receiveAllowed,
 
 	@NotNull(message = "observedAt은 필수입니다")
+	@Schema(description = "기기가 이 위치를 관측한 시각. 서버 시각 기준 허용 범위를 벗어나면 저장하지 않습니다")
 	Instant observedAt
 ) {
 	public DirectionPresenceService.UpdateCommand toCommand() {

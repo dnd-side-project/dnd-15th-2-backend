@@ -109,13 +109,16 @@
       "AnswerSubmissionResponse" : {
         "properties" : {
           "answerId" : {
+            "description" : "접수된 답변의 식별자",
             "format" : "int64",
             "type" : "integer"
           },
           "submissionStatus" : {
+            "description" : "접수 직후의 답변 상태. 공개 여부가 아니라 접수 결과입니다",
             "type" : "string"
           },
           "submittedAt" : {
+            "description" : "답변을 접수한 시각",
             "format" : "date-time",
             "type" : "string"
           }
@@ -1367,17 +1370,21 @@
       "DirectionPostSubmissionResponse" : {
         "properties" : {
           "expiresAt" : {
+            "description" : "이 질문글이 만료되는 시각",
             "format" : "date-time",
             "type" : "string"
           },
           "postId" : {
+            "description" : "접수된 질문글의 식별자",
             "format" : "int64",
             "type" : "integer"
           },
           "submissionStatus" : {
+            "description" : "접수 결과. 항상 SUBMITTED입니다",
             "type" : "string"
           },
           "submittedAt" : {
+            "description" : "질문글을 접수한 시각",
             "format" : "date-time",
             "type" : "string"
           }
@@ -1387,17 +1394,21 @@
       "DirectionPreviewResponse" : {
         "properties" : {
           "schemeCode" : {
+            "description" : "방향 구획 체계의 코드",
             "type" : "string"
           },
           "schemeId" : {
+            "description" : "이 미리보기를 계산한 방향 구획 체계의 식별자",
             "format" : "int64",
             "type" : "integer"
           },
           "schemeVersion" : {
+            "description" : "방향 구획 체계의 판 번호",
             "format" : "int32",
             "type" : "integer"
           },
           "segments" : {
+            "description" : "방향별 후보 수 목록",
             "items" : {
               "$ref" : "#/components/schemas/SegmentCount"
             },
@@ -1717,10 +1728,12 @@
       "MediaConfirmResponse" : {
         "properties" : {
           "mediaId" : {
+            "description" : "확인한 이미지 식별자",
             "format" : "int64",
             "type" : "integer"
           },
           "status" : {
+            "description" : "확인 뒤의 이미지 상태",
             "type" : "string"
           }
         },
@@ -1762,17 +1775,21 @@
       "MediaUploadResponse" : {
         "properties" : {
           "contentType" : {
+            "description" : "이 주소로 올릴 수 있는 이미지 형식",
             "type" : "string"
           },
           "expiresAt" : {
+            "description" : "이 주소를 쓸 수 있는 마지막 시각",
             "format" : "date-time",
             "type" : "string"
           },
           "mediaId" : {
+            "description" : "발급된 이미지 식별자. 업로드 확인과 첨부에 씁니다",
             "format" : "int64",
             "type" : "integer"
           },
           "uploadUrl" : {
+            "description" : "이미지 파일을 PUT으로 올릴 임시 주소",
             "type" : "string"
           }
         },
@@ -2203,9 +2220,11 @@
       "ReactionResponse" : {
         "properties" : {
           "reacted" : {
+            "description" : "이 호출 뒤 내가 공감을 남긴 상태인지 여부",
             "type" : "boolean"
           },
           "reactionCount" : {
+            "description" : "반영 직후 서버가 다시 센 공감 수",
             "format" : "int64",
             "type" : "integer"
           }
@@ -2435,16 +2454,20 @@
       "SegmentCount" : {
         "properties" : {
           "count" : {
+            "description" : "이 방향에서 질문을 받을 수 있는 사람 수. 참고값입니다",
             "format" : "int64",
             "type" : "integer"
           },
           "displayName" : {
+            "description" : "화면에 표시할 방향 이름",
             "type" : "string"
           },
           "segmentKey" : {
+            "description" : "질문글을 보낼 때 지정할 방향 키",
             "type" : "string"
           },
           "sortOrder" : {
+            "description" : "화면에 늘어놓을 순서",
             "format" : "int32",
             "type" : "integer"
           }
@@ -2750,10 +2773,12 @@
             "type" : "number"
           },
           "observedAt" : {
+            "description" : "기기가 이 위치를 관측한 시각. 서버 시각 기준 허용 범위를 벗어나면 저장하지 않습니다",
             "format" : "date-time",
             "type" : "string"
           },
           "receiveAllowed" : {
+            "description" : "이 위치에서 질문을 받을지 여부",
             "type" : "boolean"
           }
         },
@@ -2769,6 +2794,7 @@
       "UpdateActiveUserPresenceResponse" : {
         "properties" : {
           "applied" : {
+            "description" : "보낸 위치가 실제로 저장됐는지 여부. 더 오래된 위치라 반영하지 않았으면 false입니다",
             "type" : "boolean"
           }
         },
@@ -4737,7 +4763,7 @@
                 }
               }
             },
-            "description" : "답변 식별자가 올바르지 않습니다. (ANS-VAL-001)"
+            "description" : "답변 식별자가 올바르지 않거나 그런 답변이 없습니다. (ANS-VAL-001)"
           },
           "401" : {
             "content" : {
@@ -4985,7 +5011,7 @@
     },
     "/api/v1/direction/inbox/{postRecipientId}/answers" : {
       "post" : {
-        "description" : "인증 수신자가 자신의 수신 항목에 답변을 제출합니다. 공개는 비동기 안전 검사 결과가 ALLOW일 때만 내부 moderation 결과 처리 경로에서 이루어지며, 이 endpoint는 공개 여부를 반환하지 않습니다.",
+        "description" : "내가 받은 질문에 답변을 씁니다.\n\n앱 로그인이 필요하고, 내게 온 질문에만 답할 수 있습니다. 한 질문에는 한 번만 답할 수 있습니다.\n\n접수만 하고 바로 끝나는 요청입니다. 답변이 상대에게 보이려면 안전 검사를 통과해야 하는데, 그 검사는 나중에 따로 진행됩니다. 그래서 이 응답만으로는 공개 여부를 알 수 없습니다.\n\n같은 요청을 다시 보낼 때를 위해 Idempotency-Key 헤더가 필요합니다. 같은 키로 같은 내용을 다시 보내면 답변이 두 개 만들어지지 않습니다.",
         "operationId" : "submit_2",
         "parameters" : [
           {
@@ -5037,7 +5063,7 @@
                 }
               }
             },
-            "description" : "본문, 미디어 또는 멱등키가 정책에 맞지 않습니다."
+            "description" : "본문, 미디어 또는 Idempotency-Key가 정책에 맞지 않습니다. (ANS-VAL-002, ANS-VAL-003, ANS-VAL-007)"
           },
           "401" : {
             "content" : {
@@ -5057,7 +5083,7 @@
                 }
               }
             },
-            "description" : "미디어 소유권 또는 계정 자격이 없습니다."
+            "description" : "본인 소유가 아닌 미디어를 첨부했거나 답변할 수 없는 계정입니다. (ANS-DOM-008, ANS-APP-003)"
           },
           "404" : {
             "content" : {
@@ -5067,7 +5093,7 @@
                 }
               }
             },
-            "description" : "답변할 수 있는 수신 항목을 찾을 수 없습니다."
+            "description" : "답변할 수 있는 수신 항목이 없거나 인증 사용자 계정을 찾을 수 없습니다. (ANS-DOM-011, ANS-APP-002)"
           },
           "409" : {
             "content" : {
@@ -5077,7 +5103,7 @@
                 }
               }
             },
-            "description" : "멱등키가 다른 요청에 재사용됐거나 이미 이 항목에 답변이 등록되었습니다."
+            "description" : "같은 Idempotency-Key를 다른 요청에 썼거나 이미 이 질문에 답변했습니다. (ANS-APP-001, ANS-INFRA-002)"
           },
           "500" : {
             "content" : {
@@ -5097,7 +5123,7 @@
                 }
               }
             },
-            "description" : "안전 검사 접수 정책이 아직 활성화되지 않았습니다."
+            "description" : "안전 검사 접수 정책이 아직 준비되지 않았습니다. (ANS-APP-004)"
           }
         },
         "security" : [
@@ -5105,7 +5131,7 @@
             "appAccessToken" : [ ]
           }
         ],
-        "summary" : "답변 멱등 제출",
+        "summary" : "답변 보내기",
         "tags" : [
           "답변"
         ]
@@ -5524,7 +5550,7 @@
         ]
       },
       "post" : {
-        "description" : "텍스트만, JPEG/PNG 이미지 한 장만 또는 둘을 조합해 제출합니다. 수신자 확정은 비동기 worker가 수행합니다.",
+        "description" : "고른 방향에 있는 사람들에게 질문글을 보냅니다.\n\n앱 로그인이 필요하고, 위치를 먼저 갱신해 둬야 합니다. 글만, 이미지 한 장만, 또는 둘 다 보낼 수 있습니다.\n\n접수만 하고 바로 끝나는 요청입니다. 누가 받을지는 서버가 나중에 정하므로 이 응답에는 수신자가 들어 있지 않습니다.\n\n같은 요청을 다시 보낼 때를 위해 Idempotency-Key 헤더가 필요합니다. 같은 키로 같은 내용을 다시 보내면 질문글이 두 개 만들어지지 않고 처음 결과를 그대로 돌려줍니다.",
         "operationId" : "submit_1",
         "parameters" : [
           {
@@ -5566,7 +5592,7 @@
                 }
               }
             },
-            "description" : "본문, 미디어 또는 멱등키가 정책에 맞지 않습니다."
+            "description" : "본문, 미디어 또는 Idempotency-Key가 정책에 맞지 않습니다. (DIR-VAL-002, DIR-VAL-003, DIR-VAL-008)"
           },
           "401" : {
             "content" : {
@@ -5586,7 +5612,7 @@
                 }
               }
             },
-            "description" : "미디어 소유권 또는 계정 자격이 없습니다."
+            "description" : "본인 소유가 아닌 미디어를 첨부했거나 방향 기능을 쓸 수 없는 계정입니다. (DIR-APP-007)"
           },
           "404" : {
             "content" : {
@@ -5596,7 +5622,7 @@
                 }
               }
             },
-            "description" : "질문 또는 방향 구획을 찾을 수 없습니다."
+            "description" : "질문, 방향 구획 체계 또는 인증 사용자 계정을 찾을 수 없습니다. (DIR-DOM-006, DIR-APP-006)"
           },
           "409" : {
             "content" : {
@@ -5606,7 +5632,7 @@
                 }
               }
             },
-            "description" : "멱등키가 다른 요청에 재사용됐거나 현재 정책을 사용할 수 없습니다."
+            "description" : "같은 Idempotency-Key를 다른 요청에 썼거나 저장된 위치가 없거나 너무 오래됐습니다. (DIR-APP-005, DIR-APP-003, DIR-APP-004)"
           },
           "500" : {
             "content" : {
@@ -5624,7 +5650,7 @@
             "appAccessToken" : [ ]
           }
         ],
-        "summary" : "방향 질문글 비동기 제출",
+        "summary" : "방향 질문글 보내기",
         "tags" : [
           "방향 질문글"
         ]
@@ -6081,7 +6107,7 @@
     },
     "/api/v1/direction/presence" : {
       "put" : {
-        "description" : "인증 사용자의 최신 위치와 질문 수신 허용 상태를 갱신한다.\n사용자와 지역은 서버에서 결정하고, 관측 시각이 같거나 더 오래된 재시도는 적용하지 않는다.\n정확 좌표는 성공 응답에 반환하지 않는다.",
+        "description" : "내 최신 위치와 질문을 받을지 여부를 저장합니다.\n\n앱 로그인이 필요합니다. 방향 미리보기와 질문글 보내기가 이 위치를 씁니다.\n\n이미 저장된 것보다 오래되거나 같은 시각의 위치는 적용하지 않고 applied를 false로 돌려줍니다. 이때도 요청은 성공(200)입니다.\n\n정확한 좌표는 응답에 돌려주지 않습니다.",
         "operationId" : "update",
         "requestBody" : {
           "content" : {
@@ -6112,7 +6138,7 @@
                 }
               }
             },
-            "description" : "요청 값이 올바르지 않습니다. 오류 코드는 docs/error-codes.md를 따른다."
+            "description" : "위치 값이 없거나 정확도 또는 관측 시각이 허용 범위를 벗어났습니다. (DIR-VAL-002, DIR-VAL-007, DIR-VAL-008)"
           },
           "401" : {
             "content" : {
@@ -6168,7 +6194,7 @@
     },
     "/api/v1/direction/preview" : {
       "get" : {
-        "description" : "인증 사용자의 현재 presence와 서버 정책으로 모든 활성 방향 구간의 참고 후보 수를 반환합니다. 사용자 ID와 정확 위치는 반환하지 않습니다.",
+        "description" : "지금 내 위치를 기준으로 방향마다 질문을 받을 수 있는 사람이 몇 명인지 보여줍니다.\n\n앱 로그인이 필요하고, 위치를 먼저 갱신해 둬야 합니다.\n\n질문을 보내기 전에 어느 방향으로 보낼지 고르는 데 씁니다. 여기서 세어 준 수는 참고값이며 실제로 받는 사람 수와 다를 수 있습니다.\n\n상대의 계정 식별자나 정확한 위치는 돌려주지 않습니다.",
         "operationId" : "preview",
         "responses" : {
           "200" : {
@@ -6179,7 +6205,7 @@
                 }
               }
             },
-            "description" : "미리보기를 반환합니다."
+            "description" : "방향별 후보 수를 반환합니다."
           },
           "400" : {
             "content" : {
@@ -6201,6 +6227,26 @@
             },
             "description" : "앱 액세스 토큰이 유효하지 않습니다."
           },
+          "403" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "현재 계정은 방향 기능을 사용할 수 없습니다. (DIR-APP-007)"
+          },
+          "404" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "인증 사용자 계정 또는 현재 활성 방향 구획 체계를 찾을 수 없습니다. (DIR-APP-006, DIR-DOM-006)"
+          },
           "409" : {
             "content" : {
               "application/json" : {
@@ -6209,7 +6255,7 @@
                 }
               }
             },
-            "description" : "현재 위치 또는 방향 정책을 사용할 수 없습니다."
+            "description" : "저장된 위치가 없거나 너무 오래됐습니다. (DIR-APP-003, DIR-APP-004)"
           },
           "500" : {
             "content" : {
@@ -6227,7 +6273,7 @@
             "appAccessToken" : [ ]
           }
         ],
-        "summary" : "방향별 후보 수 미리보기",
+        "summary" : "방향별로 받을 사람 수 미리보기",
         "tags" : [
           "방향 질문글"
         ]
@@ -6596,7 +6642,7 @@
     },
     "/api/v1/media-assets/upload-requests" : {
       "post" : {
-        "description" : "인증 사용자 소유의 JPEG/JPG 또는 PNG 한 건에 대한 presigned PUT URL을 발급합니다. storage key는 반환하지 않습니다.",
+        "description" : "이미지를 올릴 임시 주소를 발급합니다.\n\n앱 로그인이 필요합니다. JPEG 또는 PNG 한 장만 올릴 수 있습니다.\n\n응답으로 받은 uploadUrl에 이미지 파일을 직접 PUT으로 올리면 됩니다. 이 주소는 expiresAt이 지나면 쓸 수 없습니다.\n\n올리기만 해서는 끝나지 않습니다. 업로드 확인 API를 불러야 그 이미지를 답변이나 질문글에 첨부할 수 있습니다.",
         "operationId" : "issueUploadUrl",
         "requestBody" : {
           "content" : {
@@ -6627,7 +6673,7 @@
                 }
               }
             },
-            "description" : "MIME type 또는 파일 크기가 정책에 맞지 않습니다."
+            "description" : "이미지 형식이나 파일 크기가 정책에 맞지 않습니다. (ANS-VAL-006)"
           },
           "401" : {
             "content" : {
@@ -6655,7 +6701,7 @@
             "appAccessToken" : [ ]
           }
         ],
-        "summary" : "이미지 업로드 예약",
+        "summary" : "이미지 올릴 자리 받기",
         "tags" : [
           "미디어"
         ]
@@ -6663,7 +6709,7 @@
     },
     "/api/v1/media-assets/{mediaId}/confirm" : {
       "post" : {
-        "description" : "본인 소유 업로드 객체의 실제 MIME type과 크기를 확인합니다. 이미 확정된 상태는 멱등하게 반환합니다.",
+        "description" : "올린 이미지가 실제로 저장됐는지 확인하고 첨부할 수 있는 상태로 바꿉니다.\n\n앱 로그인이 필요하고 본인이 올린 이미지만 확인할 수 있습니다.\n\n서버가 저장소에 있는 실제 파일의 형식과 크기를 확인합니다.\n\n같은 이미지를 여러 번 불러도 안전합니다. 이미 확인이 끝난 이미지면 다시 확인하지 않고 지금 상태를 그대로 돌려줍니다.",
         "operationId" : "confirm",
         "parameters" : [
           {
@@ -6697,7 +6743,7 @@
                 }
               }
             },
-            "description" : "미디어 식별자가 올바르지 않습니다."
+            "description" : "미디어 식별자가 올바르지 않습니다. (ANS-VAL-001)"
           },
           "401" : {
             "content" : {
@@ -6717,7 +6763,7 @@
                 }
               }
             },
-            "description" : "미디어를 찾을 수 없습니다."
+            "description" : "그런 이미지가 없거나 본인이 올린 이미지가 아닙니다. (ANS-DOM-007)"
           },
           "500" : {
             "content" : {
@@ -6737,7 +6783,7 @@
                 }
               }
             },
-            "description" : "외부 저장소를 일시적으로 사용할 수 없습니다."
+            "description" : "이미지 저장소에 연결할 수 없습니다. (ANS-EXT-001)"
           }
         },
         "security" : [
