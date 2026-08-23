@@ -1255,27 +1255,34 @@
         "type" : "object"
       },
       "DeviceRegistrationRequest" : {
+        "description" : "새 계정과 기기 자격증명을 만들 때 보내는 등록 정보",
         "properties" : {
           "coarseRegionCode" : {
+            "description" : "국가 안의 대략적인 지역 코드",
             "minLength" : 1,
             "type" : "string"
           },
           "countryCode" : {
+            "description" : "ISO 3166-1 alpha-2 국가 코드입니다. 기준 지역의 최상위 국가와 일치해야 합니다.",
             "minLength" : 1,
             "type" : "string"
           },
           "installationId" : {
+            "description" : "앱 설치를 식별하는 값",
             "minLength" : 1,
             "type" : "string"
           },
           "locale" : {
+            "description" : "계정의 언어·지역 설정",
             "minLength" : 1,
             "type" : "string"
           },
           "nickname" : {
+            "description" : "선택할 수 있는 계정 닉네임",
             "type" : "string"
           },
           "platform" : {
+            "description" : "기기를 등록한 앱 플랫폼입니다. IOS 또는 ANDROID입니다.",
             "enum" : [
               "IOS",
               "ANDROID"
@@ -1283,6 +1290,7 @@
             "type" : "string"
           },
           "timezone" : {
+            "description" : "계정의 IANA 시간대 식별자",
             "minLength" : 1,
             "type" : "string"
           }
@@ -1298,18 +1306,23 @@
         "type" : "object"
       },
       "DeviceRegistrationResponse" : {
+        "description" : "기기 등록 성공 시 계정·기기 비밀값·첫 액세스 토큰을 담는 응답",
         "properties" : {
           "accessToken" : {
+            "description" : "등록 직후 API 호출에 사용할 액세스 토큰",
             "type" : "string"
           },
           "deviceSecret" : {
+            "description" : "기기 토큰 재발급에 사용할 비밀값입니다. 이 응답에서만 평문으로 반환됩니다.",
             "type" : "string"
           },
           "expiresIn" : {
+            "description" : "액세스 토큰이 만료되기까지 남은 시간(초)",
             "format" : "int64",
             "type" : "integer"
           },
           "userId" : {
+            "description" : "새로 만든 계정 식별자",
             "format" : "int64",
             "type" : "integer"
           }
@@ -1317,12 +1330,15 @@
         "type" : "object"
       },
       "DeviceTokenRequest" : {
+        "description" : "등록된 기기의 액세스 토큰을 재발급할 때 보내는 정보",
         "properties" : {
           "deviceSecret" : {
+            "description" : "등록 응답에서 받은 기기 비밀값",
             "minLength" : 1,
             "type" : "string"
           },
           "installationId" : {
+            "description" : "토큰을 재발급할 기기의 설치 식별자",
             "minLength" : 1,
             "type" : "string"
           }
@@ -1334,11 +1350,14 @@
         "type" : "object"
       },
       "DeviceTokenResponse" : {
+        "description" : "기기 액세스 토큰 재발급 성공 응답",
         "properties" : {
           "accessToken" : {
+            "description" : "새로 발급한 API 호출용 액세스 토큰",
             "type" : "string"
           },
           "expiresIn" : {
+            "description" : "액세스 토큰이 만료되기까지 남은 시간(초)",
             "format" : "int64",
             "type" : "integer"
           }
@@ -2030,12 +2049,12 @@
         "description" : "운영자 로그인 요청",
         "properties" : {
           "loginId" : {
-            "description" : "운영자 로그인 식별자. 소문자와 숫자만 허용한다.",
+            "description" : "운영자 로그인 식별자. 앞뒤 공백을 제거하고 소문자로 변환합니다.",
             "minLength" : 1,
             "type" : "string"
           },
           "password" : {
-            "description" : "평문 비밀번호. 전송 구간은 TLS로 보호한다.",
+            "description" : "평문 비밀번호입니다. 전송 구간은 TLS로 보호합니다.",
             "minLength" : 1,
             "type" : "string"
           }
@@ -2069,10 +2088,10 @@
         "type" : "object"
       },
       "OperatorSessionResponse" : {
-        "description" : "로그인 성공 응답. 세션은 Set-Cookie로 전달되며 본문에는 담기지 않는다.",
+        "description" : "로그인 성공 응답입니다. 세션은 Set-Cookie로 전달되며 본문에는 담기지 않습니다.",
         "properties" : {
           "userId" : {
-            "description" : "로그인한 운영자의 계정 id",
+            "description" : "로그인한 운영자의 계정 식별자",
             "format" : "int64",
             "type" : "integer"
           }
@@ -2858,7 +2877,7 @@
   "paths" : {
     "/admin/csrf" : {
       "get" : {
-        "description" : "다음 상태 변경 요청에 실어 보낼 CSRF 토큰과 그 헤더 이름을 돌려준다.\n\n인증이 필요 없다. 로그인 POST도 CSRF 보호 대상이라 로그인 전에 토큰을 받을 경로가 있어야 한다.\n\n토큰은 인증 상태와 무관한 값이라 노출해도 안전하다. 방어의 근거는 공격자가 피해자의\n브라우저에서 이 응답을 읽을 수 없다는 same-origin 정책이다.",
+        "description" : "운영자 로그인과 다른 상태 변경 요청에 넣을 CSRF 토큰과 헤더 이름을 조회합니다.\n\n인증 없이 호출할 수 있습니다. 로그인 POST도 CSRF 보호 대상이므로 로그인 전에 이 경로를\n호출해야 합니다.\n\n성공하면 headerName에 토큰을 보낼 요청 헤더 이름을, token에 사용할 토큰을 담아 반환합니다.\n\n이 토큰은 운영자 세션을 만들거나 권한을 부여하지 않습니다.\n\n브라우저에서 읽을 수 없는 다른 사이트의 요청에는 이 응답을 그대로 사용할 수 없습니다.",
         "operationId" : "issue",
         "responses" : {
           "200" : {
@@ -3934,7 +3953,7 @@
     },
     "/admin/login" : {
       "post" : {
-        "description" : "자격증명을 검증하고 세션 쿠키를 발급한다.\n\n실패 원인은 구분해 알리지 않는다. 존재하지 않는 loginId와 잘못된 비밀번호가 같은 401로 나간다.\n계정 열거를 막기 위한 것이다.\n\nCSRF 보호 대상이므로 GET /admin/csrf로 받은 토큰을 함께 보내야 한다.",
+        "description" : "운영자 자격증명을 확인하고 세션 쿠키를 발급합니다.\n\n로그인 자체에는 운영자 세션이 필요하지 않지만, CSRF 보호가 켜져 있으므로\nGET /admin/csrf에서 받은 토큰을 함께 보내야 합니다. loginId와 password는 필수입니다.\n\n성공하면 세션 쿠키와 로그인한 운영자의 계정 식별자를 반환합니다.\n\n존재하지 않는 loginId와 잘못된 비밀번호는 같은 401로 응답합니다. 사용할 수 없는 계정은\n403, 반복 실패로 잠긴 자격증명은 423, CSRF 토큰이 없거나 유효하지 않으면 403입니다.\n\n로그인 응답 본문에는 비밀번호나 액세스 토큰을 담지 않습니다. 이후 백오피스 요청은\n발급된 세션 쿠키를 사용합니다.",
         "operationId" : "login",
         "requestBody" : {
           "content" : {
@@ -3965,7 +3984,7 @@
                 }
               }
             },
-            "description" : "요청 값이 올바르지 않습니다. 오류 코드는 docs/error-codes.md를 따른다."
+            "description" : "loginId 또는 password가 비어 있거나 loginId 길이가 허용 범위를 벗어났습니다. (CMN-VAL-001, AUT-VAL-001, AUT-VAL-002)"
           },
           "401" : {
             "content" : {
@@ -4016,7 +4035,7 @@
     },
     "/admin/logout" : {
       "post" : {
-        "description" : "세션을 무효화한다. 권한은 즉시 회수되며 유예 시간이 없다.\n\nCSRF 보호 대상이므로 GET /admin/csrf로 받은 토큰을 함께 보내야 한다.",
+        "description" : "현재 운영자 세션을 무효화합니다.\n\n운영자 세션과 CSRF 토큰이 필요합니다. 토큰은 GET /admin/csrf에서 받을 수 있습니다.\n\n성공하면 세션 쿠키가 더 이상 권한을 갖지 않으며 응답 본문은 비어 있습니다.\n\n세션이 없거나 만료됐으면 401, 운영자 권한이 없거나 CSRF 토큰이 유효하지 않으면\n403으로 응답합니다.\n\n이 요청은 운영자 세션만 무효화하며 앱 기기 자격증명과 액세스 토큰에는 영향을 주지 않습니다.",
         "operationId" : "logout",
         "responses" : {
           "200" : {
@@ -4448,7 +4467,7 @@
     },
     "/api/v1/auth/devices" : {
       "post" : {
-        "description" : "설치 식별자와 검증된 국가·기준 지역으로 계정과 기기 자격증명을 만들고 첫 액세스 토큰을 발급한다.\ncountryCode는 ISO 3166-1 alpha-2 국가 코드이며, coarseRegionCode의 최상위 국가와 일치해야 한다.\n\ndeviceSecret은 이 응답에서만 평문으로 나간다. 서버는 해시만 보관하므로 다시 받을 수 없다.\n클라이언트가 이 값을 잃으면 재발급 경로를 쓸 수 없다.\n\n인증이 필요 없다. 등록 자체가 인증 수단을 얻는 과정이다.",
+        "description" : "설치 정보를 확인해 새 사용자 계정과 기기 자격증명을 만들고 첫 액세스 토큰을 발급합니다.\n\n인증 없이 호출할 수 있습니다. installationId, platform, countryCode, coarseRegionCode,\nlocale, timezone이 필요하고 nickname은 선택입니다. countryCode는 ISO 3166-1 alpha-2\n국가 코드이며 coarseRegionCode의 최상위 국가와 일치해야 합니다.\n\n성공하면 새 계정 식별자와 첫 액세스 토큰, 만료까지 남은 시간, 재발급에 사용할\ndeviceSecret을 반환합니다.\n\n이미 등록된 installationId이거나 국가·지역·계정 입력값이 정책에 맞지 않으면 등록하지 않습니다.\nnickname을 보낸 경우 중복·유해성 검사를 통과해야 합니다.\n\ndeviceSecret은 이 응답에서만 평문으로 반환합니다. 서버에는 해시만 보관하므로 이 값을\n잃으면 새 기기를 등록해야 합니다.",
         "operationId" : "register",
         "requestBody" : {
           "content" : {
@@ -4479,7 +4498,7 @@
                 }
               }
             },
-            "description" : "국가가 누락되었거나 지원되지 않거나 기준 지역과 일치하지 않습니다. (AUT-VAL-004)"
+            "description" : "필수 값·기기 식별자·국가·지역·계정 입력값이 올바르지 않거나 닉네임 검사를 통과하지 못했습니다. (CMN-VAL-001, AUT-VAL-002, AUT-VAL-003, AUT-VAL-004, ACC-VAL-002, ACC-VAL-003, ACC-VAL-004, ACC-DOM-005)"
           },
           "409" : {
             "content" : {
@@ -4489,7 +4508,7 @@
                 }
               }
             },
-            "description" : "이미 등록된 installationId입니다. (AUT-APP-005)"
+            "description" : "이미 등록된 기기이거나 닉네임이 이미 사용 중입니다. (AUT-APP-005, ACC-APP-002)"
           },
           "500" : {
             "content" : {
@@ -4500,6 +4519,16 @@
               }
             },
             "description" : "서버 내부 오류가 발생했습니다."
+          },
+          "503" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "닉네임 검증 서비스를 일시적으로 사용할 수 없습니다. (ACC-INFRA-001)"
           }
         },
         "summary" : "기기 등록",
@@ -4510,7 +4539,7 @@
     },
     "/api/v1/auth/token" : {
       "post" : {
-        "description" : "등록 때 받은 deviceSecret으로 새 액세스 토큰을 발급한다.\n\ninstallationId는 deviceSecret 조회 결과의 교차 검증용이다. 둘이 같은 기기를 가리키지\n않으면 자격증명 불일치와 같은 401로 나간다.\n\n인증이 필요 없다. 이 경로가 곧 토큰을 얻는 경로다.",
+        "description" : "기기 등록 때 받은 deviceSecret과 installationId로 새 액세스 토큰을 발급합니다.\n\n인증 없이 호출할 수 있습니다. 두 값은 같은 기기를 가리켜야 하며, 등록된 계정이\n사용 가능한 상태여야 합니다.\n\n성공하면 새 accessToken과 만료까지 남은 시간(초)을 반환하고 기기 자격증명의\n마지막 사용 시각을 갱신합니다.\n\n두 값이 일치하지 않거나 자격증명이 해지됐으면 재발급하지 않습니다. 계정이 사용할 수\n없는 상태여도 토큰을 발급하지 않습니다.\n\ndeviceSecret은 기기 등록 성공 응답에서만 확인할 수 있습니다. 서버가 비밀값을\n복원해 주는 경로는 없습니다.",
         "operationId" : "reissue",
         "requestBody" : {
           "content" : {
@@ -4541,7 +4570,7 @@
                 }
               }
             },
-            "description" : "요청 값이 올바르지 않습니다. 오류 코드는 docs/error-codes.md를 따른다."
+            "description" : "installationId 또는 deviceSecret이 비어 있습니다. (CMN-VAL-001, AUT-VAL-002)"
           },
           "401" : {
             "content" : {

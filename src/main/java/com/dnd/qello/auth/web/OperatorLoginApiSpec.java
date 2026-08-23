@@ -34,18 +34,31 @@ public interface OperatorLoginApiSpec {
 	@Operation(
 		summary = "운영자 로그인",
 		description = """
-			자격증명을 검증하고 세션 쿠키를 발급한다.
+			운영자 자격증명을 확인하고 세션 쿠키를 발급합니다.
 
-			실패 원인은 구분해 알리지 않는다. 존재하지 않는 loginId와 잘못된 비밀번호가 같은 401로 나간다.
-			계정 열거를 막기 위한 것이다.
+			로그인 자체에는 운영자 세션이 필요하지 않지만, CSRF 보호가 켜져 있으므로
+			GET /admin/csrf에서 받은 토큰을 함께 보내야 합니다. loginId와 password는 필수입니다.
 
-			CSRF 보호 대상이므로 GET /admin/csrf로 받은 토큰을 함께 보내야 한다.""")
+			성공하면 세션 쿠키와 로그인한 운영자의 계정 식별자를 반환합니다.
+
+			존재하지 않는 loginId와 잘못된 비밀번호는 같은 401로 응답합니다. 사용할 수 없는 계정은
+			403, 반복 실패로 잠긴 자격증명은 423, CSRF 토큰이 없거나 유효하지 않으면 403입니다.
+
+			로그인 응답 본문에는 비밀번호나 액세스 토큰을 담지 않습니다. 이후 백오피스 요청은
+			발급된 세션 쿠키를 사용합니다.""")
 	@ApiResponses({
 		// content를 비워 두면 springdoc이 반환 타입으로 채운다. 200을 아예 적지 않으면
 		// 선언한 오류 응답만 남고 성공 응답이 통째로 빠진다.
 		@io.swagger.v3.oas.annotations.responses.ApiResponse(
 			responseCode = "200",
 			description = "로그인에 성공했습니다. 세션 쿠키가 발급됩니다."),
+		@io.swagger.v3.oas.annotations.responses.ApiResponse(
+			responseCode = "400",
+			description = "loginId 또는 password가 비어 있거나 loginId 길이가 허용 범위를 벗어났습니다. "
+				+ "(CMN-VAL-001, AUT-VAL-001, AUT-VAL-002)",
+			content = @Content(
+				mediaType = MediaType.APPLICATION_JSON_VALUE,
+				schema = @Schema(implementation = ApiErrorResponse.class))),
 		@io.swagger.v3.oas.annotations.responses.ApiResponse(
 			responseCode = "401",
 			description = "로그인 정보가 올바르지 않습니다. (AUT-APP-001)",
@@ -75,9 +88,16 @@ public interface OperatorLoginApiSpec {
 	@Operation(
 		summary = "운영자 로그아웃",
 		description = """
-			세션을 무효화한다. 권한은 즉시 회수되며 유예 시간이 없다.
+			현재 운영자 세션을 무효화합니다.
 
-			CSRF 보호 대상이므로 GET /admin/csrf로 받은 토큰을 함께 보내야 한다.""")
+			운영자 세션과 CSRF 토큰이 필요합니다. 토큰은 GET /admin/csrf에서 받을 수 있습니다.
+
+			성공하면 세션 쿠키가 더 이상 권한을 갖지 않으며 응답 본문은 비어 있습니다.
+
+			세션이 없거나 만료됐으면 401, 운영자 권한이 없거나 CSRF 토큰이 유효하지 않으면
+			403으로 응답합니다.
+
+			이 요청은 운영자 세션만 무효화하며 앱 기기 자격증명과 액세스 토큰에는 영향을 주지 않습니다.""")
 	@SecurityRequirement(name = "operatorSession")
 	@ApiResponses({
 		@io.swagger.v3.oas.annotations.responses.ApiResponse(
