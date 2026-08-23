@@ -17,7 +17,8 @@ public record ReportSubmission(ReportReason reason, ReportSubReason subReason, S
 
 	private static final Map<ReportReason, Set<ReportSubReason>> ALLOWED_SUB_REASONS = Map.of(
 		ReportReason.SEXUAL_CONTENT, EnumSet.of(ReportSubReason.CSAM, ReportSubReason.NCII),
-		ReportReason.VIOLENCE_OR_THREAT, EnumSet.of(ReportSubReason.CREDIBLE_THREAT));
+		ReportReason.VIOLENCE_OR_THREAT, EnumSet.of(ReportSubReason.CREDIBLE_THREAT),
+		ReportReason.ILLEGAL_OR_DANGEROUS, EnumSet.of(ReportSubReason.SELF_HARM_RISK));
 
 	public ReportSubmission {
 		if (reason == null) {

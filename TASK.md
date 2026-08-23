@@ -12,7 +12,7 @@
 - Branch: `docs/gh-189-notification-api-description`
 - Base branch: `main`
 
-## Objective
+## 결정 게이트에 대한 중요한 주의
 
 - `#189`의 담당 도메인 중 Notification(`NotificationApiSpec`, 7개 엔드포인트)
   설명을 `docs/api/OPENAPI_WRITING_GUIDE.md` 기준으로 검토·개선한다.
@@ -55,6 +55,12 @@
 ## Validation
 
 ```bash
+./gradlew test --tests "com.dnd.qello.safety.*" --console=plain
+./gradlew integrationTest --tests "com.dnd.qello.*ReportCase*" --console=plain
+./gradlew integrationTest --tests "com.dnd.qello.*ReportContentSnapshot*" --console=plain
+./gradlew integrationTest --tests "com.dnd.qello.*Purge*" --console=plain
+./gradlew integrationTest --tests "*Flyway*" --console=plain
+./harness test-run --id <TEST-PLAN-ID>
 ./harness check
 ./harness pr-ready --project-tests
 git diff --check

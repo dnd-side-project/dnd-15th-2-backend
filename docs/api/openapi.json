@@ -1,36 +1,45 @@
 {
   "components" : {
     "schemas" : {
-      "Answer" : {
+      "AnswerCard" : {
         "properties" : {
           "answerId" : {
+            "description" : "답변 식별자",
             "format" : "int64",
             "type" : "integer"
           },
           "authorCoarseRegionCode" : {
+            "description" : "답변 작성자의 대략적인 지역 코드",
             "type" : "string"
           },
           "authorNickname" : {
+            "description" : "답변 작성자의 닉네임",
             "type" : "string"
           },
           "bearingFromSenderDegrees" : {
+            "description" : "발신자 기준으로 계산한 방위각(도 단위)",
             "type" : "number"
           },
           "bodyText" : {
+            "description" : "답변 본문",
             "type" : "string"
           },
           "distanceBand" : {
+            "description" : "근거리 구간일 때만 채워지는 거리 표시 문구. 그 외에는 null이고 대신 distanceM이 채워집니다",
             "type" : "string"
           },
           "distanceM" : {
+            "description" : "발신자와의 거리(미터). 근거리 구간에서는 null이고 대신 distanceBand가 채워집니다",
             "format" : "int64",
             "type" : "integer"
           },
           "editedAt" : {
+            "description" : "이 답변을 마지막으로 수정한 시각. 수정한 적이 없으면 null입니다",
             "format" : "date-time",
             "type" : "string"
           },
           "mediaIds" : {
+            "description" : "첨부된 이미지 식별자 목록",
             "items" : {
               "format" : "int64",
               "type" : "integer"
@@ -38,13 +47,16 @@
             "type" : "array"
           },
           "publishedAt" : {
+            "description" : "이 답변이 공개된 시각",
             "format" : "date-time",
             "type" : "string"
           },
           "reactedByMe" : {
+            "description" : "조회하는 본인이 이 답변에 공감했는지 여부",
             "type" : "boolean"
           },
           "reactionCount" : {
+            "description" : "이 답변이 받은 공감 총수",
             "format" : "int64",
             "type" : "integer"
           }
@@ -54,10 +66,12 @@
       "AnswerCursor" : {
         "properties" : {
           "answerId" : {
+            "description" : "다음 페이지 조회에 쓸 답변 식별자",
             "format" : "int64",
             "type" : "integer"
           },
           "publishedAt" : {
+            "description" : "다음 페이지 조회에 쓸 공개 시각",
             "format" : "date-time",
             "type" : "string"
           }
@@ -67,13 +81,15 @@
       "AnswerListingResponse" : {
         "properties" : {
           "answers" : {
+            "description" : "그 질문글의 답변 목록. 열람 자격이 없으면 빈 목록입니다",
             "items" : {
-              "$ref" : "#/components/schemas/Answer"
+              "$ref" : "#/components/schemas/AnswerCard"
             },
             "type" : "array"
           },
           "nextCursor" : {
-            "$ref" : "#/components/schemas/AnswerCursor"
+            "$ref" : "#/components/schemas/AnswerCursor",
+            "description" : "다음 페이지 커서. 마지막 페이지면 null입니다"
           }
         },
         "type" : "object"
@@ -109,6 +125,7 @@
       "AnswersReadResponse" : {
         "properties" : {
           "answersReadAt" : {
+            "description" : "이번 호출로 갱신된 답변 열람 시각",
             "format" : "date-time",
             "type" : "string"
           }
@@ -1179,71 +1196,6 @@
         },
         "type" : "object"
       },
-      "Card" : {
-        "properties" : {
-          "answerCount" : {
-            "format" : "int64",
-            "type" : "integer"
-          },
-          "bodyText" : {
-            "type" : "string"
-          },
-          "distanceBand" : {
-            "type" : "string"
-          },
-          "distanceM" : {
-            "format" : "int64",
-            "type" : "integer"
-          },
-          "expiresAt" : {
-            "format" : "date-time",
-            "type" : "string"
-          },
-          "inboundBearingDegrees" : {
-            "type" : "number"
-          },
-          "matchedAt" : {
-            "format" : "date-time",
-            "type" : "string"
-          },
-          "mediaIds" : {
-            "items" : {
-              "format" : "int64",
-              "type" : "integer"
-            },
-            "type" : "array"
-          },
-          "postId" : {
-            "format" : "int64",
-            "type" : "integer"
-          },
-          "postRecipientId" : {
-            "format" : "int64",
-            "type" : "integer"
-          },
-          "questionText" : {
-            "type" : "string"
-          },
-          "reactedByMe" : {
-            "type" : "boolean"
-          },
-          "reactionCount" : {
-            "format" : "int64",
-            "type" : "integer"
-          },
-          "senderCoarseRegionCode" : {
-            "type" : "string"
-          },
-          "status" : {
-            "type" : "string"
-          },
-          "unreadAnswerCount" : {
-            "format" : "int64",
-            "type" : "integer"
-          }
-        },
-        "type" : "object"
-      },
       "ChangeNicknameRequest" : {
         "properties" : {
           "nickname" : {
@@ -1255,25 +1207,6 @@
         "required" : [
           "nickname"
         ],
-        "type" : "object"
-      },
-      "Chip" : {
-        "properties" : {
-          "count" : {
-            "format" : "int64",
-            "type" : "integer"
-          },
-          "displayName" : {
-            "type" : "string"
-          },
-          "segmentKey" : {
-            "type" : "string"
-          },
-          "sortOrder" : {
-            "format" : "int32",
-            "type" : "integer"
-          }
-        },
         "type" : "object"
       },
       "CreateFilterReleaseRequest" : {
@@ -1312,19 +1245,6 @@
           },
           "token" : {
             "description" : "다음 상태 변경 요청에 실어 보낼 CSRF 토큰",
-            "type" : "string"
-          }
-        },
-        "type" : "object"
-      },
-      "Cursor" : {
-        "properties" : {
-          "postId" : {
-            "format" : "int64",
-            "type" : "integer"
-          },
-          "submittedAt" : {
-            "format" : "date-time",
             "type" : "string"
           }
         },
@@ -1416,6 +1336,29 @@
           },
           "expiresIn" : {
             "format" : "int64",
+            "type" : "integer"
+          }
+        },
+        "type" : "object"
+      },
+      "DirectionChip" : {
+        "properties" : {
+          "count" : {
+            "description" : "그 방향 구간에 속한 수신 항목 수. 0인 방향은 나타나지 않습니다",
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "displayName" : {
+            "description" : "그 방향 구간의 화면 표시명",
+            "type" : "string"
+          },
+          "segmentKey" : {
+            "description" : "방향 구간을 식별하는 키",
+            "type" : "string"
+          },
+          "sortOrder" : {
+            "description" : "화면에 표시할 때 쓰는 정렬 순서",
+            "format" : "int32",
             "type" : "integer"
           }
         },
@@ -1544,21 +1487,106 @@
         },
         "type" : "object"
       },
+      "InboxCard" : {
+        "properties" : {
+          "answerCount" : {
+            "description" : "이 질문글에 달린 답변 수",
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "bodyText" : {
+            "description" : "발신자가 추가로 쓴 본문",
+            "type" : "string"
+          },
+          "distanceBand" : {
+            "description" : "근거리 구간일 때만 채워지는 거리 표시 문구. 그 외에는 null이고 대신 distanceM이 채워집니다",
+            "type" : "string"
+          },
+          "distanceM" : {
+            "description" : "발신자와의 거리(미터). 근거리 구간에서는 null이고 대신 distanceBand가 채워집니다",
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "expiresAt" : {
+            "description" : "이 질문글이 만료되는 시각",
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "inboundBearingDegrees" : {
+            "description" : "이 카드를 보는 수신자 기준으로 계산한 도착 방위각(도 단위). 화면의 방향 표시는 이 값을 씁니다",
+            "type" : "number"
+          },
+          "matchedAt" : {
+            "description" : "이 수신 항목이 매칭된 시각",
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "mediaIds" : {
+            "description" : "첨부된 이미지 식별자 목록",
+            "items" : {
+              "format" : "int64",
+              "type" : "integer"
+            },
+            "type" : "array"
+          },
+          "postId" : {
+            "description" : "이 카드가 속한 질문글 식별자",
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "postRecipientId" : {
+            "description" : "이 수신 항목의 식별자",
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "questionText" : {
+            "description" : "이 질문글이 사용한 질문 문항의 텍스트",
+            "type" : "string"
+          },
+          "reactedByMe" : {
+            "description" : "조회하는 본인이 이 질문글에 공감했는지 여부",
+            "type" : "boolean"
+          },
+          "reactionCount" : {
+            "description" : "이 질문글이 받은 공감 총수",
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "senderCoarseRegionCode" : {
+            "description" : "발신자의 대략적인 지역 코드. 정확한 위치는 포함하지 않습니다",
+            "type" : "string"
+          },
+          "status" : {
+            "description" : "이 수신 항목의 현재 상태",
+            "type" : "string"
+          },
+          "unreadAnswerCount" : {
+            "description" : "마지막 답변 열람 이후 새로 공개된 답변 수",
+            "format" : "int64",
+            "type" : "integer"
+          }
+        },
+        "type" : "object"
+      },
       "InboxCommandResponse" : {
         "properties" : {
           "postRecipientId" : {
+            "description" : "이 수신함 항목의 식별자",
             "format" : "int64",
             "type" : "integer"
           },
           "revertibleUntil" : {
+            "description" : "이 넘김을 되돌릴 수 있는 마감 시각. skip 응답에만 채워지고 revertSkip 응답에서는 항상 null입니다",
             "format" : "date-time",
             "type" : "string"
           },
           "skipRequestedAt" : {
+            "description" : "넘김을 요청한 시각. 넘김을 요청하지 않았거나 되돌렸으면 null입니다",
             "format" : "date-time",
             "type" : "string"
           },
           "status" : {
+            "description" : "명령 적용 후의 수신 상태",
             "type" : "string"
           }
         },
@@ -1567,13 +1595,16 @@
       "InboxDetailResponse" : {
         "properties" : {
           "card" : {
-            "$ref" : "#/components/schemas/Card"
+            "$ref" : "#/components/schemas/InboxCard",
+            "description" : "받은 질문 카드. list 응답의 카드와 같은 구조입니다"
           },
           "openedAt" : {
+            "description" : "이 항목을 처음 연 시각",
             "format" : "date-time",
             "type" : "string"
           },
           "skipRequestedAt" : {
+            "description" : "넘김을 요청한 시각. 넘김을 요청하지 않았으면 null입니다",
             "format" : "date-time",
             "type" : "string"
           }
@@ -1583,14 +1614,16 @@
       "InboxListingResponse" : {
         "properties" : {
           "cards" : {
+            "description" : "받은 질문 카드 목록",
             "items" : {
-              "$ref" : "#/components/schemas/Card"
+              "$ref" : "#/components/schemas/InboxCard"
             },
             "type" : "array"
           },
           "chips" : {
+            "description" : "방향 구간별 집계. directionSegmentKey와 무관하게 category 전체 기준입니다",
             "items" : {
-              "$ref" : "#/components/schemas/Chip"
+              "$ref" : "#/components/schemas/DirectionChip"
             },
             "type" : "array"
           }
@@ -2421,20 +2454,25 @@
       "SentPostCard" : {
         "properties" : {
           "answerCount" : {
+            "description" : "이 질문글에 달린 답변 수",
             "format" : "int64",
             "type" : "integer"
           },
           "bodyText" : {
+            "description" : "발신자가 추가로 쓴 본문",
             "type" : "string"
           },
           "coarseRegionCode" : {
+            "description" : "이 질문글을 보낼 때 기록된 발신자의 대략적 지역 코드",
             "type" : "string"
           },
           "expiresAt" : {
+            "description" : "이 질문글이 만료되는 시각",
             "format" : "date-time",
             "type" : "string"
           },
           "mediaIds" : {
+            "description" : "첨부된 이미지 식별자 목록",
             "items" : {
               "format" : "int64",
               "type" : "integer"
@@ -2442,23 +2480,43 @@
             "type" : "array"
           },
           "postId" : {
+            "description" : "질문글 식별자",
             "format" : "int64",
             "type" : "integer"
           },
           "questionText" : {
+            "description" : "이 질문글이 사용한 질문 문항의 텍스트",
             "type" : "string"
           },
           "reactionCount" : {
+            "description" : "이 질문글이 받은 공감 총수",
             "format" : "int64",
             "type" : "integer"
           },
           "submittedAt" : {
+            "description" : "이 질문글을 제출한 시각",
             "format" : "date-time",
             "type" : "string"
           },
           "unreadAnswerCount" : {
+            "description" : "답변 열람 시각 이후 새로 공개된 답변 수",
             "format" : "int64",
             "type" : "integer"
+          }
+        },
+        "type" : "object"
+      },
+      "SentPostCursor" : {
+        "properties" : {
+          "postId" : {
+            "description" : "다음 페이지 조회에 쓸 질문글 식별자",
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "submittedAt" : {
+            "description" : "다음 페이지 조회에 쓸 제출 시각",
+            "format" : "date-time",
+            "type" : "string"
           }
         },
         "type" : "object"
@@ -2466,11 +2524,13 @@
       "SentPostDetailResponse" : {
         "properties" : {
           "answersReadAt" : {
+            "description" : "이 질문글의 답변을 마지막으로 읽은 시각",
             "format" : "date-time",
             "type" : "string"
           },
           "card" : {
-            "$ref" : "#/components/schemas/SentPostCard"
+            "$ref" : "#/components/schemas/SentPostCard",
+            "description" : "내가 보낸 질문글 카드. list 응답의 카드와 같은 구조입니다"
           }
         },
         "type" : "object"
@@ -2478,13 +2538,15 @@
       "SentPostListingResponse" : {
         "properties" : {
           "cards" : {
+            "description" : "내가 보낸 질문글 카드 목록",
             "items" : {
               "$ref" : "#/components/schemas/SentPostCard"
             },
             "type" : "array"
           },
           "nextCursor" : {
-            "$ref" : "#/components/schemas/Cursor"
+            "$ref" : "#/components/schemas/SentPostCursor",
+            "description" : "다음 페이지 커서. 마지막 페이지면 null입니다"
           }
         },
         "type" : "object"
@@ -2638,7 +2700,8 @@
             "enum" : [
               "CSAM",
               "NCII",
-              "CREDIBLE_THREAT"
+              "CREDIBLE_THREAT",
+              "SELF_HARM_RISK"
             ],
             "type" : "string"
           }
@@ -4724,6 +4787,7 @@
         "operationId" : "list_2",
         "parameters" : [
           {
+            "description" : "조회할 카테고리. UNANSWERED는 아직 답변하지 않은 항목, ANSWERED는 답변을 마친 항목입니다",
             "in" : "query",
             "name" : "category",
             "required" : false,
@@ -4737,6 +4801,7 @@
             }
           },
           {
+            "description" : "결과를 좁힐 방향 구간 키. 생략하면 카테고리 전체를 봅니다. chips 집계는 이 값과 무관하게 항상 카테고리 전체 기준입니다",
             "in" : "query",
             "name" : "directionSegmentKey",
             "required" : false,
@@ -4884,7 +4949,7 @@
                 }
               }
             },
-            "description" : "수신 자격이 있는 항목을 찾을 수 없습니다. (FED-DOM-001)"
+            "description" : "인증 사용자 계정을 찾을 수 없거나 수신 자격이 있는 항목을 찾을 수 없습니다. (FED-APP-001, FED-DOM-001)"
           },
           "409" : {
             "content" : {
@@ -5112,7 +5177,7 @@
                 }
               }
             },
-            "description" : "수신 항목을 찾을 수 없습니다. (DIR-DOM-008)"
+            "description" : "인증 사용자 계정을 찾을 수 없거나 수신 항목을 찾을 수 없습니다. (FED-APP-001, DIR-DOM-008)"
           },
           "500" : {
             "content" : {
@@ -5202,7 +5267,7 @@
                 }
               }
             },
-            "description" : "변경할 수신함 항목을 찾을 수 없습니다. (FED-DOM-001)"
+            "description" : "인증 사용자 계정을 찾을 수 없거나 변경할 수신함 항목을 찾을 수 없습니다. (FED-APP-001, FED-DOM-001)"
           },
           "409" : {
             "content" : {
@@ -5300,7 +5365,7 @@
                 }
               }
             },
-            "description" : "변경할 수신함 항목을 찾을 수 없습니다. (FED-DOM-001)"
+            "description" : "인증 사용자 계정을 찾을 수 없거나 변경할 수신함 항목을 찾을 수 없습니다. (FED-APP-001, FED-DOM-001)"
           },
           "409" : {
             "content" : {
@@ -5340,6 +5405,7 @@
         "operationId" : "list",
         "parameters" : [
           {
+            "description" : "만료 여부로 좁히는 필터. IN_PROGRESS는 아직 만료되지 않은 질문글, EXPIRED는 만료된 질문글입니다",
             "in" : "query",
             "name" : "filter",
             "required" : false,
@@ -5354,6 +5420,7 @@
             }
           },
           {
+            "description" : "페이지네이션 커서: 이전 페이지 마지막 항목의 제출 시각. cursorPostId와 함께 지정하거나 함께 생략합니다",
             "in" : "query",
             "name" : "cursorSubmittedAt",
             "required" : false,
@@ -5363,6 +5430,7 @@
             }
           },
           {
+            "description" : "페이지네이션 커서: 이전 페이지 마지막 항목의 질문글 식별자. cursorSubmittedAt과 함께 지정하거나 함께 생략합니다",
             "in" : "query",
             "name" : "cursorPostId",
             "required" : false,
@@ -5372,6 +5440,7 @@
             }
           },
           {
+            "description" : "한 번에 가져올 최대 개수. 1~50, 기본 20",
             "in" : "query",
             "name" : "limit",
             "required" : false,
@@ -5627,7 +5696,7 @@
                 }
               }
             },
-            "description" : "질문글을 찾을 수 없습니다. (FED-DOM-003)"
+            "description" : "인증 사용자 계정을 찾을 수 없거나 질문글을 찾을 수 없습니다. (FED-APP-001, FED-DOM-003)"
           },
           "500" : {
             "content" : {
@@ -5668,6 +5737,7 @@
             }
           },
           {
+            "description" : "페이지네이션 커서: 이전 페이지 마지막 답변의 공개 시각. cursorAnswerId와 함께 지정하거나 함께 생략합니다",
             "in" : "query",
             "name" : "cursorPublishedAt",
             "required" : false,
@@ -5677,6 +5747,7 @@
             }
           },
           {
+            "description" : "페이지네이션 커서: 이전 페이지 마지막 답변의 식별자. cursorPublishedAt과 함께 지정하거나 함께 생략합니다",
             "in" : "query",
             "name" : "cursorAnswerId",
             "required" : false,
@@ -5686,6 +5757,7 @@
             }
           },
           {
+            "description" : "한 번에 가져올 최대 개수. 1~50, 기본 20",
             "in" : "query",
             "name" : "limit",
             "required" : false,
@@ -5835,7 +5907,7 @@
                 }
               }
             },
-            "description" : "질문글을 찾을 수 없습니다. (DIR-DOM-009)"
+            "description" : "인증 사용자 계정을 찾을 수 없거나 질문글을 찾을 수 없습니다. (FED-APP-001, DIR-DOM-009)"
           },
           "500" : {
             "content" : {
@@ -8274,7 +8346,7 @@
       "name" : "계정"
     },
     {
-      "description" : "질문자·수신자의 답변 열람 시각을 기록해 미읽음 배지를 해제한다",
+      "description" : "질문자·수신자의 답변 열람 시각을 기록해 미읽음 배지를 해제합니다",
       "name" : "답변 읽음 처리"
     },
     {

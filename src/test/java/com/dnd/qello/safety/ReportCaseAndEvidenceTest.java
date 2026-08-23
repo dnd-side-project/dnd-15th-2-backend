@@ -1,3 +1,9 @@
+/**
+ * Created at: 2026-08-17T20:15:00+09:00
+ * Source scenario: TEST-PLAN-GH-153-REPORT-CASE-FOUNDATION-UNIT-011 through UNIT-021,
+ * TEST-PLAN-GH-156-REPORT-SEVERITY-OPERATOR-REVIEW-UNIT-001 through UNIT-013,
+ * TEST-PLAN-GH-157-REPORT-LEGAL-PRODUCTION-GATE-UNIT-001 through UNIT-005
+ */
 package com.dnd.qello.safety;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -10,6 +16,8 @@ import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import com.dnd.qello.safety.domain.AutoSuppressionPolicy;
+import com.dnd.qello.safety.domain.CriticalReportQuotaPolicy;
+import com.dnd.qello.safety.domain.EvidenceRetentionPolicy;
 import com.dnd.qello.safety.domain.ModerationDecision;
 import com.dnd.qello.safety.domain.ReportCase;
 import com.dnd.qello.safety.domain.ReportCaseEvent;
@@ -25,11 +33,6 @@ import com.dnd.qello.safety.domain.SlaPolicy;
 import com.dnd.qello.safety.error.SafetyErrorCode;
 import com.dnd.qello.safety.error.SafetyException;
 
-/**
- * Created at: 2026-08-17T20:15:00+09:00
- * Source scenario: TEST-PLAN-GH-153-REPORT-CASE-FOUNDATION-UNIT-011 through UNIT-021,
- * TEST-PLAN-GH-156-REPORT-SEVERITY-OPERATOR-REVIEW-UNIT-001 through UNIT-013
- */
 class ReportCaseAndEvidenceTest {
 
 	private static final Instant NOW = Instant.parse("2026-08-17T12:00:00Z");
@@ -46,6 +49,21 @@ class ReportCaseAndEvidenceTest {
 	@Test
 	@DisplayName("subReason이 없으면 NORMAL 심각도로 산출된다")
 	void nullSubReasonProducesNormalSeverity() {
+		assertThat(ReportCaseSeverity.of(null)).isEqualTo(ReportCaseSeverity.NORMAL);
+	}
+
+	@Test
+	@DisplayName("UNIT-001: SELF_HARM_RISK도 CRITICAL 심각도로 산출된다(#157)")
+	void selfHarmRiskSubReasonProducesCriticalSeverity() {
+		assertThat(ReportCaseSeverity.of(ReportSubReason.SELF_HARM_RISK)).isEqualTo(ReportCaseSeverity.CRITICAL);
+	}
+
+	@Test
+	@DisplayName("UNIT-002: 기존 CSAM·NCII·CREDIBLE_THREAT·null 매핑은 SELF_HARM_RISK 추가 후에도 그대로다")
+	void existingSeverityMappingIsUnchangedAfterAddingSelfHarmRisk() {
+		assertThat(ReportCaseSeverity.of(ReportSubReason.CSAM)).isEqualTo(ReportCaseSeverity.CRITICAL);
+		assertThat(ReportCaseSeverity.of(ReportSubReason.NCII)).isEqualTo(ReportCaseSeverity.CRITICAL);
+		assertThat(ReportCaseSeverity.of(ReportSubReason.CREDIBLE_THREAT)).isEqualTo(ReportCaseSeverity.CRITICAL);
 		assertThat(ReportCaseSeverity.of(null)).isEqualTo(ReportCaseSeverity.NORMAL);
 	}
 
@@ -257,9 +275,50 @@ class ReportCaseAndEvidenceTest {
 	@DisplayName("스냅샷의 editCount가 음수이면 거절한다")
 	void rejectsNegativeEditCount() {
 		assertThatThrownBy(() -> ReportContentSnapshot.capture(1L, NOW, ReportTargetType.ANSWER, 9L, 5L,
-			"본문", List.of(), -1, NOW))
+			"본문", List.of(), -1, NOW, null))
 			.isInstanceOf(SafetyException.class)
 			.hasFieldOrPropertyWithValue("errorCode", SafetyErrorCode.INVALID_SNAPSHOT_EDIT_COUNT);
+	}
+
+	@Test
+	@DisplayName("UNIT-005: capture에 넘긴 purgeAfter가 그대로 스냅샷에 저장된다(#157)")
+	void captureStoresGivenPurgeAfter() {
+		Instant purgeAfter = NOW.plus(Duration.ofDays(180));
+
+		ReportContentSnapshot snapshot = ReportContentSnapshot.capture(1L, NOW, ReportTargetType.ANSWER, 9L, 5L,
+			"본문", List.of("media-1"), 0, NOW, purgeAfter);
+
+		assertThat(snapshot.purgeAfter()).isEqualTo(purgeAfter);
+		assertThat(snapshot.legalHold()).isFalse();
+	}
+
+	@Test
+	@DisplayName("UNIT-003: CriticalReportQuotaPolicy는 0 또는 음수 maxPerDay를 거절한다(#157)")
+	void criticalReportQuotaPolicyRejectsNonPositiveMaxPerDay() {
+		assertThatThrownBy(() -> new CriticalReportQuotaPolicy(0)).isInstanceOf(SafetyException.class);
+		assertThatThrownBy(() -> new CriticalReportQuotaPolicy(-1)).isInstanceOf(SafetyException.class);
+	}
+
+	@Test
+	@DisplayName("CriticalReportQuotaPolicy.maxPerDay는 생성한 값을 그대로 돌려준다")
+	void criticalReportQuotaPolicyReturnsMaxPerDay() {
+		assertThat(new CriticalReportQuotaPolicy(5).maxPerDay()).isEqualTo(5);
+	}
+
+	@Test
+	@DisplayName("UNIT-004: EvidenceRetentionPolicy는 null·0·음수 retentionPeriod를 거절한다(#157)")
+	void evidenceRetentionPolicyRejectsNonPositiveRetentionPeriod() {
+		assertThatThrownBy(() -> new EvidenceRetentionPolicy(null)).isInstanceOf(SafetyException.class);
+		assertThatThrownBy(() -> new EvidenceRetentionPolicy(Duration.ZERO)).isInstanceOf(SafetyException.class);
+		assertThatThrownBy(() -> new EvidenceRetentionPolicy(Duration.ofDays(-1)))
+			.isInstanceOf(SafetyException.class);
+	}
+
+	@Test
+	@DisplayName("EvidenceRetentionPolicy.retentionPeriod는 생성한 값을 그대로 돌려준다")
+	void evidenceRetentionPolicyReturnsRetentionPeriod() {
+		assertThat(new EvidenceRetentionPolicy(Duration.ofDays(180)).retentionPeriod())
+			.isEqualTo(Duration.ofDays(180));
 	}
 
 	@Test

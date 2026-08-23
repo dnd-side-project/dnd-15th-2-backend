@@ -30,12 +30,13 @@ public record ReportContentSnapshot(long reportId, Instant capturedAt, ReportTar
 		}
 	}
 
+	/** purgeAfter는 호출자가 {@code capturedAt + EvidenceRetentionPolicy.retentionPeriod()}로 계산해 넘긴다(#157). */
 	public static ReportContentSnapshot capture(long reportId, Instant capturedAt, ReportTargetType targetType,
 		long targetId, long authorId, String bodyText, List<String> mediaObjectKeys, int editCount,
-		Instant contentPublishedAt) {
+		Instant contentPublishedAt, Instant purgeAfter) {
 		return new ReportContentSnapshot(reportId, capturedAt, targetType, targetId, authorId, bodyText,
 			mediaObjectKeys, editCount, contentPublishedAt, ReportContentHasher.hash(bodyText, mediaObjectKeys),
-			false, null);
+			false, purgeAfter);
 	}
 
 	public static ReportContentSnapshot restore(long reportId, Instant capturedAt, ReportTargetType targetType,

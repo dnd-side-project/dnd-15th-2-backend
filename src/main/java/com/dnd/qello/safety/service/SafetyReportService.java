@@ -1,5 +1,6 @@
 package com.dnd.qello.safety.service;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -7,6 +8,8 @@ import java.util.Optional;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.dnd.qello.safety.domain.CriticalReportQuotaPolicy;
+import com.dnd.qello.safety.domain.EvidenceRetentionPolicy;
 import com.dnd.qello.safety.domain.Report;
 import com.dnd.qello.safety.domain.ReportCase;
 import com.dnd.qello.safety.domain.ReportCaseEvent;
@@ -47,12 +50,15 @@ public class SafetyReportService {
 	private final ReportRateLimitPolicy rateLimitPolicy;
 	private final SlaPolicy slaPolicy;
 	private final ReportCaseAutoSuppressionEvaluator autoSuppressionEvaluator;
+	private final CriticalReportQuotaPolicy criticalReportQuotaPolicy;
+	private final EvidenceRetentionPolicy evidenceRetentionPolicy;
 
 	public SafetyReportService(SafetyRepository safetyRepository, ReportCaseRepository reportCaseRepository,
 		ReportContentSnapshotRepository reportContentSnapshotRepository,
 		ReportCaseEventRepository reportCaseEventRepository, ReportTargetRepository reportTargetRepository,
 		SafetyService safetyService, ReportRateLimitPolicy rateLimitPolicy, SlaPolicy slaPolicy,
-		ReportCaseAutoSuppressionEvaluator autoSuppressionEvaluator) {
+		ReportCaseAutoSuppressionEvaluator autoSuppressionEvaluator,
+		CriticalReportQuotaPolicy criticalReportQuotaPolicy, EvidenceRetentionPolicy evidenceRetentionPolicy) {
 		this.safetyRepository = safetyRepository;
 		this.reportCaseRepository = reportCaseRepository;
 		this.reportContentSnapshotRepository = reportContentSnapshotRepository;
@@ -62,6 +68,8 @@ public class SafetyReportService {
 		this.rateLimitPolicy = rateLimitPolicy;
 		this.slaPolicy = slaPolicy;
 		this.autoSuppressionEvaluator = autoSuppressionEvaluator;
+		this.criticalReportQuotaPolicy = criticalReportQuotaPolicy;
+		this.evidenceRetentionPolicy = evidenceRetentionPolicy;
 	}
 
 	@Transactional
@@ -125,20 +133,23 @@ public class SafetyReportService {
 		// 멱등 반환·억제 경로는 새 신고를 만들지 않으므로 한도 검사에서 면제한다.
 		enforceRateLimit(reporterId, now);
 		ReportCaseSeverity severity = ReportCaseSeverity.of(submission.subReason());
-		long caseId = mergeCase(targetUserId, directionPostId, answerId, severity, now);
-		Report toSave = newReport(type, reporterId, targetId, submission, now).attachToCase(caseId);
+		if (severity == ReportCaseSeverity.CRITICAL) {
+			enforceCriticalDailyQuota(reporterId, now);
+		}
+		CaseMergeResult mergeResult = mergeCase(targetUserId, directionPostId, answerId, severity, now);
+		Report toSave = newReport(type, reporterId, targetId, submission, now).attachToCase(mergeResult.caseId());
 		Report saved = safetyRepository.saveReport(toSave);
 
 		ReportContentSnapshot snapshot = ReportContentSnapshot.capture(saved.id(), now, type,
 			targetId, target.authorId(), target.bodyText(), target.mediaObjectKeys(), target.editCount(),
-			target.contentPublishedAt());
+			target.contentPublishedAt(), now.plus(evidenceRetentionPolicy.retentionPeriod()));
 		reportContentSnapshotRepository.save(snapshot);
 
 		if (blockAuthor) {
 			safetyService.block(reporterId, target.authorId(), now);
 		}
 
-		autoSuppressionEvaluator.evaluate(caseId, answerId, now);
+		autoSuppressionEvaluator.evaluate(mergeResult.caseId(), answerId, mergeResult.resolvedSeverity(), now);
 
 		return new ReportOutcome(saved, false);
 	}
@@ -169,9 +180,10 @@ public class SafetyReportService {
 	 *
 	 * 기존 열린 사건에 더 심각한 신고가 붙으면(NORMAL→CRITICAL만, 강등은 없다)
 	 * 행 잠금 후 승격한다(#156) — 잠금 없이 read-then-write하면 두 CRITICAL 신고가
-	 * 동시에 붙을 때 ESCALATED 이벤트가 중복되거나 유실될 수 있다.
+	 * 동시에 붙을 때 ESCALATED 이벤트가 중복되거나 유실될 수 있다. 반환하는
+	 * resolvedSeverity는 호출자(#157)가 즉시 전역 숨김 여부를 판단하는 데 쓴다.
 	 */
-	private long mergeCase(
+	private CaseMergeResult mergeCase(
 		Long targetUserId, Long directionPostId, Long answerId, ReportCaseSeverity severity, Instant now) {
 		ReportCaseQueue queue = ReportCaseQueue.of(severity);
 		Instant slaDueAt = now.plus(slaPolicy.of(queue));
@@ -181,34 +193,39 @@ public class SafetyReportService {
 			if (opened.isPresent()) {
 				reportCaseEventRepository.save(
 					ReportCaseEvent.of(opened.get().id(), ReportCaseEventType.CASE_OPENED, now));
-				return opened.get().id();
+				return new CaseMergeResult(opened.get().id(), severity);
 			}
 			Optional<ReportCase> existing = reportCaseRepository.findOpenByTarget(
 				targetUserId, directionPostId, answerId);
 			if (existing.isPresent()) {
-				escalateIfMoreSevere(existing.get(), severity, now);
+				ReportCaseSeverity resolvedSeverity = escalateIfMoreSevere(existing.get(), severity, now);
 				reportCaseEventRepository.save(
 					ReportCaseEvent.of(existing.get().id(), ReportCaseEventType.REPORT_ATTACHED, now));
-				return existing.get().id();
+				return new CaseMergeResult(existing.get().id(), resolvedSeverity);
 			}
 		}
 		throw new SafetyException(SafetyErrorCode.CASE_MERGE_CONFLICT, null, "사건 병합에 반복적으로 실패했습니다");
 	}
 
-	private void escalateIfMoreSevere(ReportCase existing, ReportCaseSeverity incomingSeverity, Instant now) {
-		if (incomingSeverity != ReportCaseSeverity.CRITICAL || existing.severity() == ReportCaseSeverity.CRITICAL) {
-			return;
+	private ReportCaseSeverity escalateIfMoreSevere(
+		ReportCase existing, ReportCaseSeverity incomingSeverity, Instant now) {
+		if (existing.severity() == ReportCaseSeverity.CRITICAL) {
+			return ReportCaseSeverity.CRITICAL;
+		}
+		if (incomingSeverity != ReportCaseSeverity.CRITICAL) {
+			return existing.severity();
 		}
 		// 행 잠금 후 다시 확인한다 — 잠그기 전에 읽은 existing은 경합 중인 다른
 		// 트랜잭션이 이미 승격시킨 값일 수 있다.
 		ReportCase locked = reportCaseRepository.findByIdForUpdate(existing.id()).orElseThrow(
 			() -> new SafetyException(SafetyErrorCode.INVALID_ID, "caseId", "사건을 찾을 수 없습니다"));
 		if (locked.severity() == ReportCaseSeverity.CRITICAL) {
-			return;
+			return ReportCaseSeverity.CRITICAL;
 		}
 		Instant escalatedSlaDueAt = now.plus(slaPolicy.of(ReportCaseQueue.URGENT));
 		reportCaseRepository.update(locked.escalate(now, escalatedSlaDueAt));
 		reportCaseEventRepository.save(ReportCaseEvent.of(locked.id(), ReportCaseEventType.ESCALATED, now));
+		return ReportCaseSeverity.CRITICAL;
 	}
 
 	private void enforceRateLimit(long reporterId, Instant now) {
@@ -218,6 +235,18 @@ public class SafetyReportService {
 			throw new SafetyException(SafetyErrorCode.REPORT_RATE_LIMIT_EXCEEDED, null, "신고 요청이 너무 많습니다");
 		}
 	}
+
+	// 롤링 24시간 윈도우(#157) — 자정 고정 경계는 자정 직전/직후로 우회하기 쉽다.
+	private void enforceCriticalDailyQuota(long reporterId, Instant now) {
+		Instant windowStart = now.minus(Duration.ofDays(1));
+		int count = safetyRepository.countCriticalReportsByReporterSince(reporterId, windowStart);
+		if (count >= criticalReportQuotaPolicy.maxPerDay()) {
+			throw new SafetyException(
+				SafetyErrorCode.CRITICAL_REPORT_DAILY_QUOTA_EXCEEDED, null, "긴급 신고 요청이 너무 많습니다");
+		}
+	}
+
+	private record CaseMergeResult(long caseId, ReportCaseSeverity resolvedSeverity) {}
 
 	private Optional<ReportTargetSnapshot> resolveTarget(
 		ReportTargetType type, long targetId, long viewerId, Instant now) {
