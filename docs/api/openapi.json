@@ -1202,6 +1202,7 @@
       "ChangeNicknameRequest" : {
         "properties" : {
           "nickname" : {
+            "description" : "변경할 닉네임. 앞뒤 공백은 제거한 뒤 저장합니다.",
             "example" : "여름바람",
             "minLength" : 1,
             "type" : "string"
@@ -1798,6 +1799,7 @@
       "NicknameResponse" : {
         "properties" : {
           "nickname" : {
+            "description" : "변경된 닉네임.",
             "type" : "string"
           }
         },
@@ -2080,6 +2082,8 @@
       "ProfileImageChangeRequest" : {
         "properties" : {
           "mediaId" : {
+            "description" : "프로필 이미지로 지정할 미디어 식별자.",
+            "example" : 123,
             "format" : "int64",
             "type" : "integer"
           }
@@ -2092,20 +2096,25 @@
       "ProfileResponse" : {
         "properties" : {
           "nickname" : {
+            "description" : "현재 닉네임.",
             "type" : "string"
           },
           "profileImageExpiresAt" : {
+            "description" : "프로필 이미지 조회 URL이 만료되는 시각.",
             "format" : "date-time",
             "type" : "string"
           },
           "profileImageUrl" : {
+            "description" : "일정 시간이 지나면 만료되는 프로필 이미지 조회 URL.",
             "type" : "string"
           },
           "userId" : {
+            "description" : "프로필 소유자의 식별자.",
             "format" : "int64",
             "type" : "integer"
           },
           "usesDefaultProfileImage" : {
+            "description" : "프로필 이미지가 없거나 사용할 수 없어 기본 이미지를 쓰는지 여부.",
             "type" : "boolean"
           }
         },
@@ -6433,7 +6442,7 @@
     },
     "/api/v1/me/profile" : {
       "get" : {
-        "description" : "만료가 있는 프로필 이미지 조회 URL을 함께 반환합니다. 프로필 이미지를 설정하지 않았거나 참조한 이미지를 더 이상 쓸 수 없으면 기본 이미지 URL을 반환합니다. 버킷 이름과 storage key는 반환하지 않습니다.",
+        "description" : "인증된 사용자의 닉네임과 프로필 이미지 정보를 조회합니다.\n\n앱 액세스 토큰이 필요하며, 현재 계정이 존재해야 합니다.\n\n성공하면 프로필 이미지 조회 URL과 만료 시각, 기본 이미지 사용 여부를 함께 반환합니다.\n\n프로필 이미지가 없거나 참조한 이미지가 더 이상 READY 상태가 아니면 기본 이미지 URL을\n반환합니다. 외부 저장소에서 조회 URL을 만들 수 없으면 조회에 실패할 수 있습니다.\n\n조회 URL은 일정 시간이 지나면 만료됩니다. 버킷 이름과 내부 storage key는 반환하지\n않습니다.",
         "operationId" : "getProfile",
         "responses" : {
           "200" : {
@@ -6465,6 +6474,16 @@
               }
             },
             "description" : "앱 액세스 토큰이 유효하지 않습니다."
+          },
+          "404" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "프로필을 조회할 계정을 찾을 수 없습니다. (ACC-APP-001)"
           },
           "500" : {
             "content" : {
@@ -6500,7 +6519,7 @@
     },
     "/api/v1/me/profile/image" : {
       "delete" : {
-        "description" : "프로필 이미지 참조만 해제해 기본 이미지 상태로 되돌립니다. 업로드한 이미지 자체는 삭제하지 않습니다.",
+        "description" : "인증된 사용자의 프로필 이미지 설정을 해제하고 기본 이미지 상태로 되돌립니다.\n\n앱 액세스 토큰이 필요하며, 현재 계정이 존재해야 합니다.\n\n성공하면 기본 이미지가 적용된 프로필을 반환합니다.\n\n프로필 이미지 설정을 해제할 계정을 찾을 수 없으면 요청을 처리하지 않습니다.\n\n계정에서 이미지 참조만 제거하며, 업로드한 미디어와 저장소 객체는 삭제하지 않습니다.",
         "operationId" : "removeProfileImage",
         "responses" : {
           "200" : {
@@ -6533,6 +6552,16 @@
             },
             "description" : "앱 액세스 토큰이 유효하지 않습니다."
           },
+          "404" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "프로필을 변경할 계정을 찾을 수 없습니다. (ACC-APP-001)"
+          },
           "500" : {
             "content" : {
               "application/json" : {
@@ -6555,7 +6584,7 @@
         ]
       },
       "put" : {
-        "description" : "본인 소유의 업로드 확인(READY)된 이미지만 프로필로 지정할 수 있습니다. 남의 이미지와 존재하지 않는 이미지는 모두 404로 응답합니다.",
+        "description" : "인증된 사용자의 프로필 이미지로 업로드한 미디어를 지정합니다.\n\n앱 액세스 토큰이 필요합니다. 요청한 미디어는 현재 사용자 본인의 것이어야 하고,\n업로드 확인이 끝난 상태여야 합니다.\n\n성공하면 변경된 프로필과 새 이미지 조회 URL을 반환합니다.\n\n미디어 식별자가 없거나 양수가 아니면 요청을 처리하지 않습니다. 미디어가 없거나 다른\n사용자의 것이면 같은 404로 응답하고, 업로드 확인이 끝나지 않았거나 사용할 수 없는\n상태이면 409로 응답합니다.\n\n이 요청은 계정의 프로필 이미지 참조만 바꾸며, 업로드한 미디어 자체를 삭제하지 않습니다.",
         "operationId" : "changeProfileImage",
         "requestBody" : {
           "content" : {
@@ -6586,7 +6615,7 @@
                 }
               }
             },
-            "description" : "mediaId가 올바르지 않습니다."
+            "description" : "mediaId가 없거나 양수가 아닙니다. (CMN-VAL-001)"
           },
           "401" : {
             "content" : {
@@ -6606,7 +6635,7 @@
                 }
               }
             },
-            "description" : "사용할 수 있는 미디어를 찾을 수 없습니다."
+            "description" : "사용할 수 있는 미디어를 찾을 수 없습니다. (ANS-DOM-007)"
           },
           "409" : {
             "content" : {
@@ -6616,7 +6645,7 @@
                 }
               }
             },
-            "description" : "READY 상태가 아닌 미디어입니다."
+            "description" : "업로드 확인이 끝난 미디어만 프로필로 지정할 수 있습니다. (ANS-DOM-006)"
           },
           "500" : {
             "content" : {
@@ -8078,7 +8107,7 @@
     },
     "/api/v1/users/me/nickname" : {
       "patch" : {
-        "description" : "인증된 본인의 닉네임을 변경합니다. 대소문자를 무시한 중복 닉네임(자기 자신이\n이미 쓰고 있는 값 포함)은 거절됩니다. production moderation gate가 켜져 있으면\nOpenAI moderation 판정을 통과한 뒤에만 반영됩니다.",
+        "description" : "인증된 사용자의 닉네임을 변경합니다. 앞뒤 공백은 제거한 뒤 저장합니다.\n\n앱 액세스 토큰이 필요합니다. 현재 계정이 존재해야 하며, 이미 사용 중인 닉네임은\n자기 자신의 현재 닉네임을 포함해 사용할 수 없습니다.\n\n변경에 성공하면 새 닉네임을 반환합니다.\n\n닉네임이 비어 있거나 길이 제한을 넘거나 유해성 검사를 통과하지 못하면 변경하지\n않습니다. 닉네임 검증 서비스를 사용할 수 없을 때는 일시적인 오류로 응답합니다.\n\n중복 확인과 저장 사이에 다른 요청이 먼저 같은 닉네임을 저장하면 변경되지 않을 수\n있습니다.",
         "operationId" : "changeNickname",
         "requestBody" : {
           "content" : {
@@ -8109,7 +8138,7 @@
                 }
               }
             },
-            "description" : "요청 값이 비었거나(CMN-VAL-002), 닉네임이 moderation 정책을 위반했습니다(ACC-DOM-005)."
+            "description" : "요청 값이 올바르지 않거나 닉네임이 길이 제한 또는 유해성 검사 기준을 통과하지 못했습니다. (CMN-VAL-001, ACC-VAL-003, ACC-DOM-005)"
           },
           "401" : {
             "content" : {
@@ -8120,6 +8149,16 @@
               }
             },
             "description" : "앱 액세스 토큰이 유효하지 않습니다."
+          },
+          "404" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "변경할 계정을 찾을 수 없습니다. (ACC-APP-001)"
           },
           "409" : {
             "content" : {
@@ -8388,10 +8427,6 @@
       "name" : "콘텐츠 이의제기"
     },
     {
-      "description" : "인증된 사용자 자신의 계정 프로필 (#168)",
-      "name" : "계정"
-    },
-    {
       "description" : "질문자·수신자의 답변 열람 시각을 기록해 미읽음 배지를 해제합니다",
       "name" : "답변 읽음 처리"
     },
@@ -8406,6 +8441,10 @@
     {
       "description" : "moderation release candidate 생성, 평가 단계 전환, 승격과 rollback",
       "name" : "필터링 release registry"
+    },
+    {
+      "description" : "인증된 사용자의 닉네임 변경",
+      "name" : "계정"
     },
     {
       "description" : "이의제기 큐 조회, 수동 결정과 접수 기간 연장 (#112)",
