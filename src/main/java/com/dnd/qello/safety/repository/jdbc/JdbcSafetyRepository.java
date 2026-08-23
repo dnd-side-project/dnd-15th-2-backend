@@ -4,6 +4,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 
@@ -14,7 +15,9 @@ import org.springframework.stereotype.Repository;
 import com.dnd.qello.safety.domain.ModerationDecision;
 import com.dnd.qello.safety.domain.ModerationReview;
 import com.dnd.qello.safety.domain.Report;
+import com.dnd.qello.safety.domain.ReportCaseSeverity;
 import com.dnd.qello.safety.domain.ReportStatus;
+import com.dnd.qello.safety.domain.ReportSubReason;
 import com.dnd.qello.safety.domain.UserBlock;
 import com.dnd.qello.safety.error.SafetyErrorCode;
 import com.dnd.qello.safety.error.SafetyException;
@@ -22,6 +25,13 @@ import com.dnd.qello.safety.repository.SafetyRepository;
 
 @Repository
 public class JdbcSafetyRepository implements SafetyRepository {
+
+	// CRITICAL 하위 사유 목록을 ReportCaseSeverity.of(...)에서 파생시켜, 새 CRITICAL
+	// 하위 사유가 추가돼도 이 쿼리가 따로 갱신되지 않아 쿼터를 우회하는 회귀를 막는다.
+	private static final List<String> CRITICAL_SUB_REASONS = Arrays.stream(ReportSubReason.values())
+		.filter(subReason -> ReportCaseSeverity.of(subReason) == ReportCaseSeverity.CRITICAL)
+		.map(Enum::name)
+		.toList();
 
 	private final NamedParameterJdbcTemplate jdbc;
 
@@ -128,6 +138,17 @@ public class JdbcSafetyRepository implements SafetyRepository {
 			SELECT count(*) FROM report WHERE reporter_id = :reporterId AND created_at >= :since
 			""", new MapSqlParameterSource().addValue("reporterId", reporterId)
 				.addValue("since", timestamp(since)), Integer.class);
+		return count == null ? 0 : count;
+	}
+
+	@Override
+	public int countCriticalReportsByReporterSince(long reporterId, Instant since) {
+		Integer count = jdbc.queryForObject("""
+			SELECT count(*) FROM report
+			WHERE reporter_id = :reporterId AND created_at >= :since AND sub_reason_code IN (:criticalSubReasons)
+			""", new MapSqlParameterSource().addValue("reporterId", reporterId)
+				.addValue("since", timestamp(since))
+				.addValue("criticalSubReasons", CRITICAL_SUB_REASONS), Integer.class);
 		return count == null ? 0 : count;
 	}
 

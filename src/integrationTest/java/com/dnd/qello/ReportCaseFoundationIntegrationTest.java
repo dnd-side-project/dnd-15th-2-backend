@@ -313,7 +313,7 @@ class ReportCaseFoundationIntegrationTest extends PostgisContainerIntegrationTes
 
 	private ReportContentSnapshot snapshot(long reportId) {
 		return ReportContentSnapshot.capture(reportId, NOW, ReportTargetType.ANSWER, answerId, authorId,
-			"신고 시점 본문", List.of("media-b", "media-a"), 0, NOW);
+			"신고 시점 본문", List.of("media-b", "media-a"), 0, NOW, null);
 	}
 
 	private static ReportCase open(Long targetUserId, Long directionPostId, Long answerId, Instant now) {

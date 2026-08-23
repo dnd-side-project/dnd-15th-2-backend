@@ -2638,7 +2638,8 @@
             "enum" : [
               "CSAM",
               "NCII",
-              "CREDIBLE_THREAT"
+              "CREDIBLE_THREAT",
+              "SELF_HARM_RISK"
             ],
             "type" : "string"
           }

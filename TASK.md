@@ -12,7 +12,7 @@
 - Branch: `docs/gh-189-feed-api-description`
 - Base branch: `main`
 
-## Objective
+## 결정 게이트에 대한 중요한 주의
 
 - `#189`의 담당 도메인 중 Feed(`AnswerReadApiSpec`, `InboxApiSpec`, `SentPostApiSpec`,
   9개 엔드포인트) 설명을 `docs/api/OPENAPI_WRITING_GUIDE.md` 기준으로 검토·개선한다.
@@ -57,6 +57,12 @@
 ## Validation
 
 ```bash
+./gradlew test --tests "com.dnd.qello.safety.*" --console=plain
+./gradlew integrationTest --tests "com.dnd.qello.*ReportCase*" --console=plain
+./gradlew integrationTest --tests "com.dnd.qello.*ReportContentSnapshot*" --console=plain
+./gradlew integrationTest --tests "com.dnd.qello.*Purge*" --console=plain
+./gradlew integrationTest --tests "*Flyway*" --console=plain
+./harness test-run --id <TEST-PLAN-ID>
 ./harness check
 ./harness pr-ready --project-tests
 git diff --check
@@ -74,7 +80,24 @@ git diff --check
   (`:integrationTest`)·`:check` 전부 통과.
 - 미실행 범위 없음.
 
-## Completion criteria
+1. `TASK.md` — `main`에는 다른 이슈(#190)의 계약이 올라와 있었다. 이 파일은
+   브랜치별 작업 계약이므로 #157 계약을 유지했다.
+2. Flyway 버전 충돌 — `main`이 먼저 `V26__split_notification_user_setting.sql`을
+   병합했다. 같은 버전이 둘이면 Flyway 기동이 실패하므로 이 이슈의
+   마이그레이션을 `V27__add_self_harm_sub_reason_and_evidence_purge_exception.sql`로
+   다시 번호를 매겼다(내용 변경 없음). `FlywayMigrationContractTest` 카탈로그와
+   `FlywayMigrationIntegrationTest`의 적용 수(26→27)도 함께 맞췄다.
+3. `NotificationPreferenceMigrationIntegrationTest` — V24에서 최신까지 실행되는
+   마이그레이션 수 단언이 2였는데 `V27`이 늘어 3이 되었다. 이 단언만 갱신했고
+   해당 테스트가 지키는 계약 자체는 건드리지 않았다.
+
+`docs/api/openapi.json`은 충돌 없이 병합됐고, 이 브랜치가 더한 변경은
+`ReportSubReason` enum의 `SELF_HARM_RISK` 한 건뿐임을 diff로 확인했다.
+
+재검증 결과는 테스트 보고서 §3.1에 기록했다. 전체 단위 테스트와 전체 통합
+테스트(656건) 모두 통과했다.
+
+## 남은 위험 / 후속 결정 필요
 
 - [x] Feed 3개 `*ApiSpec` 전체가 6점 대조를 거쳤다.
       `docs/reports/gh-189-API-DOCS-REVIEW-FEED.md`에 기록.
