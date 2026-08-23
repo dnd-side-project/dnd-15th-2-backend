@@ -6,5 +6,6 @@ package com.dnd.qello.safety.domain;
 public enum ReportSubReason {
 	CSAM,
 	NCII,
-	CREDIBLE_THREAT
+	CREDIBLE_THREAT,
+	SELF_HARM_RISK
 }

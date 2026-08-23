@@ -61,6 +61,27 @@ public class JdbcReportContentSnapshotRepository implements ReportContentSnapsho
 			(rs, row) -> mapSnapshot(rs)).stream().findFirst();
 	}
 
+	@Override
+	public List<ReportContentSnapshot> findPurgeable(Instant now, int limit) {
+		return jdbc.query("""
+			SELECT * FROM report_content_snapshot
+			WHERE legal_hold = FALSE AND purge_after < :now AND media_object_keys <> '{}'
+			ORDER BY purge_after
+			LIMIT :limit
+			""", new MapSqlParameterSource()
+				.addValue("now", Timestamp.from(now))
+				.addValue("limit", limit),
+			(rs, row) -> mapSnapshot(rs));
+	}
+
+	@Override
+	public void purgeMedia(long reportId) {
+		// 트리거(enforce_report_snapshot_immutability_except_media_purge)가 허용하는
+		// 정확히 그 형태 — media_object_keys만 바뀌고 나머지 컬럼은 손대지 않는다.
+		jdbc.update("UPDATE report_content_snapshot SET media_object_keys = '{}' WHERE report_id = :reportId",
+			new MapSqlParameterSource("reportId", reportId));
+	}
+
 	private static ReportContentSnapshot mapSnapshot(ResultSet rs) throws SQLException {
 		return ReportContentSnapshot.restore(rs.getLong("report_id"), instant(rs, "captured_at"),
 			ReportTargetType.valueOf(rs.getString("target_type")), rs.getLong("target_id"),

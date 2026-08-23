@@ -1,170 +1,293 @@
-# GitHub Issue #190 Task Contract
+# GitHub Issue #157 Task Contract
 
-> Generated at: `2026-08-22T23:31:21+09:00`
+> Generated at: `2026-08-21T18:46:10+09:00` (harness task-init) / decisions
+> recorded `2026-08-21`
 >
 > 이 파일은 현재 작업 브랜치의 계약이다. 저장소 전역 정책은 `AGENTS.md`를
 > 따른다.
 
 ## Work gate
 
-- Title: `Codex·Claude OpenAPI 설명 가이드`
-- GitHub Issue: `#190`
-- Branch: `docs/gh-190-openapi-writing-guide`
+- Title: `[D] 신고 시스템 — 법률·안전 검토와 production gate (R04)`
+- GitHub Issue: `#157`
+- Branch: `feat/gh-157-report-legal-production-gate`
 - Base branch: `main`
-- 선행 이슈: `#189` (OpenAPI 설명 개선 및 GitHub Pages 문서 제공). 이 이슈는 `#189`가
-  쓸 기준·절차·양식만 만든다. `*ApiSpec` 문장 자체는 고치지 않는다.
-- Planning approval: 2026-08-22 사용자 대화에서 계획 확정. `FilterReleaseApiSpec`을
-  예시로 3라운드 반복 검토(추상화 과다 → 괄호로 맥락 보강)를 거쳐 문장 기준에 합의했다.
+- 선행 이슈 `#153`~`#156` 전부 병합 확인
+  (`origin/main` 최신 커밋 `f26118c`, PR #186으로 `#156` 병합됨).
+- 참조 설계 문서: `docs/product/ANSWER_REPORT_DESIGN.md` §4.1, §10, §11.2, §12.
+- Test plan: `TEST-PLAN-GH-157-REPORT-LEGAL-PRODUCTION-GATE`
+  (`docs/test-plans/gh-157-TEST-PLAN-GH-157-REPORT-LEGAL-PRODUCTION-GATE.md`)
+- Test plan approval: `APPROVED` — 사용자가 2026-08-21 "진행"으로 계획을
+  승인했다.
 
-## Objective
+## 결정 게이트에 대한 중요한 주의
 
-- Codex와 Claude 양쪽에서 도메인 담당자가 같은 기준으로 `*ApiSpec` 설명을 작성·검토할
-  수 있도록 공통 가이드, 체크리스트, 실행 절차를 만든다.
-- 문장 톤, 용어 선택, 누락된 인증·오류 응답·필드 설명을 점검하는 절차를 표준화해
-  `#189`의 도메인별 검토 편차를 줄인다.
+이 이슈의 완료 조건 중 "법률·안전 담당자의 검토 증거가 이 이슈에 연결됐다"는
+AI 에이전트가 대신 만들어낼 수 없다. 아래 결정들은 **저장소 소유자
+`tkv00`이 2026-08-21 대화에서 제품/정책 결정권자로서 직접 내린 값**이며,
+별도의 공식 법무 검토 절차가 조직에 존재한다면 그 서명은 이 이슈 밖에서
+별도로 받아야 한다. 그 전까지 아래에서 신규로 만드는 "즉시 전역 숨김"
+동작은 반드시 기능 플래그로 감싸 기본값 OFF로 두고, 운영 활성화는 별도
+승인 후 값을 켜는 것으로 한다(§ Scope 6 참고).
+
+## Decisions (사용자 승인, 2026-08-21)
+
+| # | 항목 | 결정 | 근거 |
+| --- | --- | --- | --- |
+| 1 | CRITICAL 1건 즉시 전역 숨김 (설계 §4.1) | **A안 채택** — 즉시 전역 숨김 + 남용 통제 | 피해 확산 방지 우선. 통제 장치: 계정당 CRITICAL 일일 쿼터(#4) |
+| 2 | 판정 노출 수준 (설계 §10) | **3단계 유지** | 이미 `ReportDetailResponse.status`가 `Report.status`(RECEIVED/AUTO_HIDDEN/UNDER_REVIEW/ACTIONED/NO_VIOLATION/MORE_INFO_REQUIRED) 전체를 그대로 노출 중 — **CONFIRMED, 추가 구현 불필요** |
+| 3 | 자해·자살 위험 사유 추가 | **추가한다** — `ReportSubReason.SELF_HARM_RISK`, 상위 `ReportReason.ILLEGAL_OR_DANGEROUS`, severity `CRITICAL` | 생명 위험은 CSAM·협박과 동급 긴급도로 판단 |
+| 4 | 국가별 신고 의무 분기 | **범위 밖** — 이번 이슈에서 구현 안 함 | 법적 요건 미확정. 별도 이슈로 미룸 |
+| 5 | 증거 보존 기간(`purge_after`) | **180일** (스냅샷 `capturedAt + 180일`) | 재신고·이의제기 대응에 충분한 중간값 |
+| 6 | 이의제기 경로 (설계 §11.2) | **범위 밖** — 별도 이슈로 미룸 | `AppealCase.filterDecisionId` 확장은 스키마·도메인 변경이 필요한 별도 설계 |
+| 7 | 운영자 role 정책 | **현재 단일 `OPERATOR` role로 충분** — CONFIRMED | `#156`이 만든 세션 기반 OPERATOR role이 CRITICAL/URGENT 큐도 처리 |
+| 8a | 자동 숨김 임계값(서로 다른 신고자 수) | **3명** (기존 개발 임시값 5명 → 변경) | 운영 확정값 |
+| 8b | SLA (URGENT/STANDARD) | **유지** — URGENT 4시간 / STANDARD 72시간 | 기존 개발값이 합리적 |
+| 8c | 신고 rate limit | **유지** — 60분당 10건 | 기존 개발값이 합리적 |
+| 8d | CRITICAL 일일 신고 쿼터 | **5건/일** (신규 구현) | 설계 §4.1 남용 통제 장치 (a) |
+| 9 | `report_content_snapshot` append-only 트리거와 purge 배치의 충돌 | **트리거에 `media_object_keys`만 비우는 예외 경로 추가** | 증거 메타데이터(본문 등)는 영구 불변 유지, 미디어만 정리 가능하게 좁은 예외를 DB 레벨에서 강제 |
+
+트리거 충돌(#9)은 코드 조사 중 발견한 사실이며 이슈 본문에 명시되지 않았던
+추가 제약이다 — 사용자에게 별도로 확인받았다.
 
 ## Scope
 
-1. `docs/api/OPENAPI_WRITING_GUIDE.md`를 신설한다. 단일 원본이며 Codex·Claude 스킬은
-   본문을 복제하지 않고 이 문서를 참조한다. 최소 다음을 담는다.
-   - 적용 범위와 `docs/api-response.md` §5(애노테이션 배치 규칙)와의 경계.
-   - 문장 종결 기준: `합니다`체로 통일 (24개 기존 `*ApiSpec` 중 18개가 이미 준수).
-   - `summary` 작성 기준: 기본은 쉬운 명사구. 팀 용어·상태 전이처럼 명사구로 뭉치면
-     오히려 낯선 단어가 쌓이는 경우에는 `-하기` 동사구를 허용한다.
-   - `description` 문단 순서: 무엇을 하는가 → 선행 조건·인증 → 성공 시 결과 →
-     주요 실패 조건 → 주의점.
-   - 낯선 단어를 쌓지 않는 규칙과 분류 이름 대신 하는 일로 부르는 규칙.
-   - 괄호 표기 규칙: 상태를 바꾸는 API는 바뀐 뒤 `status` 값을 `(→ PROMOTED)`처럼,
-     팀이 영어로 부르는 개념은 `(offline evaluation)`처럼 처음 나오는 곳에 한 번만,
-     오류 응답에는 오류 코드를 `(FLT-DOM-004)`로 적는다. 붙일 값이 없으면 괄호를
-     비워서라도 채우지 않는다. 한 줄에 괄호는 하나만 쓴다.
-   - 금지 문장: 내부 정책 코드·상태값만으로 의미 설명, 미번역 내부 불변식 ID
-     노출(`INV-REL-007` 등), 요청·응답 DTO에 없는 사실을 지어내는 표현,
-     `@Schema(example)`에 비밀값.
-   - 6점 대조 체크리스트: Controller↔ApiSpec, ApiSpec↔DTO, ApiSpec↔Service(실제
-     `throw` 근거), ApiSpec↔`docs/error-codes.md`, ApiSpec↔SecurityConfiguration,
-     ApiSpec↔`docs/api/openapi.json`(재생성 후 diff).
-2. `templates/api-docs-review.md`를 신설한다. 엔드포인트별 행에 6점 대조 결과와
-   before/after 제안 문장을 기록하는 양식이며 `#189` 담당자에게 그대로 넘긴다.
-3. `.claude/skills/harness-api-docs/SKILL.md`와 `.agents/skills/harness-api-docs/SKILL.md`에
-   `review` 모드를 추가한다. 기존 모드(누락 보강, 코드 수정)와 분리하고, `review`
-   모드는 `*ApiSpec`을 수정하지 않고 `templates/api-docs-review.md` 산출물만
-   만든다. 문장 기준은 본문에 복제하지 않고 `docs/api/OPENAPI_WRITING_GUIDE.md`를
-   참조한다. 두 스킬 파일은 frontmatter만 다르고 본문은 동일하게 유지한다.
-4. `agents/api-docs-executor.md`와 `.claude/agents/api-docs-executor.md`를 갱신한다.
-   Enrichment targets에 문장 품질·용어 일관성 항목을 추가하고, `review` 모드의
-   allowed scope를 `docs/reports/**`로 한정한다(`*ApiSpec` 수정 금지).
-5. `FilterReleaseApiSpec` 1건으로 6점 대조·문장 재작성 절차 전체를 시험 적용해
-   점검 흐름이 실제로 작동하는지 확인한다(404 누락 5건, 401/403 누락 8건, DTO
-   `@Schema` 누락 12건, 내부 불변식 ID 3곳, `findAll()`의 `@ApiResponses` 누락
-   1건 등을 실제 코드 대조로 발견함). 결과는 이 대화 안에서 검증하는 데 쓰고
-   저장소에 영구 산출물로 커밋하지 않는다. `docs/reports/**`는 `#189`에서 각
-   도메인 담당자가 `review` 모드를 직접 실행해 만드는 산출물이 쌓이는 자리이며,
-   `#190`(가이드·절차 제작)이 그 자리를 먼저 채우면 담당자가 자기 도메인의 실제
-   리뷰와 `#190`이 만든 데모 중 무엇이 유효한지 혼동한다. `*ApiSpec` 원본 파일도
-   수정하지 않는다.
-6. 진입점을 연결한다.
-   - `docs/api-response.md` §5 말미에 가이드 링크를 추가한다.
-   - `docs/harness/WORKFLOW_SKILLS.md`의 역할 스킬 목록(13~15행)에 빠져 있는
-     `harness-api-docs`를 추가한다. 이 문서는 이슈·커밋·PR 3종 스킬 전용이고
-     역할 스킬 내용은 각 스킬 문서가 원본이므로, 새 절을 만들어 `review` 모드
-     절차를 중복 설명하지 않는다.
-   - `CODEX.md` 스킬 목록에 빠져 있는 `$harness-api-docs`를 추가한다.
+### 1. `ReportSubReason.SELF_HARM_RISK` 추가 (Decision #3)
 
-## Approved design decisions
+- `ReportSubReason`에 `SELF_HARM_RISK` 추가. `ReportCaseSeverity.of(...)`의
+  `switch`가 exhaustive라 컴파일러가 누락을 잡아준다 — `CSAM, NCII,
+  CREDIBLE_THREAT, SELF_HARM_RISK -> CRITICAL`로 확장.
+- Flyway `V27`: `ck_report_sub_reason` CHECK에
+  `(reason_code = 'ILLEGAL_OR_DANGEROUS' AND sub_reason_code = 'SELF_HARM_RISK')`
+  절 추가. `ck_report_reason`은 이미 `ILLEGAL_OR_DANGEROUS`를 포함하므로
+  변경 없음.
+- `ReportReasonResponse`/`GET /report-reasons` 카탈로그에 신규 하위 사유
+  노출 확인(기존 구조를 그대로 따르면 자동 반영되는지 확인 필요).
 
-- 문장 종결: `합니다`체로 통일. 기존 24개 중 18개가 이미 준수해 재작업량이 가장 적다.
-- `summary` 규칙: 기본은 명사구, 낯선 개념이 몰릴 때만 `-하기` 동사구 허용 (전면
-  동사구 통일은 하지 않는다).
-- 괄호는 상태값·팀 용어·오류 코드 세 경우에만 쓰고, 빈 괄호를 채우려고 말을
-  지어내지 않는다.
-- 쉬운 말로 바꾸며 DTO에 없는 사실을 만들지 않는다. `markOfflineEvaluated`가
-  실제로는 사유(reasonCode·reasonText)만 받고 평가 점수 필드를 받지 않는다는
-  사실을 확인한 뒤 "성능 검사 결과 등록" 같은 표현을 "평가를 마쳤다고 표시"로
-  정정했다 — 이 정정 과정 자체가 가이드의 "쉽게 쓰다가 사실을 바꾸지 않는다"
-  규칙의 근거다.
-- 문장 기준의 단일 원본은 `docs/api/OPENAPI_WRITING_GUIDE.md` 하나이며 두 스킬
-  파일에 복제하지 않는다. Codex·Claude가 다른 기준으로 검토하는 드리프트를 막는다.
-- 자동 검사 스크립트(lint)는 이번 범위에서 제외한다. 별도 이슈로 미룬다.
+### 2. 즉시 전역 숨김 — CRITICAL 사건 자동 숨김 (Decision #1)
+
+- `ReportCaseAutoSuppressionEvaluator.evaluate(...)`에 3번째 트리거 조건
+  추가: 사건의 최종 severity가 `CRITICAL`이면(신규 오픈이든 승격이든)
+  `resolveIfStillOpen`을 호출한다. 기존 두 조건(서로 다른 신고자 수,
+  이미 flagged된 manual review case)과 동일하게
+  `SafetyCaseResolutionService.resolveCase(caseId, ACTIONED, now)`를
+  재사용한다(#155 자원 재사용, 신규 숨김 로직 없음).
+- `SafetyReportService.mergeCase(...)`가 반환하는 caseId만으로는 최종
+  severity를 알 수 없으므로, `mergeCase`가
+  `record CaseMergeResult(long caseId, ReportCaseSeverity resolvedSeverity)`를
+  반환하도록 바꾼다(신규 오픈 시 산출된 severity, 병합 시
+  `escalateIfMoreSevere` 이후의 실제 severity).
+- **기능 플래그**: `qello.safety.report-case.auto-suppress.critical-enabled`
+  (`@Value`, 기본값 `false`). 꺼져 있으면 CRITICAL 사건도 URGENT 큐로는
+  라우팅되지만(`#156`이 이미 구현) 자동 전역 숨김은 트리거하지 않는다 —
+  운영 활성화는 별도 승인 후 값을 `true`로 바꾸는 것으로 한다(§ 결정
+  게이트 참고).
+
+### 3. CRITICAL 일일 신고 쿼터 (Decision #8d, 설계 §4.1 남용 통제 (a))
+
+- 신규 `CriticalReportQuotaPolicy`(record, `maxPerDay` — 다른 Policy
+  클래스와 동일 패턴)와 `SafetyReportConfiguration`에 `@Bean` 추가
+  (`@Value("${qello.safety.report.critical-daily-quota.max-requests:5}")`).
+- `SafetyRepository`에 `countCriticalReportsByReporterSince(reporterId,
+  since)` 추가 — `countReportsByReporterSince`와 동일 패턴, `sub_reason_code
+  IN ('CSAM','NCII','CREDIBLE_THREAT','SELF_HARM_RISK')` 조건 추가.
+- `SafetyReportService.submit(...)`에서 `severity == CRITICAL`일 때만
+  `enforceRateLimit`과 별도로 `enforceCriticalDailyQuota`를 호출, 초과 시
+  신규 오류 코드 `SAF-APP-005 CRITICAL_REPORT_DAILY_QUOTA_EXCEEDED`
+  (`429`) 발생. 하루 경계는 UTC 자정이 아니라 `now.minus(Duration.ofDays(1))`
+  롤링 윈도우로 계산한다(기존 rate limit과 동일 방식, 자정 경계보다 우회가
+  어렵다).
+
+### 4. 증거 보존 기간과 purge 배치 (Decision #5, #9)
+
+- `SafetyReportConfiguration`에 `EvidenceRetentionPolicy`(record,
+  `retentionPeriod: Duration`) 추가,
+  `@Value("${qello.safety.report.evidence.retention-days:180}")`.
+- `ReportContentSnapshot.capture(...)` 호출부(`SafetyReportService.submit`)에서
+  `purgeAfter = capturedAt.plus(retentionPolicy.retentionPeriod())`로 계산해
+  전달 — 현재 `capture()`는 항상 `purgeAfter=null`이므로 팩토리 메서드
+  시그니처에 `purgeAfter` 파라미터 추가 필요.
+- Flyway `V27`(§1과 같은 마이그레이션 파일)에 트리거 함수 교체:
+  - `report_content_snapshot` 전용 신규 함수
+    `enforce_report_snapshot_immutability_except_purge()` 작성.
+    DELETE는 항상 거부. UPDATE는 오직 `media_object_keys`만 바뀌고 나머지
+    전체 컬럼이 `OLD`와 동일하며, `NEW.media_object_keys = '{}'`이고
+    `OLD.legal_hold = FALSE`일 때만 허용한다.
+  - `tr_report_content_snapshot_immutable` 트리거를 이 신규 함수로
+    교체(`DROP TRIGGER` + `CREATE TRIGGER`). `report_case_event`의
+    트리거는 기존 `enforce_report_evidence_immutability()`를 그대로
+    쓴다(변경 없음, append-only 완전 유지).
+- 신규 `ReportEvidencePurgeSweepWorker`(`safety/sweep` 패키지, `#158`
+  `RecipientExpirationSweepWorker` 패턴 그대로 — batch 조회 + 행별 처리,
+  **`@Scheduled` 없음, 운영 주기 실행 활성화는 이 이슈 범위 밖**):
+  - `ReportContentSnapshotRepository.findPurgeable(now, limit)` —
+    `legal_hold = FALSE AND purge_after < :now AND media_object_keys <> '{}'`.
+  - `ReportContentSnapshotRepository.purgeMedia(reportId)` — 신규 UPDATE,
+    트리거가 허용하는 정확히 그 형태(`media_object_keys = '{}'`, 나머지
+    컬럼 미변경)로 실행.
+  - S3 등 실제 오브젝트 스토리지에서 미디어 파일 자체를 지우는 것은 이
+    이슈 범위 밖 — DB 레코드가 더 이상 그 미디어를 "보존 중"이라고
+    표시하지 않게 되는 것까지만 다룬다(§ Explicit exclusions).
+
+### 5. 운영 기본값 반영 (Decision #8a~8c)
+
+- `SafetyReportConfiguration`의 `@Value` 기본값 변경:
+  - `qello.safety.report-case.auto-suppress.reporter-threshold` 기본값
+    `5` → `3`.
+  - SLA·rate limit 기존값 유지, 단 주석의 "실제 운영 수치는 미정" 문구를
+    "운영 기본값 확정(#157)"으로 갱신.
+
+### 6. 기능 플래그와 관측 (설계 "운영 반영" 항목)
+
+- § Scope 2의 `critical-enabled` 플래그가 이 항목의 핵심 산출물.
+- 신규 관측 지표는 이 이슈에서 새 대시보드·알람 인프라를 만들지 않는다 —
+  기존 로깅 패턴(`RecipientExpirationSweepWorker`의 batch 요약 로그
+  스타일)을 `ReportEvidencePurgeSweepWorker`에도 적용하는 선까지만 한다.
+  Prometheus·CloudWatch 알람 등 실제 인프라 변경은 범위 밖(§ AGENTS.md
+  §4의 인프라 게이트 대상이며 이 이슈는 애플리케이션 코드 이슈다).
 
 ## Explicit exclusions
 
-- 실제 `*ApiSpec` 문장 수정. `#189` 담당자(도메인별)의 몫이다.
-- GitHub Pages 정적 문서 제공. `#189`의 별도 항목이다.
-- OpenAPI 산출물 생성 workflow 변경.
-- API 동작이나 비즈니스 로직 변경.
-- `docs/reports/**`에 도메인 리뷰 결과를 커밋하는 것. 그 자리는 `#189`에서 각
-  도메인 담당자가 `review` 모드를 실행해 만드는 산출물의 몫이다. `#190`은
-  절차가 작동함을 확인만 하고 결과물을 저장소에 남기지 않는다.
+- 국가별 신고 의무 분기 구현(Decision #4).
+- 신고 기반 숨김의 작성자 이의제기 경로, `AppealCase` 확장(Decision #6).
+- 운영자 role 세분화(Decision #7).
+- 계정 삭제 요청 시 증거 보존 우선순위 관련 신규 코드 — 계정 삭제 기능
+  자체가 저장소에 아직 없고, `report_content_snapshot`이 이미 `author_id`에
+  FK 없이 비정규화 사본을 갖고 있어(증거가 이긴다) 설계상 이미 해결됨.
+  신규 구현 없음, 결정만 문서화.
+- 실제 미디어 오브젝트(S3 등) 삭제 — DB 보존 표시 해제까지만.
+- `ReportEvidencePurgeSweepWorker`의 실제 주기 실행 트리거(`@Scheduled`,
+  운영 스케줄러 배선) — `#158` 선례와 동일하게 범위 밖.
+- 허위 CRITICAL 신고에 대한 신규 `report_case_event` 타입 — 기존
+  `REPORT_ATTACHED`/`CASE_OPENED` 이벤트가 이미 사건과 신고를 연결해
+  기록하므로 신규 이벤트 타입 불필요(CONFIRMED, 추가 구현 없음).
+- 인프라 apply, 배포, 프로덕션 변경은 별도 승인 없이는 실행하지 않는다.
+- `qello.safety.report-case.auto-suppress.critical-enabled`를 실제
+  프로덕션에서 `true`로 켜는 것은 이 이슈의 코드 변경에 포함되지 않는다
+  (기본값 `false`로 머지) — 활성화는 별도 승인 절차.
+- Secret, 계정 식별자, 토큰, `.env` 값은 기록하지 않는다.
 
 ## Ownership
 
 | Area | Owner | Required review |
 | --- | --- | --- |
-| 문장 기준·체크리스트 (`docs/api/OPENAPI_WRITING_GUIDE.md`) | API docs 작업자 | 3라운드 대화에서 합의한 괄호·용어·종결 규칙과 일치 |
-| 검토 양식 (`templates/api-docs-review.md`) | API docs 작업자 | 6점 대조 항목 누락 없음 |
-| 스킬·역할 문서 (`.claude/**`, `agents/**`) | API docs 작업자 | `CLAUDE.md` 파일 수정 범위상 별도 승인 대상 — 사용자 승인 완료 |
-| 절차 시험 적용 (`FilterReleaseApiSpec`, 비산출물) | API docs 작업자 | `*ApiSpec` 원본 미수정, 코드 근거(서비스 throw, DTO 필드) 재확인, 결과를 저장소에 커밋하지 않음 |
+| `ReportSubReason` 확장, CRITICAL 자동 숨김 트리거 조건, `CriticalReportQuotaPolicy`, `EvidenceRetentionPolicy`, evidence purge 트리거 예외·`ReportEvidencePurgeSweepWorker`, `SafetyReportConfiguration` 운영값 변경, 신규 Flyway `V27`, 단위·통합 테스트 | Feature executor | 트리거 예외 로직이 `legal_hold` 행을 확실히 보호하는지, `media_object_keys`만 바뀌는 UPDATE 외에는 전부 거부하는지 통합 테스트로 검증. `critical-enabled` 플래그 OFF/ON 양쪽 동작 검증. 기존 `INV-RPT-004`(증거 불변성)가 여전히 성립하는지(본문·해시 등은 절대 안 바뀜) 확인 |
 
 ## Existing user-owned changes
 
-- 작업 시작 시 `git status --short`는 clean이었다. 범위 밖 변경은 없다.
+- `git status --short` 결과 없음(clean). `origin/main`(`f26118c`, `#186`
+  병합 이후)에서 `./harness start`로 새로 분기했다.
 
 ## Validation
 
 ```bash
+./gradlew test --tests "com.dnd.qello.safety.*" --console=plain
+./gradlew integrationTest --tests "com.dnd.qello.*ReportCase*" --console=plain
+./gradlew integrationTest --tests "com.dnd.qello.*ReportContentSnapshot*" --console=plain
+./gradlew integrationTest --tests "com.dnd.qello.*Purge*" --console=plain
+./gradlew integrationTest --tests "*Flyway*" --console=plain
+./harness test-run --id <TEST-PLAN-ID>
 ./harness check
-npm run hooks:validate
-git diff --check
 ./harness pr-ready --project-tests
+git diff --check
 ```
-
-Java 코드 변경이 없으므로 Gradle 테스트는 대상이 아니다.
-
-### Validation evidence (2026-08-22, 1차)
-
-- `git diff --check`: 통과.
-- `./harness check`: 통과 (secret preflight 1156개 파일, JUnit 정책 222개 파일,
-  convention·workflow·label·husky 검증 모두 통과).
-- `npm run hooks:validate`: 통과.
-- `./harness pr-ready --project-tests`: **FAIL.** 원인은 이 브랜치의 변경이 아니라
-  테스트 환경 문제였다 — 이 워크트리에 Docker 데몬 자체가 없었다(`docker: command
-  not found`). Testcontainers 기반 통합 테스트 76개가 `DockerClientProviderStrategy`
-  초기화 단계에서 전부 `initializationError`로 실패했다. 이 브랜치는 Java 소스를
-  전혀 변경하지 않았고(`docs/`, `templates/`, `.claude/`, `.agents/`, `agents/`,
-  `CODEX.md`만 변경) 실패한 테스트 76개는 모두 이 변경과 무관한 기존 통합 테스트였다.
-
-### Validation evidence (2026-08-23, 2차 — Docker 재설치 후)
-
-Docker를 재설치한 뒤 `./harness pr-ready --project-tests`를 재실행했다.
-
-- `docker info` 확인: Docker 데몬 정상 동작.
-- `./harness pr-ready --project-tests`: **통과.** `BUILD SUCCESSFUL in 7m 47s`,
-  `Local PR readiness checks passed`. `./harness check`(secret preflight, JUnit
-  정책, convention·workflow·label·husky) 전부 통과, 단위 테스트(`:test`)와 통합
-  테스트(`:integrationTest`, `OpenApiSpecificationIntegrationTest` 포함) 전부
-  통과, `:check` 통과.
-- 미실행 범위 없음. 1차에서 남겨뒀던 위험("Docker가 구성된 환경에서 재검증하지
-  않았다")이 이번 재실행으로 해소됐다.
 
 ## Completion criteria
 
-- [x] `docs/api/OPENAPI_WRITING_GUIDE.md`가 문장 기준·용어 규칙·괄호 규칙·6점
-      체크리스트를 모두 포함한다.
-- [x] `templates/api-docs-review.md`가 엔드포인트별 6점 대조와 before/after 제안을
-      기록할 수 있는 양식이다.
-- [x] `.claude/skills/harness-api-docs/SKILL.md`와
-      `.agents/skills/harness-api-docs/SKILL.md`에 `review` 모드가 추가되고 두 파일의
-      본문이 동일하다(frontmatter만 다르다). `diff`로 본문 동일성 확인함.
-- [x] `agents/api-docs-executor.md`와 `.claude/agents/api-docs-executor.md`가 `review`
-      모드의 allowed scope와 enrichment target을 반영한다.
-- [x] `FilterReleaseApiSpec` 8개 엔드포인트 전체로 6점 대조·문장 재작성 절차를
-      시험 적용해 실제로 작동함을 확인했다(대화 기록에 남김). `*ApiSpec` 원본은
-      변경되지 않았고(`git status`로 확인) 결과를 `docs/reports/**`에 커밋하지
-      않았다 — 그 자리는 `#189` 도메인 담당자의 실제 산출물 몫이다.
-- [x] `docs/api-response.md`, `docs/harness/WORKFLOW_SKILLS.md`, `CODEX.md`에서
-      새 가이드와 review 모드를 찾아갈 수 있다.
-- [x] 완료 전 검증을 모두 실행하고 실패·미실행 범위를 구분해 기록한다.
-      1차 실행은 Docker 미가용으로 통합 테스트 단계에서 FAIL했고, Docker 재설치 후
-      2차 실행에서 `./harness pr-ready --project-tests`가 전부 통과했다(위 2026-08-23
-      Validation evidence 참고). 미실행 범위 없음.
+- [x] `ReportSubReason.SELF_HARM_RISK`가 `ILLEGAL_OR_DANGEROUS`와 조합되어
+      CHECK를 통과하고 severity `CRITICAL`로 산출된다 —
+      `ReportContentSnapshotImmutabilityIntegrationTest#selfHarmRiskCombinationIsAccepted`(INT-014),
+      `#invalidSelfHarmRiskCombinationIsRejected`(INT-015),
+      `ReportCaseAndEvidenceTest#selfHarmRiskSubReasonProducesCriticalSeverity`(UNIT-001).
+- [x] `critical-enabled` 플래그가 `true`일 때 CRITICAL 사건(신규 오픈 또는
+      승격)이 자동으로 전역 숨김·RESOLVED 처리된다. 플래그가 `false`이면
+      URGENT 큐 라우팅만 되고 자동 숨김은 트리거되지 않는다 —
+      `ReportCaseCriticalAutoSuppressionIntegrationTest`(INT-001~003, `@TestPropertySource`로
+      플래그 켬), `ReportCaseSeverityIntegrationTest#newCaseOpensAsCriticalWhenSubReasonIsCsam`(기본값
+      꺼짐에서 OPEN·PUBLISHED 유지 확인).
+- [x] 계정당 CRITICAL 신고가 일일 쿼터(5건)를 넘으면
+      `CRITICAL_REPORT_DAILY_QUOTA_EXCEEDED`로 거부된다 —
+      `ReportCaseSeverityIntegrationTest#rejectsCriticalReportBeyondDailyQuota`(GH157-INT-004),
+      롤링 24시간 윈도우는 `#rollingWindowExcludesReportsOlderThan24Hours`(GH157-INT-005)가 확인.
+- [x] 신규 스냅샷의 `purge_after`가 `capturedAt + 180일`로 저장된다 —
+      `ReportCaseAndEvidenceTest#captureStoresGivenPurgeAfter`(UNIT-005, 도메인),
+      `SafetyReportService.submit`이 `EvidenceRetentionPolicy` 기반으로 계산해 전달.
+- [x] `legal_hold=true`인 스냅샷은 purge 대상에서 제외된다 —
+      `ReportEvidencePurgeSweepWorkerIntegrationTest#purgesOnlyEligibleSnapshots`(INT-012),
+      `ReportContentSnapshotImmutabilityIntegrationTest#purgeMediaRejectsLegalHoldSnapshot`(INT-007).
+- [x] purge 배치가 만료된 스냅샷의 `media_object_keys`만 비우고 나머지
+      컬럼(본문, 해시 등)은 절대 바뀌지 않는다 — 트리거가 그 외 모든
+      UPDATE·모든 DELETE를 거부함을 통합 테스트로 확인한다 —
+      `ReportContentSnapshotImmutabilityIntegrationTest`(INT-006 media만 변경 허용,
+      INT-008 본문 변경 거부, INT-009 동시 변경 거부, INT-010 DELETE 거부,
+      INT-011 `report_case_event` 트리거 회귀 없음).
+- [x] 자동 숨김 임계값이 3명, SLA·rate limit이 기존 값 유지로 설정값에
+      반영된다 — `ReportCaseSeverityIntegrationTest#autoSuppressionThresholdDefaultsToThree`(GH157-INT-016),
+      `SafetyReportConfiguration` `@Value` 기본값 변경.
+- [x] 실행하지 못한 검증과 남은 위험을 보고서에 기록한다 — 아래 "실행 결과"
+      절 참고.
+
+## 실행 결과 (2026-08-21)
+
+- `./gradlew test` — 전체 단위 테스트 통과.
+- `./gradlew integrationTest` — 전체 통합 테스트 스위트 통과(9분, 기존 회귀
+  없음 확인). 개별로도 `ReportCaseSeverityIntegrationTest`,
+  `ReportCaseCriticalAutoSuppressionIntegrationTest`,
+  `ReportContentSnapshotImmutabilityIntegrationTest`,
+  `ReportEvidencePurgeSweepWorkerIntegrationTest`, `*Flyway*`,
+  `com.dnd.qello.*Report*` 각각 통과 확인.
+- `./harness check` — Secret preflight, JUnit 정책, convention, commit
+  형식, workflow, label, Husky 검증 전부 통과.
+- `./harness pr-ready --project-tests` — 통과.
+- `npm run hooks:validate` — 통과.
+- `git diff --check` — whitespace 오류 없음.
+- 구현 중 발견해 즉시 고친 결함 2건(둘 다 실제 테스트 실행으로 발견,
+  코드 리뷰만으로는 놓쳤을 것):
+  1. `ReportSubmission`의 도메인 레벨 reason/subReason 조합 검증 맵에
+     `ILLEGAL_OR_DANGEROUS`→`SELF_HARM_RISK`를 추가하지 않아 DB CHECK는
+     통과해도 서비스 계층에서 `INVALID_REPORT_SUB_REASON`으로 거부되고
+     있었다 — `ReportSubmission.ALLOWED_SUB_REASONS`에 추가로 해결.
+  2. 자동 숨김 임계값을 5→3으로 낮추자 기존 `#156` 테스트(`정확히 5명`
+     루프)가 3번째 신고에서 이미 답변이 HIDDEN돼 4·5번째 신고가
+     `REPORT_TARGET_NOT_FOUND`로 실패했다 — 루프를
+     `autoSuppressionPolicy.distinctReporterThreshold()` 기준으로 바꿔
+     운영값이 바뀌어도 깨지지 않게 했다.
+- 실행하지 못한 검증: 없음(계획한 모든 시나리오를 구현하고 실행했다).
+- 남은 위험: `critical-enabled` 실제 프로덕션 활성화는 이 PR에 포함되지
+  않는다(기본값 `false`로 머지) — § 결정 게이트 참고. `report_case_event`와
+  달리 `report_content_snapshot` 트리거를 이번에 처음으로 부분적으로
+  약화시켰다(media_object_keys 예외) — 통합 테스트로 그 예외의 경계를
+  직접 검증했지만, 새 트리거 함수 자체의 장기 유지보수 부담(향후 컬럼
+  추가 시 트리거 조건도 함께 갱신해야 함)은 남는다.
+
+## `main` rebase 결과 (2026-08-23)
+
+PR #188을 최신 `origin/main` 위로 rebase했다. 충돌과 조정은 다음 세 가지다.
+
+1. `TASK.md` — `main`에는 다른 이슈(#190)의 계약이 올라와 있었다. 이 파일은
+   브랜치별 작업 계약이므로 #157 계약을 유지했다.
+2. Flyway 버전 충돌 — `main`이 먼저 `V26__split_notification_user_setting.sql`을
+   병합했다. 같은 버전이 둘이면 Flyway 기동이 실패하므로 이 이슈의
+   마이그레이션을 `V27__add_self_harm_sub_reason_and_evidence_purge_exception.sql`로
+   다시 번호를 매겼다(내용 변경 없음). `FlywayMigrationContractTest` 카탈로그와
+   `FlywayMigrationIntegrationTest`의 적용 수(26→27)도 함께 맞췄다.
+3. `NotificationPreferenceMigrationIntegrationTest` — V24에서 최신까지 실행되는
+   마이그레이션 수 단언이 2였는데 `V27`이 늘어 3이 되었다. 이 단언만 갱신했고
+   해당 테스트가 지키는 계약 자체는 건드리지 않았다.
+
+`docs/api/openapi.json`은 충돌 없이 병합됐고, 이 브랜치가 더한 변경은
+`ReportSubReason` enum의 `SELF_HARM_RISK` 한 건뿐임을 diff로 확인했다.
+
+재검증 결과는 테스트 보고서 §3.1에 기록했다. 전체 단위 테스트와 전체 통합
+테스트(656건) 모두 통과했다.
+
+## 남은 위험 / 후속 결정 필요
+
+- `critical-enabled` 플래그를 실제 프로덕션에서 켜는 시점은 이 이슈
+  머지와 별개로, 공식 법무·안전 검토(있다면)를 거친 뒤 사람이 결정해야
+  한다.
+- `ReportEvidencePurgeSweepWorker`를 실제로 주기 실행하려면 별도 스케줄러
+  배선(운영 이슈)이 필요하다 — 지금은 코드만 존재하고 자동으로 돌지
+  않는다.
+- 국가별 신고 의무·이의제기 경로·계정 삭제 시 증거 우선순위·운영자 role
+  세분화는 전부 별도 이슈로 미뤄졌다(Decision #4, #6, #7, 계정삭제 항목).
