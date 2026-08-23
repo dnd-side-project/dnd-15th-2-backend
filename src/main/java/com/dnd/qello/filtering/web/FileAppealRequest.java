@@ -15,11 +15,13 @@ import jakarta.validation.constraints.Positive;
 // 두 식별자는 primitive라 본문에서 빠지면 0으로 바인딩되고 @Positive가 400으로
 // 거절한다. 즉 실제 계약은 "필수"이므로, 스펙에도 required로 명시해 누락 시
 // 동작을 문서와 일치시킨다.
+@Schema(description = "이의제기 접수 요청입니다.")
 public record FileAppealRequest(
+	@Schema(description = "이의제기를 접수할 대상 유형입니다. 현재 ANSWER만 지원합니다.")
 	@NotNull(message = "targetType은 필수입니다") FilterTargetType targetType,
-	@Schema(requiredMode = Schema.RequiredMode.REQUIRED)
+	@Schema(description = "이의제기를 접수할 답변 식별자입니다.", requiredMode = Schema.RequiredMode.REQUIRED)
 	@Positive(message = "targetId는 양수여야 합니다") long targetId,
-	@Schema(requiredMode = Schema.RequiredMode.REQUIRED)
+	@Schema(description = "이의제기의 근거가 된 필터 판정 식별자입니다.", requiredMode = Schema.RequiredMode.REQUIRED)
 	@Positive(message = "filterDecisionId는 양수여야 합니다") long filterDecisionId
 ) {
 }
