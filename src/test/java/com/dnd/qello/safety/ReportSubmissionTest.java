@@ -14,9 +14,28 @@ import com.dnd.qello.safety.error.SafetyException;
 
 /**
  * Created at: 2026-08-18T22:10:00+09:00
- * Source scenario: TEST-PLAN-GH-154-REPORT-INTAKE-API-UNIT-001 through UNIT-008
+ * Source scenario: TEST-PLAN-GH-154-REPORT-INTAKE-API-UNIT-001 through UNIT-008,
+ * TEST-PLAN-GH-157-REPORT-LEGAL-PRODUCTION-GATE-UNIT-001
  */
 class ReportSubmissionTest {
+
+	@Test
+	@DisplayName("ILLEGAL_OR_DANGEROUS + SELF_HARM_RISK는 정상 생성된다(#157)")
+	void acceptsIllegalOrDangerousWithSelfHarmRisk() {
+		ReportSubmission submission =
+			new ReportSubmission(ReportReason.ILLEGAL_OR_DANGEROUS, ReportSubReason.SELF_HARM_RISK, null);
+
+		assertThat(submission.subReason()).isEqualTo(ReportSubReason.SELF_HARM_RISK);
+	}
+
+	@Test
+	@DisplayName("SEXUAL_CONTENT + SELF_HARM_RISK처럼 잘못된 조합은 거절한다(#157)")
+	void rejectsSelfHarmRiskWithMismatchedReason() {
+		assertThatThrownBy(() ->
+			new ReportSubmission(ReportReason.SEXUAL_CONTENT, ReportSubReason.SELF_HARM_RISK, null))
+			.isInstanceOf(SafetyException.class)
+			.hasFieldOrPropertyWithValue("errorCode", SafetyErrorCode.INVALID_REPORT_SUB_REASON);
+	}
 
 	@Test
 	@DisplayName("SEXUAL_CONTENT + CSAM은 정상 생성된다")

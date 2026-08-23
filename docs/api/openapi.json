@@ -1,36 +1,45 @@
 {
   "components" : {
     "schemas" : {
-      "Answer" : {
+      "AnswerCard" : {
         "properties" : {
           "answerId" : {
+            "description" : "답변 식별자",
             "format" : "int64",
             "type" : "integer"
           },
           "authorCoarseRegionCode" : {
+            "description" : "답변 작성자의 대략적인 지역 코드",
             "type" : "string"
           },
           "authorNickname" : {
+            "description" : "답변 작성자의 닉네임",
             "type" : "string"
           },
           "bearingFromSenderDegrees" : {
+            "description" : "발신자 기준으로 계산한 방위각(도 단위)",
             "type" : "number"
           },
           "bodyText" : {
+            "description" : "답변 본문",
             "type" : "string"
           },
           "distanceBand" : {
+            "description" : "근거리 구간일 때만 채워지는 거리 표시 문구. 그 외에는 null이고 대신 distanceM이 채워집니다",
             "type" : "string"
           },
           "distanceM" : {
+            "description" : "발신자와의 거리(미터). 근거리 구간에서는 null이고 대신 distanceBand가 채워집니다",
             "format" : "int64",
             "type" : "integer"
           },
           "editedAt" : {
+            "description" : "이 답변을 마지막으로 수정한 시각. 수정한 적이 없으면 null입니다",
             "format" : "date-time",
             "type" : "string"
           },
           "mediaIds" : {
+            "description" : "첨부된 이미지 식별자 목록",
             "items" : {
               "format" : "int64",
               "type" : "integer"
@@ -38,13 +47,16 @@
             "type" : "array"
           },
           "publishedAt" : {
+            "description" : "이 답변이 공개된 시각",
             "format" : "date-time",
             "type" : "string"
           },
           "reactedByMe" : {
+            "description" : "조회하는 본인이 이 답변에 공감했는지 여부",
             "type" : "boolean"
           },
           "reactionCount" : {
+            "description" : "이 답변이 받은 공감 총수",
             "format" : "int64",
             "type" : "integer"
           }
@@ -54,10 +66,12 @@
       "AnswerCursor" : {
         "properties" : {
           "answerId" : {
+            "description" : "다음 페이지 조회에 쓸 답변 식별자",
             "format" : "int64",
             "type" : "integer"
           },
           "publishedAt" : {
+            "description" : "다음 페이지 조회에 쓸 공개 시각",
             "format" : "date-time",
             "type" : "string"
           }
@@ -67,13 +81,15 @@
       "AnswerListingResponse" : {
         "properties" : {
           "answers" : {
+            "description" : "그 질문글의 답변 목록. 열람 자격이 없으면 빈 목록입니다",
             "items" : {
-              "$ref" : "#/components/schemas/Answer"
+              "$ref" : "#/components/schemas/AnswerCard"
             },
             "type" : "array"
           },
           "nextCursor" : {
-            "$ref" : "#/components/schemas/AnswerCursor"
+            "$ref" : "#/components/schemas/AnswerCursor",
+            "description" : "다음 페이지 커서. 마지막 페이지면 null입니다"
           }
         },
         "type" : "object"
@@ -112,6 +128,7 @@
       "AnswersReadResponse" : {
         "properties" : {
           "answersReadAt" : {
+            "description" : "이번 호출로 갱신된 답변 열람 시각",
             "format" : "date-time",
             "type" : "string"
           }
@@ -1182,71 +1199,6 @@
         },
         "type" : "object"
       },
-      "Card" : {
-        "properties" : {
-          "answerCount" : {
-            "format" : "int64",
-            "type" : "integer"
-          },
-          "bodyText" : {
-            "type" : "string"
-          },
-          "distanceBand" : {
-            "type" : "string"
-          },
-          "distanceM" : {
-            "format" : "int64",
-            "type" : "integer"
-          },
-          "expiresAt" : {
-            "format" : "date-time",
-            "type" : "string"
-          },
-          "inboundBearingDegrees" : {
-            "type" : "number"
-          },
-          "matchedAt" : {
-            "format" : "date-time",
-            "type" : "string"
-          },
-          "mediaIds" : {
-            "items" : {
-              "format" : "int64",
-              "type" : "integer"
-            },
-            "type" : "array"
-          },
-          "postId" : {
-            "format" : "int64",
-            "type" : "integer"
-          },
-          "postRecipientId" : {
-            "format" : "int64",
-            "type" : "integer"
-          },
-          "questionText" : {
-            "type" : "string"
-          },
-          "reactedByMe" : {
-            "type" : "boolean"
-          },
-          "reactionCount" : {
-            "format" : "int64",
-            "type" : "integer"
-          },
-          "senderCoarseRegionCode" : {
-            "type" : "string"
-          },
-          "status" : {
-            "type" : "string"
-          },
-          "unreadAnswerCount" : {
-            "format" : "int64",
-            "type" : "integer"
-          }
-        },
-        "type" : "object"
-      },
       "ChangeNicknameRequest" : {
         "properties" : {
           "nickname" : {
@@ -1258,25 +1210,6 @@
         "required" : [
           "nickname"
         ],
-        "type" : "object"
-      },
-      "Chip" : {
-        "properties" : {
-          "count" : {
-            "format" : "int64",
-            "type" : "integer"
-          },
-          "displayName" : {
-            "type" : "string"
-          },
-          "segmentKey" : {
-            "type" : "string"
-          },
-          "sortOrder" : {
-            "format" : "int32",
-            "type" : "integer"
-          }
-        },
         "type" : "object"
       },
       "CreateFilterReleaseRequest" : {
@@ -1315,19 +1248,6 @@
           },
           "token" : {
             "description" : "다음 상태 변경 요청에 실어 보낼 CSRF 토큰",
-            "type" : "string"
-          }
-        },
-        "type" : "object"
-      },
-      "Cursor" : {
-        "properties" : {
-          "postId" : {
-            "format" : "int64",
-            "type" : "integer"
-          },
-          "submittedAt" : {
-            "format" : "date-time",
             "type" : "string"
           }
         },
@@ -1419,6 +1339,29 @@
           },
           "expiresIn" : {
             "format" : "int64",
+            "type" : "integer"
+          }
+        },
+        "type" : "object"
+      },
+      "DirectionChip" : {
+        "properties" : {
+          "count" : {
+            "description" : "그 방향 구간에 속한 수신 항목 수. 0인 방향은 나타나지 않습니다",
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "displayName" : {
+            "description" : "그 방향 구간의 화면 표시명",
+            "type" : "string"
+          },
+          "segmentKey" : {
+            "description" : "방향 구간을 식별하는 키",
+            "type" : "string"
+          },
+          "sortOrder" : {
+            "description" : "화면에 표시할 때 쓰는 정렬 순서",
+            "format" : "int32",
             "type" : "integer"
           }
         },
@@ -1555,21 +1498,106 @@
         },
         "type" : "object"
       },
+      "InboxCard" : {
+        "properties" : {
+          "answerCount" : {
+            "description" : "이 질문글에 달린 답변 수",
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "bodyText" : {
+            "description" : "발신자가 추가로 쓴 본문",
+            "type" : "string"
+          },
+          "distanceBand" : {
+            "description" : "근거리 구간일 때만 채워지는 거리 표시 문구. 그 외에는 null이고 대신 distanceM이 채워집니다",
+            "type" : "string"
+          },
+          "distanceM" : {
+            "description" : "발신자와의 거리(미터). 근거리 구간에서는 null이고 대신 distanceBand가 채워집니다",
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "expiresAt" : {
+            "description" : "이 질문글이 만료되는 시각",
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "inboundBearingDegrees" : {
+            "description" : "이 카드를 보는 수신자 기준으로 계산한 도착 방위각(도 단위). 화면의 방향 표시는 이 값을 씁니다",
+            "type" : "number"
+          },
+          "matchedAt" : {
+            "description" : "이 수신 항목이 매칭된 시각",
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "mediaIds" : {
+            "description" : "첨부된 이미지 식별자 목록",
+            "items" : {
+              "format" : "int64",
+              "type" : "integer"
+            },
+            "type" : "array"
+          },
+          "postId" : {
+            "description" : "이 카드가 속한 질문글 식별자",
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "postRecipientId" : {
+            "description" : "이 수신 항목의 식별자",
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "questionText" : {
+            "description" : "이 질문글이 사용한 질문 문항의 텍스트",
+            "type" : "string"
+          },
+          "reactedByMe" : {
+            "description" : "조회하는 본인이 이 질문글에 공감했는지 여부",
+            "type" : "boolean"
+          },
+          "reactionCount" : {
+            "description" : "이 질문글이 받은 공감 총수",
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "senderCoarseRegionCode" : {
+            "description" : "발신자의 대략적인 지역 코드. 정확한 위치는 포함하지 않습니다",
+            "type" : "string"
+          },
+          "status" : {
+            "description" : "이 수신 항목의 현재 상태",
+            "type" : "string"
+          },
+          "unreadAnswerCount" : {
+            "description" : "마지막 답변 열람 이후 새로 공개된 답변 수",
+            "format" : "int64",
+            "type" : "integer"
+          }
+        },
+        "type" : "object"
+      },
       "InboxCommandResponse" : {
         "properties" : {
           "postRecipientId" : {
+            "description" : "이 수신함 항목의 식별자",
             "format" : "int64",
             "type" : "integer"
           },
           "revertibleUntil" : {
+            "description" : "이 넘김을 되돌릴 수 있는 마감 시각. skip 응답에만 채워지고 revertSkip 응답에서는 항상 null입니다",
             "format" : "date-time",
             "type" : "string"
           },
           "skipRequestedAt" : {
+            "description" : "넘김을 요청한 시각. 넘김을 요청하지 않았거나 되돌렸으면 null입니다",
             "format" : "date-time",
             "type" : "string"
           },
           "status" : {
+            "description" : "명령 적용 후의 수신 상태",
             "type" : "string"
           }
         },
@@ -1578,13 +1606,16 @@
       "InboxDetailResponse" : {
         "properties" : {
           "card" : {
-            "$ref" : "#/components/schemas/Card"
+            "$ref" : "#/components/schemas/InboxCard",
+            "description" : "받은 질문 카드. list 응답의 카드와 같은 구조입니다"
           },
           "openedAt" : {
+            "description" : "이 항목을 처음 연 시각",
             "format" : "date-time",
             "type" : "string"
           },
           "skipRequestedAt" : {
+            "description" : "넘김을 요청한 시각. 넘김을 요청하지 않았으면 null입니다",
             "format" : "date-time",
             "type" : "string"
           }
@@ -1594,14 +1625,16 @@
       "InboxListingResponse" : {
         "properties" : {
           "cards" : {
+            "description" : "받은 질문 카드 목록",
             "items" : {
-              "$ref" : "#/components/schemas/Card"
+              "$ref" : "#/components/schemas/InboxCard"
             },
             "type" : "array"
           },
           "chips" : {
+            "description" : "방향 구간별 집계. directionSegmentKey와 무관하게 category 전체 기준입니다",
             "items" : {
-              "$ref" : "#/components/schemas/Chip"
+              "$ref" : "#/components/schemas/DirectionChip"
             },
             "type" : "array"
           }
@@ -1773,28 +1806,43 @@
       "NotificationCardResponse" : {
         "properties" : {
           "createdAt" : {
+            "description" : "알림이 도착한 시각",
             "format" : "date-time",
             "type" : "string"
           },
           "expiresAt" : {
+            "description" : "이 알림이 가리키는 질문글이 만료되는 시각. 아직 볼 수 있는 질문글 알림에만 채워지고 그 밖에는 null입니다",
             "format" : "date-time",
             "type" : "string"
           },
           "notificationId" : {
+            "description" : "알림 식별자",
             "format" : "int64",
             "type" : "integer"
           },
           "readAt" : {
+            "description" : "이 알림을 읽은 시각. 아직 읽지 않았으면 null입니다",
             "format" : "date-time",
             "type" : "string"
           },
           "target" : {
-            "$ref" : "#/components/schemas/NotificationTargetSummaryResponse"
+            "$ref" : "#/components/schemas/NotificationTargetSummaryResponse",
+            "description" : "이 알림이 가리키는 글의 요약"
           },
           "type" : {
+            "description" : "알림 종류",
+            "enum" : [
+              "ANSWER_RECEIVED",
+              "ANSWER_REACTED",
+              "DIRECTION_POST_RECEIVED",
+              "REPORT_RESOLVED",
+              "QUESTION_PROPOSAL_REVIEWED",
+              "QUESTION_RECOMMENDED"
+            ],
             "type" : "string"
           },
           "unread" : {
+            "description" : "아직 읽지 않은 알림인지 여부",
             "type" : "boolean"
           }
         },
@@ -1803,10 +1851,12 @@
       "NotificationCursor" : {
         "properties" : {
           "createdAt" : {
+            "description" : "다음 쪽 조회에 쓸 알림 도착 시각. cursorCreatedAt에 그대로 넣습니다",
             "format" : "date-time",
             "type" : "string"
           },
           "notificationId" : {
+            "description" : "다음 쪽 조회에 쓸 알림 식별자. cursorNotificationId에 그대로 넣습니다",
             "format" : "int64",
             "type" : "integer"
           }
@@ -1816,9 +1866,11 @@
       "NotificationListingResponse" : {
         "properties" : {
           "nextCursor" : {
-            "$ref" : "#/components/schemas/NotificationCursor"
+            "$ref" : "#/components/schemas/NotificationCursor",
+            "description" : "다음 쪽 커서. 마지막 쪽이면 null입니다"
           },
           "notifications" : {
+            "description" : "받은 알림 목록. 최신순입니다",
             "items" : {
               "$ref" : "#/components/schemas/NotificationCardResponse"
             },
@@ -1830,22 +1882,26 @@
       "NotificationPreferenceResponse" : {
         "properties" : {
           "inboxRecordingPolicy" : {
+            "description" : "알림함 기록 정책. 푸시를 꺼도 알림함에는 항상 쌓이므로 값은 언제나 ALWAYS_RECORD입니다",
             "enum" : [
               "ALWAYS_RECORD"
             ],
             "type" : "string"
           },
           "preferences" : {
+            "description" : "알림 6종별 허용 여부. 항상 6개가 모두 들어 있습니다",
             "items" : {
               "$ref" : "#/components/schemas/NotificationTypePreferenceResponse"
             },
             "type" : "array"
           },
           "pushEnabled" : {
+            "description" : "앱 푸시 알림 전체 허용 여부",
             "type" : "boolean"
           },
           "quietHours" : {
-            "$ref" : "#/components/schemas/QuietHoursResponse"
+            "$ref" : "#/components/schemas/QuietHoursResponse",
+            "description" : "알림을 받지 않을 시간대. 설정하지 않았으면 null입니다"
           }
         },
         "type" : "object"
@@ -1853,6 +1909,7 @@
       "NotificationSeenResponse" : {
         "properties" : {
           "seenAt" : {
+            "description" : "새로 기록된, 알림함을 마지막으로 연 시각",
             "format" : "date-time",
             "type" : "string"
           }
@@ -1862,16 +1919,31 @@
       "NotificationTargetResponse" : {
         "properties" : {
           "fallback" : {
+            "description" : "넘어갈 수 없을 때 대신 보여줄 화면. 넘어갈 수 있으면 NONE, 기간이 끝난 질문글이면 수신함(INBOX), 그 밖에는 지도 홈(FEED_HOME)입니다",
+            "enum" : [
+              "NONE",
+              "FEED_HOME",
+              "INBOX"
+            ],
             "type" : "string"
           },
           "navigable" : {
+            "description" : "이 알림에서 원래 글로 넘어갈 수 있는지 여부",
             "type" : "boolean"
           },
           "reason" : {
+            "description" : "넘어갈 수 없는 이유. 넘어갈 수 있으면 null입니다. EXPIRED는 기간이 끝난 질문글, HIDDEN은 숨겨진 글, BLOCKED는 차단한 상대의 글, GONE은 지워진 글입니다",
+            "enum" : [
+              "GONE",
+              "BLOCKED",
+              "HIDDEN",
+              "EXPIRED"
+            ],
             "type" : "string"
           },
           "target" : {
-            "$ref" : "#/components/schemas/NotificationTargetSummaryResponse"
+            "$ref" : "#/components/schemas/NotificationTargetSummaryResponse",
+            "description" : "이 알림이 가리키는 글의 요약"
           }
         },
         "type" : "object"
@@ -1879,13 +1951,28 @@
       "NotificationTargetSummaryResponse" : {
         "properties" : {
           "id" : {
+            "description" : "대상 식별자. kind가 NONE이면 null입니다",
             "format" : "int64",
             "type" : "integer"
           },
           "kind" : {
+            "description" : "알림이 가리키는 대상의 종류. 가리키는 대상이 없으면 NONE입니다",
+            "enum" : [
+              "DIRECTION_POST",
+              "ANSWER",
+              "NONE"
+            ],
             "type" : "string"
           },
           "state" : {
+            "description" : "대상의 현재 상태입니다. AVAILABLE이면 지금 볼 수 있고, EXPIRED는 기간이 끝난 질문글, HIDDEN은 숨겨진 글, BLOCKED는 차단한 상대의 글, GONE은 지워진 글입니다. kind가 NONE이면 null입니다",
+            "enum" : [
+              "GONE",
+              "BLOCKED",
+              "HIDDEN",
+              "EXPIRED",
+              "AVAILABLE"
+            ],
             "type" : "string"
           }
         },
@@ -1919,9 +2006,11 @@
       "NotificationTypePreferenceResponse" : {
         "properties" : {
           "enabled" : {
+            "description" : "이 종류의 푸시 알림을 받을지 여부",
             "type" : "boolean"
           },
           "type" : {
+            "description" : "알림 종류",
             "enum" : [
               "ANSWER_RECEIVED",
               "ANSWER_REACTED",
@@ -2111,12 +2200,18 @@
       "QuietHoursResponse" : {
         "properties" : {
           "end" : {
+            "description" : "알림을 다시 받기 시작하는 시각",
+            "example" : "07:00",
             "type" : "string"
           },
           "start" : {
+            "description" : "알림을 받지 않기 시작하는 시각",
+            "example" : "22:00",
             "type" : "string"
           },
           "zoneId" : {
+            "description" : "위 두 시각을 해석할 시간대",
+            "example" : "Asia/Seoul",
             "type" : "string"
           }
         },
@@ -2382,20 +2477,25 @@
       "SentPostCard" : {
         "properties" : {
           "answerCount" : {
+            "description" : "이 질문글에 달린 답변 수",
             "format" : "int64",
             "type" : "integer"
           },
           "bodyText" : {
+            "description" : "발신자가 추가로 쓴 본문",
             "type" : "string"
           },
           "coarseRegionCode" : {
+            "description" : "이 질문글을 보낼 때 기록된 발신자의 대략적 지역 코드",
             "type" : "string"
           },
           "expiresAt" : {
+            "description" : "이 질문글이 만료되는 시각",
             "format" : "date-time",
             "type" : "string"
           },
           "mediaIds" : {
+            "description" : "첨부된 이미지 식별자 목록",
             "items" : {
               "format" : "int64",
               "type" : "integer"
@@ -2403,23 +2503,43 @@
             "type" : "array"
           },
           "postId" : {
+            "description" : "질문글 식별자",
             "format" : "int64",
             "type" : "integer"
           },
           "questionText" : {
+            "description" : "이 질문글이 사용한 질문 문항의 텍스트",
             "type" : "string"
           },
           "reactionCount" : {
+            "description" : "이 질문글이 받은 공감 총수",
             "format" : "int64",
             "type" : "integer"
           },
           "submittedAt" : {
+            "description" : "이 질문글을 제출한 시각",
             "format" : "date-time",
             "type" : "string"
           },
           "unreadAnswerCount" : {
+            "description" : "답변 열람 시각 이후 새로 공개된 답변 수",
             "format" : "int64",
             "type" : "integer"
+          }
+        },
+        "type" : "object"
+      },
+      "SentPostCursor" : {
+        "properties" : {
+          "postId" : {
+            "description" : "다음 페이지 조회에 쓸 질문글 식별자",
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "submittedAt" : {
+            "description" : "다음 페이지 조회에 쓸 제출 시각",
+            "format" : "date-time",
+            "type" : "string"
           }
         },
         "type" : "object"
@@ -2427,11 +2547,13 @@
       "SentPostDetailResponse" : {
         "properties" : {
           "answersReadAt" : {
+            "description" : "이 질문글의 답변을 마지막으로 읽은 시각",
             "format" : "date-time",
             "type" : "string"
           },
           "card" : {
-            "$ref" : "#/components/schemas/SentPostCard"
+            "$ref" : "#/components/schemas/SentPostCard",
+            "description" : "내가 보낸 질문글 카드. list 응답의 카드와 같은 구조입니다"
           }
         },
         "type" : "object"
@@ -2439,13 +2561,15 @@
       "SentPostListingResponse" : {
         "properties" : {
           "cards" : {
+            "description" : "내가 보낸 질문글 카드 목록",
             "items" : {
               "$ref" : "#/components/schemas/SentPostCard"
             },
             "type" : "array"
           },
           "nextCursor" : {
-            "$ref" : "#/components/schemas/Cursor"
+            "$ref" : "#/components/schemas/SentPostCursor",
+            "description" : "다음 페이지 커서. 마지막 페이지면 null입니다"
           }
         },
         "type" : "object"
@@ -2599,7 +2723,8 @@
             "enum" : [
               "CSAM",
               "NCII",
-              "CREDIBLE_THREAT"
+              "CREDIBLE_THREAT",
+              "SELF_HARM_RISK"
             ],
             "type" : "string"
           }
@@ -2612,13 +2737,16 @@
       "UnreadSignalResponse" : {
         "properties" : {
           "hasUnseen" : {
+            "description" : "지도 홈에 알림 점을 띄울지 여부. 알림함을 마지막으로 연 뒤 새 알림이 왔으면 true입니다",
             "type" : "boolean"
           },
           "seenAt" : {
+            "description" : "알림함을 마지막으로 연 시각. 한 번도 연 적이 없으면 null입니다",
             "format" : "date-time",
             "type" : "string"
           },
           "unreadCount" : {
+            "description" : "아직 읽지 않은 알림 개수. 알림함을 열기만 해서는 줄지 않습니다",
             "format" : "int64",
             "type" : "integer"
           }
@@ -4685,6 +4813,7 @@
         "operationId" : "list_2",
         "parameters" : [
           {
+            "description" : "조회할 카테고리. UNANSWERED는 아직 답변하지 않은 항목, ANSWERED는 답변을 마친 항목입니다",
             "in" : "query",
             "name" : "category",
             "required" : false,
@@ -4698,6 +4827,7 @@
             }
           },
           {
+            "description" : "결과를 좁힐 방향 구간 키. 생략하면 카테고리 전체를 봅니다. chips 집계는 이 값과 무관하게 항상 카테고리 전체 기준입니다",
             "in" : "query",
             "name" : "directionSegmentKey",
             "required" : false,
@@ -4845,7 +4975,7 @@
                 }
               }
             },
-            "description" : "수신 자격이 있는 항목을 찾을 수 없습니다. (FED-DOM-001)"
+            "description" : "인증 사용자 계정을 찾을 수 없거나 수신 자격이 있는 항목을 찾을 수 없습니다. (FED-APP-001, FED-DOM-001)"
           },
           "409" : {
             "content" : {
@@ -5073,7 +5203,7 @@
                 }
               }
             },
-            "description" : "수신 항목을 찾을 수 없습니다. (DIR-DOM-008)"
+            "description" : "인증 사용자 계정을 찾을 수 없거나 수신 항목을 찾을 수 없습니다. (FED-APP-001, DIR-DOM-008)"
           },
           "500" : {
             "content" : {
@@ -5163,7 +5293,7 @@
                 }
               }
             },
-            "description" : "변경할 수신함 항목을 찾을 수 없습니다. (FED-DOM-001)"
+            "description" : "인증 사용자 계정을 찾을 수 없거나 변경할 수신함 항목을 찾을 수 없습니다. (FED-APP-001, FED-DOM-001)"
           },
           "409" : {
             "content" : {
@@ -5261,7 +5391,7 @@
                 }
               }
             },
-            "description" : "변경할 수신함 항목을 찾을 수 없습니다. (FED-DOM-001)"
+            "description" : "인증 사용자 계정을 찾을 수 없거나 변경할 수신함 항목을 찾을 수 없습니다. (FED-APP-001, FED-DOM-001)"
           },
           "409" : {
             "content" : {
@@ -5301,6 +5431,7 @@
         "operationId" : "list",
         "parameters" : [
           {
+            "description" : "만료 여부로 좁히는 필터. IN_PROGRESS는 아직 만료되지 않은 질문글, EXPIRED는 만료된 질문글입니다",
             "in" : "query",
             "name" : "filter",
             "required" : false,
@@ -5315,6 +5446,7 @@
             }
           },
           {
+            "description" : "페이지네이션 커서: 이전 페이지 마지막 항목의 제출 시각. cursorPostId와 함께 지정하거나 함께 생략합니다",
             "in" : "query",
             "name" : "cursorSubmittedAt",
             "required" : false,
@@ -5324,6 +5456,7 @@
             }
           },
           {
+            "description" : "페이지네이션 커서: 이전 페이지 마지막 항목의 질문글 식별자. cursorSubmittedAt과 함께 지정하거나 함께 생략합니다",
             "in" : "query",
             "name" : "cursorPostId",
             "required" : false,
@@ -5333,6 +5466,7 @@
             }
           },
           {
+            "description" : "한 번에 가져올 최대 개수. 1~50, 기본 20",
             "in" : "query",
             "name" : "limit",
             "required" : false,
@@ -5588,7 +5722,7 @@
                 }
               }
             },
-            "description" : "질문글을 찾을 수 없습니다. (FED-DOM-003)"
+            "description" : "인증 사용자 계정을 찾을 수 없거나 질문글을 찾을 수 없습니다. (FED-APP-001, FED-DOM-003)"
           },
           "500" : {
             "content" : {
@@ -5629,6 +5763,7 @@
             }
           },
           {
+            "description" : "페이지네이션 커서: 이전 페이지 마지막 답변의 공개 시각. cursorAnswerId와 함께 지정하거나 함께 생략합니다",
             "in" : "query",
             "name" : "cursorPublishedAt",
             "required" : false,
@@ -5638,6 +5773,7 @@
             }
           },
           {
+            "description" : "페이지네이션 커서: 이전 페이지 마지막 답변의 식별자. cursorPublishedAt과 함께 지정하거나 함께 생략합니다",
             "in" : "query",
             "name" : "cursorAnswerId",
             "required" : false,
@@ -5647,6 +5783,7 @@
             }
           },
           {
+            "description" : "한 번에 가져올 최대 개수. 1~50, 기본 20",
             "in" : "query",
             "name" : "limit",
             "required" : false,
@@ -5796,7 +5933,7 @@
                 }
               }
             },
-            "description" : "질문글을 찾을 수 없습니다. (DIR-DOM-009)"
+            "description" : "인증 사용자 계정을 찾을 수 없거나 질문글을 찾을 수 없습니다. (FED-APP-001, DIR-DOM-009)"
           },
           "500" : {
             "content" : {
@@ -6662,10 +6799,11 @@
     },
     "/api/v1/notifications" : {
       "get" : {
-        "description" : "인증 사용자의 알림을 최신순으로 조회합니다. REVOKED·DISMISSED 줄은 제외됩니다. cursorCreatedAt과 cursorNotificationId는 둘 다 지정하거나 둘 다 생략해야 합니다.",
+        "description" : "받은 알림을 최신순으로 보여줍니다.\n\n앱 로그인이 필요하며 본인이 받은 알림만 나옵니다.\n\n한 번에 1개에서 50개까지 받을 수 있고 기본값은 20개입니다.\n\n다음 쪽을 부를 때는 앞 응답 nextCursor의 두 값을 cursorCreatedAt과 cursorNotificationId에 함께 넣습니다. 둘 중 하나만 넣으면 오류입니다.",
         "operationId" : "list_1",
         "parameters" : [
           {
+            "description" : "다음 쪽 조회에 쓸 알림 도착 시각. 앞 응답 nextCursor.createdAt을 그대로 넣습니다. cursorNotificationId와 함께 지정해야 합니다",
             "in" : "query",
             "name" : "cursorCreatedAt",
             "required" : false,
@@ -6675,6 +6813,7 @@
             }
           },
           {
+            "description" : "다음 쪽 조회에 쓸 알림 식별자. 앞 응답 nextCursor.notificationId를 그대로 넣습니다. cursorCreatedAt과 함께 지정해야 합니다",
             "in" : "query",
             "name" : "cursorNotificationId",
             "required" : false,
@@ -6684,6 +6823,7 @@
             }
           },
           {
+            "description" : "한 번에 받을 알림 수. 1 이상 50 이하이며 기본값은 20입니다",
             "in" : "query",
             "name" : "limit",
             "required" : false,
@@ -6769,7 +6909,7 @@
     },
     "/api/v1/notifications/preferences" : {
       "get" : {
-        "description" : "인증 사용자 본인의 전역 push, 6종별 push, 방해 금지 시간과 알림함 원장 정책을 조회합니다.",
+        "description" : "지금 저장된 알림 설정을 보여줍니다. 앱 푸시를 전부 받을지, 알림 6종을 각각 받을지, 알림을 받지 않을 시간대를 언제로 둘지가 들어 있습니다.\n\n앱 로그인이 필요합니다.\n\n설정을 한 번도 저장한 적이 없어도 기본값이 채워져 돌아옵니다. 기본값은 전부 켜짐이고 알림을 받지 않을 시간대는 없습니다.\n\n푸시를 꺼도 알림함에는 그대로 쌓입니다. 이 설정은 푸시를 보낼지만 정합니다.",
         "operationId" : "preferences",
         "responses" : {
           "200" : {
@@ -6780,7 +6920,7 @@
                 }
               }
             },
-            "description" : "현재 알림 설정 snapshot을 반환합니다."
+            "description" : "현재 알림 설정을 반환합니다."
           },
           "400" : {
             "content" : {
@@ -6844,7 +6984,7 @@
         ]
       },
       "put" : {
-        "description" : "인증 사용자 본인의 전역 push, 6종별 push와 방해 금지 시간 snapshot을 완전 교체하고 canonical 응답을 반환합니다.",
+        "description" : "알림 설정을 보낸 값으로 통째로 바꿉니다.\n\n앱 로그인이 필요합니다.\n\n일부만 보내 고칠 수 없습니다. 푸시 전체 허용 여부와 알림 6종 설정을 매번 전부 보내야 합니다. 6종을 빠뜨리거나 같은 종류를 두 번 보내면 저장하지 않습니다.\n\n알림을 받지 않을 시간대는 보내지 않거나 null로 두면 꺼집니다. 켜려면 시작 시각, 종료 시각, 시간대를 모두 채워야 하고 시작과 종료가 같으면 안 됩니다.\n\n저장한 뒤에는 조회 API와 같은 형식으로 저장된 설정을 돌려줍니다.",
         "operationId" : "replacePreferences",
         "requestBody" : {
           "content" : {
@@ -6864,7 +7004,7 @@
                 }
               }
             },
-            "description" : "저장된 알림 설정 snapshot을 반환합니다."
+            "description" : "저장된 알림 설정을 반환합니다."
           },
           "400" : {
             "content" : {
@@ -6922,7 +7062,7 @@
             "appAccessToken" : [ ]
           }
         ],
-        "summary" : "알림 설정 전체 교체",
+        "summary" : "알림 설정 통째로 바꾸기",
         "tags" : [
           "알림함"
         ]
@@ -6930,7 +7070,7 @@
     },
     "/api/v1/notifications/seen" : {
       "put" : {
-        "description" : "지도 홈의 알림 점을 해제합니다. 서버 시각으로만 전진하며(GREATEST), 반복·역순 호출이 기준선을 과거로 되돌리지 않습니다. 목록의 줄 자체는 지워지지 않습니다.",
+        "description" : "지도 홈에 떠 있는 알림 점을 끕니다.\n\n앱 로그인이 필요합니다.\n\n알림함을 마지막으로 연 시각을 지금 시각으로 올립니다. 이 시각은 서버가 정하므로 요청 본문이 없고, 여러 번 불러도 시각이 과거로 돌아가지 않습니다.\n\n알림을 읽음으로 바꾸지는 않습니다. 목록의 알림은 그대로 남고 안 읽은 알림 개수도 줄지 않습니다. 읽음으로 바꾸려면 읽음 처리 API를 따로 부릅니다.",
         "operationId" : "markSeen",
         "responses" : {
           "200" : {
@@ -6941,7 +7081,7 @@
                 }
               }
             },
-            "description" : "전진된 열람 기준선을 반환합니다."
+            "description" : "새로 기록된 시각을 반환합니다."
           },
           "400" : {
             "content" : {
@@ -6999,7 +7139,7 @@
             "appAccessToken" : [ ]
           }
         ],
-        "summary" : "알림함 열람 기준선 전진",
+        "summary" : "알림 점 끄기",
         "tags" : [
           "알림함"
         ]
@@ -7007,7 +7147,7 @@
     },
     "/api/v1/notifications/unread-count" : {
       "get" : {
-        "description" : "지도 홈의 알림 점(hasUnseen)과 카운터(unreadCount)를 조회합니다. 두 값의 기준선이 다릅니다 — hasUnseen은 열람 기준선(seenAt) 이후 도착한 UNREAD 존재 여부이고, unreadCount는 톱하지 않은 줄의 개수입니다.",
+        "description" : "지도 홈에 띄울 알림 점과 아직 읽지 않은 알림 개수를 함께 돌려줍니다.\n\n앱 로그인이 필요합니다.\n\n두 값은 기준이 달라 서로 어긋나 보일 수 있습니다.\n알림 점(hasUnseen)은 알림함을 마지막으로 연 뒤에 새 알림이 왔는지만 봅니다.\n개수(unreadCount)는 아직 읽지 않은 알림을 전부 셉니다.\n\n알림함을 열기만 하고 아무것도 읽지 않으면 점은 꺼지지만 개수는 그대로입니다.",
         "operationId" : "unreadCount",
         "responses" : {
           "200" : {
@@ -7076,7 +7216,7 @@
             "appAccessToken" : [ ]
           }
         ],
-        "summary" : "미읽음 신호 조회",
+        "summary" : "알림 점과 안 읽은 알림 수 조회",
         "tags" : [
           "알림함"
         ]
@@ -7084,7 +7224,7 @@
     },
     "/api/v1/notifications/{notificationId}/read" : {
       "put" : {
-        "description" : "알림 한 줄을 읽음 처리합니다. 멱등입니다 — 이미 READ면 상태를 바꾸지 않고 현재 값을 반환합니다. REVOKED 줄은 409입니다.",
+        "description" : "알림 하나를 읽음으로 표시합니다.\n\n앱 로그인이 필요하고 본인이 받은 알림만 바꿀 수 있습니다.\n\n읽음으로 바뀐 알림과 읽은 시각을 돌려줍니다. 안 읽은 알림 개수도 그만큼 줄어듭니다.\n\n같은 알림을 여러 번 불러도 안전합니다. 이미 읽은 알림이면 읽은 시각을 다시 쓰지 않고 지금 값을 그대로 돌려줍니다.",
         "operationId" : "markRead",
         "parameters" : [
           {
@@ -7108,7 +7248,7 @@
                 }
               }
             },
-            "description" : "읽음 처리된 알림 줄을 반환합니다."
+            "description" : "읽음 처리된 알림을 반환합니다."
           },
           "400" : {
             "content" : {
@@ -7148,7 +7288,7 @@
                 }
               }
             },
-            "description" : "알림이 없거나 남의 알림입니다. (NOT-APP-001, NOT-DOM-004)"
+            "description" : "그런 알림이 없거나 본인이 받은 알림이 아닙니다. 인증 사용자 계정을 찾을 수 없을 때도 같습니다. (NOT-APP-001, NOT-DOM-004)"
           },
           "409" : {
             "content" : {
@@ -7158,7 +7298,7 @@
                 }
               }
             },
-            "description" : "취소된(REVOKED) 알림은 읽음 처리할 수 없습니다. (NOT-DOM-003)"
+            "description" : "내려간 알림이라 읽음으로 바꿀 수 없습니다. (NOT-DOM-003)"
           },
           "500" : {
             "content" : {
@@ -7184,7 +7324,7 @@
     },
     "/api/v1/notifications/{notificationId}/target" : {
       "get" : {
-        "description" : "알림 한 줄의 대상 생존 상태를 다시 평가합니다. 알림함을 열고 수 분 뒤 톱했을 수 있으므로 목록의 판정을 그대로 믿지 않습니다.",
+        "description" : "이 알림이 가리키는 글로 지금 넘어갈 수 있는지 확인합니다.\n\n앱 로그인이 필요하고 본인이 받은 알림만 확인할 수 있습니다.\n\n넘어갈 수 있으면 navigable이 true입니다.\n갈 수 없으면 false와 함께 갈 수 없는 이유가 reason에 담기고, 대신 보여줄 화면이 fallback에 담깁니다.\n\n알림함을 연 뒤 시간이 지나 원래 글이 지워지거나 기간이 끝났을 수 있습니다. 목록에 담긴 판정을 그대로 쓰지 말고 누르는 순간 이 API로 다시 확인합니다.",
         "operationId" : "target",
         "parameters" : [
           {
@@ -7208,7 +7348,7 @@
                 }
               }
             },
-            "description" : "진입 판정을 반환합니다."
+            "description" : "지금 넘어갈 수 있는지에 대한 판정을 반환합니다."
           },
           "400" : {
             "content" : {
@@ -7248,7 +7388,7 @@
                 }
               }
             },
-            "description" : "알림이 없거나 남의 알림입니다. (NOT-APP-001, NOT-DOM-004)"
+            "description" : "그런 알림이 없거나 본인이 받은 알림이 아닙니다. 인증 사용자 계정을 찾을 수 없을 때도 같습니다. (NOT-APP-001, NOT-DOM-004)"
           },
           "500" : {
             "content" : {
@@ -7266,7 +7406,7 @@
             "appAccessToken" : [ ]
           }
         ],
-        "summary" : "알림 진입 판정",
+        "summary" : "알림에서 원래 글로 갈 수 있는지 확인",
         "tags" : [
           "알림함"
         ]
@@ -8252,7 +8392,7 @@
       "name" : "계정"
     },
     {
-      "description" : "질문자·수신자의 답변 열람 시각을 기록해 미읽음 배지를 해제한다",
+      "description" : "질문자·수신자의 답변 열람 시각을 기록해 미읽음 배지를 해제합니다",
       "name" : "답변 읽음 처리"
     },
     {
@@ -8288,6 +8428,10 @@
       "name" : "방향 질문글"
     },
     {
+      "description" : "받은 알림을 확인하고, 알림 점을 끄고, 알림에서 원래 글로 넘어갈 수 있는지 확인합니다. 알림을 어떻게 받을지 설정하는 것도 여기서 합니다.",
+      "name" : "알림함"
+    },
+    {
       "description" : "수신 자격이 있는 사용자의 질문글 공감 남김·취소",
       "name" : "질문글 공감"
     },
@@ -8310,10 +8454,6 @@
     {
       "description" : "수신 질문 목록·상세 조회와 넘김 상태 변경",
       "name" : "방향 수신함"
-    },
-    {
-      "description" : "알림함 목록·미읽음 신호 조회, 열람 기준선 전진, 줄 단위 읽음, 진입 판정 (#176)",
-      "name" : "알림함"
     },
     {
       "description" : "질문자 자신이 보낸 질문글 목록·상세와 그 답변 목록 조회",

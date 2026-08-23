@@ -42,9 +42,13 @@ public interface SentPostApiSpec {
 	})
 	@GetMapping("/posts")
 	ResponseEntity<ApiResponse<SentPostListingResponse>> list(
+		@Parameter(description = "만료 여부로 좁히는 필터. IN_PROGRESS는 아직 만료되지 않은 질문글, EXPIRED는 만료된 질문글입니다")
 		@RequestParam(defaultValue = "ALL") SentPostFilter filter,
+		@Parameter(description = "페이지네이션 커서: 이전 페이지 마지막 항목의 제출 시각. cursorPostId와 함께 지정하거나 함께 생략합니다")
 		@RequestParam(required = false) Instant cursorSubmittedAt,
+		@Parameter(description = "페이지네이션 커서: 이전 페이지 마지막 항목의 질문글 식별자. cursorSubmittedAt과 함께 지정하거나 함께 생략합니다")
 		@RequestParam(required = false) Long cursorPostId,
+		@Parameter(description = "한 번에 가져올 최대 개수. 1~50, 기본 20")
 		@RequestParam(defaultValue = "20") int limit,
 		@Parameter(hidden = true) Authentication authentication);
 
@@ -55,7 +59,7 @@ public interface SentPostApiSpec {
 		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "질문글 상세를 반환합니다."),
 		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "앱 액세스 토큰이 유효하지 않습니다.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
 		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "현재 계정은 이 기능을 사용할 수 없습니다. (FED-APP-002)", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
-		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "질문글을 찾을 수 없습니다. (FED-DOM-003)", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class)))
+		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "인증 사용자 계정을 찾을 수 없거나 질문글을 찾을 수 없습니다. (FED-APP-001, FED-DOM-003)", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class)))
 	})
 	@GetMapping("/posts/{postId}")
 	ResponseEntity<ApiResponse<SentPostDetailResponse>> detail(
@@ -76,8 +80,11 @@ public interface SentPostApiSpec {
 	@GetMapping("/posts/{postId}/answers")
 	ResponseEntity<ApiResponse<AnswerListingResponse>> answers(
 		@Parameter(description = "질문글 식별자", example = "101") @PathVariable long postId,
+		@Parameter(description = "페이지네이션 커서: 이전 페이지 마지막 답변의 공개 시각. cursorAnswerId와 함께 지정하거나 함께 생략합니다")
 		@RequestParam(required = false) Instant cursorPublishedAt,
+		@Parameter(description = "페이지네이션 커서: 이전 페이지 마지막 답변의 식별자. cursorPublishedAt과 함께 지정하거나 함께 생략합니다")
 		@RequestParam(required = false) Long cursorAnswerId,
+		@Parameter(description = "한 번에 가져올 최대 개수. 1~50, 기본 20")
 		@RequestParam(defaultValue = "20") int limit,
 		@Parameter(hidden = true) Authentication authentication);
 }

@@ -1,10 +1,12 @@
 /**
  * Created at: 2026-08-20T21:07:44+09:00
- * Source scenario: TEST-PLAN-GH-156-REPORT-SEVERITY-OPERATOR-REVIEW-INT-001 through INT-009
+ * Source scenario: TEST-PLAN-GH-156-REPORT-SEVERITY-OPERATOR-REVIEW-INT-001 through INT-009,
+ * TEST-PLAN-GH-157-REPORT-LEGAL-PRODUCTION-GATE-INT-002, INT-004, INT-005, INT-016
  */
 package com.dnd.qello;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.math.BigDecimal;
 import java.sql.Timestamp;
@@ -41,6 +43,7 @@ import com.dnd.qello.filtering.domain.ManualReviewBand;
 import com.dnd.qello.filtering.domain.ManualReviewPriorityReasonCode;
 import com.dnd.qello.filtering.repository.FilterJobRepository;
 import com.dnd.qello.filtering.repository.ManualReviewCaseRepository;
+import com.dnd.qello.safety.domain.AutoSuppressionPolicy;
 import com.dnd.qello.safety.domain.ReportCase;
 import com.dnd.qello.safety.domain.ReportCaseQueue;
 import com.dnd.qello.safety.domain.ReportCaseSeverity;
@@ -48,6 +51,8 @@ import com.dnd.qello.safety.domain.ReportCaseStatus;
 import com.dnd.qello.safety.domain.ReportReason;
 import com.dnd.qello.safety.domain.ReportSubReason;
 import com.dnd.qello.safety.domain.ReportSubmission;
+import com.dnd.qello.safety.error.SafetyErrorCode;
+import com.dnd.qello.safety.error.SafetyException;
 import com.dnd.qello.safety.repository.ReportCaseRepository;
 import com.dnd.qello.safety.service.ReportCaseAutoSuppressionEvaluator;
 import com.dnd.qello.safety.service.ReportOutcome;
@@ -74,6 +79,8 @@ class ReportCaseSeverityIntegrationTest extends PostgisContainerIntegrationTestS
 	private ManualReviewCaseRepository manualReviewCaseRepository;
 	@Autowired
 	private ReportCaseAutoSuppressionEvaluator autoSuppressionEvaluator;
+	@Autowired
+	private AutoSuppressionPolicy autoSuppressionPolicy;
 
 	private long authorId;
 	private long senderId;
@@ -133,6 +140,12 @@ class ReportCaseSeverityIntegrationTest extends PostgisContainerIntegrationTestS
 		assertThat(opened.severity()).isEqualTo(ReportCaseSeverity.CRITICAL);
 		assertThat(opened.queue()).isEqualTo(ReportCaseQueue.URGENT);
 		assertThat(opened.slaDueAt()).isAfter(NOW);
+		// critical-enabled 기본값(false, #157)에서는 URGENT 라우팅만 되고 자동
+		// 전역 숨김은 트리거되지 않는다. 플래그가 켜진 동작은
+		// ReportCaseCriticalAutoSuppressionIntegrationTest가 검증한다.
+		assertThat(opened.status()).isEqualTo(ReportCaseStatus.OPEN);
+		Answer answer = answerRepository.findById(answerId).orElseThrow();
+		assertThat(answer.getStatus()).isEqualTo(AnswerStatus.PUBLISHED);
 	}
 
 	@Test
@@ -206,7 +219,10 @@ class ReportCaseSeverityIntegrationTest extends PostgisContainerIntegrationTestS
 	void autoSuppressesWhenDistinctReporterThresholdIsReached() {
 		long answerId = publishedAnswer("gh156-int005");
 		long caseId = -1;
-		for (int i = 0; i < 5; i++) {
+		// 임계값을 하드코딩하면 운영값 변경(#157, 5→3)마다 이 루프가 깨진다 — 3번째
+		// 신고에서 이미 답변이 HIDDEN되면 findViewableAnswer가 4·5번째 신고를
+		// REPORT_TARGET_NOT_FOUND로 막아 루프 자체가 실패했다.
+		for (int i = 0; i < autoSuppressionPolicy.distinctReporterThreshold(); i++) {
 			long reporter = reporter("autosup-reporter-" + i);
 			ReportOutcome outcome = safetyReportService.submitAnswerReport(
 				reporter, answerId, normalSubmission(), false, NOW.plusSeconds(i));
@@ -224,7 +240,7 @@ class ReportCaseSeverityIntegrationTest extends PostgisContainerIntegrationTestS
 	void autoSuppressionEvaluationIsIdempotentOnAlreadyResolvedCase() {
 		long answerId = publishedAnswer("gh156-int005-idempotent");
 		long caseId = -1;
-		for (int i = 0; i < 5; i++) {
+		for (int i = 0; i < autoSuppressionPolicy.distinctReporterThreshold(); i++) {
 			long reporter = reporter("idempotent-reporter-" + i);
 			ReportOutcome outcome = safetyReportService.submitAnswerReport(
 				reporter, answerId, normalSubmission(), false, NOW.plusSeconds(i));
@@ -235,7 +251,7 @@ class ReportCaseSeverityIntegrationTest extends PostgisContainerIntegrationTestS
 
 		// 두 신고가 임계값 도달을 동시에 관측했다가 한쪽만 먼저 종결에 성공하는
 		// 경합을 재현한다 — 패자 쪽 evaluate() 재호출이 예외를 던지면 안 된다.
-		autoSuppressionEvaluator.evaluate(caseId, answerId, NOW.plusSeconds(100));
+		autoSuppressionEvaluator.evaluate(caseId, answerId, ReportCaseSeverity.NORMAL, NOW.plusSeconds(100));
 
 		assertThat(reportCaseRepository.findById(caseId).orElseThrow().status())
 			.isEqualTo(ReportCaseStatus.RESOLVED);
@@ -287,6 +303,53 @@ class ReportCaseSeverityIntegrationTest extends PostgisContainerIntegrationTestS
 		ReportCase stillOpen = reportCaseRepository.findById(outcome.report().caseId()).orElseThrow();
 		assertThat(stillOpen.status()).isEqualTo(ReportCaseStatus.OPEN);
 		assertThat(stillOpen.linkedManualReviewCaseId()).isNull();
+	}
+
+	@Test
+	@DisplayName("GH157-INT-004: 계정당 CRITICAL 신고가 일일 쿼터(5건)를 넘으면 6번째부터 거부된다")
+	void rejectsCriticalReportBeyondDailyQuota() {
+		long reporterId = account("critical-quota-reporter");
+		for (int i = 0; i < 5; i++) {
+			long answerId = publishedAnswer("gh157-int004-" + i);
+			insertRecipient(postId, reporterId, "AVAILABLE");
+			safetyReportService.submitAnswerReport(
+				reporterId, answerId, criticalSubmission(), false, NOW.plusSeconds(i));
+		}
+		long sixthAnswerId = publishedAnswer("gh157-int004-6");
+		insertRecipient(postId, reporterId, "AVAILABLE");
+
+		assertThatThrownBy(() -> safetyReportService.submitAnswerReport(
+			reporterId, sixthAnswerId, criticalSubmission(), false, NOW.plusSeconds(10)))
+			.isInstanceOf(SafetyException.class)
+			.hasFieldOrPropertyWithValue("errorCode", SafetyErrorCode.CRITICAL_REPORT_DAILY_QUOTA_EXCEEDED);
+	}
+
+	@Test
+	@DisplayName("GH157-INT-005: 24시간 이전 CRITICAL 신고는 롤링 윈도우 쿼터에 포함되지 않는다")
+	void rollingWindowExcludesReportsOlderThan24Hours() {
+		long reporterId = account("critical-quota-rolling-reporter");
+		for (int i = 0; i < 5; i++) {
+			long answerId = publishedAnswer("gh157-int005-old-" + i);
+			insertRecipient(postId, reporterId, "AVAILABLE");
+			safetyReportService.submitAnswerReport(
+				reporterId, answerId, criticalSubmission(), false, NOW);
+		}
+		// 저장된 5건을 25시간 전 것으로 backdate해 롤링 24시간 윈도우 밖으로 옮긴다.
+		jdbc.update("UPDATE report SET created_at = ? WHERE reporter_id = ?",
+			Timestamp.from(NOW.minus(Duration.ofHours(25))), reporterId);
+		long freshAnswerId = publishedAnswer("gh157-int005-fresh");
+		insertRecipient(postId, reporterId, "AVAILABLE");
+
+		ReportOutcome outcome = safetyReportService.submitAnswerReport(
+			reporterId, freshAnswerId, criticalSubmission(), false, NOW.plusSeconds(1));
+
+		assertThat(outcome.report()).isNotNull();
+	}
+
+	@Test
+	@DisplayName("GH157-INT-016: 자동 숨김 임계값 운영 기본값은 3명이다")
+	void autoSuppressionThresholdDefaultsToThree() {
+		assertThat(autoSuppressionPolicy.distinctReporterThreshold()).isEqualTo(3);
 	}
 
 	// INT-009(자동 숨김 후 재신고가 재개방이 아니라 새 사건을 여는지)는 이 경로로는
