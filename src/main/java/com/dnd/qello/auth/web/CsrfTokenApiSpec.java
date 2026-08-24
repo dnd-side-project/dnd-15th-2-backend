@@ -19,12 +19,16 @@ public interface CsrfTokenApiSpec {
 	@Operation(
 		summary = "CSRF 토큰 발급",
 		description = """
-			다음 상태 변경 요청에 실어 보낼 CSRF 토큰과 그 헤더 이름을 돌려준다.
+			운영자 로그인과 다른 상태 변경 요청에 넣을 CSRF 토큰과 헤더 이름을 조회합니다.
 
-			인증이 필요 없다. 로그인 POST도 CSRF 보호 대상이라 로그인 전에 토큰을 받을 경로가 있어야 한다.
+			인증 없이 호출할 수 있습니다. 로그인 POST도 CSRF 보호 대상이므로 로그인 전에 이 경로를
+			호출해야 합니다.
 
-			토큰은 인증 상태와 무관한 값이라 노출해도 안전하다. 방어의 근거는 공격자가 피해자의
-			브라우저에서 이 응답을 읽을 수 없다는 same-origin 정책이다.""")
+			성공하면 headerName에 토큰을 보낼 요청 헤더 이름을, token에 사용할 토큰을 담아 반환합니다.
+
+			이 토큰은 운영자 세션을 만들거나 권한을 부여하지 않습니다.
+
+			브라우저에서 읽을 수 없는 다른 사이트의 요청에는 이 응답을 그대로 사용할 수 없습니다.""")
 	@GetMapping("/csrf")
 	ResponseEntity<ApiResponse<CsrfTokenResponse>> issue(@Parameter(hidden = true) CsrfToken csrfToken);
 

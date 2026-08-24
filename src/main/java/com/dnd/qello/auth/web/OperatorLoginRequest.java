@@ -12,10 +12,10 @@ import jakarta.validation.constraints.NotBlank;
 // 자격증명이 그대로 공개된다.
 @Schema(description = "운영자 로그인 요청")
 public record OperatorLoginRequest(
-	@Schema(description = "운영자 로그인 식별자. 소문자와 숫자만 허용한다.")
+	@Schema(description = "운영자 로그인 식별자. 앞뒤 공백을 제거하고 소문자로 변환합니다.")
 	@NotBlank(message = "loginId는 필수입니다") String loginId,
 
-	@Schema(description = "평문 비밀번호. 전송 구간은 TLS로 보호한다.")
+	@Schema(description = "평문 비밀번호입니다. 전송 구간은 TLS로 보호합니다.")
 	@NotBlank(message = "password는 필수입니다") String password
 ) {
 
