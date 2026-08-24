@@ -14,6 +14,8 @@ import com.dnd.qello.notification.error.NotificationErrorCode;
 import com.dnd.qello.notification.error.NotificationException;
 import com.dnd.qello.notification.service.NotificationInboxService;
 import com.dnd.qello.notification.service.NotificationPreferenceService;
+import com.dnd.qello.notification.service.PushDeviceService;
+import com.dnd.qello.notification.web.request.PushDeviceRequest;
 import com.dnd.qello.notification.web.request.UpdateNotificationPreferencesRequest;
 import com.dnd.qello.notification.web.response.NotificationCardResponse;
 import com.dnd.qello.notification.web.response.NotificationListingResponse;
@@ -32,6 +34,7 @@ public class NotificationController implements NotificationApiSpec {
 
 	private final NotificationInboxService inboxService;
 	private final NotificationPreferenceService preferenceService;
+	private final PushDeviceService pushDeviceService;
 	private final ApiResponseFactory responseFactory;
 
 	@Override
@@ -63,6 +66,22 @@ public class NotificationController implements NotificationApiSpec {
 	}
 
 	@Override
+	public ResponseEntity<Void> registerDevice(PushDeviceRequest request, Authentication authentication) {
+		pushDeviceService.registerOrTransferDevice(
+			AuthenticatedUserId.require(authentication),
+			requirePushDeviceRequest(request).toCommand());
+		return ResponseEntity.noContent().build();
+	}
+
+	@Override
+	public ResponseEntity<Void> revokeDevice(PushDeviceRequest request, Authentication authentication) {
+		pushDeviceService.revokeOwnedDevice(
+			AuthenticatedUserId.require(authentication),
+			requirePushDeviceRequest(request).toCommand());
+		return ResponseEntity.noContent().build();
+	}
+
+	@Override
 	public ResponseEntity<ApiResponse<NotificationSeenResponse>> markSeen(Authentication authentication) {
 		long recipientId = AuthenticatedUserId.require(authentication);
 		return ResponseEntity.ok(responseFactory.success(
@@ -91,6 +110,16 @@ public class NotificationController implements NotificationApiSpec {
 				NotificationErrorCode.INVALID_PREFERENCE,
 				"request",
 				"알림 설정 요청 본문은 필수입니다.");
+		}
+		return request;
+	}
+
+	private PushDeviceRequest requirePushDeviceRequest(PushDeviceRequest request) {
+		if (request == null) {
+			throw new NotificationException(
+				NotificationErrorCode.INVALID_PUSH_DEVICE_REQUEST,
+				"request",
+				"push device 요청 본문은 필수입니다.");
 		}
 		return request;
 	}
