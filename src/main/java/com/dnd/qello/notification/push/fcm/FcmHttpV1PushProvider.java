@@ -3,26 +3,28 @@ package com.dnd.qello.notification.push.fcm;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.lang.reflect.Field;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.StreamSupport;
 
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
+import org.springframework.http.client.ClientHttpResponse;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
+import com.dnd.qello.notification.push.PushPayload;
 import com.dnd.qello.notification.push.PushProvider;
 import com.dnd.qello.notification.push.PushProviderResult;
 import com.dnd.qello.notification.push.PushSendCommand;
-import com.dnd.qello.notification.push.security.PushToken;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -38,6 +40,7 @@ public final class FcmHttpV1PushProvider implements PushProvider {
 		"UNAVAILABLE",
 		"INTERNAL",
 		"DEADLINE_EXCEEDED");
+	private static final Set<Integer> RETRYABLE_STATUS_CODES = Set.of(429, 500, 502, 503, 504);
 
 	private final RestClient restClient;
 	private final FcmAccessTokenProvider accessTokenProvider;
@@ -71,7 +74,7 @@ public final class FcmHttpV1PushProvider implements PushProvider {
 				.contentType(MediaType.APPLICATION_JSON)
 				.header(HttpHeaders.AUTHORIZATION, "Bearer " + accessTokenProvider.accessToken())
 				.body(Map.of("message", Map.of(
-					"token", tokenValue(command.token()),
+					"token", command.token().exposeForProvider(),
 					"data", command.payload().asData())))
 				.exchange((request, response) -> mapResponse(response, command));
 		} catch (RestClientException exception) {
@@ -79,8 +82,7 @@ public final class FcmHttpV1PushProvider implements PushProvider {
 		}
 	}
 
-	private PushProviderResult mapResponse(org.springframework.http.client.ClientHttpResponse response, PushSendCommand command)
-		throws IOException {
+	private PushProviderResult mapResponse(ClientHttpResponse response, PushSendCommand command) throws IOException {
 		HttpStatusCode statusCode = response.getStatusCode();
 		if (statusCode.is2xxSuccessful()) {
 			return mapSuccess(response.getBody());
@@ -142,7 +144,7 @@ public final class FcmHttpV1PushProvider implements PushProvider {
 		if (details == null || !details.isArray()) {
 			return List.of();
 		}
-		return java.util.stream.StreamSupport.stream(details.spliterator(), false)
+		return StreamSupport.stream(details.spliterator(), false)
 			.map(detail -> upperOrDefault(detail.path("errorCode").asText(null), null))
 			.filter(code -> code != null && !code.isBlank())
 			.toList();
@@ -152,15 +154,15 @@ public final class FcmHttpV1PushProvider implements PushProvider {
 		if (details == null || !details.isArray()) {
 			return false;
 		}
-		return java.util.stream.StreamSupport.stream(details.spliterator(), false)
+		return StreamSupport.stream(details.spliterator(), false)
 			.map(detail -> detail.path("fieldViolations"))
 			.filter(JsonNode::isArray)
-			.flatMap(violations -> java.util.stream.StreamSupport.stream(violations.spliterator(), false))
+			.flatMap(violations -> StreamSupport.stream(violations.spliterator(), false))
 			.anyMatch(violation -> "message.token".equals(violation.path("field").asText()));
 	}
 
 	private boolean isInvalidToken(HttpStatusCode statusCode, ParsedError error,
-		com.dnd.qello.notification.push.PushPayload payload) {
+		PushPayload payload) {
 		if (INVALID_TOKEN_CODES.contains(error.reasonCode())
 			|| error.detailCodes().stream().anyMatch(INVALID_TOKEN_CODES::contains)) {
 			return true;
@@ -171,7 +173,7 @@ public final class FcmHttpV1PushProvider implements PushProvider {
 			&& hasAllowlistedPayload(payload);
 	}
 
-	private static boolean hasAllowlistedPayload(com.dnd.qello.notification.push.PushPayload payload) {
+	private static boolean hasAllowlistedPayload(PushPayload payload) {
 		Map<String, String> data = payload.asData();
 		return data.keySet().equals(Set.of("type", "count", "hasRemainingTime"))
 			&& "1".equals(data.get("count"))
@@ -179,11 +181,7 @@ public final class FcmHttpV1PushProvider implements PushProvider {
 	}
 
 	private boolean isRetryable(HttpStatusCode statusCode, String reasonCode) {
-		return statusCode.value() == 429
-			|| statusCode.value() == 500
-			|| statusCode.value() == 502
-			|| statusCode.value() == 503
-			|| statusCode.value() == 504
+		return RETRYABLE_STATUS_CODES.contains(statusCode.value())
 			|| RETRYABLE_CODES.contains(reasonCode);
 	}
 
@@ -207,25 +205,11 @@ public final class FcmHttpV1PushProvider implements PushProvider {
 		}
 	}
 
-	private static String tokenValue(PushToken token) {
-		try {
-			Field field = PushToken.class.getDeclaredField("value");
-			field.setAccessible(true);
-			Object value = field.get(token);
-			if (!(value instanceof String tokenValue) || tokenValue.isBlank()) {
-				throw new IllegalStateException("push token plaintext를 읽을 수 없습니다");
-			}
-			return tokenValue;
-		} catch (ReflectiveOperationException exception) {
-			throw new IllegalStateException("push token plaintext를 읽을 수 없습니다", exception);
-		}
-	}
-
 	private static String upperOrDefault(String value, String defaultValue) {
 		if (value == null || value.isBlank()) {
 			return defaultValue;
 		}
-		return value.toUpperCase(java.util.Locale.ROOT);
+		return value.toUpperCase(Locale.ROOT);
 	}
 
 	private static void drain(InputStream body) throws IOException {

@@ -25,6 +25,14 @@ public final class PushToken {
 		return value.getBytes(StandardCharsets.UTF_8);
 	}
 
+	/**
+	 * 원문을 노출하는 유일한 경계다. provider adapter가 wire로 내보낼 때만 호출하고,
+	 * 반환값을 log·예외 메시지·응답·저장소에 남기지 않는다.
+	 */
+	public String exposeForProvider() {
+		return value;
+	}
+
 	@Override
 	public String toString() {
 		return REDACTED;
