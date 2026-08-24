@@ -6,6 +6,8 @@ import com.dnd.qello.notification.repository.OutboxEventRepository;
 import com.dnd.qello.notification.repository.jdbc.sql.NotificationSql;
 import com.dnd.qello.notification.error.NotificationErrorCode;
 import com.dnd.qello.notification.error.NotificationException;
+import com.dnd.qello.notification.push.ClaimedPushDelivery;
+import com.dnd.qello.notification.push.PushDeliveryTerminalResult;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
@@ -184,22 +186,53 @@ public class JdbcNotificationRepository implements OutboxEventRepository, Notifi
     }
 
     @Override
+    public List<ClaimedPushDelivery> claimDueDeliveries(int batchSize, Instant now, Instant leaseUntil) {
+        validatePushDeliveryClaimRequest(batchSize, now, leaseUntil);
+        return jdbc.query(NotificationSql.CLAIM_DUE_PUSH_DELIVERIES,
+                new MapSqlParameterSource().addValue("batchSize", batchSize)
+                        .addValue("now", timestamp(now)).addValue("leaseUntil", timestamp(leaseUntil)),
+                (rs, row) -> new ClaimedPushDelivery(rs.getLong("delivery_id"),
+                        rs.getInt("generation"), instant(rs, "lease_until")));
+    }
+
+    @Override
+    public boolean completeClaim(
+            long deliveryId, int generation, PushDeliveryTerminalResult result, Instant at) {
+        validatePushDeliveryTerminalRequest(deliveryId, generation, result, at);
+        return jdbc.update(NotificationSql.COMPLETE_PUSH_DELIVERY,
+                new MapSqlParameterSource().addValue("deliveryId", deliveryId)
+                        .addValue("generation", generation).addValue("terminalStatus", result.name())
+                        .addValue("at", timestamp(at))) == 1;
+    }
+
+    @Override
     public Optional<NotificationDelivery> claimDelivery(long id, Instant at) {
-        int updated = jdbc.update("""
-                UPDATE notification_delivery
-                SET status = 'PROCESSING', next_attempt_at = :at
-                WHERE id = :id AND status IN ('PENDING', 'FAILED') AND next_attempt_at <= :at
-                """, new MapSqlParameterSource().addValue("id", id).addValue("at", timestamp(at)));
-        return updated == 1 ? findDeliveryById(id) : Optional.empty();
+        if (id <= 0) {
+            throw new NotificationException(NotificationErrorCode.INVALID_ID, "deliveryId",
+                    "deliveryId는 양수여야 합니다.");
+        }
+        if (at == null) {
+            throw new NotificationException(NotificationErrorCode.REQUIRED_VALUE_MISSING, "at",
+                    "처리 시각은 필수입니다.");
+        }
+        return jdbc.query(NotificationSql.CLAIM_SINGLE_LEGACY_PUSH_DELIVERY,
+                new MapSqlParameterSource().addValue("id", id).addValue("at", timestamp(at)),
+                (rs, row) -> mapDelivery(rs)).stream().findFirst();
     }
 
     @Override
     public boolean updateDelivery(NotificationDelivery delivery) {
-        return jdbc.update("""
-                UPDATE notification_delivery SET status = :status, attempt_count = :attemptCount,
-                    next_attempt_at = :nextAttemptAt, sent_at = :sentAt,
-                    provider_message_id = :providerMessageId WHERE id = :id
-                """, deliveryParams(delivery).addValue("id", delivery.id())) == 1;
+        if (delivery == null || delivery.id() == null || delivery.id() <= 0) {
+            throw new NotificationException(NotificationErrorCode.INVALID_ID, "deliveryId",
+                    "deliveryId는 양수여야 합니다.");
+        }
+        if (delivery.status() != DeliveryStatus.SENT && delivery.status() != DeliveryStatus.FAILED
+                && delivery.status() != DeliveryStatus.DEAD && delivery.status() != DeliveryStatus.CANCELLED) {
+            throw new NotificationException(NotificationErrorCode.INVALID_NOTIFICATION_STATUS, "status",
+                    "PROCESSING에서 종결 상태로만 전이할 수 있습니다.");
+        }
+        return jdbc.update(NotificationSql.COMPLETE_LEGACY_PUSH_DELIVERY,
+                deliveryParams(delivery).addValue("id", delivery.id())) == 1;
     }
 
     @Override
@@ -373,6 +406,37 @@ public class JdbcNotificationRepository implements OutboxEventRepository, Notifi
         }
         if (at == null) {
             throw new NotificationException(NotificationErrorCode.INVALID_PUSH_DEVICE_REQUEST, "at",
+                    "처리 시각은 필수입니다.");
+        }
+    }
+
+    private static void validatePushDeliveryClaimRequest(int batchSize, Instant now, Instant leaseUntil) {
+        if (batchSize <= 0) {
+            throw new NotificationException(NotificationErrorCode.INVALID_VALUE_RANGE, "batchSize",
+                    "batchSize는 양수여야 합니다.");
+        }
+        if (now == null || leaseUntil == null || !leaseUntil.isAfter(now)) {
+            throw new NotificationException(NotificationErrorCode.INVALID_VALUE_RANGE, "leaseUntil",
+                    "현재 시각 이후의 leaseUntil이 필요합니다.");
+        }
+    }
+
+    private static void validatePushDeliveryTerminalRequest(
+            long deliveryId, int generation, PushDeliveryTerminalResult result, Instant at) {
+        if (deliveryId <= 0) {
+            throw new NotificationException(NotificationErrorCode.INVALID_ID, "deliveryId",
+                    "deliveryId는 양수여야 합니다.");
+        }
+        if (generation <= 0) {
+            throw new NotificationException(NotificationErrorCode.INVALID_VALUE_RANGE, "generation",
+                    "generation은 양수여야 합니다.");
+        }
+        if (result == null) {
+            throw new NotificationException(NotificationErrorCode.REQUIRED_VALUE_MISSING, "result",
+                    "terminal result는 필수입니다.");
+        }
+        if (at == null) {
+            throw new NotificationException(NotificationErrorCode.REQUIRED_VALUE_MISSING, "at",
                     "처리 시각은 필수입니다.");
         }
     }

@@ -148,6 +148,74 @@ public final class NotificationSql {
 		RETURNING notification_delivery.*
 		""";
 
+	/**
+	 * attempt_count를 lease generation으로 사용한다. due 후보를 먼저 잠근 뒤 같은 문장에서
+	 * 상태·시도 횟수·lease 시각을 갱신하여 두 worker가 같은 행을 claim하지 않게 한다.
+	 */
+	public static final String CLAIM_DUE_PUSH_DELIVERIES = """
+		WITH due AS MATERIALIZED (
+			SELECT id
+			FROM notification_delivery
+			WHERE (
+				(status IN ('PENDING', 'FAILED') AND next_attempt_at <= :now)
+				OR (status = 'PROCESSING' AND next_attempt_at <= :now)
+			)
+			ORDER BY next_attempt_at, id
+			LIMIT :batchSize
+			FOR UPDATE SKIP LOCKED
+		)
+		UPDATE notification_delivery AS nd
+		SET status = 'PROCESSING',
+			attempt_count = nd.attempt_count + 1,
+			next_attempt_at = :leaseUntil,
+			sent_at = NULL,
+			provider_message_id = NULL
+		FROM due
+		WHERE nd.id = due.id
+		RETURNING nd.id AS delivery_id, nd.attempt_count AS generation,
+			nd.next_attempt_at AS lease_until
+		""";
+
+	/** generation fence를 통과한 결과만 반영하며 provider payload나 token은 이 경계에 들어오지 않는다. */
+	public static final String COMPLETE_PUSH_DELIVERY = """
+		UPDATE notification_delivery
+		SET status = CASE :terminalStatus
+			WHEN 'SENT' THEN 'SENT'
+			WHEN 'FAILED' THEN 'FAILED'
+			WHEN 'DEAD' THEN 'DEAD'
+			WHEN 'CANCELLED' THEN 'CANCELLED'
+			END,
+			next_attempt_at = :at,
+			sent_at = CASE WHEN :terminalStatus = 'SENT' THEN CAST(:at AS TIMESTAMPTZ)
+				ELSE CAST(NULL AS TIMESTAMPTZ) END,
+			provider_message_id = NULL
+		WHERE id = :deliveryId
+		  AND status = 'PROCESSING'
+		  AND attempt_count = :generation
+		""";
+
+	/** 기존 회귀 테스트용 단건 경로도 attempt_count를 올려 새 claim과 동일한 monotonic fence를 유지한다. */
+	public static final String CLAIM_SINGLE_LEGACY_PUSH_DELIVERY = """
+		UPDATE notification_delivery
+		SET status = 'PROCESSING', attempt_count = attempt_count + 1, next_attempt_at = :at,
+			sent_at = NULL, provider_message_id = NULL
+		WHERE id = :id
+		  AND status IN ('PENDING', 'FAILED')
+		  AND next_attempt_at <= :at
+		RETURNING *
+		""";
+
+	/** 기존 단건 API의 종결도 id와 직전 attempt_count를 함께 확인하는 호환 fence를 사용한다. */
+	public static final String COMPLETE_LEGACY_PUSH_DELIVERY = """
+		UPDATE notification_delivery
+		SET status = :status, attempt_count = :attemptCount,
+			next_attempt_at = :nextAttemptAt, sent_at = :sentAt,
+			provider_message_id = :providerMessageId
+		WHERE id = :id
+		  AND status = 'PROCESSING'
+		  AND attempt_count = :attemptCount - 1
+		""";
+
 	public static final String INSERT_PUSH_DEVICE = """
 		INSERT INTO push_device
 			(user_id, platform, token_ciphertext, token_fingerprint, device_status, last_seen_at, revoked_at)
