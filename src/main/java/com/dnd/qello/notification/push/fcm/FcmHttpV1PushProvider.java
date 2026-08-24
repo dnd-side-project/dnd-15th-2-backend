@@ -7,6 +7,7 @@ import java.lang.reflect.Field;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.Map;
@@ -16,6 +17,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientException;
 
 import com.dnd.qello.notification.push.PushProvider;
 import com.dnd.qello.notification.push.PushProviderResult;
@@ -30,7 +32,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
  */
 public final class FcmHttpV1PushProvider implements PushProvider {
 
-	private static final Set<String> INVALID_TOKEN_CODES = Set.of("INVALID_ARGUMENT", "UNREGISTERED");
+	private static final Set<String> INVALID_TOKEN_CODES = Set.of("UNREGISTERED");
 	private static final Set<String> RETRYABLE_CODES = Set.of(
 		"RESOURCE_EXHAUSTED",
 		"UNAVAILABLE",
@@ -63,17 +65,22 @@ public final class FcmHttpV1PushProvider implements PushProvider {
 		if (command == null) {
 			throw new IllegalArgumentException("command는 필수입니다");
 		}
-		return restClient.post()
-			.uri("/v1/projects/{projectId}/messages:send", projectId)
-			.contentType(MediaType.APPLICATION_JSON)
-			.header(HttpHeaders.AUTHORIZATION, "Bearer " + accessTokenProvider.accessToken())
-			.body(Map.of("message", Map.of(
-				"token", tokenValue(command.token()),
-				"data", command.payload().asData())))
-			.exchange((request, response) -> mapResponse(response));
+		try {
+			return restClient.post()
+				.uri("/v1/projects/{projectId}/messages:send", projectId)
+				.contentType(MediaType.APPLICATION_JSON)
+				.header(HttpHeaders.AUTHORIZATION, "Bearer " + accessTokenProvider.accessToken())
+				.body(Map.of("message", Map.of(
+					"token", tokenValue(command.token()),
+					"data", command.payload().asData())))
+				.exchange((request, response) -> mapResponse(response, command));
+		} catch (RestClientException exception) {
+			return new PushProviderResult.RetryableFailure(null);
+		}
 	}
 
-	private PushProviderResult mapResponse(org.springframework.http.client.ClientHttpResponse response) throws IOException {
+	private PushProviderResult mapResponse(org.springframework.http.client.ClientHttpResponse response, PushSendCommand command)
+		throws IOException {
 		HttpStatusCode statusCode = response.getStatusCode();
 		if (statusCode.is2xxSuccessful()) {
 			drain(response.getBody());
@@ -82,7 +89,7 @@ public final class FcmHttpV1PushProvider implements PushProvider {
 
 		ParsedError error = parseError(response.getBody());
 		String reasonCode = error.reasonCode();
-		if (isInvalidToken(statusCode, error)) {
+		if (isInvalidToken(statusCode, error, command.payload())) {
 			return new PushProviderResult.InvalidToken();
 		}
 		if (isRetryable(statusCode, reasonCode)) {
@@ -91,14 +98,25 @@ public final class FcmHttpV1PushProvider implements PushProvider {
 		return new PushProviderResult.PermanentFailure(reasonCode);
 	}
 
-	private ParsedError parseError(InputStream body) throws IOException {
+	private ParsedError parseError(InputStream body) {
 		if (body == null) {
-			return new ParsedError("HTTP_ERROR", List.of());
+			return ParsedError.unknown();
 		}
-		JsonNode root = objectMapper.readTree(body);
-		JsonNode error = root == null ? null : root.path("error");
-		String reasonCode = upperOrDefault(error == null ? null : error.path("status").asText(null), "HTTP_ERROR");
-		return new ParsedError(reasonCode, extractDetailCodes(error == null ? null : error.path("details")));
+		try {
+			JsonNode root = objectMapper.readTree(body);
+			JsonNode error = root == null ? null : root.path("error");
+			String reasonCode = upperOrDefault(error == null ? null : error.path("status").asText(null), "HTTP_ERROR");
+			JsonNode details = error == null ? null : error.path("details");
+			return new ParsedError(reasonCode, extractDetailCodes(details), hasTokenFieldViolation(details));
+		} catch (IOException exception) {
+			return ParsedError.unknown();
+		} finally {
+			try {
+				drain(body);
+			} catch (IOException ignored) {
+				// Error body는 domain result에 영향을 주지 않고 폐기한다.
+			}
+		}
 	}
 
 	private List<String> extractDetailCodes(JsonNode details) {
@@ -111,11 +129,34 @@ public final class FcmHttpV1PushProvider implements PushProvider {
 			.toList();
 	}
 
-	private boolean isInvalidToken(HttpStatusCode statusCode, ParsedError error) {
-		if (statusCode.value() == 400 && INVALID_TOKEN_CODES.contains(error.reasonCode())) {
+	private boolean hasTokenFieldViolation(JsonNode details) {
+		if (details == null || !details.isArray()) {
+			return false;
+		}
+		return java.util.stream.StreamSupport.stream(details.spliterator(), false)
+			.map(detail -> detail.path("fieldViolations"))
+			.filter(JsonNode::isArray)
+			.flatMap(violations -> java.util.stream.StreamSupport.stream(violations.spliterator(), false))
+			.anyMatch(violation -> "message.token".equals(violation.path("field").asText()));
+	}
+
+	private boolean isInvalidToken(HttpStatusCode statusCode, ParsedError error,
+		com.dnd.qello.notification.push.PushPayload payload) {
+		if (INVALID_TOKEN_CODES.contains(error.reasonCode())
+			|| error.detailCodes().stream().anyMatch(INVALID_TOKEN_CODES::contains)) {
 			return true;
 		}
-		return error.detailCodes().stream().anyMatch(INVALID_TOKEN_CODES::contains);
+		return statusCode.value() == 400
+			&& "INVALID_ARGUMENT".equals(error.reasonCode())
+			&& error.tokenFieldViolation()
+			&& hasAllowlistedPayload(payload);
+	}
+
+	private static boolean hasAllowlistedPayload(com.dnd.qello.notification.push.PushPayload payload) {
+		Map<String, String> data = payload.asData();
+		return data.keySet().equals(Set.of("type", "count", "hasRemainingTime"))
+			&& "1".equals(data.get("count"))
+			&& ("true".equals(data.get("hasRemainingTime")) || "false".equals(data.get("hasRemainingTime")));
 	}
 
 	private boolean isRetryable(HttpStatusCode statusCode, String reasonCode) {
@@ -138,7 +179,7 @@ public final class FcmHttpV1PushProvider implements PushProvider {
 			return seconds > 0 ? Duration.ofSeconds(seconds) : null;
 		} catch (NumberFormatException ignored) {
 			try {
-				Instant retryAt = ZonedDateTime.parse(trimmed).toInstant();
+				Instant retryAt = ZonedDateTime.parse(trimmed, DateTimeFormatter.RFC_1123_DATE_TIME).toInstant();
 				Duration duration = Duration.between(Instant.now(), retryAt);
 				return duration.isNegative() || duration.isZero() ? null : duration;
 			} catch (DateTimeParseException ignoredAgain) {
@@ -174,7 +215,10 @@ public final class FcmHttpV1PushProvider implements PushProvider {
 		}
 	}
 
-	private record ParsedError(String reasonCode, List<String> detailCodes) {
+	private record ParsedError(String reasonCode, List<String> detailCodes, boolean tokenFieldViolation) {
+		private static ParsedError unknown() {
+			return new ParsedError("HTTP_ERROR", List.of(), false);
+		}
 	}
 
 }
