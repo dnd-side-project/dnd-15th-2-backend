@@ -334,6 +334,18 @@ class PushDeviceRegistrationIntegrationTest extends PostgisContainerIntegrationT
 					""".formatted(" ".repeat(2))))
 			.andExpect(status().isBadRequest());
 
+		String oversizeToken = "x".repeat(4097);
+		mockMvc.perform(post("/api/v1/notifications/devices")
+				.with(jwt().jwt(token -> token.subject(String.valueOf(userId))))
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("""
+					{"platform":"ANDROID","token":"%s"}
+					""".formatted(oversizeToken)))
+			.andExpect(status().isBadRequest());
+		assertThat(jdbc.queryForObject("""
+			SELECT count(*) FROM push_device WHERE user_id = ?
+			""", Integer.class, userId)).isZero();
+
 		assertThat(output.getOut()).doesNotContain(TOKEN_SENTINEL, OTHER_TOKEN_SENTINEL);
 		assertThat(output.getErr()).doesNotContain(TOKEN_SENTINEL, OTHER_TOKEN_SENTINEL);
 	}
