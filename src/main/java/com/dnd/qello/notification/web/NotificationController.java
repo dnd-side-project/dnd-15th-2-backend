@@ -66,7 +66,7 @@ public class NotificationController implements NotificationApiSpec {
 	}
 
 	@Override
-	public ResponseEntity<Void> registerDevice(PushDeviceRequest request, Authentication authentication) {
+	public ResponseEntity<ApiResponse<Void>> registerDevice(PushDeviceRequest request, Authentication authentication) {
 		pushDeviceService.registerOrTransferDevice(
 			AuthenticatedUserId.require(authentication),
 			requirePushDeviceRequest(request).toCommand());
@@ -74,7 +74,7 @@ public class NotificationController implements NotificationApiSpec {
 	}
 
 	@Override
-	public ResponseEntity<Void> revokeDevice(PushDeviceRequest request, Authentication authentication) {
+	public ResponseEntity<ApiResponse<Void>> revokeDevice(PushDeviceRequest request, Authentication authentication) {
 		pushDeviceService.revokeOwnedDevice(
 			AuthenticatedUserId.require(authentication),
 			requirePushDeviceRequest(request).toCommand());

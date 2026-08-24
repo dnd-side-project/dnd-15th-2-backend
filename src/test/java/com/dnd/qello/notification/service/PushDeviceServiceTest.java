@@ -8,6 +8,7 @@ package com.dnd.qello.notification.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -138,7 +139,7 @@ class PushDeviceServiceTest {
 		assertThat(other).isZero();
 		assertThat(missing).isZero();
 		assertThat(revoked).isZero();
-		verify(tokenProtector).fingerprint(PushToken.of(TOKEN_SENTINEL));
+		verify(tokenProtector, times(4)).fingerprint(PushToken.of(TOKEN_SENTINEL));
 		verify(tokenProtector, never()).protect(any(PushToken.class));
 		assertThat(repository.calls).extracting(Invocation::name)
 			.containsExactly("revokeOwnedDevice", "revokeOwnedDevice", "revokeOwnedDevice", "revokeOwnedDevice");

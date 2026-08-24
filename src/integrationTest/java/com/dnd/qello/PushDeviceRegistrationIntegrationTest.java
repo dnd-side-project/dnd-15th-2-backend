@@ -37,8 +37,11 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
@@ -59,6 +62,7 @@ import com.dnd.qello.notification.push.security.AesGcmPushTokenProtector;
 import com.dnd.qello.notification.push.security.ProtectedPushToken;
 import com.dnd.qello.notification.push.security.PushToken;
 import com.dnd.qello.notification.push.security.PushTokenKeyRing;
+import com.dnd.qello.notification.push.security.PushTokenProtector;
 import com.dnd.qello.notification.repository.NotificationRepository;
 import com.dnd.qello.notification.repository.OutboxEventRepository;
 
@@ -66,6 +70,7 @@ import com.dnd.qello.notification.repository.OutboxEventRepository;
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
 @ExtendWith(OutputCaptureExtension.class)
+@Import(PushDeviceRegistrationIntegrationTest.TestPushTokenConfiguration.class)
 class PushDeviceRegistrationIntegrationTest extends PostgisContainerIntegrationTestSupport {
 
 	private static final String REGION = "TEST-GH179-PUSH-INT";
@@ -145,7 +150,7 @@ class PushDeviceRegistrationIntegrationTest extends PostgisContainerIntegrationT
 	@DisplayName("INT-002: revoke는 본인 token에 대해 멱등이고 PENDING/FAILED만 CANCELLED로 바꾼다")
 	void revokesOwnTokenIdempotentlyAndCancelsOnlyPendingOrFailedDeliveries() throws Exception {
 		long userId = account("gh179-revoke-own");
-		ProtectedPushToken protectedToken = protectedToken("revoke-own");
+		ProtectedPushToken protectedToken = protectedToken(TOKEN_SENTINEL);
 		PushDevice device = notifications.saveDevice(new PushDevice(null, userId, PushPlatform.ANDROID,
 			protectedToken.envelope(), protectedToken.fingerprint(), PushDeviceStatus.ACTIVE, NOW, null));
 		long pendingNotificationId = notificationFor(userId);
@@ -190,7 +195,7 @@ class PushDeviceRegistrationIntegrationTest extends PostgisContainerIntegrationT
 	void revokeDoesNotChangeAnotherUsersToken() throws Exception {
 		long ownerId = account("gh179-owner");
 		long otherUserId = account("gh179-other");
-		ProtectedPushToken protectedToken = protectedToken("revoke-other");
+		ProtectedPushToken protectedToken = protectedToken(OTHER_TOKEN_SENTINEL);
 		PushDevice device = notifications.saveDevice(new PushDevice(null, ownerId, PushPlatform.IOS,
 			protectedToken.envelope(), protectedToken.fingerprint(), PushDeviceStatus.ACTIVE, NOW, null));
 		long pendingNotificationId = notificationFor(ownerId);
@@ -263,7 +268,7 @@ class PushDeviceRegistrationIntegrationTest extends PostgisContainerIntegrationT
 	void concurrentOwnershipTransferIsAtomic() throws Exception {
 		long ownerId = account("gh179-transfer-owner");
 		long otherId = account("gh179-transfer-other");
-		ProtectedPushToken initialToken = protectedToken("transfer-owner");
+		ProtectedPushToken initialToken = protectedToken(TOKEN_SENTINEL);
 		PushDevice ownerDevice = notifications.saveDevice(new PushDevice(null, ownerId, PushPlatform.ANDROID,
 			initialToken.envelope(), initialToken.fingerprint(), PushDeviceStatus.ACTIVE, NOW, null));
 		long pendingNotificationId = notificationFor(ownerId);
@@ -456,10 +461,10 @@ class PushDeviceRegistrationIntegrationTest extends PostgisContainerIntegrationT
 		return UNMATCHED;
 	}
 
-	private ProtectedPushToken protectedToken(String label) {
+	private ProtectedPushToken protectedToken(String tokenValue) {
 		AesGcmPushTokenProtector protector = new AesGcmPushTokenProtector(
 			new PushTokenKeyRing(CURRENT_KEY_ID, Map.of(CURRENT_KEY_ID, ENCRYPTION_KEY), FINGERPRINT_KEY));
-		return protector.protect(PushToken.of(label + "-plain"));
+		return protector.protect(PushToken.of(tokenValue));
 	}
 
 	private com.dnd.qello.notification.push.security.PushTokenProtector protector() {
@@ -491,6 +496,16 @@ class PushDeviceRegistrationIntegrationTest extends PostgisContainerIntegrationT
 		byte[] key = new byte[32];
 		Arrays.fill(key, value);
 		return key;
+	}
+
+	@TestConfiguration(proxyBeanMethods = false)
+	static class TestPushTokenConfiguration {
+
+		@Bean
+		PushTokenProtector testPushTokenProtector() {
+			return new AesGcmPushTokenProtector(
+				new PushTokenKeyRing(CURRENT_KEY_ID, Map.of(CURRENT_KEY_ID, ENCRYPTION_KEY), FINGERPRINT_KEY));
+		}
 	}
 
 	private static final Object UNMATCHED = new Object();

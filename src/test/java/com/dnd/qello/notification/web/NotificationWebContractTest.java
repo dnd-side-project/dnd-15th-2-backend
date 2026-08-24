@@ -23,6 +23,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.dnd.qello.common.web.response.ApiResponseFactory;
 import com.dnd.qello.notification.service.NotificationInboxService;
 import com.dnd.qello.notification.service.NotificationPreferenceService;
+import com.dnd.qello.notification.service.PushDeviceService;
 import com.dnd.qello.notification.web.request.NotificationTypePreferenceRequest;
 import com.dnd.qello.notification.web.request.QuietHoursRequest;
 import com.dnd.qello.notification.web.request.UpdateNotificationPreferencesRequest;
@@ -46,7 +47,8 @@ class NotificationWebContractTest {
 		assertThat(NotificationController.class.isAnnotationPresent(RestController.class)).isTrue();
 		assertThat(NotificationController.class.getAnnotation(RequestMapping.class).value()).containsExactly("/api/v1");
 		assertThat(NotificationController.class.getConstructor(
-			NotificationInboxService.class, NotificationPreferenceService.class, ApiResponseFactory.class))
+			NotificationInboxService.class, NotificationPreferenceService.class, PushDeviceService.class,
+			ApiResponseFactory.class))
 			.isNotNull();
 	}
 

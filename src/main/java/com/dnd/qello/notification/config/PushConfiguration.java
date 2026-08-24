@@ -13,6 +13,8 @@ import com.dnd.qello.notification.push.PushProviderResult;
 import com.dnd.qello.notification.push.fcm.FcmAccessTokenProvider;
 import com.dnd.qello.notification.push.fcm.FcmHttpV1PushProvider;
 import com.dnd.qello.notification.push.fcm.GoogleCredentialsFcmAccessTokenProvider;
+import com.dnd.qello.notification.push.security.AesGcmPushTokenProtector;
+import com.dnd.qello.notification.push.security.PushTokenProtector;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 @Configuration(proxyBeanMethods = false)
@@ -27,8 +29,13 @@ public class PushConfiguration {
 
 	@Configuration(proxyBeanMethods = false)
 	@Profile("!test & !local & !integration")
-	@EnableConfigurationProperties(PushProperties.class)
+	@EnableConfigurationProperties({PushProperties.class, PushTokenProperties.class})
 	static class ProductionPushConfiguration {
+
+		@Bean
+		PushTokenProtector pushTokenProtector(PushTokenProperties properties) {
+			return new AesGcmPushTokenProtector(properties.keyRing());
+		}
 
 		@Bean
 		RestClient fcmRestClient(PushProperties properties) {

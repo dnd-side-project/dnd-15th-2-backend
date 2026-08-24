@@ -3,7 +3,8 @@
  * Source scenario: TEST-PLAN-GH-82-OPENAPI-SPEC-INT-001 through INT-004,
  * TEST-PLAN-GH-121-ACTIVE-USER-PRESENCE-API-INT-011 (added 2026-08-14T00:51:11+09:00),
  * TEST-PLAN-GH-122-DIRECTION-PREVIEW-SUBMISSION-API-INT-019 (added 2026-08-14T12:27:28+09:00),
- * TEST-PLAN-GH-178-NOTIFICATION-PREFERENCES-INT-012 (added 2026-08-21T21:25:00+09:00)
+ * TEST-PLAN-GH-178-NOTIFICATION-PREFERENCES-INT-012 (added 2026-08-21T21:25:00+09:00),
+ * TEST-PLAN-GH-179-PUSH-DELIVERY-INT-018 (added 2026-08-25T00:17:40+09:00)
  */
 package com.dnd.qello;
 
@@ -259,6 +260,21 @@ class OpenApiSpecificationIntegrationTest extends PostgisContainerIntegrationTes
 				"QUESTION_RECOMMENDED");
 		assertNoPrivateFields(getOperation);
 		assertNoPrivateFields(putOperation);
+	}
+
+	@Test
+	@DisplayName("INT-018: push device register와 revoke의 204 응답은 content schema를 노출하지 않는다")
+	void documentsPushDeviceNoContentResponsesWithoutSchema() throws Exception {
+		JsonNode specification = objectMapper.readTree(fetchSpecification());
+		JsonNode registerResponse = operation(specification, "/api/v1/notifications/devices", "post")
+			.at("/responses/204");
+		JsonNode revokeResponse = operation(specification, "/api/v1/notifications/devices/revoke", "post")
+			.at("/responses/204");
+
+		assertThat(registerResponse.isMissingNode()).isFalse();
+		assertThat(registerResponse.has("content")).isFalse();
+		assertThat(revokeResponse.isMissingNode()).isFalse();
+		assertThat(revokeResponse.has("content")).isFalse();
 	}
 
 	private JsonNode operation(JsonNode specification, String path, String method) {

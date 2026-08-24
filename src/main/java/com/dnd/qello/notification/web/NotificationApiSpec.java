@@ -145,13 +145,13 @@ public interface NotificationApiSpec {
 			서버는 token 원문을 응답에 저장하지 않고, 오류와 로그에도 redaction된 형태만 남깁니다.
 			같은 사용자가 같은 기기를 다시 등록하면 최신 token 보호값과 마지막 확인 시각만 갱신합니다.""")
 	@ApiResponses({
-		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "204", description = "기기 등록 또는 최신화가 완료되었습니다."),
+		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "204", description = "기기 등록 또는 최신화가 완료되었습니다.", content = @Content),
 		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "platform 또는 token 값이 계약을 만족하지 않습니다. (NOT-VAL-009)", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
 		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "앱 액세스 토큰이 유효하지 않습니다.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
 		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "500", description = "푸시 token 보호 처리에 실패했습니다. (NOT-INFRA-002)", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class)))
 	})
 	@PostMapping("/notifications/devices")
-	ResponseEntity<Void> registerDevice(
+	ResponseEntity<ApiResponse<Void>> registerDevice(
 		@RequestBody(required = false) PushDeviceRequest request,
 		@Parameter(hidden = true) Authentication authentication);
 
@@ -165,13 +165,13 @@ public interface NotificationApiSpec {
 			서버는 token 원문을 응답에 저장하지 않고, 오류와 로그에도 redaction된 형태만 남깁니다.
 			같은 token이 없거나 이미 해지된 상태여도 멱등하게 204 No Content를 돌려줍니다.""")
 	@ApiResponses({
-		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "204", description = "기기 해지가 완료되었습니다."),
+		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "204", description = "기기 해지가 완료되었습니다.", content = @Content),
 		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "platform 또는 token 값이 계약을 만족하지 않습니다. (NOT-VAL-009)", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
 		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "앱 액세스 토큰이 유효하지 않습니다.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
 		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "500", description = "푸시 token 보호 처리에 실패했습니다. (NOT-INFRA-002)", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class)))
 	})
 	@PostMapping("/notifications/devices/revoke")
-	ResponseEntity<Void> revokeDevice(
+	ResponseEntity<ApiResponse<Void>> revokeDevice(
 		@RequestBody(required = false) PushDeviceRequest request,
 		@Parameter(hidden = true) Authentication authentication);
 
