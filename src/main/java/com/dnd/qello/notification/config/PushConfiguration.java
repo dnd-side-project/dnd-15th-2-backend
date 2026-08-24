@@ -20,13 +20,13 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 public class PushConfiguration {
 
 	@Bean
-	@Profile({"test", "local"})
+	@Profile({"test", "local", "integration"})
 	public PushProvider noOpPushProvider() {
 		return new NoOpPushProvider();
 	}
 
 	@Configuration(proxyBeanMethods = false)
-	@Profile("!test & !local")
+	@Profile("!test & !local & !integration")
 	@EnableConfigurationProperties(PushProperties.class)
 	static class ProductionPushConfiguration {
 

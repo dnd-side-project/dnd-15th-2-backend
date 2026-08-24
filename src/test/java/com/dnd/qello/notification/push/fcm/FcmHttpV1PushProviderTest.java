@@ -126,6 +126,16 @@ class FcmHttpV1PushProviderTest {
 	}
 
 	@Test
+	@DisplayName("UNIT-013: 잘린 FCM 오류 body의 IOException은 원문 없이 PermanentFailure로 변환한다")
+	void mapsTruncatedErrorBodyWithoutSurfacingItsContents() {
+		fakeServer.respondWithTruncated(400, "{\"error\":", 64);
+
+		PushProviderResult result = provider.send(command());
+
+		assertThat(result).isEqualTo(new PushProviderResult.PermanentFailure("HTTP_ERROR"));
+	}
+
+	@Test
 	@DisplayName("UNIT-013: 인증 실패는 safe code만 가진 PermanentFailure로 변환한다")
 	void mapsAuthenticationFailureToPermanentFailure() {
 		fakeServer.respondWith(401, "{\"error\":{\"status\":\"UNAUTHENTICATED\"}}", null, Duration.ZERO);
@@ -171,6 +181,7 @@ class FcmHttpV1PushProviderTest {
 		private volatile String responseBody = "{}";
 		private volatile String retryAfterHeader;
 		private volatile Duration responseDelay = Duration.ZERO;
+		private volatile int declaredResponseLength = -1;
 		private volatile String requestPath;
 		private volatile String requestBody;
 		private volatile com.sun.net.httpserver.Headers requestHeaders;
@@ -200,6 +211,15 @@ class FcmHttpV1PushProviderTest {
 			this.responseBody = body;
 			this.retryAfterHeader = retryAfterHeader;
 			this.responseDelay = responseDelay;
+			this.declaredResponseLength = -1;
+		}
+
+		void respondWithTruncated(int statusCode, String body, int declaredLength) {
+			this.statusCode = statusCode;
+			this.responseBody = body;
+			this.retryAfterHeader = null;
+			this.responseDelay = Duration.ZERO;
+			this.declaredResponseLength = declaredLength;
 		}
 
 		String requestPath() {
@@ -229,7 +249,7 @@ class FcmHttpV1PushProviderTest {
 			if (retryAfterHeader != null) {
 				exchange.getResponseHeaders().add("Retry-After", retryAfterHeader);
 			}
-			exchange.sendResponseHeaders(statusCode, bytes.length);
+			exchange.sendResponseHeaders(statusCode, declaredResponseLength >= 0 ? declaredResponseLength : bytes.length);
 			try (OutputStream output = exchange.getResponseBody()) {
 				output.write(bytes);
 			}

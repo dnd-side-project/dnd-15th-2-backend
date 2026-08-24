@@ -48,6 +48,21 @@ class PushConfigurationTest {
 	}
 
 	@Test
+	@DisplayName("UNIT-015: integration 프로필은 실제 credential 없이 fake PushProvider로 기동해야 한다")
+	void integrationProfileStartsWithFakeProviderWithoutRealSecrets() {
+		new ApplicationContextRunner()
+			.withConfiguration(AutoConfigurations.of(ConfigurationPropertiesAutoConfiguration.class))
+			.withUserConfiguration(PushConfiguration.class)
+			.withPropertyValues("spring.profiles.active=integration")
+			.run(context -> {
+				assertThat(context).hasNotFailed();
+				assertThat(context.getBeansOfType(com.dnd.qello.notification.push.PushProvider.class).values())
+					.anySatisfy(bean -> assertThat(bean.getClass().getSimpleName().toLowerCase())
+						.containsAnyOf("fake", "noop"));
+			});
+	}
+
+	@Test
 	@DisplayName("UNIT-015: PushProperties는 configuration-properties 접두사를 명시해야 한다")
 	void declaresConfigurationPropertiesPrefix() {
 		ConfigurationProperties annotation = PushProperties.class.getAnnotation(ConfigurationProperties.class);
