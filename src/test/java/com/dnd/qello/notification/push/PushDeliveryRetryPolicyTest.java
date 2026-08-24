@@ -56,6 +56,67 @@ class PushDeliveryRetryPolicyTest {
 			.isTrue();
 	}
 
+	@Test
+	@DisplayName("UNIT-012: Accepted 결과는 SENT로 종결되고 재시도 지연은 0이다")
+	void acceptedResultBecomesSent() {
+		Instant at = Instant.parse("2026-08-24T12:00:00Z");
+		PushDeliveryRetryPolicy policy = policy();
+
+		PushDeliveryRetryPolicy.Decision decision = policy.decide(1, new PushProviderResult.Accepted(), at);
+
+		assertThat(decision.result()).isEqualTo(PushDeliveryTerminalResult.SENT);
+		assertThat(decision.nextAttemptAt()).isEqualTo(at);
+		assertThat(decision.delay()).isZero();
+		assertThat(decision.retryable()).isFalse();
+	}
+
+	@Test
+	@DisplayName("UNIT-012: 안전한 Retry-After는 FAILED와 지정된 다음 시각으로 보존된다")
+	void safeRetryAfterSchedulesTheSuppliedNextAttempt() {
+		Instant at = Instant.parse("2026-08-24T12:00:00Z");
+		Duration retryAfter = Duration.ofSeconds(17);
+
+		PushDeliveryRetryPolicy.Decision decision = policy().decide(1,
+			new PushProviderResult.RetryableFailure(retryAfter), at);
+
+		assertThat(decision.result()).isEqualTo(PushDeliveryTerminalResult.FAILED);
+		assertThat(decision.nextAttemptAt()).isEqualTo(at.plus(retryAfter));
+		assertThat(decision.delay()).isEqualTo(retryAfter);
+		assertThat(decision.retryable()).isTrue();
+	}
+
+	@Test
+	@DisplayName("UNIT-012: invalid token, permanent failure, 최대 시도 횟수 초과는 DEAD로 종결된다")
+	void terminalProviderResultsAndMaxAttemptBecomeDead() {
+		Instant at = Instant.parse("2026-08-24T12:00:00Z");
+		PushDeliveryRetryPolicy policy = policy();
+
+		assertThat(policy.decide(1, new PushProviderResult.InvalidToken(), at).result())
+			.isEqualTo(PushDeliveryTerminalResult.DEAD);
+		assertThat(policy.decide(1, new PushProviderResult.PermanentFailure("PROVIDER_REJECTED"), at).result())
+			.isEqualTo(PushDeliveryTerminalResult.DEAD);
+		assertThat(policy.decide(3, new PushProviderResult.RetryableFailure(Duration.ofSeconds(5)), at).result())
+			.isEqualTo(PushDeliveryTerminalResult.DEAD);
+	}
+
+	@Test
+	@DisplayName("UNIT-012: 범위를 벗어난 Retry-After는 bounded exponential backoff로 대체된다")
+	void unsafeRetryAfterUsesBoundedExponentialFallback() {
+		Instant at = Instant.parse("2026-08-24T12:00:00Z");
+		PushDeliveryRetryPolicy policy = new PushDeliveryRetryPolicy(8, Duration.ofSeconds(10), Duration.ofSeconds(25));
+
+		PushDeliveryRetryPolicy.Decision decision = policy.decide(3,
+			new PushProviderResult.RetryableFailure(Duration.ofSeconds(60)), at);
+
+		assertThat(decision.result()).isEqualTo(PushDeliveryTerminalResult.FAILED);
+		assertThat(decision.delay()).isEqualTo(Duration.ofSeconds(25));
+		assertThat(decision.nextAttemptAt()).isEqualTo(at.plusSeconds(25));
+	}
+
+	private static PushDeliveryRetryPolicy policy() {
+		return new PushDeliveryRetryPolicy(3, Duration.ofSeconds(10), Duration.ofSeconds(40));
+	}
+
 	private static Class<?> requiredClass(String className) {
 		try {
 			return Class.forName(className);

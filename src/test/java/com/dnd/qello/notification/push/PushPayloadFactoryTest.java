@@ -8,12 +8,22 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.lang.reflect.Constructor;
 import java.lang.reflect.RecordComponent;
+import java.time.Instant;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+
+import com.dnd.qello.notification.domain.DeliveryStatus;
+import com.dnd.qello.notification.domain.Notification;
+import com.dnd.qello.notification.domain.NotificationDelivery;
+import com.dnd.qello.notification.domain.NotificationStatus;
+import com.dnd.qello.notification.domain.NotificationType;
+import com.dnd.qello.notification.domain.PushDevice;
+import com.dnd.qello.notification.domain.PushDeviceStatus;
+import com.dnd.qello.notification.domain.PushPlatform;
 
 class PushPayloadFactoryTest {
 
@@ -50,6 +60,49 @@ class PushPayloadFactoryTest {
 			.anyMatch(method -> Arrays.stream(method.getParameterTypes())
 				.anyMatch(type -> type.equals(contextType))))
 			.isTrue();
+	}
+
+	@Test
+	@DisplayName("UNIT-009: 남은 시간이 있는 방향 글 payload는 세 개의 allowlist key만 생성한다")
+	void createsRemainingTimePayloadFromRealDispatchContext() {
+		PushPayload payload = new PushPayloadFactory().create(context(NotificationType.DIRECTION_POST_RECEIVED, true));
+
+		assertThat(payload.asData()).containsExactlyInAnyOrderEntriesOf(Map.of(
+			"type", "DIRECTION_POST_RECEIVED",
+			"count", "1",
+			"hasRemainingTime", "true"));
+		assertThat(payload.asData()).doesNotContainKeys(
+			"notificationId", "recipientId", "pushDeviceId", "token", "content", "dedupKey");
+	}
+
+	@Test
+	@DisplayName("UNIT-009: 비만료 알림 payload는 남은 시간 없이 동일한 세 key만 생성한다")
+	void createsNonExpiringPayloadFromRealDispatchContext() {
+		PushPayload payload = new PushPayloadFactory().create(context(NotificationType.ANSWER_RECEIVED, false));
+
+		assertThat(payload.asData()).containsExactlyInAnyOrderEntriesOf(Map.of(
+			"type", "ANSWER_RECEIVED",
+			"count", "1",
+			"hasRemainingTime", "false"));
+		assertThat(payload.asData()).doesNotContainKeys(
+			"notificationId", "recipientId", "pushDeviceId", "token", "content", "dedupKey");
+	}
+
+	private static PushDispatchContext context(NotificationType type, boolean hasRemainingTime) {
+		Instant at = Instant.parse("2026-08-24T12:00:00Z");
+		long notificationId = 101L;
+		long deviceId = 202L;
+		long recipientId = 303L;
+		Notification notification = new Notification(notificationId, recipientId, 404L, type, "dedup-key",
+			type == NotificationType.DIRECTION_POST_RECEIVED ? 505L : null, null, null,
+			NotificationStatus.UNREAD, at, null);
+		NotificationDelivery delivery = new NotificationDelivery(606L, notificationId, deviceId,
+			DeliveryStatus.PROCESSING, 1, at, at, null, null);
+		PushDevice device = new PushDevice(deviceId, recipientId, PushPlatform.ANDROID, new byte[] {1, 2, 3},
+			"fingerprint", PushDeviceStatus.ACTIVE, at, null);
+		PushDispatchContext.DispatchValiditySnapshot validity = new PushDispatchContext.DispatchValiditySnapshot(
+			true, true, true, false, true, hasRemainingTime);
+		return new PushDispatchContext(delivery, notification, device, null, validity);
 	}
 
 	private static Class<?> requiredClass(String className) {
