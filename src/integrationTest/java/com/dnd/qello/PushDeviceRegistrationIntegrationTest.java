@@ -9,6 +9,7 @@ package com.dnd.qello;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.lang.reflect.Constructor;
@@ -130,7 +131,8 @@ class PushDeviceRegistrationIntegrationTest extends PostgisContainerIntegrationT
 				.with(jwt().jwt(token -> token.subject(String.valueOf(userId))))
 				.contentType(MediaType.APPLICATION_JSON)
 				.content(body))
-			.andExpect(status().isNoContent());
+			.andExpect(status().isNoContent())
+			.andExpect(content().string(""));
 
 		assertThat(jdbc.queryForObject("""
 			SELECT count(*) FROM push_device WHERE user_id = ? AND device_status = 'ACTIVE'
@@ -163,12 +165,14 @@ class PushDeviceRegistrationIntegrationTest extends PostgisContainerIntegrationT
 				.with(jwt().jwt(token -> token.subject(String.valueOf(userId))))
 				.contentType(MediaType.APPLICATION_JSON)
 				.content(body))
-			.andExpect(status().isNoContent());
+			.andExpect(status().isNoContent())
+			.andExpect(content().string(""));
 		mockMvc.perform(post("/api/v1/notifications/devices/revoke")
 				.with(jwt().jwt(token -> token.subject(String.valueOf(userId))))
 				.contentType(MediaType.APPLICATION_JSON)
 				.content(body))
-			.andExpect(status().isNoContent());
+			.andExpect(status().isNoContent())
+			.andExpect(content().string(""));
 
 		assertThat(jdbc.queryForObject("""
 			SELECT device_status FROM push_device WHERE id = ?
@@ -201,7 +205,8 @@ class PushDeviceRegistrationIntegrationTest extends PostgisContainerIntegrationT
 				.content("""
 					{"platform":"IOS","token":"%s"}
 					""".formatted(OTHER_TOKEN_SENTINEL)))
-			.andExpect(status().isNoContent());
+			.andExpect(status().isNoContent())
+			.andExpect(content().string(""));
 
 		assertThat(jdbc.queryForObject("""
 			SELECT device_status FROM push_device WHERE id = ?
@@ -321,6 +326,10 @@ class PushDeviceRegistrationIntegrationTest extends PostgisContainerIntegrationT
 			.andExpect(status().isBadRequest());
 		mockMvc.perform(post("/api/v1/notifications/devices")
 				.with(jwt().jwt(token -> token.subject(String.valueOf(userId))))
+				.contentType(MediaType.APPLICATION_JSON))
+			.andExpect(status().isBadRequest());
+		mockMvc.perform(post("/api/v1/notifications/devices")
+				.with(jwt().jwt(token -> token.subject(String.valueOf(userId))))
 				.contentType(MediaType.APPLICATION_JSON)
 				.content("""
 					{"platform":"INVALID","token":"%s"}
@@ -332,6 +341,10 @@ class PushDeviceRegistrationIntegrationTest extends PostgisContainerIntegrationT
 				.content("""
 					{"platform":"ANDROID","token":"%s"}
 					""".formatted(" ".repeat(2))))
+			.andExpect(status().isBadRequest());
+		mockMvc.perform(post("/api/v1/notifications/devices/revoke")
+				.with(jwt().jwt(token -> token.subject(String.valueOf(userId))))
+				.contentType(MediaType.APPLICATION_JSON))
 			.andExpect(status().isBadRequest());
 
 		String oversizeToken = "x".repeat(4097);
