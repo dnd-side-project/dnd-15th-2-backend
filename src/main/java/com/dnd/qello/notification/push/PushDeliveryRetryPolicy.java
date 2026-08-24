@@ -40,33 +40,35 @@ public record PushDeliveryRetryPolicy(
 		}
 
 		if (providerResult instanceof PushProviderResult.Accepted) {
-			return terminal(PushDeliveryTerminalResult.SENT, at, Duration.ZERO);
+			return new Decision(PushDeliveryTerminalResult.SENT, at, Duration.ZERO);
 		}
 		if (providerResult instanceof PushProviderResult.InvalidToken
 			|| providerResult instanceof PushProviderResult.PermanentFailure) {
-			return terminal(PushDeliveryTerminalResult.DEAD, at, Duration.ZERO);
+			return new Decision(PushDeliveryTerminalResult.DEAD, at, Duration.ZERO);
 		}
 
 		PushProviderResult.RetryableFailure retryable = (PushProviderResult.RetryableFailure) providerResult;
 		if (generation >= maxAttempts) {
-			return terminal(PushDeliveryTerminalResult.DEAD, at, Duration.ZERO);
+			return new Decision(PushDeliveryTerminalResult.DEAD, at, Duration.ZERO);
 		}
 
-		Duration delay = safeRetryAfter(retryable.retryAfter()).orElseGet(() -> boundedExponential(generation));
+		Duration providerDelay = usableRetryAfter(retryable.retryAfter());
+		Duration delay = providerDelay != null ? providerDelay : boundedExponential(generation);
 		try {
-			return terminal(PushDeliveryTerminalResult.FAILED, at.plus(delay), delay);
+			return new Decision(PushDeliveryTerminalResult.FAILED, at.plus(delay), delay);
 		} catch (DateTimeException | ArithmeticException exception) {
 			throw new NotificationException(NotificationErrorCode.INVALID_VALUE_RANGE, "backoff",
 				"다음 재시도 시각을 계산할 수 없습니다", exception);
 		}
 	}
 
-	private java.util.Optional<Duration> safeRetryAfter(Duration retryAfter) {
+	/** provider가 준 Retry-After가 정책 상한 안에 있을 때만 사용한다. 사용할 수 없으면 null. */
+	private Duration usableRetryAfter(Duration retryAfter) {
 		if (retryAfter == null || retryAfter.isZero() || retryAfter.isNegative()
 			|| retryAfter.compareTo(backoffCap) > 0) {
-			return java.util.Optional.empty();
+			return null;
 		}
-		return java.util.Optional.of(retryAfter);
+		return retryAfter;
 	}
 
 	private Duration boundedExponential(int generation) {
@@ -77,10 +79,6 @@ public record PushDeliveryRetryPolicy(
 		} catch (ArithmeticException exception) {
 			return backoffCap;
 		}
-	}
-
-	private static Decision terminal(PushDeliveryTerminalResult result, Instant nextAttemptAt, Duration delay) {
-		return new Decision(result, nextAttemptAt, delay);
 	}
 
 	private static NotificationException required(String field) {

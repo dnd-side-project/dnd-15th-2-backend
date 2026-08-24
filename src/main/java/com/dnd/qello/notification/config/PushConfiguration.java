@@ -10,6 +10,7 @@ import org.springframework.web.client.RestClient;
 
 import com.dnd.qello.notification.push.PushProvider;
 import com.dnd.qello.notification.push.PushProviderResult;
+import com.dnd.qello.notification.push.PushSendCommand;
 import com.dnd.qello.notification.push.fcm.FcmAccessTokenProvider;
 import com.dnd.qello.notification.push.fcm.FcmHttpV1PushProvider;
 import com.dnd.qello.notification.push.fcm.GoogleCredentialsFcmAccessTokenProvider;
@@ -68,7 +69,7 @@ public class PushConfiguration {
 	private static final class NoOpPushProvider implements PushProvider {
 
 		@Override
-		public PushProviderResult send(com.dnd.qello.notification.push.PushSendCommand command) {
+		public PushProviderResult send(PushSendCommand command) {
 			return new PushProviderResult.Accepted("noop-provider-message");
 		}
 

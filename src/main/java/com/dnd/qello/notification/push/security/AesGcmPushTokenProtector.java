@@ -17,7 +17,6 @@ public final class AesGcmPushTokenProtector implements PushTokenProtector {
 	private static final byte VERSION = 1;
 	private static final int NONCE_LENGTH_BYTES = 12;
 	private static final int GCM_TAG_LENGTH_BITS = 128;
-	private static final String REDACTED = "[REDACTED]";
 
 	private final PushTokenKeyRing keyRing;
 	private final SecureRandom secureRandom;
@@ -60,12 +59,7 @@ public final class AesGcmPushTokenProtector implements PushTokenProtector {
 				keyRing.encryptionKey(parsedEnvelope.keyId()));
 			return PushToken.of(new String(plaintext, StandardCharsets.UTF_8));
 		}
-		catch (IllegalArgumentException | PushTokenProtectionException exception) {
-			throw exception instanceof PushTokenProtectionException protectionException
-				? protectionException
-				: new PushTokenProtectionException();
-		}
-		catch (GeneralSecurityException exception) {
+		catch (IllegalArgumentException | GeneralSecurityException exception) {
 			throw new PushTokenProtectionException();
 		}
 	}
@@ -107,7 +101,7 @@ public final class AesGcmPushTokenProtector implements PushTokenProtector {
 		if (envelope.length < 2 + NONCE_LENGTH_BYTES + 16) {
 			throw new PushTokenProtectionException();
 		}
-		ByteBuffer buffer = ByteBuffer.wrap(envelope.clone());
+		ByteBuffer buffer = ByteBuffer.wrap(envelope);
 		byte version = buffer.get();
 		if (version != VERSION) {
 			throw new PushTokenProtectionException();

@@ -105,21 +105,16 @@ public class NotificationController implements NotificationApiSpec {
 	}
 
 	private UpdateNotificationPreferencesRequest requireRequest(UpdateNotificationPreferencesRequest request) {
-		if (request == null) {
-			throw new NotificationException(
-				NotificationErrorCode.INVALID_PREFERENCE,
-				"request",
-				"알림 설정 요청 본문은 필수입니다.");
-		}
-		return request;
+		return requireBody(request, NotificationErrorCode.INVALID_PREFERENCE, "알림 설정 요청 본문은 필수입니다.");
 	}
 
 	private PushDeviceRequest requirePushDeviceRequest(PushDeviceRequest request) {
+		return requireBody(request, NotificationErrorCode.INVALID_PUSH_DEVICE_REQUEST, "push device 요청 본문은 필수입니다.");
+	}
+
+	private static <T> T requireBody(T request, NotificationErrorCode errorCode, String message) {
 		if (request == null) {
-			throw new NotificationException(
-				NotificationErrorCode.INVALID_PUSH_DEVICE_REQUEST,
-				"request",
-				"push device 요청 본문은 필수입니다.");
+			throw new NotificationException(errorCode, "request", message);
 		}
 		return request;
 	}
