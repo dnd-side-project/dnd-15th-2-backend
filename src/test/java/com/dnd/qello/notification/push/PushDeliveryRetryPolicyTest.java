@@ -5,6 +5,7 @@
 package com.dnd.qello.notification.push;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.lang.reflect.RecordComponent;
 import java.time.Duration;
@@ -62,12 +63,33 @@ class PushDeliveryRetryPolicyTest {
 		Instant at = Instant.parse("2026-08-24T12:00:00Z");
 		PushDeliveryRetryPolicy policy = policy();
 
-		PushDeliveryRetryPolicy.Decision decision = policy.decide(1, new PushProviderResult.Accepted(), at);
+		PushDeliveryRetryPolicy.Decision decision = policy.decide(
+			1, new PushProviderResult.Accepted("projects/test/messages/unit-accepted"), at);
 
 		assertThat(decision.result()).isEqualTo(PushDeliveryTerminalResult.SENT);
 		assertThat(decision.nextAttemptAt()).isEqualTo(at);
 		assertThat(decision.delay()).isZero();
 		assertThat(decision.retryable()).isFalse();
+	}
+
+	@Test
+	@DisplayName("UNIT-012: Accepted providerMessageId는 255자 이하 비공백·비제어 문자열만 허용한다")
+	void validatesAcceptedProviderMessageId() {
+		String maxLength = "m".repeat(255);
+
+		assertThat(new PushProviderResult.Accepted(maxLength).providerMessageId()).isEqualTo(maxLength);
+		assertThatThrownBy(() -> new PushProviderResult.Accepted(null))
+			.isInstanceOf(IllegalArgumentException.class);
+		assertThatThrownBy(() -> new PushProviderResult.Accepted(""))
+			.isInstanceOf(IllegalArgumentException.class);
+		assertThatThrownBy(() -> new PushProviderResult.Accepted("contains whitespace"))
+			.isInstanceOf(IllegalArgumentException.class);
+		assertThatThrownBy(() -> new PushProviderResult.Accepted("contains\ncontrol"))
+			.isInstanceOf(IllegalArgumentException.class);
+		assertThatThrownBy(() -> new PushProviderResult.Accepted("contains\u00a0space"))
+			.isInstanceOf(IllegalArgumentException.class);
+		assertThatThrownBy(() -> new PushProviderResult.Accepted("m".repeat(256)))
+			.isInstanceOf(IllegalArgumentException.class);
 	}
 
 	@Test

@@ -83,8 +83,7 @@ public final class FcmHttpV1PushProvider implements PushProvider {
 		throws IOException {
 		HttpStatusCode statusCode = response.getStatusCode();
 		if (statusCode.is2xxSuccessful()) {
-			drain(response.getBody());
-			return new PushProviderResult.Accepted();
+			return mapSuccess(response.getBody());
 		}
 
 		ParsedError error = parseError(response.getBody());
@@ -96,6 +95,26 @@ public final class FcmHttpV1PushProvider implements PushProvider {
 			return new PushProviderResult.RetryableFailure(parseRetryAfter(response.getHeaders()));
 		}
 		return new PushProviderResult.PermanentFailure(reasonCode);
+	}
+
+	private PushProviderResult mapSuccess(InputStream body) {
+		if (body == null) {
+			return new PushProviderResult.PermanentFailure("INVALID_SUCCESS_RESPONSE");
+		}
+		try {
+			JsonNode root = objectMapper.readTree(body);
+			JsonNode name = root == null ? null : root.path("name");
+			String providerMessageId = name != null && name.isTextual() ? name.textValue() : null;
+			return new PushProviderResult.Accepted(providerMessageId);
+		} catch (IOException | RuntimeException exception) {
+			return new PushProviderResult.PermanentFailure("INVALID_SUCCESS_RESPONSE");
+		} finally {
+			try {
+				drain(body);
+			} catch (IOException ignored) {
+				// Success body는 domain result에 영향을 주지 않고 폐기한다.
+			}
+		}
 	}
 
 	private ParsedError parseError(InputStream body) {

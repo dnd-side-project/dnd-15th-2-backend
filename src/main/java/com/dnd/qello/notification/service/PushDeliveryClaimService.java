@@ -45,6 +45,19 @@ public class PushDeliveryClaimService {
 	}
 
 	@Transactional
+	public boolean completeClaim(
+		long deliveryId,
+		int generation,
+		PushDeliveryTerminalResult result,
+		Instant at,
+		Instant nextAttemptAt,
+		String providerMessageId
+	) {
+		return notificationRepository.completeClaim(
+			deliveryId, generation, result, at, nextAttemptAt, providerMessageId);
+	}
+
+	@Transactional
 	public boolean invalidatePushDeviceAndCancelUndelivered(
 		long deliveryId, long pushDeviceId, int generation, Instant at) {
 		return notificationRepository.invalidatePushDeviceAndCancelUndelivered(

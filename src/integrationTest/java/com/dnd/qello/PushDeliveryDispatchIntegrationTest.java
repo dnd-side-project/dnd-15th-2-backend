@@ -6,9 +6,16 @@ package com.dnd.qello;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.io.IOException;
+import java.io.OutputStream;
+import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
 import java.sql.Timestamp;
+import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
@@ -21,6 +28,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -31,9 +39,13 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
+import org.springframework.boot.http.client.ClientHttpRequestFactoryBuilder;
+import org.springframework.boot.http.client.ClientHttpRequestFactorySettings;
+import org.springframework.http.client.ClientHttpRequestFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.web.client.RestClient;
 
 import com.dnd.qello.notification.domain.DeliveryStatus;
 import com.dnd.qello.notification.domain.Notification;
@@ -53,6 +65,7 @@ import com.dnd.qello.notification.push.PushPayloadFactory;
 import com.dnd.qello.notification.push.PushProvider;
 import com.dnd.qello.notification.push.PushProviderResult;
 import com.dnd.qello.notification.push.PushSendCommand;
+import com.dnd.qello.notification.push.fcm.FcmHttpV1PushProvider;
 import com.dnd.qello.notification.push.security.AesGcmPushTokenProtector;
 import com.dnd.qello.notification.push.security.ProtectedPushToken;
 import com.dnd.qello.notification.push.security.PushToken;
@@ -62,6 +75,10 @@ import com.dnd.qello.notification.repository.NotificationRepository;
 import com.dnd.qello.notification.repository.OutboxEventRepository;
 import com.dnd.qello.notification.service.PushDeliveryClaimService;
 import com.dnd.qello.notification.service.PushDeliveryDispatchWorker;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sun.net.httpserver.HttpExchange;
+import com.sun.net.httpserver.HttpServer;
 
 @SpringBootTest
 @ActiveProfiles("test")
@@ -86,6 +103,7 @@ class PushDeliveryDispatchIntegrationTest extends PostgisContainerIntegrationTes
 	private PushDeliveryClaimService claims;
 
 	private AesGcmPushTokenProtector realProtector;
+	private MutableClock clock;
 	private int sequence;
 
 	@BeforeEach
@@ -102,6 +120,7 @@ class PushDeliveryDispatchIntegrationTest extends PostgisContainerIntegrationTes
 			""", REGION);
 		realProtector = new AesGcmPushTokenProtector(new PushTokenKeyRing(
 			"gh179-dispatch-key", Map.of("gh179-dispatch-key", ENCRYPTION_KEY), FINGERPRINT_KEY));
+		clock = new MutableClock(NOW, ZoneOffset.UTC);
 		sequence = 0;
 	}
 
@@ -119,7 +138,8 @@ class PushDeliveryDispatchIntegrationTest extends PostgisContainerIntegrationTes
 		long deviceId = device(recipientId, "accepted-device");
 		long deliveryId = targetlessDelivery(recipientId, deviceId, "accepted", DeliveryStatus.PENDING, 0, NOW);
 		CountingProtector protector = new CountingProtector(realProtector);
-		ScriptedProvider provider = new ScriptedProvider(new PushProviderResult.Accepted());
+		ScriptedProvider provider = new ScriptedProvider(
+			new PushProviderResult.Accepted("projects/test/messages/accepted-delivery"));
 
 		PushDeliveryDispatchWorker.BatchResult result = worker(provider, protector).dispatchBatch(command(10, NOW));
 
@@ -140,7 +160,44 @@ class PushDeliveryDispatchIntegrationTest extends PostgisContainerIntegrationTes
 		});
 		assertThat(status(deliveryId)).isEqualTo(DeliveryStatus.SENT.name());
 		assertThat(sentAt(deliveryId)).isEqualTo(NOW);
+		assertThat(providerMessageId(deliveryId)).isEqualTo("projects/test/messages/accepted-delivery");
 		assertThat(notificationStatus(deliveryId)).isEqualTo(NotificationStatus.UNREAD.name());
+	}
+
+	@Test
+	@DisplayName("INT-008/015 real FCM wire boundary는 path/auth/data allowlist를 보내고 success name을 provider_message_id로 저장한다")
+	void sendsThroughRealFcmAdapterAndPersistsSuccessName() throws Exception {
+		long recipientId = account("wire-recipient");
+		long deviceId = device(recipientId, "wire-device");
+		long deliveryId = targetlessDelivery(recipientId, deviceId, "wire", DeliveryStatus.PENDING, 0, NOW);
+		try (WireFcmServer server = new WireFcmServer(
+			"{\"name\":\"projects/test-project/messages/test-message-wire-179\"}")) {
+			server.start();
+			FcmHttpV1PushProvider realProvider = new FcmHttpV1PushProvider(
+				restClient(server.baseUrl()),
+				() -> "test-only-bearer",
+				new ObjectMapper(),
+				"test-project");
+
+			PushDeliveryDispatchWorker.BatchResult result = worker(realProvider, realProtector)
+				.dispatchBatch(command(10, NOW));
+
+			assertThat(result.outcomes()).singleElement().satisfies(outcome ->
+				assertThat(outcome.outcome()).isEqualTo(PushDeliveryDispatchWorker.Outcome.SENT));
+			assertThat(status(deliveryId)).isEqualTo(DeliveryStatus.SENT.name());
+			assertThat(providerMessageId(deliveryId))
+				.isEqualTo("projects/test-project/messages/test-message-wire-179");
+			assertThat(server.requestPath()).isEqualTo("/v1/projects/test-project/messages:send");
+			assertThat(server.requestHeader("Authorization")).isEqualTo("Bearer test-only-bearer");
+			JsonNode message = new ObjectMapper().readTree(server.requestBody()).path("message");
+			assertThat(message.fieldNames()).toIterable().containsExactlyInAnyOrder("token", "data");
+			assertThat(message.path("token").asText()).isEqualTo(TOKEN_SENTINEL + "-wire-device");
+			assertThat(message.path("data").fieldNames()).toIterable()
+				.containsExactlyInAnyOrder("type", "count", "hasRemainingTime");
+			assertThat(message.path("data").path("type").asText()).isEqualTo("QUESTION_PROPOSAL_REVIEWED");
+			assertThat(message.path("data").path("count").asText()).isEqualTo("1");
+			assertThat(message.path("data").path("hasRemainingTime").asText()).isEqualTo("false");
+		}
 	}
 
 	@Test
@@ -151,11 +208,13 @@ class PushDeliveryDispatchIntegrationTest extends PostgisContainerIntegrationTes
 		long deliveryId = targetlessDelivery(recipientId, deviceId, "retry", DeliveryStatus.PENDING, 0, NOW);
 		ScriptedProvider provider = new ScriptedProvider(
 			new PushProviderResult.RetryableFailure(Duration.ofSeconds(20)),
-			new PushProviderResult.Accepted());
+			new PushProviderResult.Accepted("projects/test/messages/retry-accepted"));
 		PushDeliveryDispatchWorker worker = worker(provider, new CountingProtector(realProtector));
 
 		PushDeliveryDispatchWorker.BatchResult first = worker.dispatchBatch(command(10, NOW));
+		clock.set(NOW.plusSeconds(19));
 		PushDeliveryDispatchWorker.BatchResult early = worker.dispatchBatch(command(10, NOW.plusSeconds(19)));
+		clock.set(NOW.plusSeconds(20));
 		PushDeliveryDispatchWorker.BatchResult due = worker.dispatchBatch(command(10, NOW.plusSeconds(20)));
 
 		assertThat(first.outcomes()).singleElement().satisfies(outcome ->
@@ -166,7 +225,66 @@ class PushDeliveryDispatchIntegrationTest extends PostgisContainerIntegrationTes
 		assertThat(provider.calls()).isEqualTo(2);
 		assertThat(status(deliveryId)).isEqualTo(DeliveryStatus.SENT.name());
 		assertThat(attemptCount(deliveryId)).isEqualTo(2);
+		assertThat(providerMessageId(deliveryId)).isEqualTo("projects/test/messages/retry-accepted");
 		assertThat(notificationStatus(deliveryId)).isEqualTo(NotificationStatus.UNREAD.name());
+	}
+
+	@Test
+	@DisplayName("INT-009/014 delayed provider failure uses completion time for retry and fresh time for the next delivery eligibility")
+	void usesFreshTimeAfterDelayedProviderAndBeforeEachDeliveryEligibility() {
+		long retryRecipientId = account("fresh-time-retry-recipient");
+		long retryDeviceId = device(retryRecipientId, "fresh-time-retry-device");
+		long retryDeliveryId = targetlessDelivery(
+			retryRecipientId, retryDeviceId, "fresh-time-retry", DeliveryStatus.PENDING, 0, NOW);
+		long targetRecipientId = account("fresh-time-target-recipient");
+		long actorId = account("fresh-time-target-actor");
+		long expiringPostId = directionPost(actorId, "fresh-time-target", NOW.plusSeconds(20));
+		long targetDeliveryId = directionPostDelivery(
+			targetRecipientId,
+			device(targetRecipientId, "fresh-time-target-device"),
+			expiringPostId,
+			"fresh-time-target",
+			NOW);
+		AtomicInteger providerCalls = new AtomicInteger();
+		PushProvider delayedFailure = command -> {
+			providerCalls.incrementAndGet();
+			clock.advance(Duration.ofSeconds(30));
+			throw new IllegalStateException("SAFE_DELAYED_PROVIDER_FAILURE");
+		};
+
+		PushDeliveryDispatchWorker.BatchResult result = worker(delayedFailure, realProtector)
+			.dispatchBatch(new PushDeliveryDispatchWorker.BatchCommand(10, NOW, NOW.plusSeconds(90)));
+
+		assertThat(result.outcomes()).extracting(PushDeliveryDispatchWorker.DeliveryOutcome::outcome)
+			.containsExactly(
+				PushDeliveryDispatchWorker.Outcome.RETRY_SCHEDULED,
+				PushDeliveryDispatchWorker.Outcome.CANCELLED);
+		assertThat(nextAttemptAt(retryDeliveryId)).isEqualTo(NOW.plusSeconds(40));
+		assertThat(providerMessageId(retryDeliveryId)).isNull();
+		assertThat(status(targetDeliveryId)).isEqualTo(DeliveryStatus.CANCELLED.name());
+		assertThat(providerMessageId(targetDeliveryId)).isNull();
+		assertThat(providerCalls).hasValue(1);
+	}
+
+	@Test
+	@DisplayName("INT-017 decrypt failure uses a fresh failure time for fenced terminal completion")
+	void usesFreshTimeAfterDecryptFailure() {
+		long recipientId = account("decrypt-time-recipient");
+		long deviceId = malformedDevice(recipientId, "decrypt-time-device");
+		long deliveryId = targetlessDelivery(
+			recipientId, deviceId, "decrypt-time", DeliveryStatus.PENDING, 0, NOW);
+		PushTokenProtector delayedFailureProtector = new AdvancingDecryptProtector(
+			realProtector, clock, Duration.ofSeconds(15));
+
+		PushDeliveryDispatchWorker.BatchResult result = worker(new ScriptedProvider(), delayedFailureProtector)
+			.dispatchBatch(command(10, NOW));
+
+		assertThat(result.outcomes()).singleElement().satisfies(outcome -> {
+			assertThat(outcome.outcome()).isEqualTo(PushDeliveryDispatchWorker.Outcome.DEAD);
+			assertThat(outcome.safeReasonCode()).isEqualTo("TOKEN_DECRYPTION_FAILED");
+		});
+		assertThat(nextAttemptAt(deliveryId)).isEqualTo(NOW.plusSeconds(15));
+		assertThat(providerMessageId(deliveryId)).isNull();
 	}
 
 	@Test
@@ -185,6 +303,7 @@ class PushDeliveryDispatchIntegrationTest extends PostgisContainerIntegrationTes
 
 		PushDeliveryDispatchWorker.BatchResult result = worker(provider, new CountingProtector(realProtector))
 			.dispatchBatch(command(10, NOW));
+		clock.set(NOW.plusSeconds(120));
 		PushDeliveryDispatchWorker.BatchResult repeated = worker(provider, new CountingProtector(realProtector))
 			.dispatchBatch(command(10, NOW.plusSeconds(120)));
 
@@ -192,6 +311,8 @@ class PushDeliveryDispatchIntegrationTest extends PostgisContainerIntegrationTes
 			.containsExactly(PushDeliveryDispatchWorker.Outcome.DEAD, PushDeliveryDispatchWorker.Outcome.DEAD);
 		assertThat(status(permanentId)).isEqualTo(DeliveryStatus.DEAD.name());
 		assertThat(status(maxAttemptId)).isEqualTo(DeliveryStatus.DEAD.name());
+		assertThat(providerMessageId(permanentId)).isNull();
+		assertThat(providerMessageId(maxAttemptId)).isNull();
 		assertThat(attemptCount(maxAttemptId)).isEqualTo(3);
 		assertThat(repeated.claimed()).isZero();
 		assertThat(provider.calls()).isEqualTo(2);
@@ -237,7 +358,8 @@ class PushDeliveryDispatchIntegrationTest extends PostgisContainerIntegrationTes
 			recipientId, succeedingDeviceId, "after-rollback", DeliveryStatus.PENDING, 0, NOW);
 		installCancellationFailureTrigger(failingDeviceId);
 		ScriptedProvider provider = new ScriptedProvider(
-			new PushProviderResult.InvalidToken(), new PushProviderResult.Accepted());
+			new PushProviderResult.InvalidToken(),
+			new PushProviderResult.Accepted("projects/test/messages/after-rollback"));
 
 		PushDeliveryDispatchWorker.BatchResult result = worker(provider, new CountingProtector(realProtector))
 			.dispatchBatch(command(2, NOW));
@@ -381,7 +503,7 @@ class PushDeliveryDispatchIntegrationTest extends PostgisContainerIntegrationTes
 			cancelledRecipient);
 		ScriptedProvider provider = new ScriptedProvider(
 			new IllegalStateException(TOKEN_SENTINEL + PRIVATE_SENTINEL),
-			new PushProviderResult.Accepted(),
+			new PushProviderResult.Accepted("projects/test/messages/mixed-accepted"),
 			new PushProviderResult.InvalidToken());
 
 		PushDeliveryDispatchWorker.BatchResult result = worker(provider, new CountingProtector(realProtector))
@@ -411,7 +533,16 @@ class PushDeliveryDispatchIntegrationTest extends PostgisContainerIntegrationTes
 			new PushPayloadFactory(),
 			new PushDeliveryRetryPolicy(3, Duration.ofSeconds(10), Duration.ofSeconds(60)),
 			protector,
-			provider);
+			provider,
+			clock);
+	}
+
+	private static RestClient restClient(String baseUrl) {
+		ClientHttpRequestFactory requestFactory = ClientHttpRequestFactoryBuilder.jdk()
+			.build(ClientHttpRequestFactorySettings.defaults()
+				.withConnectTimeout(Duration.ofSeconds(1))
+				.withReadTimeout(Duration.ofSeconds(1)));
+		return RestClient.builder().baseUrl(baseUrl).requestFactory(requestFactory).build();
 	}
 
 	private static PushDeliveryDispatchWorker.BatchCommand command(int batchSize, Instant at) {
@@ -521,6 +652,17 @@ class PushDeliveryDispatchIntegrationTest extends PostgisContainerIntegrationTes
 		return value == null ? null : value.toInstant();
 	}
 
+	private Instant nextAttemptAt(long deliveryId) {
+		Timestamp value = jdbc.queryForObject(
+			"SELECT next_attempt_at FROM notification_delivery WHERE id = ?", Timestamp.class, deliveryId);
+		return value.toInstant();
+	}
+
+	private String providerMessageId(long deliveryId) {
+		return jdbc.queryForObject(
+			"SELECT provider_message_id FROM notification_delivery WHERE id = ?", String.class, deliveryId);
+	}
+
 	private String notificationStatus(long deliveryId) {
 		return jdbc.queryForObject("""
 			SELECT n.status FROM notification n
@@ -593,6 +735,35 @@ class PushDeliveryDispatchIntegrationTest extends PostgisContainerIntegrationTes
 		}
 	}
 
+	private static final class AdvancingDecryptProtector implements PushTokenProtector {
+
+		private final PushTokenProtector delegate;
+		private final MutableClock clock;
+		private final Duration delay;
+
+		private AdvancingDecryptProtector(PushTokenProtector delegate, MutableClock clock, Duration delay) {
+			this.delegate = delegate;
+			this.clock = clock;
+			this.delay = delay;
+		}
+
+		@Override
+		public ProtectedPushToken protect(PushToken token) {
+			return delegate.protect(token);
+		}
+
+		@Override
+		public PushToken decrypt(byte[] envelope) {
+			clock.advance(delay);
+			return delegate.decrypt(envelope);
+		}
+
+		@Override
+		public String fingerprint(PushToken token) {
+			return delegate.fingerprint(token);
+		}
+	}
+
 	private static final class ScriptedProvider implements PushProvider {
 
 		private final Deque<Object> results = new ArrayDeque<>();
@@ -610,7 +781,9 @@ class PushDeliveryDispatchIntegrationTest extends PostgisContainerIntegrationTes
 			transactionObserved.compareAndSet(false, TransactionSynchronizationManager.isActualTransactionActive());
 			PushPayload payload = command.payload();
 			payloads.add(Map.copyOf(payload.asData()));
-			Object next = results.isEmpty() ? new PushProviderResult.Accepted() : results.removeFirst();
+			Object next = results.isEmpty()
+				? new PushProviderResult.Accepted("projects/test/messages/default-scripted")
+				: results.removeFirst();
 			if (next instanceof RuntimeException failure) {
 				throw failure;
 			}
@@ -648,7 +821,7 @@ class PushDeliveryDispatchIntegrationTest extends PostgisContainerIntegrationTes
 				Thread.currentThread().interrupt();
 				throw new IllegalStateException("provider interrupted");
 			}
-			return new PushProviderResult.Accepted();
+			return new PushProviderResult.Accepted("projects/test/messages/blocking-provider");
 		}
 
 		private CountDownLatch entered() {
@@ -661,6 +834,100 @@ class PushDeliveryDispatchIntegrationTest extends PostgisContainerIntegrationTes
 
 		private boolean transactionObserved() {
 			return transactionObserved.get();
+		}
+	}
+
+	private static final class MutableClock extends Clock {
+
+		private final AtomicReference<Instant> current;
+		private final ZoneId zone;
+
+		private MutableClock(Instant initial, ZoneId zone) {
+			this(new AtomicReference<>(initial), zone);
+		}
+
+		private MutableClock(AtomicReference<Instant> current, ZoneId zone) {
+			this.current = current;
+			this.zone = zone;
+		}
+
+		private void set(Instant instant) {
+			current.set(instant);
+		}
+
+		private void advance(Duration duration) {
+			current.updateAndGet(value -> value.plus(duration));
+		}
+
+		@Override
+		public ZoneId getZone() {
+			return zone;
+		}
+
+		@Override
+		public Clock withZone(ZoneId newZone) {
+			return new MutableClock(current, newZone);
+		}
+
+		@Override
+		public Instant instant() {
+			return current.get();
+		}
+	}
+
+	private static final class WireFcmServer implements AutoCloseable {
+
+		private final HttpServer server;
+		private final ExecutorService executor;
+		private final String responseBody;
+		private volatile String requestPath;
+		private volatile String requestBody;
+		private volatile com.sun.net.httpserver.Headers requestHeaders;
+
+		private WireFcmServer(String responseBody) throws IOException {
+			this.responseBody = responseBody;
+			server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+			server.createContext("/", this::handle);
+			executor = Executors.newSingleThreadExecutor();
+			server.setExecutor(executor);
+		}
+
+		private void start() {
+			server.start();
+		}
+
+		private String baseUrl() {
+			return "http://127.0.0.1:" + server.getAddress().getPort();
+		}
+
+		private String requestPath() {
+			return requestPath;
+		}
+
+		private String requestBody() {
+			return requestBody;
+		}
+
+		private String requestHeader(String name) {
+			return requestHeaders.getFirst(name);
+		}
+
+		private void handle(HttpExchange exchange) throws IOException {
+			requestPath = exchange.getRequestURI().getPath();
+			requestHeaders = exchange.getRequestHeaders();
+			requestBody = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+			byte[] bytes = responseBody.getBytes(StandardCharsets.UTF_8);
+			exchange.getResponseHeaders().add("Content-Type", "application/json");
+			exchange.sendResponseHeaders(200, bytes.length);
+			try (OutputStream output = exchange.getResponseBody()) {
+				output.write(bytes);
+			}
+		}
+
+		@Override
+		public void close() {
+			server.stop(0);
+			executor.shutdownNow();
 		}
 	}
 }

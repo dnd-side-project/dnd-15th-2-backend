@@ -281,7 +281,7 @@ public final class NotificationSql {
 				ELSE CAST(:at AS TIMESTAMPTZ) END,
 			sent_at = CASE WHEN :terminalStatus = 'SENT' THEN CAST(:at AS TIMESTAMPTZ)
 				ELSE CAST(NULL AS TIMESTAMPTZ) END,
-			provider_message_id = NULL
+			provider_message_id = CASE WHEN :terminalStatus = 'SENT' THEN :providerMessageId ELSE NULL END
 		WHERE id = :deliveryId
 		  AND status = 'PROCESSING'
 		  AND attempt_count = :generation

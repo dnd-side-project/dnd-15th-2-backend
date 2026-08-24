@@ -57,11 +57,13 @@ class FcmHttpV1PushProviderTest {
 	@Test
 	@DisplayName("UNIT-014: FCM HTTP v1 요청은 bearer, projects path와 allowlisted data만 전송한다")
 	void sendsBearerPathAndAllowlistedPayload() throws IOException {
-		fakeServer.respondWith(200, "{}", null, Duration.ZERO);
+		fakeServer.respondWith(200,
+			"{\"name\":\"projects/test-project/messages/test-message-unit-014\"}", null, Duration.ZERO);
 
 		PushProviderResult result = provider.send(command());
 
-		assertThat(result).isInstanceOf(PushProviderResult.Accepted.class);
+		assertThat(result).isEqualTo(
+			new PushProviderResult.Accepted("projects/test-project/messages/test-message-unit-014"));
 		assertThat(fakeServer.requestPath()).isEqualTo("/v1/projects/test-project/messages:send");
 		assertThat(fakeServer.requestHeader("Authorization")).isEqualTo("Bearer " + BEARER_VALUE);
 		JsonNode message = objectMapper.readTree(fakeServer.requestBody()).path("message");
@@ -72,6 +74,36 @@ class FcmHttpV1PushProviderTest {
 		assertThat(message.path("data").path("type").asText()).isEqualTo("ANSWER_RECEIVED");
 		assertThat(message.path("data").path("count").asText()).isEqualTo("1");
 		assertThat(message.path("data").path("hasRemainingTime").asText()).isEqualTo("true");
+	}
+
+	@Test
+	@DisplayName("UNIT-013: FCM 2xx success body의 name을 Accepted providerMessageId로 보존한다")
+	void mapsSuccessNameToAcceptedProviderMessageId() {
+		fakeServer.respondWith(200,
+			"{\"name\":\"projects/test-project/messages/test-message-success\"}", null, Duration.ZERO);
+
+		assertThat(provider.send(command())).isEqualTo(
+			new PushProviderResult.Accepted("projects/test-project/messages/test-message-success"));
+	}
+
+	@Test
+	@DisplayName("UNIT-013: FCM 2xx body의 name이 없거나 malformed이면 safe PermanentFailure로 변환한다")
+	void rejectsMissingMalformedOrUnsafeSuccessName() {
+		fakeServer.respondWith(200, "{}", null, Duration.ZERO);
+		assertThat(provider.send(command()))
+			.isEqualTo(new PushProviderResult.PermanentFailure("INVALID_SUCCESS_RESPONSE"));
+
+		fakeServer.respondWith(200, "{\"name\":", null, Duration.ZERO);
+		assertThat(provider.send(command()))
+			.isEqualTo(new PushProviderResult.PermanentFailure("INVALID_SUCCESS_RESPONSE"));
+
+		fakeServer.respondWith(200, "{\"name\":\"contains whitespace\"}", null, Duration.ZERO);
+		assertThat(provider.send(command()))
+			.isEqualTo(new PushProviderResult.PermanentFailure("INVALID_SUCCESS_RESPONSE"));
+
+		fakeServer.respondWith(200, "{\"name\":179}", null, Duration.ZERO);
+		assertThat(provider.send(command()))
+			.isEqualTo(new PushProviderResult.PermanentFailure("INVALID_SUCCESS_RESPONSE"));
 	}
 
 	@Test

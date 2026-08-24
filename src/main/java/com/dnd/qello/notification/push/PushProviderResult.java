@@ -8,7 +8,17 @@ public sealed interface PushProviderResult
 	permits PushProviderResult.Accepted, PushProviderResult.InvalidToken,
 	PushProviderResult.RetryableFailure, PushProviderResult.PermanentFailure {
 
-	record Accepted() implements PushProviderResult {
+	record Accepted(String providerMessageId) implements PushProviderResult {
+		private static final int MAX_PROVIDER_MESSAGE_ID_LENGTH = 255;
+
+		public Accepted {
+			if (providerMessageId == null || providerMessageId.isBlank()
+				|| providerMessageId.length() > MAX_PROVIDER_MESSAGE_ID_LENGTH
+				|| providerMessageId.chars().anyMatch(value -> Character.isWhitespace(value)
+					|| Character.isSpaceChar(value) || Character.isISOControl(value))) {
+				throw new IllegalArgumentException("providerMessageId가 올바르지 않습니다");
+			}
+		}
 	}
 
 	record InvalidToken() implements PushProviderResult {

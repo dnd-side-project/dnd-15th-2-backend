@@ -42,6 +42,15 @@ public interface NotificationRepository {
 	boolean completeClaim(
 		long deliveryId, int generation, PushDeliveryTerminalResult result, Instant at, Instant nextAttemptAt);
 
+	/** SENT일 때만 검증된 provider message ID를 저장하는 generation-fenced terminal API. */
+	boolean completeClaim(
+		long deliveryId,
+		int generation,
+		PushDeliveryTerminalResult result,
+		Instant at,
+		Instant nextAttemptAt,
+		String providerMessageId);
+
 	/** 현재 claim만 DEAD로 종결하고 device INVALID와 sibling 취소를 한 transaction에서 처리한다. */
 	boolean invalidatePushDeviceAndCancelUndelivered(
 		long deliveryId, long pushDeviceId, int generation, Instant at);

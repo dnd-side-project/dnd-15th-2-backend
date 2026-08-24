@@ -62,7 +62,7 @@ public class PushConfiguration {
 
 		@Override
 		public PushProviderResult send(com.dnd.qello.notification.push.PushSendCommand command) {
-			return new PushProviderResult.Accepted();
+			return new PushProviderResult.Accepted("noop-provider-message");
 		}
 
 	}

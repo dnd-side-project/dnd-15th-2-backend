@@ -1,5 +1,6 @@
 package com.dnd.qello.notification.service;
 
+import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
 
@@ -40,6 +41,7 @@ public final class PushDeliveryDispatchWorker {
 	private final PushDeliveryRetryPolicy retryPolicy;
 	private final PushTokenProtector tokenProtector;
 	private final PushProvider provider;
+	private final Clock clock;
 
 	public PushDeliveryDispatchWorker(
 		PushDeliveryClaimService claimService,
@@ -49,12 +51,25 @@ public final class PushDeliveryDispatchWorker {
 		PushTokenProtector tokenProtector,
 		PushProvider provider
 	) {
+		this(claimService, eligibility, payloadFactory, retryPolicy, tokenProtector, provider, Clock.systemUTC());
+	}
+
+	public PushDeliveryDispatchWorker(
+		PushDeliveryClaimService claimService,
+		PushDispatchEligibility eligibility,
+		PushPayloadFactory payloadFactory,
+		PushDeliveryRetryPolicy retryPolicy,
+		PushTokenProtector tokenProtector,
+		PushProvider provider,
+		Clock clock
+	) {
 		this.claimService = require(claimService, "claimService");
 		this.eligibility = require(eligibility, "eligibility");
 		this.payloadFactory = require(payloadFactory, "payloadFactory");
 		this.retryPolicy = require(retryPolicy, "retryPolicy");
 		this.tokenProtector = require(tokenProtector, "tokenProtector");
 		this.provider = require(provider, "provider");
+		this.clock = require(clock, "clock");
 	}
 
 	public BatchResult dispatchBatch(BatchCommand command) {
@@ -62,20 +77,21 @@ public final class PushDeliveryDispatchWorker {
 		List<ClaimedPushDelivery> claimed = claimService.claimDueDeliveries(
 			command.batchSize(), command.at(), command.leaseUntil());
 		List<DeliveryOutcome> outcomes = claimed.stream()
-			.map(item -> dispatchOne(item, command.at()))
+			.map(this::dispatchOne)
 			.toList();
 		return new BatchResult(claimed.size(), outcomes);
 	}
 
-	private DeliveryOutcome dispatchOne(ClaimedPushDelivery claim, Instant at) {
+	private DeliveryOutcome dispatchOne(ClaimedPushDelivery claim) {
 		try {
-			return claimService.findPushDispatchContext(claim.deliveryId(), claim.generation(), at)
-				.map(context -> dispatchCurrentClaim(claim, context, at))
+			Instant contextAt = clock.instant();
+			return claimService.findPushDispatchContext(claim.deliveryId(), claim.generation(), contextAt)
+				.map(context -> dispatchCurrentClaim(claim, context, contextAt))
 				.orElseGet(() -> stale(claim, "STALE_CLAIM"));
 		} catch (PushTokenProtectionException failure) {
-			return completeAfterTokenFailure(claim, at);
+			return completeAfterTokenFailure(claim, clock.instant());
 		} catch (RuntimeException failure) {
-			return recordUnexpectedFailure(claim, at);
+			return recordUnexpectedFailure(claim, clock.instant());
 		}
 	}
 
@@ -83,37 +99,40 @@ public final class PushDeliveryDispatchWorker {
 		ClaimedPushDelivery claim, PushDispatchContext context, Instant at) {
 		PushDispatchEligibility.Evaluation evaluation = eligibility.evaluate(context);
 		if (evaluation.decision() == PushDispatchDecision.CANCELLED) {
-			return complete(claim, PushDeliveryTerminalResult.CANCELLED, at, at,
+			return complete(claim, PushDeliveryTerminalResult.CANCELLED, at, at, null,
 				Outcome.CANCELLED, evaluation.reasonCode().name());
 		}
 		if (evaluation.decision() == PushDispatchDecision.DEAD) {
-			return complete(claim, PushDeliveryTerminalResult.DEAD, at, at,
+			return complete(claim, PushDeliveryTerminalResult.DEAD, at, at, null,
 				Outcome.DEAD, evaluation.reasonCode().name());
 		}
 
 		PushToken token = tokenProtector.decrypt(context.device().tokenCiphertext());
 		PushPayload payload = payloadFactory.create(context);
 		PushProviderResult providerResult = provider.send(new PushSendCommand(token, payload));
+		Instant terminalAt = clock.instant();
 		if (providerResult instanceof PushProviderResult.InvalidToken) {
-			return invalidateDevice(claim, context, at);
+			return invalidateDevice(claim, context, terminalAt);
 		}
-		return completeProviderResult(claim, providerResult, at);
+		return completeProviderResult(claim, providerResult, terminalAt);
 	}
 
 	private DeliveryOutcome completeProviderResult(
 		ClaimedPushDelivery claim, PushProviderResult providerResult, Instant at) {
 		PushDeliveryRetryPolicy.Decision decision = retryPolicy.decide(claim.generation(), providerResult, at);
 		if (decision.result() == PushDeliveryTerminalResult.SENT) {
-			return complete(claim, decision.result(), at, decision.nextAttemptAt(), Outcome.SENT, "ACCEPTED");
+			String providerMessageId = ((PushProviderResult.Accepted)providerResult).providerMessageId();
+			return complete(claim, decision.result(), at, decision.nextAttemptAt(), providerMessageId,
+				Outcome.SENT, "ACCEPTED");
 		}
 		if (decision.result() == PushDeliveryTerminalResult.FAILED) {
-			return complete(claim, decision.result(), at, decision.nextAttemptAt(),
+			return complete(claim, decision.result(), at, decision.nextAttemptAt(), null,
 				Outcome.RETRY_SCHEDULED, "RETRYABLE_FAILURE");
 		}
 		String reasonCode = providerResult instanceof PushProviderResult.PermanentFailure
 			? "PERMANENT_FAILURE"
 			: "MAX_ATTEMPTS";
-		return complete(claim, decision.result(), at, decision.nextAttemptAt(), Outcome.DEAD, reasonCode);
+		return complete(claim, decision.result(), at, decision.nextAttemptAt(), null, Outcome.DEAD, reasonCode);
 	}
 
 	private DeliveryOutcome invalidateDevice(
@@ -127,10 +146,10 @@ public final class PushDeliveryDispatchWorker {
 
 	private DeliveryOutcome completeAfterTokenFailure(ClaimedPushDelivery claim, Instant at) {
 		try {
-			return complete(claim, PushDeliveryTerminalResult.DEAD, at, at,
+			return complete(claim, PushDeliveryTerminalResult.DEAD, at, at, null,
 				Outcome.DEAD, "TOKEN_DECRYPTION_FAILED");
 		} catch (RuntimeException terminalFailure) {
-			return recordUnexpectedFailure(claim, at);
+			return recordUnexpectedFailure(claim, clock.instant());
 		}
 	}
 
@@ -143,7 +162,8 @@ public final class PushDeliveryDispatchWorker {
 			Outcome outcome = decision.result() == PushDeliveryTerminalResult.FAILED
 				? Outcome.RETRY_SCHEDULED
 				: Outcome.DEAD;
-			return complete(claim, decision.result(), at, decision.nextAttemptAt(), outcome, "UNEXPECTED_FAILURE");
+			return complete(claim, decision.result(), at, decision.nextAttemptAt(), null,
+				outcome, "UNEXPECTED_FAILURE");
 		} catch (RuntimeException failureRecordingFailure) {
 			log.warn("Push delivery failure recording isolated deliveryId={} generation={} reasonCode={}",
 				claim.deliveryId(), claim.generation(), "FAILURE_RECORDING_FAILED");
@@ -156,11 +176,12 @@ public final class PushDeliveryDispatchWorker {
 		PushDeliveryTerminalResult result,
 		Instant at,
 		Instant nextAttemptAt,
+		String providerMessageId,
 		Outcome completedOutcome,
 		String safeReasonCode
 	) {
 		boolean completed = claimService.completeClaim(
-			claim.deliveryId(), claim.generation(), result, at, nextAttemptAt);
+			claim.deliveryId(), claim.generation(), result, at, nextAttemptAt, providerMessageId);
 		return completed
 			? outcome(claim, completedOutcome, safeReasonCode)
 			: stale(claim, "TERMINAL_FENCE_REJECTED");
