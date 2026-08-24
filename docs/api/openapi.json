@@ -97,10 +97,12 @@
       "AnswerRestoreResponse" : {
         "properties" : {
           "answerId" : {
+            "description" : "복원한 답변의 식별자.",
             "format" : "int64",
             "type" : "integer"
           },
           "status" : {
+            "description" : "복원 후 답변 상태. 공개 상태이면 PUBLISHED입니다.",
             "type" : "string"
           }
         },
@@ -2362,12 +2364,12 @@
       "ReportCaseDecisionRequest" : {
         "properties" : {
           "decision" : {
-            "description" : "ACTIONED 또는 NO_VIOLATION",
+            "description" : "사건을 종결할 최종 판정. ACTIONED 또는 NO_VIOLATION만 허용합니다.",
             "example" : "ACTIONED",
             "type" : "string"
           },
           "internalNote" : {
-            "description" : "운영자 내부 메모. 신고자에게 노출되지 않는다",
+            "description" : "판정 근거를 남기는 운영자 내부 메모. 신고자에게 공개하지 않습니다.",
             "example" : "명백한 스팸으로 판단해 콘텐츠를 숨김",
             "maxLength" : 2000,
             "minLength" : 0,
@@ -2382,7 +2384,7 @@
       "ReportCaseMoreInfoRequest" : {
         "properties" : {
           "internalNote" : {
-            "description" : "무엇이 더 필요한지 남기는 내부 메모",
+            "description" : "무엇을 더 확인해야 하는지 남기는 운영자 내부 메모. 신고자에게 공개하지 않습니다.",
             "example" : "원본 미디어 확인이 더 필요함",
             "maxLength" : 2000,
             "minLength" : 0,
@@ -2397,12 +2399,14 @@
       "ReportCasePageResponse" : {
         "properties" : {
           "items" : {
+            "description" : "운영자 처리 대기열에 포함된 신고 사건 목록.",
             "items" : {
               "$ref" : "#/components/schemas/ReportCaseResponse"
             },
             "type" : "array"
           },
           "nextCursor" : {
+            "description" : "다음 페이지 조회에 사용할 커서. 마지막 페이지면 null입니다.",
             "type" : "string"
           }
         },
@@ -2411,49 +2415,62 @@
       "ReportCaseResponse" : {
         "properties" : {
           "answerId" : {
+            "description" : "신고 대상 답변의 식별자. 대상이 답변이 아니면 null입니다.",
             "format" : "int64",
             "type" : "integer"
           },
           "createdAt" : {
+            "description" : "신고 사건이 생성된 시각.",
             "format" : "date-time",
             "type" : "string"
           },
           "decision" : {
+            "description" : "종결된 사건의 최종 판정. 아직 종결되지 않았으면 null입니다.",
             "type" : "string"
           },
           "directionPostId" : {
+            "description" : "신고 대상 질문글의 식별자. 대상이 질문글이 아니면 null입니다.",
             "format" : "int64",
             "type" : "integer"
           },
           "id" : {
+            "description" : "신고 사건의 식별자.",
             "format" : "int64",
             "type" : "integer"
           },
           "linkedManualReviewCaseId" : {
+            "description" : "연결된 수동 검토 사건의 식별자. 없으면 null입니다.",
             "format" : "int64",
             "type" : "integer"
           },
           "overdue" : {
+            "description" : "SLA 마감 시각이 현재 시각보다 지났는지 여부.",
             "type" : "boolean"
           },
           "queue" : {
+            "description" : "신고 사건이 속한 처리 대기열.",
             "type" : "string"
           },
           "resolvedAt" : {
+            "description" : "신고 사건이 종결된 시각. 아직 종결되지 않았으면 null입니다.",
             "format" : "date-time",
             "type" : "string"
           },
           "severity" : {
+            "description" : "신고 사건의 심각도.",
             "type" : "string"
           },
           "slaDueAt" : {
+            "description" : "SLA상 사건 처리가 완료되어야 하는 시각.",
             "format" : "date-time",
             "type" : "string"
           },
           "status" : {
+            "description" : "신고 사건의 처리 상태.",
             "type" : "string"
           },
           "targetUserId" : {
+            "description" : "신고 대상 사용자의 식별자. 대상이 사용자가 아니면 null입니다.",
             "format" : "int64",
             "type" : "integer"
           }
@@ -2463,27 +2480,34 @@
       "ReportDetailResponse" : {
         "properties" : {
           "createdAt" : {
+            "description" : "신고가 접수된 시각.",
             "format" : "date-time",
             "type" : "string"
           },
           "detail" : {
+            "description" : "신고자가 입력한 추가 설명. 없으면 null입니다.",
             "type" : "string"
           },
           "reasonCode" : {
+            "description" : "신고에 선택한 상위 사유 코드.",
             "type" : "string"
           },
           "reportId" : {
+            "description" : "신고의 식별자.",
             "format" : "int64",
             "type" : "integer"
           },
           "resolvedAt" : {
+            "description" : "신고가 종결된 시각. 아직 종결되지 않았으면 null입니다.",
             "format" : "date-time",
             "type" : "string"
           },
           "status" : {
+            "description" : "신고의 처리 상태.",
             "type" : "string"
           },
           "subReasonCode" : {
+            "description" : "신고에 선택한 하위 사유 코드. 없으면 null입니다.",
             "type" : "string"
           }
         },
@@ -2492,12 +2516,14 @@
       "ReportPageResponse" : {
         "properties" : {
           "items" : {
+            "description" : "현재 사용자가 접수한 신고 요약 목록.",
             "items" : {
               "$ref" : "#/components/schemas/ReportSummaryResponse"
             },
             "type" : "array"
           },
           "nextCursor" : {
+            "description" : "다음 페이지 조회에 사용할 커서. 마지막 페이지면 null입니다.",
             "type" : "string"
           }
         },
@@ -2506,15 +2532,19 @@
       "ReportReasonResponse" : {
         "properties" : {
           "code" : {
+            "description" : "신고 사유를 요청에 전달할 코드.",
             "type" : "string"
           },
           "detailRequired" : {
+            "description" : "추가 설명을 입력해야 하는지 여부.",
             "type" : "boolean"
           },
           "label" : {
+            "description" : "화면에 표시할 신고 사유 이름.",
             "type" : "string"
           },
           "subReasons" : {
+            "description" : "이 사유를 선택했을 때 고를 수 있는 하위 사유 코드 목록.",
             "items" : {
               "type" : "string"
             },
@@ -2526,20 +2556,25 @@
       "ReportReceiptResponse" : {
         "properties" : {
           "alreadyReceived" : {
+            "description" : "같은 대상에 대한 기존 신고를 반환했는지 여부.",
             "type" : "boolean"
           },
           "guidance" : {
+            "description" : "신고 접수 결과와 후속 안내.",
             "type" : "string"
           },
           "receivedAt" : {
+            "description" : "신고가 접수된 시각.",
             "format" : "date-time",
             "type" : "string"
           },
           "reportId" : {
+            "description" : "접수된 신고의 식별자.",
             "format" : "int64",
             "type" : "integer"
           },
           "status" : {
+            "description" : "접수 직후 신고의 처리 상태.",
             "type" : "string"
           }
         },
@@ -2548,17 +2583,21 @@
       "ReportSummaryResponse" : {
         "properties" : {
           "createdAt" : {
+            "description" : "신고가 접수된 시각.",
             "format" : "date-time",
             "type" : "string"
           },
           "reasonCode" : {
+            "description" : "신고에 선택한 상위 사유 코드.",
             "type" : "string"
           },
           "reportId" : {
+            "description" : "신고의 식별자.",
             "format" : "int64",
             "type" : "integer"
           },
           "status" : {
+            "description" : "신고의 현재 처리 상태.",
             "type" : "string"
           }
         },
@@ -2825,12 +2864,17 @@
       "SubmitReportRequest" : {
         "properties" : {
           "blockAuthor" : {
+            "description" : "신고 대상 작성자를 함께 차단할지 여부.",
+            "example" : false,
             "type" : "boolean"
           },
           "detail" : {
+            "description" : "신고에 대한 추가 설명. 기타 사유에는 필수이며 최대 500자입니다.",
+            "example" : "반복적으로 같은 광고를 보내고 있습니다.",
             "type" : "string"
           },
           "reasonCode" : {
+            "description" : "신고 사유 목록에서 선택한 상위 사유.",
             "enum" : [
               "SEXUAL_CONTENT",
               "VIOLENCE_OR_THREAT",
@@ -2841,15 +2885,18 @@
               "ILLEGAL_OR_DANGEROUS",
               "OTHER"
             ],
+            "example" : "SPAM_OR_ADVERTISING",
             "type" : "string"
           },
           "subReasonCode" : {
+            "description" : "선택한 상위 사유에 해당하는 하위 사유. 해당하지 않으면 생략합니다.",
             "enum" : [
               "CSAM",
               "NCII",
               "CREDIBLE_THREAT",
               "SELF_HARM_RISK"
             ],
+            "example" : "CREDIBLE_THREAT",
             "type" : "string"
           }
         },
@@ -4852,10 +4899,11 @@
     },
     "/api/v1/answers/{answerId}/reports" : {
       "post" : {
-        "description" : "답변을 신고합니다. 같은 대상에 대한 열린 신고가 이미 있으면 새로 만들지 않고\n기존 접수증을 반환합니다. 신고자가 열람할 수 없는 답변은 존재하지 않는 답변과\n동일하게 404로 응답합니다.",
+        "description" : "답변을 신고합니다. 신고 대상의 작성자를 함께 차단할 수도 있습니다.\n\n앱 액세스 토큰이 필요합니다. 답변은 현재 사용자가 열람할 수 있어야 하며, 신고 사유와\n하위 사유·설명 조합이 허용되어야 합니다. 자기 자신이 작성한 답변은 신고할 수 없습니다.\n\n새 신고면 201과 접수 결과를 반환하고, 같은 답변에 이미 열린 신고가 있으면 새로 만들지\n않고 200과 기존 접수 결과를 반환합니다.\n\n답변을 찾을 수 없거나 열람할 수 없으면 404로 응답합니다. 사유 조합이 올바르지 않거나\n자기 자신을 신고하면 400으로, 신고 한도를 넘으면 429로 응답합니다.\n\n신고 접수는 검토 결과를 즉시 반환하지 않습니다. 검토 결과는 별도 알림으로 전달됩니다.",
         "operationId" : "reportAnswer",
         "parameters" : [
           {
+            "description" : "신고할 답변의 식별자.",
             "in" : "path",
             "name" : "answerId",
             "required" : true,
@@ -4884,7 +4932,7 @@
                 }
               }
             },
-            "description" : "이미 접수된 신고를 반환합니다."
+            "description" : "이미 접수된 신고의 결과를 반환합니다."
           },
           "201" : {
             "content" : {
@@ -4894,7 +4942,7 @@
                 }
               }
             },
-            "description" : "새로 접수했습니다."
+            "description" : "새 신고를 접수했습니다."
           },
           "400" : {
             "content" : {
@@ -4904,7 +4952,7 @@
                 }
               }
             },
-            "description" : "요청 형식이 올바르지 않거나(SAF-VAL-*) 자기 자신을 신고했습니다(SAF-DOM-003)."
+            "description" : "요청 값이나 신고 사유 조합이 올바르지 않거나 자기 자신을 신고했습니다. (CMN-VAL-001, SAF-VAL-002, SAF-VAL-006, SAF-VAL-007, SAF-DOM-003)"
           },
           "401" : {
             "content" : {
@@ -4924,7 +4972,17 @@
                 }
               }
             },
-            "description" : "답변을 찾을 수 없습니다(SAF-APP-002)."
+            "description" : "답변을 찾을 수 없거나 현재 사용자가 열람할 수 없습니다. (SAF-APP-002)"
+          },
+          "409" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "신고 사건을 일시적으로 병합하지 못했습니다. (SAF-INFRA-002)"
           },
           "429" : {
             "content" : {
@@ -4934,7 +4992,7 @@
                 }
               }
             },
-            "description" : "신고 요청이 너무 많습니다(SAF-APP-004)."
+            "description" : "신고 요청 또는 긴급 신고 일일 한도를 초과했습니다. (SAF-APP-004, SAF-APP-005)"
           },
           "500" : {
             "content" : {
@@ -5104,10 +5162,11 @@
     },
     "/api/v1/direction-posts/{postId}/reports" : {
       "post" : {
-        "description" : "방향 질문글을 신고합니다. 규칙은 답변 신고와 같습니다.",
+        "description" : "방향 질문글을 신고합니다. 신고 대상의 작성자를 함께 차단할 수도 있습니다.\n\n앱 액세스 토큰이 필요합니다. 질문글은 현재 사용자가 열람할 수 있어야 하며, 신고 사유와\n하위 사유·설명 조합이 허용되어야 합니다. 자기 자신이 작성한 질문글은 신고할 수 없습니다.\n\n새 신고면 201과 접수 결과를 반환하고, 같은 질문글에 열린 신고가 있으면 200과 기존\n접수 결과를 반환합니다.\n\n질문글을 찾을 수 없거나 열람할 수 없으면 404로, 잘못된 사유 조합은 400으로, 신고 한도\n초과는 429로 응답합니다.\n\n신고 접수는 검토 결과를 즉시 반환하지 않습니다. 검토 결과는 별도 알림으로 전달됩니다.",
         "operationId" : "reportPost",
         "parameters" : [
           {
+            "description" : "신고할 질문글의 식별자.",
             "in" : "path",
             "name" : "postId",
             "required" : true,
@@ -5136,7 +5195,7 @@
                 }
               }
             },
-            "description" : "이미 접수된 신고를 반환합니다."
+            "description" : "이미 접수된 신고의 결과를 반환합니다."
           },
           "201" : {
             "content" : {
@@ -5146,7 +5205,7 @@
                 }
               }
             },
-            "description" : "새로 접수했습니다."
+            "description" : "새 신고를 접수했습니다."
           },
           "400" : {
             "content" : {
@@ -5156,7 +5215,7 @@
                 }
               }
             },
-            "description" : "요청 값이 올바르지 않습니다. 오류 코드는 docs/error-codes.md를 따른다."
+            "description" : "요청 값이나 신고 사유 조합이 올바르지 않거나 자기 자신을 신고했습니다. (CMN-VAL-001, SAF-VAL-002, SAF-VAL-006, SAF-VAL-007, SAF-DOM-003)"
           },
           "404" : {
             "content" : {
@@ -5166,7 +5225,27 @@
                 }
               }
             },
-            "description" : "질문글을 찾을 수 없습니다(SAF-APP-002)."
+            "description" : "질문글을 찾을 수 없거나 현재 사용자가 열람할 수 없습니다. (SAF-APP-002)"
+          },
+          "409" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "신고 사건을 일시적으로 병합하지 못했습니다. (SAF-INFRA-002)"
+          },
+          "429" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "신고 요청 또는 긴급 신고 일일 한도를 초과했습니다. (SAF-APP-004, SAF-APP-005)"
           },
           "500" : {
             "content" : {
@@ -7965,11 +8044,11 @@
     },
     "/api/v1/operator/report-cases" : {
       "get" : {
-        "description" : "OPEN·UNDER_REVIEW 사건만 SLA가 급한 순으로 반환합니다. queue를 생략하면 STANDARD·URGENT 모두 포함합니다.",
+        "description" : "운영자가 아직 처리하지 않은 신고 사건을 SLA 마감 시각이 가까운 순서로 조회합니다.\n\n운영자 세션 인증이 필요합니다. queue를 생략하면 STANDARD와 URGENT 사건을 모두 조회하며,\n지정하면 해당 대기열만 조회합니다.\n\n사건 목록, 처리 상태, 심각도, SLA 마감 시각과 다음 페이지 커서를 반환합니다. limit는\n1에서 50 사이로 보정됩니다.\n\ncursor 형식이 올바르지 않으면 요청을 처리하지 않습니다. queue는 STANDARD 또는 URGENT만\n사용할 수 있습니다.\n\n이 API는 신고자용 신고 내역이 아니라 운영자 처리 대기열입니다.",
         "operationId" : "findQueue",
         "parameters" : [
           {
-            "description" : "STANDARD 또는 URGENT. 생략 시 전체",
+            "description" : "STANDARD 또는 URGENT. 생략하면 두 대기열을 모두 조회합니다.",
             "in" : "query",
             "name" : "queue",
             "required" : false,
@@ -7978,6 +8057,7 @@
             }
           },
           {
+            "description" : "이전 응답의 nextCursor. 첫 페이지는 생략합니다.",
             "in" : "query",
             "name" : "cursor",
             "required" : false,
@@ -7986,6 +8066,7 @@
             }
           },
           {
+            "description" : "페이지 크기. 기본값은 20이며 1~50으로 보정됩니다.",
             "in" : "query",
             "name" : "limit",
             "required" : false,
@@ -8005,7 +8086,7 @@
                 }
               }
             },
-            "description" : "조회했습니다."
+            "description" : "신고 사건 대기열을 조회했습니다."
           },
           "400" : {
             "content" : {
@@ -8015,7 +8096,7 @@
                 }
               }
             },
-            "description" : "요청 값이 올바르지 않습니다. 오류 코드는 docs/error-codes.md를 따른다."
+            "description" : "cursor 형식이 올바르지 않습니다."
           },
           "500" : {
             "content" : {
@@ -8033,7 +8114,7 @@
             "operatorSession" : [ ]
           }
         ],
-        "summary" : "대기열 조회",
+        "summary" : "신고 사건 대기열 조회",
         "tags" : [
           "신고 사건 운영자 판정"
         ]
@@ -8041,10 +8122,11 @@
     },
     "/api/v1/operator/report-cases/{caseId}/decision" : {
       "post" : {
-        "description" : "ACTIONED 또는 NO_VIOLATION으로 사건을 종결합니다. ACTIONED고 대상이 답변이면 그 답변을 전역 숨김합니다.",
+        "description" : "운영자가 신고 사건을 ACTIONED 또는 NO_VIOLATION으로 종결합니다.\n\n운영자 세션 인증이 필요합니다. 사건 식별자가 올바르고 아직 종결되지 않아야 하며,\ndecision은 두 최종 판정 중 하나여야 합니다. 추가 정보가 필요하면 별도 API를 사용합니다.\n\n판정, 종결 시각과 사건 처리 결과를 반환합니다. ACTIONED이고 대상이 답변이면 그 답변을\n숨기고 관련 알림을 취소합니다. internalNote는 신고자에게 공개하지 않는 운영자 메모입니다.\n\n이미 종결된 사건, 허용되지 않은 판정 또는 사건 대상과 맞지 않는 답변 조치면 요청을\n처리하지 않습니다.\n\n판정은 사건을 종결하므로 같은 사건에 다시 최종 판정을 내릴 수 없습니다.",
         "operationId" : "decide",
         "parameters" : [
           {
+            "description" : "최종 판정할 신고 사건의 식별자.",
             "in" : "path",
             "name" : "caseId",
             "required" : true,
@@ -8073,7 +8155,7 @@
                 }
               }
             },
-            "description" : "판정을 기록했습니다."
+            "description" : "신고 사건 최종 판정을 기록했습니다."
           },
           "400" : {
             "content" : {
@@ -8083,7 +8165,17 @@
                 }
               }
             },
-            "description" : "이미 종결된 사건이거나(SAF-DOM-005) decision이 올바르지 않습니다."
+            "description" : "사건 식별자가 올바르지 않거나 판정 값이 없고, 이미 종결된 사건이거나 추가 정보 요청을 이 API로 보낼 수 없습니다. (CMN-VAL-001, SAF-VAL-001, SAF-DOM-002, SAF-DOM-005)"
+          },
+          "404" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "ACTIONED 조치 대상 답변을 찾을 수 없습니다. (SAF-APP-002)"
           },
           "500" : {
             "content" : {
@@ -8101,7 +8193,7 @@
             "operatorSession" : [ ]
           }
         ],
-        "summary" : "사건 판정",
+        "summary" : "신고 사건 최종 판정",
         "tags" : [
           "신고 사건 운영자 판정"
         ]
@@ -8109,10 +8201,11 @@
     },
     "/api/v1/operator/report-cases/{caseId}/more-info" : {
       "post" : {
-        "description" : "사건을 종결하지 않고 MORE_INFO_REQUIRED로 표시합니다.",
+        "description" : "운영자가 신고 사건에 추가 정보가 필요하다고 표시하고 내부 메모를 남깁니다.\n\n운영자 세션 인증이 필요합니다. 사건이 아직 종결되지 않았고, 무엇이 더 필요한지 적은\n메모를 보내야 합니다.\n\n사건을 MORE_INFO_REQUIRED 상태로 표시한 결과를 반환합니다.\n\n사건 식별자가 올바르지 않거나 이미 종결된 사건이면 요청을 처리하지 않습니다.\n\n이 호출은 최종 판정을 내리지 않으며, 메모는 신고자에게 공개되지 않습니다.",
         "operationId" : "requestMoreInfo",
         "parameters" : [
           {
+            "description" : "추가 정보가 필요한 신고 사건의 식별자.",
             "in" : "path",
             "name" : "caseId",
             "required" : true,
@@ -8141,7 +8234,7 @@
                 }
               }
             },
-            "description" : "추가 정보를 요청했습니다."
+            "description" : "신고 사건에 추가 정보를 요청했습니다."
           },
           "400" : {
             "content" : {
@@ -8151,7 +8244,7 @@
                 }
               }
             },
-            "description" : "이미 종결된 사건입니다(SAF-DOM-005)."
+            "description" : "요청 메모가 올바르지 않거나 사건 식별자가 올바르지 않고, 사건이 이미 종결되었습니다. (CMN-VAL-001, SAF-VAL-001, SAF-DOM-005)"
           },
           "500" : {
             "content" : {
@@ -8169,7 +8262,7 @@
             "operatorSession" : [ ]
           }
         ],
-        "summary" : "추가 정보 요청",
+        "summary" : "신고 사건 추가 정보 요청",
         "tags" : [
           "신고 사건 운영자 판정"
         ]
@@ -8177,10 +8270,11 @@
     },
     "/api/v1/operator/report-cases/{caseId}/restore" : {
       "post" : {
-        "description" : "ACTIONED로 전역 숨김된 답변을 다시 PUBLISHED로 되돌립니다.",
+        "description" : "운영자가 ACTIONED 판정으로 숨겨진 답변을 다시 공개 상태로 복원합니다.\n\n운영자 세션 인증이 필요합니다. 사건이 답변을 대상으로 하고 ACTIONED로 종결되어 있어야\n합니다.\n\n복원한 답변의 식별자와 현재 상태를 반환합니다.\n\n사건 식별자·대상 답변이 없거나 사건 조건이 ACTIONED 복원 조건과 맞지 않으면 요청을\n처리하지 않습니다.\n\n질문글·사용자 사건은 이 API로 복원할 수 없습니다.",
         "operationId" : "restore",
         "parameters" : [
           {
+            "description" : "복원할 답변이 연결된 신고 사건의 식별자.",
             "in" : "path",
             "name" : "caseId",
             "required" : true,
@@ -8199,7 +8293,7 @@
                 }
               }
             },
-            "description" : "복원했습니다."
+            "description" : "숨김 답변을 복원했습니다."
           },
           "400" : {
             "content" : {
@@ -8209,7 +8303,7 @@
                 }
               }
             },
-            "description" : "답변이 HIDDEN 상태가 아니거나 답변 대상이 아닌 사건입니다."
+            "description" : "사건 식별자·대상이 올바르지 않거나 ACTIONED로 종결된 사건이 아닙니다. (SAF-VAL-001, SAF-VAL-003, SAF-DOM-002)"
           },
           "404" : {
             "content" : {
@@ -8219,7 +8313,7 @@
                 }
               }
             },
-            "description" : "사건 또는 답변을 찾을 수 없습니다."
+            "description" : "복원할 답변을 찾을 수 없습니다. (SAF-APP-002)"
           },
           "500" : {
             "content" : {
@@ -8245,10 +8339,11 @@
     },
     "/api/v1/operator/report-cases/{caseId}/review" : {
       "post" : {
-        "description" : "OPEN 사건을 UNDER_REVIEW로 전이합니다.",
+        "description" : "운영자가 열린 신고 사건을 검토 중으로 표시합니다.\n\n운영자 세션 인증이 필요합니다. 아직 종결되지 않은 사건만 검토를 시작할 수 있습니다.\n\n사건 상태가 검토 중으로 바뀐 결과를 반환합니다.\n\n사건 식별자가 올바르지 않거나 이미 종결된 사건이면 요청을 처리하지 않습니다.\n\n이 호출만으로 사건의 최종 판정이나 답변 숨김이 실행되지는 않습니다.",
         "operationId" : "startReview",
         "parameters" : [
           {
+            "description" : "검토를 시작할 신고 사건의 식별자.",
             "in" : "path",
             "name" : "caseId",
             "required" : true,
@@ -8267,7 +8362,7 @@
                 }
               }
             },
-            "description" : "검토를 시작했습니다."
+            "description" : "신고 사건 검토를 시작했습니다."
           },
           "400" : {
             "content" : {
@@ -8277,7 +8372,7 @@
                 }
               }
             },
-            "description" : "이미 종결된 사건입니다(SAF-DOM-005)."
+            "description" : "사건 식별자가 올바르지 않거나 이미 종결된 사건입니다. (SAF-VAL-001, SAF-DOM-005)"
           },
           "500" : {
             "content" : {
@@ -8295,7 +8390,7 @@
             "operatorSession" : [ ]
           }
         ],
-        "summary" : "검토 시작",
+        "summary" : "신고 사건 검토 시작",
         "tags" : [
           "신고 사건 운영자 판정"
         ]
@@ -8467,7 +8562,7 @@
     },
     "/api/v1/report-reasons" : {
       "get" : {
-        "description" : "선택 가능한 신고 사유·하위 사유·설명 필수 여부를 반환합니다.",
+        "description" : "신고할 때 선택할 수 있는 사유와 하위 사유를 조회합니다.\n\n앱 액세스 토큰이 필요합니다.\n\n사유 코드, 화면에 표시할 이름, 선택 가능한 하위 사유와 추가 설명 필요 여부를 반환합니다.\n\n이 API는 사유 목록만 조회하며 신고를 접수하지 않습니다.",
         "operationId" : "reportReasons",
         "responses" : {
           "200" : {
@@ -8478,7 +8573,7 @@
                 }
               }
             },
-            "description" : "조회했습니다."
+            "description" : "신고 사유 목록을 조회했습니다."
           },
           "400" : {
             "content" : {
@@ -8524,10 +8619,11 @@
     },
     "/api/v1/reports/me" : {
       "get" : {
-        "description" : "본인이 접수한 신고를 최신순으로 반환합니다.",
+        "description" : "현재 사용자가 접수한 신고 내역을 최신 접수 순서로 조회합니다.\n\n앱 액세스 토큰이 필요합니다.\n\n신고 요약 목록과 다음 페이지를 요청할 때 사용할 불투명 커서를 반환합니다. limit는\n1에서 50 사이로 보정됩니다.\n\ncursor 형식이 올바르지 않으면 요청을 처리하지 않습니다.\n\n다른 사용자가 접수한 신고는 이 목록에 포함되지 않습니다.",
         "operationId" : "findMyReports",
         "parameters" : [
           {
+            "description" : "이전 응답의 nextCursor. 첫 페이지는 생략합니다.",
             "in" : "query",
             "name" : "cursor",
             "required" : false,
@@ -8536,6 +8632,7 @@
             }
           },
           {
+            "description" : "페이지 크기. 기본값은 20이며 1~50으로 보정됩니다.",
             "in" : "query",
             "name" : "limit",
             "required" : false,
@@ -8555,7 +8652,7 @@
                 }
               }
             },
-            "description" : "조회했습니다."
+            "description" : "내 신고 내역을 조회했습니다."
           },
           "400" : {
             "content" : {
@@ -8565,7 +8662,7 @@
                 }
               }
             },
-            "description" : "요청 값이 올바르지 않습니다. 오류 코드는 docs/error-codes.md를 따른다."
+            "description" : "cursor 형식이 올바르지 않습니다."
           },
           "500" : {
             "content" : {
@@ -8591,10 +8688,11 @@
     },
     "/api/v1/reports/{reportId}" : {
       "get" : {
-        "description" : "본인이 접수한 신고만 조회할 수 있습니다.",
+        "description" : "현재 사용자가 접수한 신고 한 건의 접수·처리 상태를 조회합니다.\n\n앱 액세스 토큰이 필요합니다. 요청한 신고가 현재 사용자가 접수한 신고여야 합니다.\n\n신고 사유, 설명, 상태와 접수·종결 시각을 반환합니다.\n\n신고가 없거나 다른 사용자가 접수한 신고면 404로 응답합니다.\n\n신고 대상의 상대방 식별자와 운영자의 내부 판단 내용은 반환하지 않습니다.",
         "operationId" : "findReport",
         "parameters" : [
           {
+            "description" : "조회할 신고의 식별자.",
             "in" : "path",
             "name" : "reportId",
             "required" : true,
@@ -8613,7 +8711,7 @@
                 }
               }
             },
-            "description" : "조회했습니다."
+            "description" : "내 신고 상세를 조회했습니다."
           },
           "400" : {
             "content" : {
@@ -8633,7 +8731,7 @@
                 }
               }
             },
-            "description" : "신고를 찾을 수 없거나 본인 소유가 아닙니다(SAF-APP-003)."
+            "description" : "신고를 찾을 수 없거나 현재 사용자가 접수한 신고가 아닙니다. (SAF-APP-003)"
           },
           "500" : {
             "content" : {
@@ -8651,7 +8749,7 @@
             "appAccessToken" : [ ]
           }
         ],
-        "summary" : "신고 상세 조회",
+        "summary" : "내 신고 상세 조회",
         "tags" : [
           "신고·차단"
         ]
@@ -8756,10 +8854,11 @@
     },
     "/api/v1/users/{userId}/blocks" : {
       "delete" : {
-        "description" : "지정한 사용자에 대한 활성 차단을 해제합니다.",
+        "description" : "현재 사용자가 지정한 사용자에 대한 활성 차단을 해제합니다.\n\n앱 액세스 토큰이 필요합니다.\n\n활성 차단을 해제하면 해당 관계의 차단 상태를 종료합니다.\n\n현재 사용자가 만든 활성 차단이 없으면 404로 응답합니다.\n\n차단 해제는 과거에 차단 상태가 된 수신 항목이나 신고를 되돌리지 않습니다.",
         "operationId" : "releaseBlock",
         "parameters" : [
           {
+            "description" : "차단을 해제할 사용자의 식별자.",
             "in" : "path",
             "name" : "userId",
             "required" : true,
@@ -8778,7 +8877,7 @@
                 }
               }
             },
-            "description" : "차단을 해제했습니다."
+            "description" : "사용자 차단을 해제했습니다."
           },
           "400" : {
             "content" : {
@@ -8798,7 +8897,7 @@
                 }
               }
             },
-            "description" : "활성 차단을 찾을 수 없습니다(SAF-APP-001)."
+            "description" : "활성 차단을 찾을 수 없습니다. (SAF-APP-001)"
           },
           "500" : {
             "content" : {
@@ -8822,10 +8921,11 @@
         ]
       },
       "post" : {
-        "description" : "지정한 사용자를 차단합니다.",
+        "description" : "현재 사용자가 지정한 사용자를 차단합니다.\n\n앱 액세스 토큰이 필요합니다. 차단 대상은 경로의 userId로 지정합니다.\n\n성공하면 두 사용자 사이의 활성 차단을 만들고, 차단 대상이 보낸 미종결 수신 항목을\n차단 상태로 전환해 현재 사용자의 수신 가능 슬롯을 정리합니다.\n\n자기 자신은 차단할 수 없습니다.\n\n차단은 신고 접수와 별개의 동작입니다.",
         "operationId" : "block",
         "parameters" : [
           {
+            "description" : "차단할 사용자의 식별자.",
             "in" : "path",
             "name" : "userId",
             "required" : true,
@@ -8844,7 +8944,7 @@
                 }
               }
             },
-            "description" : "차단했습니다."
+            "description" : "사용자를 차단했습니다."
           },
           "400" : {
             "content" : {
@@ -8854,7 +8954,7 @@
                 }
               }
             },
-            "description" : "자기 자신을 차단할 수 없습니다(SAF-DOM-001)."
+            "description" : "자기 자신은 차단할 수 없습니다. (SAF-DOM-001)"
           },
           "500" : {
             "content" : {
@@ -8880,10 +8980,11 @@
     },
     "/api/v1/users/{userId}/reports" : {
       "post" : {
-        "description" : "사용자를 신고합니다. 방향 질문글 송수신으로 실제 마주친 사용자만 신고할 수\n있습니다. 규칙은 답변 신고와 같습니다.",
+        "description" : "사용자를 신고합니다. 방향 질문글 송수신으로 현재 사용자가 실제로 마주친 사용자만\n신고할 수 있으며, 신고 대상 사용자를 함께 차단할 수도 있습니다.\n\n앱 액세스 토큰이 필요합니다. 신고 사유와 하위 사유·설명 조합이 허용되어야 하며 자기\n자신은 신고할 수 없습니다.\n\n새 신고면 201과 접수 결과를 반환하고, 같은 사용자에 열린 신고가 있으면 200과 기존\n접수 결과를 반환합니다.\n\n사용자를 찾을 수 없거나 신고할 수 없는 관계면 404로, 잘못된 사유 조합은 400으로,\n신고 한도 초과는 429로 응답합니다.\n\n신고 접수는 검토 결과를 즉시 반환하지 않습니다. 검토 결과는 별도 알림으로 전달됩니다.",
         "operationId" : "reportUser",
         "parameters" : [
           {
+            "description" : "신고할 사용자의 식별자.",
             "in" : "path",
             "name" : "userId",
             "required" : true,
@@ -8912,7 +9013,7 @@
                 }
               }
             },
-            "description" : "이미 접수된 신고를 반환합니다."
+            "description" : "이미 접수된 신고의 결과를 반환합니다."
           },
           "201" : {
             "content" : {
@@ -8922,7 +9023,7 @@
                 }
               }
             },
-            "description" : "새로 접수했습니다."
+            "description" : "새 신고를 접수했습니다."
           },
           "400" : {
             "content" : {
@@ -8932,7 +9033,7 @@
                 }
               }
             },
-            "description" : "요청 값이 올바르지 않습니다. 오류 코드는 docs/error-codes.md를 따른다."
+            "description" : "요청 값이나 신고 사유 조합이 올바르지 않거나 자기 자신을 신고했습니다. (CMN-VAL-001, SAF-VAL-002, SAF-VAL-006, SAF-VAL-007, SAF-DOM-003)"
           },
           "404" : {
             "content" : {
@@ -8942,7 +9043,27 @@
                 }
               }
             },
-            "description" : "사용자를 찾을 수 없습니다(SAF-APP-002)."
+            "description" : "신고할 사용자를 찾을 수 없거나 신고할 수 없습니다. (SAF-APP-002)"
+          },
+          "409" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "신고 사건을 일시적으로 병합하지 못했습니다. (SAF-INFRA-002)"
+          },
+          "429" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "신고 요청 또는 긴급 신고 일일 한도를 초과했습니다. (SAF-APP-004, SAF-APP-005)"
           },
           "500" : {
             "content" : {
@@ -9003,7 +9124,7 @@
       "name" : "프로필"
     },
     {
-      "description" : "답변·질문글·사용자 신고 접수와 차단 (#154)",
+      "description" : "신고 사유 조회, 답변·질문글·사용자 신고와 사용자 차단",
       "name" : "신고·차단"
     },
     {
@@ -9059,7 +9180,7 @@
       "name" : "미디어"
     },
     {
-      "description" : "심각도·긴급 대기열 조회와 사건 검토·판정 (#156)",
+      "description" : "신고 사건 대기열 조회와 검토·판정·복원",
       "name" : "신고 사건 운영자 판정"
     },
     {
