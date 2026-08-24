@@ -5,7 +5,13 @@ import java.util.List;
 import com.dnd.qello.safety.domain.ReportReason;
 import com.dnd.qello.safety.domain.ReportSubReason;
 
-public record ReportReasonResponse(String code, String label, List<String> subReasons, boolean detailRequired) {
+import io.swagger.v3.oas.annotations.media.Schema;
+
+public record ReportReasonResponse(
+	@Schema(description = "신고 사유를 요청에 전달할 코드.") String code,
+	@Schema(description = "화면에 표시할 신고 사유 이름.") String label,
+	@Schema(description = "이 사유를 선택했을 때 고를 수 있는 하위 사유 코드 목록.") List<String> subReasons,
+	@Schema(description = "추가 설명을 입력해야 하는지 여부.") boolean detailRequired) {
 
 	private static final List<ReportReasonResponse> CATALOG = List.of(
 		of(ReportReason.SEXUAL_CONTENT, "성적 또는 노골적인 컨텐츠", ReportSubReason.CSAM, ReportSubReason.NCII),
