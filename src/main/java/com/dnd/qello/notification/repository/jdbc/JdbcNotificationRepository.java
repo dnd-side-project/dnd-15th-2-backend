@@ -24,7 +24,6 @@ import java.sql.Time;
 import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -34,6 +33,10 @@ import java.util.stream.Collectors;
 
 @Repository
 public class JdbcNotificationRepository implements OutboxEventRepository, NotificationRepository {
+
+    private static final Set<String> PUSH_PLATFORM_NAMES = EnumSet.allOf(PushPlatform.class).stream()
+            .map(Enum::name)
+            .collect(Collectors.toUnmodifiableSet());
 
     private final NamedParameterJdbcTemplate jdbc;
 
@@ -225,12 +228,6 @@ public class JdbcNotificationRepository implements OutboxEventRepository, Notifi
 
     @Override
     public boolean completeClaim(
-            long deliveryId, int generation, PushDeliveryTerminalResult result, Instant at, Instant nextAttemptAt) {
-        return completeClaim(deliveryId, generation, result, at, nextAttemptAt, null);
-    }
-
-    @Override
-    public boolean completeClaim(
             long deliveryId, int generation, PushDeliveryTerminalResult result, Instant at, Instant nextAttemptAt,
             String providerMessageId) {
         validatePushDeliveryTerminalRequest(deliveryId, generation, result, at, nextAttemptAt, providerMessageId);
@@ -316,20 +313,6 @@ public class JdbcNotificationRepository implements OutboxEventRepository, Notifi
                         .addValue("fingerprintLockKey", fingerprintLockKey(tokenFingerprint)),
                 Number.class);
         return revokedCount == null ? 0 : revokedCount.intValue();
-    }
-
-    @Override
-    public int cancelUndeliveredForDevice(long pushDeviceId, String reason, Instant at) {
-        if (pushDeviceId <= 0) {
-            throw new NotificationException(NotificationErrorCode.INVALID_ID, "pushDeviceId",
-                    "pushDeviceId는 양수여야 합니다.");
-        }
-        if (at == null) {
-            throw new NotificationException(NotificationErrorCode.INVALID_PUSH_DEVICE_REQUEST, "at",
-                    "취소 시각은 필수입니다.");
-        }
-        return jdbc.update(NotificationSql.CANCEL_UNDELIVERED_DELIVERIES_FOR_DEVICE,
-                new MapSqlParameterSource().addValue("pushDeviceId", pushDeviceId));
     }
 
 	@Override
@@ -493,7 +476,7 @@ public class JdbcNotificationRepository implements OutboxEventRepository, Notifi
         if (userId <= 0) {
             throw new NotificationException(NotificationErrorCode.INVALID_ID, "userId", "userId는 양수여야 합니다.");
         }
-        if (platform == null || Arrays.stream(PushPlatform.values()).noneMatch(value -> value.name().equals(platform))) {
+        if (platform == null || !PUSH_PLATFORM_NAMES.contains(platform)) {
             throw new NotificationException(NotificationErrorCode.INVALID_PUSH_DEVICE_REQUEST, "platform",
                     "platform 값이 올바르지 않습니다.");
         }

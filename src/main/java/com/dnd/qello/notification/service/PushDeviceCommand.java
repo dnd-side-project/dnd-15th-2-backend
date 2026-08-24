@@ -18,10 +18,6 @@ public record PushDeviceCommand(PushPlatform platform, PushToken token) {
 		}
 	}
 
-	public PushDeviceCommand(PushPlatform platform, String token) {
-		this(platform, requireToken(token));
-	}
-
 	public PushDeviceCommand(String platform, String token) {
 		this(requirePlatform(platform), requireToken(token));
 	}

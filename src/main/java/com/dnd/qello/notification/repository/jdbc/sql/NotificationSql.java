@@ -158,10 +158,8 @@ public final class NotificationSql {
 		WITH due AS MATERIALIZED (
 			SELECT id, next_attempt_at AS due_next_attempt_at
 			FROM notification_delivery
-			WHERE (
-				(status IN ('PENDING', 'FAILED') AND next_attempt_at <= :now)
-				OR (status = 'PROCESSING' AND next_attempt_at <= :now)
-			)
+			WHERE status IN ('PENDING', 'FAILED', 'PROCESSING')
+			  AND next_attempt_at <= :now
 			ORDER BY next_attempt_at, id
 			LIMIT :batchSize
 			FOR UPDATE SKIP LOCKED
@@ -466,14 +464,6 @@ public final class NotificationSql {
 			RETURNING nd.id
 		)
 		SELECT count(*) FROM revoked
-		""";
-
-	/** 기기 철회/소유권 이전 시 아직 나가지 않은 전달만 취소한다. */
-	public static final String CANCEL_UNDELIVERED_DELIVERIES_FOR_DEVICE = """
-		UPDATE notification_delivery
-		SET status = 'CANCELLED'
-		WHERE push_device_id = :pushDeviceId
-		  AND status IN ('PENDING', 'FAILED')
 		""";
 
 	public static final String FIND_ACTIVE_PUSH_DEVICE_IDS = """

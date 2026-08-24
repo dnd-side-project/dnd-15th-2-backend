@@ -58,12 +58,9 @@ public class PushDispatchEligibility {
 		return new Evaluation(PushDispatchDecision.SEND, ReasonCode.ELIGIBLE);
 	}
 
+	/** UNIT-010이 고정한 context -> decision 경계. 이유 코드가 필요하면 evaluate를 사용한다. */
 	public PushDispatchDecision decide(PushDispatchContext context) {
 		return evaluate(context).decision();
-	}
-
-	public ReasonCode reasonCode(PushDispatchContext context) {
-		return evaluate(context).reasonCode();
 	}
 
 	public record Evaluation(PushDispatchDecision decision, ReasonCode reasonCode) {

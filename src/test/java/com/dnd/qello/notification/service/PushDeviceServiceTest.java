@@ -269,7 +269,6 @@ class PushDeviceServiceTest {
 
 		private final Deque<PushDevice> registerResults = new ArrayDeque<>();
 		private final Deque<Integer> revokeResults = new ArrayDeque<>();
-		private final Deque<Integer> cancelResults = new ArrayDeque<>();
 		private final List<Invocation> calls = new ArrayList<>();
 		private final NotificationRepository repository = (NotificationRepository) Proxy.newProxyInstance(
 			NotificationRepository.class.getClassLoader(), new Class<?>[] {NotificationRepository.class}, this);
@@ -281,7 +280,6 @@ class PushDeviceServiceTest {
 			return switch (method.getName()) {
 				case "registerOrTransferDevice" -> poll(registerResults, "registerOrTransferDevice");
 				case "revokeOwnedDevice" -> poll(revokeResults, "revokeOwnedDevice");
-				case "cancelUndeliveredForDevice" -> poll(cancelResults, "cancelUndeliveredForDevice");
 				default -> defaultValue(method.getReturnType());
 			};
 		}

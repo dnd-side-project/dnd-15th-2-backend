@@ -49,17 +49,6 @@ public final class PushDeliveryDispatchWorker {
 		PushPayloadFactory payloadFactory,
 		PushDeliveryRetryPolicy retryPolicy,
 		PushTokenProtector tokenProtector,
-		PushProvider provider
-	) {
-		this(claimService, eligibility, payloadFactory, retryPolicy, tokenProtector, provider, Clock.systemUTC());
-	}
-
-	public PushDeliveryDispatchWorker(
-		PushDeliveryClaimService claimService,
-		PushDispatchEligibility eligibility,
-		PushPayloadFactory payloadFactory,
-		PushDeliveryRetryPolicy retryPolicy,
-		PushTokenProtector tokenProtector,
 		PushProvider provider,
 		Clock clock
 	) {

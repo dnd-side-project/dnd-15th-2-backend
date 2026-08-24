@@ -27,6 +27,7 @@ public class PushDeliveryClaimService {
 		return notificationRepository.claimDueDeliveries(batchSize, now, leaseUntil);
 	}
 
+	/** UNIT-011이 고정한 terminal 계약. nextAttemptAt과 providerMessageId가 없는 종결에 사용한다. */
 	@Transactional
 	public boolean completeClaim(
 		long deliveryId, int generation, PushDeliveryTerminalResult result, Instant at) {
@@ -36,12 +37,6 @@ public class PushDeliveryClaimService {
 	@Transactional(readOnly = true)
 	public Optional<PushDispatchContext> findPushDispatchContext(long deliveryId, int generation, Instant now) {
 		return notificationRepository.findPushDispatchContext(deliveryId, generation, now);
-	}
-
-	@Transactional
-	public boolean completeClaim(
-		long deliveryId, int generation, PushDeliveryTerminalResult result, Instant at, Instant nextAttemptAt) {
-		return notificationRepository.completeClaim(deliveryId, generation, result, at, nextAttemptAt);
 	}
 
 	@Transactional

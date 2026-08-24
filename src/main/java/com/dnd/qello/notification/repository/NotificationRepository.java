@@ -38,10 +38,6 @@ public interface NotificationRepository {
 
 	boolean completeClaim(long deliveryId, int generation, PushDeliveryTerminalResult result, Instant at);
 
-	/** retry 시각을 명시적으로 저장하는 generation-fenced terminal API. */
-	boolean completeClaim(
-		long deliveryId, int generation, PushDeliveryTerminalResult result, Instant at, Instant nextAttemptAt);
-
 	/** SENT일 때만 검증된 provider message ID를 저장하는 generation-fenced terminal API. */
 	boolean completeClaim(
 		long deliveryId,
@@ -67,8 +63,6 @@ public interface NotificationRepository {
 		long userId, String platform, byte[] tokenCiphertext, String tokenFingerprint, Instant at);
 
 	int revokeOwnedDevice(long userId, String platform, String tokenFingerprint, Instant at);
-
-	int cancelUndeliveredForDevice(long pushDeviceId, String reason, Instant at);
 
 	List<Long> findActiveDeviceIdsByUserId(long userId);
 }
