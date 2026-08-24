@@ -65,6 +65,8 @@ import com.dnd.qello.notification.push.security.PushTokenKeyRing;
 import com.dnd.qello.notification.push.security.PushTokenProtector;
 import com.dnd.qello.notification.repository.NotificationRepository;
 import com.dnd.qello.notification.repository.OutboxEventRepository;
+import com.dnd.qello.notification.service.PushDeviceCommand;
+import com.dnd.qello.notification.service.PushDeviceService;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -98,10 +100,7 @@ class PushDeviceRegistrationIntegrationTest extends PostgisContainerIntegrationT
 
 	@BeforeEach
 	void setUp() {
-		jdbc.update("DELETE FROM notification_delivery");
-		jdbc.update("DELETE FROM notification");
-		jdbc.update("DELETE FROM push_device");
-		jdbc.update("DELETE FROM outbox_event");
+		deleteRegionFixtures();
 		jdbc.update("DELETE FROM user_account WHERE coarse_region_code = ?", REGION);
 		jdbc.update("DELETE FROM region_code WHERE code = ?", REGION);
 		jdbc.update("""
@@ -117,10 +116,7 @@ class PushDeviceRegistrationIntegrationTest extends PostgisContainerIntegrationT
 
 	@AfterEach
 	void tearDown() {
-		jdbc.update("DELETE FROM notification_delivery");
-		jdbc.update("DELETE FROM notification");
-		jdbc.update("DELETE FROM push_device");
-		jdbc.update("DELETE FROM outbox_event");
+		deleteRegionFixtures();
 		jdbc.update("DELETE FROM user_account WHERE coarse_region_code = ?", REGION);
 	}
 
@@ -264,6 +260,39 @@ class PushDeviceRegistrationIntegrationTest extends PostgisContainerIntegrationT
 	}
 
 	@Test
+	@DisplayName("INT-004: 같은 사용자의 새 token 재등록은 기존 기기와 미발송 delivery를 보존해야 한다")
+	void refreshesExistingDeviceWithoutCancellingUndeliveredDeliveries() throws Exception {
+		long userId = account("gh179-refresh-owner");
+		ProtectedPushToken previousToken = protectedToken(OTHER_TOKEN_SENTINEL);
+		PushDevice existing = notifications.saveDevice(new PushDevice(null, userId, PushPlatform.ANDROID,
+			previousToken.envelope(), previousToken.fingerprint(), PushDeviceStatus.ACTIVE, NOW, null));
+		long pendingNotificationId = notificationFor(userId);
+		long failedNotificationId = notificationFor(userId);
+		notifications.saveDelivery(NotificationDelivery.pending(pendingNotificationId, existing.id(), NOW));
+		notifications.saveDelivery(new NotificationDelivery(null, failedNotificationId, existing.id(),
+			DeliveryStatus.FAILED, 1, NOW, NOW, null, null));
+
+		PushDeviceService service = new PushDeviceService(notifications, protector(), Clock.fixed(NOW, ZoneOffset.UTC));
+		PushDevice refreshed = service.registerOrTransferDevice(userId,
+			new PushDeviceCommand(PushPlatform.ANDROID, PushToken.of(TOKEN_SENTINEL)));
+
+		assertThat(refreshed.id()).isEqualTo(existing.id());
+		assertThat(jdbc.queryForObject("""
+			SELECT count(*) FROM push_device
+			WHERE user_id = ? AND device_status = 'ACTIVE'
+			""", Integer.class, userId)).isEqualTo(1);
+		assertThat(jdbc.queryForObject("""
+			SELECT count(*) FROM notification_delivery WHERE status = 'CANCELLED'
+			""", Integer.class)).isZero();
+		assertThat(jdbc.queryForObject("""
+			SELECT count(*) FROM notification_delivery WHERE status = 'PENDING'
+			""", Integer.class)).isEqualTo(1);
+		assertThat(jdbc.queryForObject("""
+			SELECT count(*) FROM notification_delivery WHERE status = 'FAILED'
+			""", Integer.class)).isEqualTo(1);
+	}
+
+	@Test
 	@DisplayName("INT-005: 다른 사용자로의 동시 ownership transfer는 한 명만 ACTIVE가 되고 이전 delivery는 cancel되어야 한다")
 	void concurrentOwnershipTransferIsAtomic() throws Exception {
 		long ownerId = account("gh179-transfer-owner");
@@ -393,6 +422,24 @@ class PushDeviceRegistrationIntegrationTest extends PostgisContainerIntegrationT
 		} catch (ReflectiveOperationException exception) {
 			throw new AssertionError("PushDeviceService is not available yet", exception);
 		}
+	}
+
+	private void deleteRegionFixtures() {
+		jdbc.update("""
+			DELETE FROM notification_delivery
+			WHERE notification_id IN (
+				SELECT id FROM notification WHERE recipient_id IN (
+					SELECT id FROM user_account WHERE coarse_region_code = ?))
+			""", REGION);
+		jdbc.update("""
+			DELETE FROM notification WHERE recipient_id IN (
+				SELECT id FROM user_account WHERE coarse_region_code = ?)
+			""", REGION);
+		jdbc.update("""
+			DELETE FROM push_device WHERE user_id IN (
+				SELECT id FROM user_account WHERE coarse_region_code = ?)
+			""", REGION);
+		jdbc.update("DELETE FROM outbox_event WHERE dedup_key LIKE 'gh179-%'");
 	}
 
 	private Object command(PushPlatform platform, String tokenValue) {

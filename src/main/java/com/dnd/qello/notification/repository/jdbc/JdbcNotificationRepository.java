@@ -295,10 +295,9 @@ public class JdbcNotificationRepository implements OutboxEventRepository, Notifi
     public PushDevice registerOrTransferDevice(
             long userId, String platform, byte[] tokenCiphertext, String tokenFingerprint, Instant at) {
         validatePushDeviceWrite(userId, platform, tokenCiphertext, tokenFingerprint, at);
+        acquirePushDeviceWriteLocks(userId, platform, tokenFingerprint);
         return jdbc.queryForObject(NotificationSql.REGISTER_OR_TRANSFER_PUSH_DEVICE, pushDeviceParams(
-                userId, platform, tokenCiphertext, tokenFingerprint, PushDeviceStatus.ACTIVE, at, null)
-                .addValue("userPlatformLockKey", userPlatformLockKey(userId, platform))
-                .addValue("fingerprintLockKey", fingerprintLockKey(tokenFingerprint)),
+                userId, platform, tokenCiphertext, tokenFingerprint, PushDeviceStatus.ACTIVE, at, null),
                 (rs, row) -> mapPushDevice(rs));
     }
 
@@ -306,11 +305,10 @@ public class JdbcNotificationRepository implements OutboxEventRepository, Notifi
     @Transactional
     public int revokeOwnedDevice(long userId, String platform, String tokenFingerprint, Instant at) {
         validatePushDeviceLookup(userId, platform, tokenFingerprint, at);
+        acquirePushDeviceWriteLocks(userId, platform, tokenFingerprint);
         Number revokedCount = jdbc.queryForObject(NotificationSql.REVOKE_OWNED_PUSH_DEVICE,
                 new MapSqlParameterSource().addValue("userId", userId).addValue("platform", platform)
-                        .addValue("tokenFingerprint", tokenFingerprint).addValue("revokedAt", timestamp(at))
-                        .addValue("userPlatformLockKey", userPlatformLockKey(userId, platform))
-                        .addValue("fingerprintLockKey", fingerprintLockKey(tokenFingerprint)),
+                        .addValue("tokenFingerprint", tokenFingerprint).addValue("revokedAt", timestamp(at)),
                 Number.class);
         return revokedCount == null ? 0 : revokedCount.intValue();
     }
@@ -535,6 +533,16 @@ public class JdbcNotificationRepository implements OutboxEventRepository, Notifi
 
     private static long userPlatformLockKey(long userId, String platform) {
         return advisoryLockKey("push-device:user-platform", userId + ":" + platform);
+    }
+
+    private void acquirePushDeviceWriteLocks(long userId, String platform, String tokenFingerprint) {
+        acquireTransactionAdvisoryLock(userPlatformLockKey(userId, platform));
+        acquireTransactionAdvisoryLock(fingerprintLockKey(tokenFingerprint));
+    }
+
+    private void acquireTransactionAdvisoryLock(long lockKey) {
+        jdbc.query(NotificationSql.ACQUIRE_TRANSACTION_ADVISORY_LOCK,
+                new MapSqlParameterSource("lockKey", lockKey), (ResultSet rs) -> null);
     }
 
     private static long fingerprintLockKey(String tokenFingerprint) {

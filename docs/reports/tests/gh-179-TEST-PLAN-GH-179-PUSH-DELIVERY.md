@@ -88,7 +88,7 @@ isolated reruns and the final sequential full suite passed, so no out-of-scope S
 | `INT-001` | PASS | `PushDeviceRegistrationIntegrationTest#registersOwnPushTokenWithoutLeakingPlaintext` | `b47db09`의 test protector wiring 이후 204와 token 비노출 통과 |
 | `INT-002` | PASS | `PushDeviceRegistrationIntegrationTest#revokesOwnTokenIdempotentlyAndCancelsOnlyPendingOrFailedDeliveries` | `b47db09` 이후 204·멱등·PENDING/FAILED cancellation 통과 |
 | `INT-003` | PASS | `PushDeviceRegistrationIntegrationTest#revokeDoesNotChangeAnotherUsersToken` | `b47db09` 이후 타 사용자 보호 계약 통과 |
-| `INT-004`~`INT-005` | PASS | `PushDeviceRegistrationIntegrationTest` | 같은 스위트 내 동시 재등록/ownership transfer 테스트는 통과 |
+| `INT-004`~`INT-005` | PASS | `PushDeviceRegistrationIntegrationTest` | 동일 token 동시 재등록, 새 token 재등록 시 기존 delivery 보존, ownership transfer 테스트는 통과 |
 | `INT-018` | PASS | `PushDeviceRegistrationIntegrationTest#validatesAuthenticationAndRedactsTokenAcrossBothEndpoints` | `b47db09` 이후 인증·validation·redaction 경계 통과 |
 | `INT-006`~`INT-007`, `INT-019` | PASS | `PushDeliveryLeaseIntegrationTest` | due claim, stale generation fencing, EXPLAIN evidence 스위트 통과 |
 | `INT-008` / `INT-015` | PASS | `PushDeliveryDispatchIntegrationTest` | allowlist payload, provider_message_id persistence, FCM wire boundary 통과 |
@@ -159,7 +159,7 @@ isolated reruns and the final sequential full suite passed, so no out-of-scope S
 ### Concurrency and idempotency
 
 - `INT-004`/`INT-005`, `INT-006`/`INT-007`은 통과해 동시 재등록, ownership transfer, lease reclaim, generation fencing은 별도 스위트에서 검증됐다.
-- 반면 register/revoke API의 204/idempotency contract는 `INT-001`~`INT-003` 실패 때문에 HTTP 경계까지 완료됐다고 볼 수 없다.
+- register/revoke API의 204/idempotency contract는 `INT-001`~`INT-003`에서 HTTP 경계까지 통과했다.
 
 ### Transactions and event ordering
 

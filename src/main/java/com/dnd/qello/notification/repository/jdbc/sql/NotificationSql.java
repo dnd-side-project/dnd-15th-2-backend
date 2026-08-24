@@ -356,54 +356,36 @@ public final class NotificationSql {
 		RETURNING id, user_id, platform, token_ciphertext, token_fingerprint, device_status, last_seen_at, revoked_at
 		""";
 
+	public static final String ACQUIRE_TRANSACTION_ADVISORY_LOCK = """
+		SELECT pg_advisory_xact_lock(:lockKey)
+		""";
+
 	/**
-	 * direct 호출에서도 트랜잭션 단위 원자성을 잃지 않도록 같은 fingerprint의 revoke,
-	 * delivery cancel, ACTIVE upsert를 한 SQL 문장 안에서 끝낸다.
+	 * lock 획득 뒤 새 statement snapshot에서 같은 fingerprint의 revoke, delivery cancel,
+	 * ACTIVE upsert를 한 SQL 문장 안에서 끝낸다. 같은 user/platform의 token 갱신은 기존
+	 * push_device를 갱신해 미발송 delivery를 유지하고, 다른 소유자의 같은 token만 revoke한다.
 	 */
 	public static final String REGISTER_OR_TRANSFER_PUSH_DEVICE = """
-		WITH user_platform_lock AS MATERIALIZED (
-			SELECT pg_advisory_xact_lock(:userPlatformLockKey)
-		),
-		fingerprint_lock AS MATERIALIZED (
-			SELECT pg_advisory_xact_lock(:fingerprintLockKey)
-			FROM user_platform_lock
-		),
-		current_active AS MATERIALIZED (
+		WITH current_active AS MATERIALIZED (
 			SELECT pd.*
 			FROM push_device pd
-			CROSS JOIN fingerprint_lock
 			WHERE pd.token_fingerprint = :tokenFingerprint
 			  AND pd.device_status = 'ACTIVE'
 			FOR UPDATE
 		),
 		owner_platform_active AS MATERIALIZED (
-			SELECT pd.id
+			SELECT pd.*
 			FROM push_device pd
-			CROSS JOIN fingerprint_lock
 			WHERE pd.user_id = :userId
 			  AND pd.platform = :platform
 			  AND pd.device_status = 'ACTIVE'
-			  AND pd.token_fingerprint <> :tokenFingerprint
 			FOR UPDATE
-		),
-		refreshed AS (
-			UPDATE push_device
-			SET platform = :platform,
-				token_ciphertext = :tokenCiphertext,
-				token_fingerprint = :tokenFingerprint,
-				device_status = 'ACTIVE',
-				last_seen_at = :lastSeenAt,
-				revoked_at = NULL
-			WHERE id IN (SELECT id FROM current_active WHERE user_id = :userId)
-			RETURNING push_device.*
 		),
 		revoked AS (
 			UPDATE push_device
 			SET device_status = 'REVOKED', revoked_at = :lastSeenAt
 			WHERE id IN (
 				SELECT id FROM current_active WHERE user_id <> :userId
-				UNION
-				SELECT id FROM owner_platform_active
 			)
 			RETURNING id
 		),
@@ -418,6 +400,22 @@ public final class NotificationSql {
 		revocation_complete AS (
 			SELECT count(*) AS revoked_count
 			FROM revoked
+		),
+		refreshed AS (
+			UPDATE push_device
+			SET platform = :platform,
+				token_ciphertext = :tokenCiphertext,
+				token_fingerprint = :tokenFingerprint,
+				device_status = 'ACTIVE',
+				last_seen_at = :lastSeenAt,
+				revoked_at = NULL
+			FROM revocation_complete
+			WHERE id IN (
+				SELECT id FROM current_active WHERE user_id = :userId
+				UNION
+				SELECT id FROM owner_platform_active
+			)
+			RETURNING push_device.*
 		),
 		inserted AS (
 			INSERT INTO push_device
@@ -435,17 +433,9 @@ public final class NotificationSql {
 		""";
 
 	public static final String REVOKE_OWNED_PUSH_DEVICE = """
-		WITH user_platform_lock AS MATERIALIZED (
-			SELECT pg_advisory_xact_lock(:userPlatformLockKey)
-		),
-		fingerprint_lock AS MATERIALIZED (
-			SELECT pg_advisory_xact_lock(:fingerprintLockKey)
-			FROM user_platform_lock
-		),
-		current_active AS MATERIALIZED (
+		WITH current_active AS MATERIALIZED (
 			SELECT pd.id
 			FROM push_device pd
-			CROSS JOIN fingerprint_lock
 			WHERE pd.token_fingerprint = :tokenFingerprint
 			  AND pd.device_status = 'ACTIVE'
 			  AND pd.user_id = :userId

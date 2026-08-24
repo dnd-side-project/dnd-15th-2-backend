@@ -100,7 +100,7 @@
 | TEST-PLAN-GH-179-PUSH-DELIVERY-INT-001 | MockMvc, service, protector, PostgreSQL | 인증 사용자와 fake key material, token sentinel | 등록 POST | 204, ACTIVE 한 행, DB·응답·captured log에 sentinel 원문 없음 | 사용자·device 삭제, log appender 분리 |
 | TEST-PLAN-GH-179-PUSH-DELIVERY-INT-002 | MockMvc, repository transaction | 본인 ACTIVE device와 PENDING/FAILED/SENT delivery | revoke POST 두 번 | 둘 다 204, device REVOKED, PENDING/FAILED만 CANCELLED, SENT 보존 | 관련 notification/delivery/device 삭제 |
 | TEST-PLAN-GH-179-PUSH-DELIVERY-INT-003 | MockMvc, repository | A 소유 token, B 인증 | B가 revoke POST | 204지만 A device와 delivery는 불변 | 관련 행 삭제 |
-| TEST-PLAN-GH-179-PUSH-DELIVERY-INT-004 | registration service, PostgreSQL | 같은 사용자, 동일 token, 동시 시작 barrier | 두 transaction 동시 등록 | ACTIVE 한 행, unique 오류 외부 노출 없음, latest lastSeen·유효 ciphertext | executor 종료, 관련 행 삭제 |
+| TEST-PLAN-GH-179-PUSH-DELIVERY-INT-004 | registration service, PostgreSQL | 같은 사용자의 동일 token 동시 시작 barrier 또는 기존 ACTIVE device와 새 token | 두 transaction 동시 등록 또는 새 token 재등록 | ACTIVE 한 행, unique 오류 외부 노출 없음, 최신 ciphertext·lastSeenAt, 기존 device ID와 미발송 delivery 보존 | executor 종료, 관련 행 삭제 |
 | TEST-PLAN-GH-179-PUSH-DELIVERY-INT-005 | registration service, PostgreSQL | A ACTIVE token과 B 인증, 동시 재등록 barrier | A 재등록과 B 소유권 이전 경합 | ACTIVE 소유자는 한 명, 이전 소유 미발송 CANCELLED, partial commit 없음 | executor 종료, 관련 행 삭제 |
 | TEST-PLAN-GH-179-PUSH-DELIVERY-INT-006 | delivery repository, PostgreSQL | due PENDING/FAILED와 미래 due·terminal 행 | worker 두 개가 batch claim | 각 due ID는 한 worker만 획득, 미래/terminal 제외, attempt 1회 증가 | delivery 삭제 |
 | TEST-PLAN-GH-179-PUSH-DELIVERY-INT-007 | delivery repository, PostgreSQL | PROCESSING lease와 generation G | 만료 전·후 다른 worker claim, 구 worker terminal update | 만료 전 회수 불가, 후에는 G+1 회수, G update는 0행 | delivery 삭제 |
