@@ -17,4 +17,10 @@ public record PushDeviceRequest(
 	public PushDeviceCommand toCommand() {
 		return new PushDeviceCommand(platform, token);
 	}
+
+	/** 요청 본문이 log, 예외 메시지나 debug 도구로 흘러도 token 원문을 남기지 않는다. */
+	@Override
+	public String toString() {
+		return "PushDeviceRequest[platform=" + platform + ", token=[REDACTED]]";
+	}
 }

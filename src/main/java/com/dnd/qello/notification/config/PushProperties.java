@@ -28,4 +28,9 @@ public record PushProperties(
 		}
 	}
 
+	@Override
+	public String toString() {
+		return "PushProperties[REDACTED]";
+	}
+
 }

@@ -123,6 +123,18 @@ class PushConfigurationTest {
 	}
 
 	@Test
+	@DisplayName("UNIT-015: FCM properties의 문자열 표현은 service-account credential을 노출하지 않는다")
+	void fcmPropertiesToStringRedactsCredentialJson() {
+		String credentialJson = "{\"type\":\"service_account\",\"private_key\":\"obvious-test-private-key\"}";
+		PushProperties properties = new PushProperties(
+			"test-project", credentialJson, java.time.Duration.ofSeconds(1), java.time.Duration.ofSeconds(1));
+
+		assertThat(properties.toString())
+			.doesNotContain(credentialJson, "obvious-test-private-key")
+			.contains("[REDACTED]");
+	}
+
+	@Test
 	@DisplayName("UNIT-015: production key ring은 current로 쓰고 current와 previous를 읽는다")
 	void productionKeyRingWritesCurrentAndReadsCurrentAndPrevious() {
 		PushTokenProperties properties = new PushTokenProperties(
