@@ -1,5 +1,7 @@
 package com.dnd.qello.notification.push.security;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -15,7 +17,7 @@ public final class PushTokenKeyRing {
 	private final byte[] fingerprintKey;
 
 	public PushTokenKeyRing(String currentKeyId, Map<String, byte[]> encryptionKeys, byte[] fingerprintKey) {
-		if (currentKeyId == null || currentKeyId.isBlank() || currentKeyId.getBytes().length > 255) {
+		if (currentKeyId == null || currentKeyId.isBlank() || currentKeyId.getBytes(StandardCharsets.UTF_8).length > 255) {
 			throw new IllegalArgumentException("[REDACTED]");
 		}
 		Objects.requireNonNull(encryptionKeys, "encryptionKeys");
@@ -25,6 +27,7 @@ public final class PushTokenKeyRing {
 		this.currentKeyId = currentKeyId;
 		this.encryptionKeys = copyEncryptionKeys(encryptionKeys);
 		this.fingerprintKey = copyKey(fingerprintKey);
+		validateKeySeparation(this.encryptionKeys, this.fingerprintKey);
 	}
 
 	String currentKeyId() {
@@ -51,12 +54,20 @@ public final class PushTokenKeyRing {
 		Map<String, byte[]> copiedKeys = new LinkedHashMap<>();
 		for (Map.Entry<String, byte[]> entry : encryptionKeys.entrySet()) {
 			String keyId = entry.getKey();
-			if (keyId == null || keyId.isBlank() || keyId.getBytes().length > 255) {
+			if (keyId == null || keyId.isBlank() || keyId.getBytes(StandardCharsets.UTF_8).length > 255) {
 				throw new IllegalArgumentException("[REDACTED]");
 			}
 			copiedKeys.put(keyId, copyKey(entry.getValue()));
 		}
 		return Map.copyOf(copiedKeys);
+	}
+
+	private static void validateKeySeparation(Map<String, byte[]> encryptionKeys, byte[] fingerprintKey) {
+		for (byte[] encryptionKey : encryptionKeys.values()) {
+			if (MessageDigest.isEqual(encryptionKey, fingerprintKey)) {
+				throw new IllegalArgumentException("[REDACTED]");
+			}
+		}
 	}
 
 	private static byte[] copyKey(byte[] key) {
