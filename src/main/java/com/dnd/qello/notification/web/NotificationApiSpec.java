@@ -152,7 +152,7 @@ public interface NotificationApiSpec {
 	})
 	@PostMapping("/notifications/devices")
 	ResponseEntity<ApiResponse<Void>> registerDevice(
-		@RequestBody(required = false) PushDeviceRequest request,
+		@RequestBody(required = true) PushDeviceRequest request,
 		@Parameter(hidden = true) Authentication authentication);
 
 	@Operation(
@@ -172,7 +172,7 @@ public interface NotificationApiSpec {
 	})
 	@PostMapping("/notifications/devices/revoke")
 	ResponseEntity<ApiResponse<Void>> revokeDevice(
-		@RequestBody(required = false) PushDeviceRequest request,
+		@RequestBody(required = true) PushDeviceRequest request,
 		@Parameter(hidden = true) Authentication authentication);
 
 	@Operation(

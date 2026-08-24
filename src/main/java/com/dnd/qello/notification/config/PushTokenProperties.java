@@ -49,6 +49,11 @@ public record PushTokenProperties(
 		return new PushTokenKeyRing(currentKeyId, encryptionKeys, decodeKey(fingerprintKeyBase64));
 	}
 
+	@Override
+	public String toString() {
+		return "PushTokenProperties[REDACTED]";
+	}
+
 	private static void requirePresent(String value) {
 		if (value == null || value.isBlank()) {
 			throw invalidConfiguration();

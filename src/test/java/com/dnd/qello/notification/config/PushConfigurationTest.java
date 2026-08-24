@@ -61,6 +61,39 @@ class PushConfigurationTest {
 	}
 
 	@Test
+	@DisplayName("UNIT-015: production PushConfiguration은 실제 PushTokenProtector를 만들고 current-write·previous-read를 보장한다")
+	void productionConfigurationWiresTokenProtectorWithRotatingKeys() {
+		new ApplicationContextRunner()
+			.withConfiguration(AutoConfigurations.of(ConfigurationPropertiesAutoConfiguration.class))
+			.withUserConfiguration(PushConfiguration.class)
+			.withPropertyValues(
+				"spring.profiles.active=production",
+				"qello.notification.push.fcm.project-id=test-project",
+				"qello.notification.push.fcm.credential-json={\"type\":\"authorized_user\",\"client_id\":\"test-client\",\"client_secret\":\"test-secret\",\"refresh_token\":\"test-refresh\"}",
+				"qello.notification.push.fcm.connect-timeout=PT1S",
+				"qello.notification.push.fcm.read-timeout=PT1S",
+				"qello.notification.push.token-protection.current-key-id=" + CURRENT_KEY_ID,
+				"qello.notification.push.token-protection.current-encryption-key-base64=" + base64(CURRENT_ENCRYPTION_KEY),
+				"qello.notification.push.token-protection.previous-key-id=" + PREVIOUS_KEY_ID,
+				"qello.notification.push.token-protection.previous-encryption-key-base64=" + base64(PREVIOUS_ENCRYPTION_KEY),
+				"qello.notification.push.token-protection.fingerprint-key-base64=" + base64(FINGERPRINT_KEY))
+			.run(context -> {
+				assertThat(context).hasNotFailed();
+				PushTokenProtector configuredProtector = context.getBean(PushTokenProtector.class);
+				PushToken token = PushToken.of("production-wiring-test-token");
+				PushTokenProtector previousProtector = new AesGcmPushTokenProtector(
+					new PushTokenKeyRing(
+						PREVIOUS_KEY_ID, Map.of(PREVIOUS_KEY_ID, PREVIOUS_ENCRYPTION_KEY), FINGERPRINT_KEY));
+
+				ProtectedPushToken currentEnvelope = configuredProtector.protect(token);
+				ProtectedPushToken previousEnvelope = previousProtector.protect(token);
+
+				assertThat(envelopeKeyId(currentEnvelope.envelope())).isEqualTo(CURRENT_KEY_ID);
+				assertThat(configuredProtector.decrypt(previousEnvelope.envelope())).isEqualTo(token);
+			});
+	}
+
+	@Test
 	@DisplayName("UNIT-015: production token-key properties는 Base64가 아니거나 32 bytes가 아닌 key를 거절한다")
 	void productionTokenKeyPropertiesRejectInvalidEncodingAndLength() {
 		assertThatThrownBy(() -> new PushTokenProperties(
@@ -69,6 +102,24 @@ class PushConfigurationTest {
 		assertThatThrownBy(() -> new PushTokenProperties(
 			CURRENT_KEY_ID, base64(new byte[16]), null, null, base64(FINGERPRINT_KEY)))
 			.isInstanceOf(IllegalArgumentException.class);
+	}
+
+	@Test
+	@DisplayName("UNIT-015: token-key properties의 문자열 표현은 AES·HMAC key material을 노출하지 않는다")
+	void tokenKeyPropertiesToStringRedactsKeyMaterial() {
+		String currentEncryptionKey = base64(CURRENT_ENCRYPTION_KEY);
+		String previousEncryptionKey = base64(PREVIOUS_ENCRYPTION_KEY);
+		String fingerprintKey = base64(FINGERPRINT_KEY);
+		PushTokenProperties properties = new PushTokenProperties(
+			CURRENT_KEY_ID,
+			currentEncryptionKey,
+			PREVIOUS_KEY_ID,
+			previousEncryptionKey,
+			fingerprintKey);
+
+		assertThat(properties.toString())
+			.doesNotContain(currentEncryptionKey, previousEncryptionKey, fingerprintKey)
+			.contains("[REDACTED]");
 	}
 
 	@Test

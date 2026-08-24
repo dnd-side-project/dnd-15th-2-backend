@@ -266,11 +266,15 @@ class OpenApiSpecificationIntegrationTest extends PostgisContainerIntegrationTes
 	@DisplayName("INT-018: push device register와 revoke의 204 응답은 content schema를 노출하지 않는다")
 	void documentsPushDeviceNoContentResponsesWithoutSchema() throws Exception {
 		JsonNode specification = objectMapper.readTree(fetchSpecification());
-		JsonNode registerResponse = operation(specification, "/api/v1/notifications/devices", "post")
+		JsonNode registerOperation = operation(specification, "/api/v1/notifications/devices", "post");
+		JsonNode revokeOperation = operation(specification, "/api/v1/notifications/devices/revoke", "post");
+		JsonNode registerResponse = registerOperation
 			.at("/responses/204");
-		JsonNode revokeResponse = operation(specification, "/api/v1/notifications/devices/revoke", "post")
+		JsonNode revokeResponse = revokeOperation
 			.at("/responses/204");
 
+		assertThat(registerOperation.at("/requestBody/required").asBoolean()).isTrue();
+		assertThat(revokeOperation.at("/requestBody/required").asBoolean()).isTrue();
 		assertThat(registerResponse.isMissingNode()).isFalse();
 		assertThat(registerResponse.has("content")).isFalse();
 		assertThat(revokeResponse.isMissingNode()).isFalse();

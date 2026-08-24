@@ -7569,7 +7569,8 @@
                 "$ref" : "#/components/schemas/PushDeviceRequest"
               }
             }
-          }
+          },
+          "required" : true
         },
         "responses" : {
           "204" : {
@@ -7628,7 +7629,8 @@
                 "$ref" : "#/components/schemas/PushDeviceRequest"
               }
             }
-          }
+          },
+          "required" : true
         },
         "responses" : {
           "204" : {
