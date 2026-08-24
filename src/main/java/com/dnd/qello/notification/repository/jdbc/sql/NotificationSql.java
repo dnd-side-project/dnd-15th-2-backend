@@ -160,13 +160,17 @@ public final class NotificationSql {
 	 * delivery cancel, ACTIVE upsert를 한 SQL 문장 안에서 끝낸다.
 	 */
 	public static final String REGISTER_OR_TRANSFER_PUSH_DEVICE = """
-		WITH advisory_lock AS (
-			SELECT pg_advisory_xact_lock(:lockKey)
+		WITH user_platform_lock AS MATERIALIZED (
+			SELECT pg_advisory_xact_lock(:userPlatformLockKey)
+		),
+		fingerprint_lock AS MATERIALIZED (
+			SELECT pg_advisory_xact_lock(:fingerprintLockKey)
+			FROM user_platform_lock
 		),
 		current_active AS MATERIALIZED (
 			SELECT pd.*
 			FROM push_device pd
-			CROSS JOIN advisory_lock
+			CROSS JOIN fingerprint_lock
 			WHERE pd.token_fingerprint = :tokenFingerprint
 			  AND pd.device_status = 'ACTIVE'
 			FOR UPDATE
@@ -174,7 +178,7 @@ public final class NotificationSql {
 		owner_platform_active AS MATERIALIZED (
 			SELECT pd.id
 			FROM push_device pd
-			CROSS JOIN advisory_lock
+			CROSS JOIN fingerprint_lock
 			WHERE pd.user_id = :userId
 			  AND pd.platform = :platform
 			  AND pd.device_status = 'ACTIVE'
@@ -230,13 +234,17 @@ public final class NotificationSql {
 		""";
 
 	public static final String REVOKE_OWNED_PUSH_DEVICE = """
-		WITH advisory_lock AS (
-			SELECT pg_advisory_xact_lock(:lockKey)
+		WITH user_platform_lock AS MATERIALIZED (
+			SELECT pg_advisory_xact_lock(:userPlatformLockKey)
+		),
+		fingerprint_lock AS MATERIALIZED (
+			SELECT pg_advisory_xact_lock(:fingerprintLockKey)
+			FROM user_platform_lock
 		),
 		current_active AS MATERIALIZED (
 			SELECT pd.id
 			FROM push_device pd
-			CROSS JOIN advisory_lock
+			CROSS JOIN fingerprint_lock
 			WHERE pd.token_fingerprint = :tokenFingerprint
 			  AND pd.device_status = 'ACTIVE'
 			  AND pd.user_id = :userId

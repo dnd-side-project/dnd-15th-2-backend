@@ -12,6 +12,7 @@ import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.sql.ResultSet;
@@ -215,7 +216,8 @@ public class JdbcNotificationRepository implements OutboxEventRepository, Notifi
         validatePushDeviceWrite(userId, platform, tokenCiphertext, tokenFingerprint, at);
         return jdbc.queryForObject(NotificationSql.REGISTER_OR_TRANSFER_PUSH_DEVICE, pushDeviceParams(
                 userId, platform, tokenCiphertext, tokenFingerprint, PushDeviceStatus.ACTIVE, at, null)
-                .addValue("lockKey", advisoryLockKey(tokenFingerprint)),
+                .addValue("userPlatformLockKey", userPlatformLockKey(userId, platform))
+                .addValue("fingerprintLockKey", fingerprintLockKey(tokenFingerprint)),
                 (rs, row) -> mapPushDevice(rs));
     }
 
@@ -226,7 +228,8 @@ public class JdbcNotificationRepository implements OutboxEventRepository, Notifi
         Number revokedCount = jdbc.queryForObject(NotificationSql.REVOKE_OWNED_PUSH_DEVICE,
                 new MapSqlParameterSource().addValue("userId", userId).addValue("platform", platform)
                         .addValue("tokenFingerprint", tokenFingerprint).addValue("revokedAt", timestamp(at))
-                        .addValue("lockKey", advisoryLockKey(tokenFingerprint)),
+                        .addValue("userPlatformLockKey", userPlatformLockKey(userId, platform))
+                        .addValue("fingerprintLockKey", fingerprintLockKey(tokenFingerprint)),
                 Number.class);
         return revokedCount == null ? 0 : revokedCount.intValue();
     }
@@ -374,9 +377,18 @@ public class JdbcNotificationRepository implements OutboxEventRepository, Notifi
         }
     }
 
-    private static long advisoryLockKey(String tokenFingerprint) {
+    private static long userPlatformLockKey(long userId, String platform) {
+        return advisoryLockKey("push-device:user-platform", userId + ":" + platform);
+    }
+
+    private static long fingerprintLockKey(String tokenFingerprint) {
+        return advisoryLockKey("push-device:fingerprint", tokenFingerprint);
+    }
+
+    private static long advisoryLockKey(String namespace, String value) {
         try {
-            byte[] hash = MessageDigest.getInstance("SHA-256").digest(tokenFingerprint.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            byte[] hash = MessageDigest.getInstance("SHA-256")
+                    .digest((namespace + ":" + value).getBytes(StandardCharsets.UTF_8));
             return ByteBuffer.wrap(hash).getLong();
         }
         catch (NoSuchAlgorithmException exception) {
