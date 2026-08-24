@@ -30,6 +30,7 @@ import com.dnd.qello.notification.error.NotificationErrorCode;
 import com.dnd.qello.notification.error.NotificationException;
 import com.dnd.qello.notification.service.NotificationInboxService;
 import com.dnd.qello.notification.service.NotificationPreferenceService;
+import com.dnd.qello.notification.service.PushDeviceService;
 import com.dnd.qello.notification.view.NotificationCard;
 import com.dnd.qello.notification.view.NotificationListing;
 import com.dnd.qello.notification.view.NotificationTargetDecision;
@@ -48,6 +49,8 @@ class NotificationApiMockMvcTest {
 	private NotificationInboxService inboxService;
 	@Mock
 	private NotificationPreferenceService preferenceService;
+	@Mock
+	private PushDeviceService pushDeviceService;
 
 	private MockMvc mockMvc;
 
@@ -55,7 +58,8 @@ class NotificationApiMockMvcTest {
 	void setUp() {
 		Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
 		mockMvc = MockMvcTestSupport.standalone(
-			new NotificationController(inboxService, preferenceService, new ApiResponseFactory(clock)), true, USER_ID, clock);
+			new NotificationController(inboxService, preferenceService, pushDeviceService, new ApiResponseFactory(clock)),
+			true, USER_ID, clock);
 	}
 
 	@Test
