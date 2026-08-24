@@ -8,6 +8,7 @@ import com.dnd.qello.notification.domain.Notification;
 import com.dnd.qello.notification.domain.NotificationDelivery;
 import com.dnd.qello.notification.domain.PushDevice;
 import com.dnd.qello.notification.push.ClaimedPushDelivery;
+import com.dnd.qello.notification.push.PushDispatchContext;
 import com.dnd.qello.notification.push.PushDeliveryTerminalResult;
 
 public interface NotificationRepository {
@@ -32,7 +33,13 @@ public interface NotificationRepository {
 
 	List<ClaimedPushDelivery> claimDueDeliveries(int batchSize, Instant now, Instant leaseUntil);
 
+	/** provider 호출 직전에 delivery와 현재 eligibility 권위값을 한 snapshot으로 읽는다. */
+	Optional<PushDispatchContext> findPushDispatchContext(long deliveryId, Instant at);
+
 	boolean completeClaim(long deliveryId, int generation, PushDeliveryTerminalResult result, Instant at);
+
+	/** invalid token을 device 상태에 반영하고 같은 device의 미발송 delivery를 취소한다. */
+	int invalidatePushDeviceAndCancelUndelivered(long pushDeviceId);
 
 	/** 기존 fan-out 회귀 경로와의 호환 API. 신규 push dispatch는 fenced batch API를 사용한다. */
 	Optional<NotificationDelivery> claimDelivery(long id, Instant at);

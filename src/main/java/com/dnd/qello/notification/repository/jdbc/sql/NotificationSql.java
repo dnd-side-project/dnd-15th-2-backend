@@ -183,6 +183,88 @@ public final class NotificationSql {
 		ORDER BY due.due_next_attempt_at, due.id
 		""";
 
+	/**
+	 * provider 호출 직전 권위값을 한 read snapshot으로 조립한다. 대상 콘텐츠의 본문·좌표와
+	 * token 원문은 선택하지 않고, eligibility에 필요한 boolean과 기존 domain 필드만 반환한다.
+	 */
+	public static final String FIND_PUSH_DISPATCH_CONTEXT = """
+		SELECT
+			nd.id AS delivery_id,
+			nd.notification_id AS delivery_notification_id,
+			nd.push_device_id AS delivery_push_device_id,
+			nd.status AS delivery_status,
+			nd.attempt_count AS delivery_attempt_count,
+			nd.next_attempt_at AS delivery_next_attempt_at,
+			nd.created_at AS delivery_created_at,
+			nd.sent_at AS delivery_sent_at,
+			nd.provider_message_id AS delivery_provider_message_id,
+			n.id AS notification_id,
+			n.recipient_id AS notification_recipient_id,
+			n.outbox_event_id AS notification_outbox_event_id,
+			n.notification_type,
+			n.dedup_key AS notification_dedup_key,
+			n.direction_post_id AS notification_direction_post_id,
+			n.answer_id AS notification_answer_id,
+			n.report_id AS notification_report_id,
+			n.status AS notification_status,
+			n.created_at AS notification_created_at,
+			n.read_at AS notification_read_at,
+			pd.id AS device_id,
+			pd.user_id AS device_user_id,
+			pd.platform AS device_platform,
+			pd.token_ciphertext AS device_token_ciphertext,
+			pd.token_fingerprint AS device_token_fingerprint,
+			pd.device_status,
+			pd.last_seen_at AS device_last_seen_at,
+			pd.revoked_at AS device_revoked_at,
+			actor_ref.actor_id,
+			(recipient.status = 'ACTIVE' AND recipient.deleted_at IS NULL) AS recipient_active,
+			(actor_ref.actor_id IS NULL OR (actor.status = 'ACTIVE' AND actor.deleted_at IS NULL)) AS actor_active,
+			COALESCE(nus.push_enabled, TRUE)
+				AND COALESCE(np.enabled, TRUE) AS preference_enabled,
+			(actor_ref.actor_id IS NOT NULL AND EXISTS (
+				SELECT 1
+				FROM user_block ub
+				WHERE ub.released_at IS NULL
+				  AND ((ub.blocker_id = n.recipient_id AND ub.blocked_id = actor_ref.actor_id)
+					OR (ub.blocker_id = actor_ref.actor_id AND ub.blocked_id = n.recipient_id))
+			)) AS blocked_in_either_direction,
+			CASE
+				WHEN n.direction_post_id IS NULL AND n.answer_id IS NULL AND n.report_id IS NULL THEN TRUE
+				WHEN n.direction_post_id IS NOT NULL
+					THEN dp.id IS NOT NULL AND dp.status = 'ACTIVE'
+						AND dp.deleted_at IS NULL AND dp.expires_at > :at
+				WHEN n.answer_id IS NOT NULL
+					THEN a.id IS NOT NULL AND a.status = 'PUBLISHED' AND a.deleted_at IS NULL
+				WHEN n.report_id IS NOT NULL
+					THEN r.id IS NOT NULL AND r.resolved_at IS NOT NULL
+						AND r.status IN ('ACTIONED', 'NO_VIOLATION', 'MORE_INFO_REQUIRED')
+				ELSE FALSE
+			END AS target_valid,
+			(n.notification_type = 'DIRECTION_POST_RECEIVED'
+				AND dp.id IS NOT NULL AND dp.status = 'ACTIVE'
+				AND dp.deleted_at IS NULL AND dp.expires_at > :at) AS has_remaining_time
+		FROM notification_delivery nd
+		JOIN notification n ON n.id = nd.notification_id
+		JOIN push_device pd ON pd.id = nd.push_device_id
+		JOIN user_account recipient ON recipient.id = n.recipient_id
+		LEFT JOIN direction_post dp ON dp.id = n.direction_post_id
+		LEFT JOIN answer a ON a.id = n.answer_id
+		LEFT JOIN report r ON r.id = n.report_id
+		LEFT JOIN LATERAL (
+			SELECT CASE
+				WHEN n.direction_post_id IS NOT NULL THEN dp.sender_id
+				WHEN n.answer_id IS NOT NULL THEN a.author_id
+				ELSE NULL
+			END AS actor_id
+		) actor_ref ON TRUE
+		LEFT JOIN user_account actor ON actor.id = actor_ref.actor_id
+		LEFT JOIN notification_user_setting nus ON nus.user_id = n.recipient_id
+		LEFT JOIN notification_preference np
+			ON np.user_id = n.recipient_id AND np.notification_type = n.notification_type
+		WHERE nd.id = :deliveryId
+		""";
+
 	/** generation fence를 통과한 결과만 반영하며 provider payload나 token은 이 경계에 들어오지 않는다. */
 	public static final String COMPLETE_PUSH_DELIVERY = """
 		UPDATE notification_delivery
@@ -199,6 +281,24 @@ public final class NotificationSql {
 		WHERE id = :deliveryId
 		  AND status = 'PROCESSING'
 		  AND attempt_count = :generation
+		""";
+
+	/** invalid token을 다시 사용하지 않도록 표시하고 같은 기기의 미발송 delivery를 취소한다. */
+	public static final String INVALIDATE_PUSH_DEVICE = """
+		WITH invalidated AS (
+			UPDATE push_device
+			SET device_status = 'INVALID', revoked_at = NULL
+			WHERE id = :pushDeviceId AND device_status IN ('ACTIVE', 'INVALID')
+			RETURNING id
+		), cancelled AS (
+			UPDATE notification_delivery nd
+			SET status = 'CANCELLED'
+			FROM invalidated
+			WHERE nd.push_device_id = invalidated.id
+			  AND nd.status IN ('PENDING', 'FAILED')
+			RETURNING nd.id
+		)
+		SELECT count(*) FROM invalidated
 		""";
 
 	/** 기존 회귀 테스트용 단건 경로도 attempt_count를 올려 새 claim과 동일한 monotonic fence를 유지한다. */
