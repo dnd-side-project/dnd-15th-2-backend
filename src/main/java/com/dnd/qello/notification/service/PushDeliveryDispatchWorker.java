@@ -98,6 +98,11 @@ public final class PushDeliveryDispatchWorker {
 
 		PushToken token = tokenProtector.decrypt(context.device().tokenCiphertext());
 		PushPayload payload = payloadFactory.create(context);
+		// lease가 이미 만료됐다면 다른 worker가 같은 delivery를 회수할 수 있으므로 provider를 호출하지 않는다.
+		// 종결은 generation fence가 막지만 provider 호출은 되돌릴 수 없다.
+		if (!clock.instant().isBefore(claim.leaseUntil())) {
+			return stale(claim, "LEASE_EXPIRED");
+		}
 		PushProviderResult providerResult = provider.send(new PushSendCommand(token, payload));
 		Instant terminalAt = clock.instant();
 		if (providerResult instanceof PushProviderResult.InvalidToken) {

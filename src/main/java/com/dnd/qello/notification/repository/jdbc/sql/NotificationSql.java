@@ -285,7 +285,11 @@ public final class NotificationSql {
 		  AND attempt_count = :generation
 		""";
 
-	/** 현재 claim generation을 DEAD로 종결한 뒤 device INVALID와 sibling 취소를 원자적으로 수행한다. */
+	/**
+	 * 현재 claim generation을 DEAD로 종결한 뒤 device INVALID와 sibling 취소를 원자적으로 수행한다.
+	 * 사용자가 발송 도중 해지해 device가 이미 REVOKED면 device 상태는 사용자 의도대로 두고
+	 * 현재 claim만 종결한다. 종결을 device 갱신 결과에 묶으면 PROCESSING 행이 lease 만료까지 남는다.
+	 */
 	public static final String INVALIDATE_PUSH_DEVICE = """
 		WITH matched AS MATERIALIZED (
 			SELECT nd.id, nd.push_device_id
@@ -306,9 +310,8 @@ public final class NotificationSql {
 			UPDATE notification_delivery nd
 			SET status = 'DEAD', next_attempt_at = :at,
 				sent_at = NULL, provider_message_id = NULL
-			FROM invalidated
-			WHERE nd.id = :deliveryId
-			  AND nd.push_device_id = invalidated.id
+			FROM matched
+			WHERE nd.id = matched.id
 			  AND nd.status = 'PROCESSING'
 			  AND nd.attempt_count = :generation
 			RETURNING nd.push_device_id

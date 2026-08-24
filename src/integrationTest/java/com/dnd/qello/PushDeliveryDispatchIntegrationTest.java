@@ -1,6 +1,7 @@
 /**
  * Created at: 2026-08-24T23:03:32+09:00
- * Source scenario: TEST-PLAN-GH-179-PUSH-DELIVERY-INT-008 through INT-017
+ * Source scenario: TEST-PLAN-GH-179-PUSH-DELIVERY-INT-008 through INT-017,
+ * TEST-PLAN-GH-179-PUSH-DELIVERY-INT-007 (dispatch 경계의 lease 재확인)
  */
 package com.dnd.qello;
 
@@ -342,6 +343,64 @@ class PushDeliveryDispatchIntegrationTest extends PostgisContainerIntegrationTes
 		assertThat(status(failedSibling)).isEqualTo(DeliveryStatus.CANCELLED.name());
 		assertThat(deviceStatus(deviceId)).isEqualTo(PushDeviceStatus.INVALID.name());
 		assertThat(notificationStatus(currentId)).isEqualTo(NotificationStatus.UNREAD.name());
+	}
+
+	@Test
+	@DisplayName("INT-011 발송 도중 해지된 device의 invalid token도 현재 claim을 종결하고 사용자의 REVOKED 상태를 유지한다")
+	void completesInvalidTokenClaimWhenDeviceWasRevokedDuringSend() {
+		long recipientId = account("invalid-revoked-recipient");
+		long deviceId = device(recipientId, "invalid-revoked-device");
+		long currentId = targetlessDelivery(
+			recipientId, deviceId, "invalid-revoked", DeliveryStatus.PENDING, 0, NOW);
+		PushProvider revokingProvider = command -> {
+			jdbc.update("UPDATE push_device SET device_status = 'REVOKED', revoked_at = ? WHERE id = ?",
+				Timestamp.from(NOW), deviceId);
+			return new PushProviderResult.InvalidToken();
+		};
+
+		PushDeliveryDispatchWorker.BatchResult result =
+			worker(revokingProvider, new CountingProtector(realProtector)).dispatchBatch(command(1, NOW));
+
+		assertThat(result.outcomes()).singleElement().satisfies(outcome -> {
+			assertThat(outcome.outcome()).isEqualTo(PushDeliveryDispatchWorker.Outcome.DEAD);
+			assertThat(outcome.safeReasonCode()).isEqualTo("INVALID_TOKEN");
+		});
+		assertThat(status(currentId)).isEqualTo(DeliveryStatus.DEAD.name());
+		assertThat(deviceStatus(deviceId)).isEqualTo(PushDeviceStatus.REVOKED.name());
+		assertThat(notificationStatus(currentId)).isEqualTo(NotificationStatus.UNREAD.name());
+	}
+
+	@Test
+	@DisplayName("INT-007 lease가 만료된 claim은 provider를 호출하지 않고 회수 대상으로 남는다")
+	void skipsProviderCallWhenLeaseExpiredBeforeSend() {
+		long recipientId = account("lease-expired-recipient");
+		long deviceId = device(recipientId, "lease-expired-device");
+		long deliveryId = targetlessDelivery(
+			recipientId, deviceId, "lease-expired", DeliveryStatus.PENDING, 0, NOW);
+		ScriptedProvider provider = new ScriptedProvider();
+		PushTokenProtector expiringProtector = new AdvancingDecryptProtector(
+			realProtector, clock, LEASE.plusSeconds(1));
+
+		PushDeliveryDispatchWorker.BatchResult expired =
+			worker(provider, expiringProtector).dispatchBatch(command(10, NOW));
+
+		assertThat(expired.outcomes()).singleElement().satisfies(outcome -> {
+			assertThat(outcome.outcome()).isEqualTo(PushDeliveryDispatchWorker.Outcome.STALE_CLAIM);
+			assertThat(outcome.safeReasonCode()).isEqualTo("LEASE_EXPIRED");
+		});
+		assertThat(provider.calls()).isZero();
+		assertThat(status(deliveryId)).isEqualTo(DeliveryStatus.PROCESSING.name());
+		assertThat(nextAttemptAt(deliveryId)).isEqualTo(NOW.plus(LEASE));
+
+		Instant recovery = NOW.plus(LEASE).plusSeconds(1);
+		clock.set(recovery);
+		PushDeliveryDispatchWorker.BatchResult reclaimed =
+			worker(provider, new CountingProtector(realProtector)).dispatchBatch(command(10, recovery));
+
+		assertThat(reclaimed.outcomes()).singleElement().satisfies(outcome ->
+			assertThat(outcome.outcome()).isEqualTo(PushDeliveryDispatchWorker.Outcome.SENT));
+		assertThat(provider.calls()).isEqualTo(1);
+		assertThat(status(deliveryId)).isEqualTo(DeliveryStatus.SENT.name());
 	}
 
 	@Test
