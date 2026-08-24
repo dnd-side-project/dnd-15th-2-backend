@@ -2,11 +2,13 @@ package com.dnd.qello.notification.service;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.dnd.qello.notification.push.ClaimedPushDelivery;
+import com.dnd.qello.notification.push.PushDispatchContext;
 import com.dnd.qello.notification.push.PushDeliveryTerminalResult;
 import com.dnd.qello.notification.repository.NotificationRepository;
 
@@ -29,5 +31,23 @@ public class PushDeliveryClaimService {
 	public boolean completeClaim(
 		long deliveryId, int generation, PushDeliveryTerminalResult result, Instant at) {
 		return notificationRepository.completeClaim(deliveryId, generation, result, at);
+	}
+
+	@Transactional(readOnly = true)
+	public Optional<PushDispatchContext> findPushDispatchContext(long deliveryId, int generation, Instant now) {
+		return notificationRepository.findPushDispatchContext(deliveryId, generation, now);
+	}
+
+	@Transactional
+	public boolean completeClaim(
+		long deliveryId, int generation, PushDeliveryTerminalResult result, Instant at, Instant nextAttemptAt) {
+		return notificationRepository.completeClaim(deliveryId, generation, result, at, nextAttemptAt);
+	}
+
+	@Transactional
+	public boolean invalidatePushDeviceAndCancelUndelivered(
+		long deliveryId, long pushDeviceId, int generation, Instant at) {
+		return notificationRepository.invalidatePushDeviceAndCancelUndelivered(
+			deliveryId, pushDeviceId, generation, at);
 	}
 }

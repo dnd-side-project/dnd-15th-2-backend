@@ -33,13 +33,18 @@ public interface NotificationRepository {
 
 	List<ClaimedPushDelivery> claimDueDeliveries(int batchSize, Instant now, Instant leaseUntil);
 
-	/** provider 호출 직전에 delivery와 현재 eligibility 권위값을 한 snapshot으로 읽는다. */
-	Optional<PushDispatchContext> findPushDispatchContext(long deliveryId, Instant at);
+	/** provider 호출 직전에 현재 lease generation이 유효한 delivery와 eligibility 권위값을 읽는다. */
+	Optional<PushDispatchContext> findPushDispatchContext(long deliveryId, int generation, Instant now);
 
 	boolean completeClaim(long deliveryId, int generation, PushDeliveryTerminalResult result, Instant at);
 
-	/** invalid token을 device 상태에 반영하고 같은 device의 미발송 delivery를 취소한다. */
-	int invalidatePushDeviceAndCancelUndelivered(long pushDeviceId);
+	/** retry 시각을 명시적으로 저장하는 generation-fenced terminal API. */
+	boolean completeClaim(
+		long deliveryId, int generation, PushDeliveryTerminalResult result, Instant at, Instant nextAttemptAt);
+
+	/** 현재 claim만 DEAD로 종결하고 device INVALID와 sibling 취소를 한 transaction에서 처리한다. */
+	boolean invalidatePushDeviceAndCancelUndelivered(
+		long deliveryId, long pushDeviceId, int generation, Instant at);
 
 	/** 기존 fan-out 회귀 경로와의 호환 API. 신규 push dispatch는 fenced batch API를 사용한다. */
 	Optional<NotificationDelivery> claimDelivery(long id, Instant at);

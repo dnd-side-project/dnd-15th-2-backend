@@ -197,39 +197,54 @@ public class JdbcNotificationRepository implements OutboxEventRepository, Notifi
     }
 
     @Override
-    public Optional<PushDispatchContext> findPushDispatchContext(long deliveryId, Instant at) {
+    public Optional<PushDispatchContext> findPushDispatchContext(long deliveryId, int generation, Instant now) {
         if (deliveryId <= 0) {
             throw new NotificationException(NotificationErrorCode.INVALID_ID, "deliveryId",
                     "deliveryId는 양수여야 합니다.");
         }
-        if (at == null) {
-            throw new NotificationException(NotificationErrorCode.REQUIRED_VALUE_MISSING, "at",
+        if (generation <= 0) {
+            throw new NotificationException(NotificationErrorCode.INVALID_VALUE_RANGE, "generation",
+                    "generation은 양수여야 합니다.");
+        }
+        if (now == null) {
+            throw new NotificationException(NotificationErrorCode.REQUIRED_VALUE_MISSING, "now",
                     "판정 시각은 필수입니다.");
         }
         return jdbc.query(NotificationSql.FIND_PUSH_DISPATCH_CONTEXT,
-                new MapSqlParameterSource().addValue("deliveryId", deliveryId).addValue("at", timestamp(at)),
+                new MapSqlParameterSource().addValue("deliveryId", deliveryId)
+                        .addValue("generation", generation).addValue("now", timestamp(now))
+                        .addValue("at", timestamp(now)),
                 (rs, row) -> mapPushDispatchContext(rs)).stream().findFirst();
     }
 
     @Override
     public boolean completeClaim(
             long deliveryId, int generation, PushDeliveryTerminalResult result, Instant at) {
-        validatePushDeliveryTerminalRequest(deliveryId, generation, result, at);
-        return jdbc.update(NotificationSql.COMPLETE_PUSH_DELIVERY,
-                new MapSqlParameterSource().addValue("deliveryId", deliveryId)
-                        .addValue("generation", generation).addValue("terminalStatus", result.name())
-                        .addValue("at", timestamp(at))) == 1;
+        return completeClaim(deliveryId, generation, result, at, at);
     }
 
     @Override
-    public int invalidatePushDeviceAndCancelUndelivered(long pushDeviceId) {
+    public boolean completeClaim(
+            long deliveryId, int generation, PushDeliveryTerminalResult result, Instant at, Instant nextAttemptAt) {
+        validatePushDeliveryTerminalRequest(deliveryId, generation, result, at, nextAttemptAt);
+        return jdbc.update(NotificationSql.COMPLETE_PUSH_DELIVERY,
+                new MapSqlParameterSource().addValue("deliveryId", deliveryId)
+                        .addValue("generation", generation).addValue("terminalStatus", result.name())
+                        .addValue("at", timestamp(at)).addValue("nextAttemptAt", timestamp(nextAttemptAt))) == 1;
+    }
+
+    @Override
+    public boolean invalidatePushDeviceAndCancelUndelivered(
+            long deliveryId, long pushDeviceId, int generation, Instant at) {
+        validatePushDeliveryTerminalRequest(deliveryId, generation, PushDeliveryTerminalResult.DEAD, at, at);
         if (pushDeviceId <= 0) {
             throw new NotificationException(NotificationErrorCode.INVALID_ID, "pushDeviceId",
                     "pushDeviceId는 양수여야 합니다.");
         }
-        Number invalidated = jdbc.queryForObject(NotificationSql.INVALIDATE_PUSH_DEVICE,
-                new MapSqlParameterSource("pushDeviceId", pushDeviceId), Number.class);
-        return invalidated == null ? 0 : invalidated.intValue();
+        return jdbc.queryForObject(NotificationSql.INVALIDATE_PUSH_DEVICE,
+                new MapSqlParameterSource().addValue("deliveryId", deliveryId)
+                        .addValue("pushDeviceId", pushDeviceId).addValue("generation", generation)
+                        .addValue("at", timestamp(at)), Number.class).intValue() == 1;
     }
 
     @Override
@@ -495,7 +510,8 @@ public class JdbcNotificationRepository implements OutboxEventRepository, Notifi
     }
 
     private static void validatePushDeliveryTerminalRequest(
-            long deliveryId, int generation, PushDeliveryTerminalResult result, Instant at) {
+            long deliveryId, int generation, PushDeliveryTerminalResult result, Instant at,
+            Instant nextAttemptAt) {
         if (deliveryId <= 0) {
             throw new NotificationException(NotificationErrorCode.INVALID_ID, "deliveryId",
                     "deliveryId는 양수여야 합니다.");
@@ -511,6 +527,10 @@ public class JdbcNotificationRepository implements OutboxEventRepository, Notifi
         if (at == null) {
             throw new NotificationException(NotificationErrorCode.REQUIRED_VALUE_MISSING, "at",
                     "처리 시각은 필수입니다.");
+        }
+        if (nextAttemptAt == null) {
+            throw new NotificationException(NotificationErrorCode.REQUIRED_VALUE_MISSING, "nextAttemptAt",
+                    "다음 시도 시각은 필수입니다.");
         }
     }
 

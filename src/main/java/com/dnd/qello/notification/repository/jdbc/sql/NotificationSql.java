@@ -263,6 +263,9 @@ public final class NotificationSql {
 		LEFT JOIN notification_preference np
 			ON np.user_id = n.recipient_id AND np.notification_type = n.notification_type
 		WHERE nd.id = :deliveryId
+		  AND nd.status = 'PROCESSING'
+		  AND nd.attempt_count = :generation
+		  AND nd.next_attempt_at > :now
 		""";
 
 	/** generation fence를 통과한 결과만 반영하며 provider payload나 token은 이 경계에 들어오지 않는다. */
@@ -274,7 +277,8 @@ public final class NotificationSql {
 			WHEN 'DEAD' THEN 'DEAD'
 			WHEN 'CANCELLED' THEN 'CANCELLED'
 			END,
-			next_attempt_at = :at,
+			next_attempt_at = CASE WHEN :terminalStatus = 'FAILED' THEN CAST(:nextAttemptAt AS TIMESTAMPTZ)
+				ELSE CAST(:at AS TIMESTAMPTZ) END,
 			sent_at = CASE WHEN :terminalStatus = 'SENT' THEN CAST(:at AS TIMESTAMPTZ)
 				ELSE CAST(NULL AS TIMESTAMPTZ) END,
 			provider_message_id = NULL
@@ -283,22 +287,43 @@ public final class NotificationSql {
 		  AND attempt_count = :generation
 		""";
 
-	/** invalid token을 다시 사용하지 않도록 표시하고 같은 기기의 미발송 delivery를 취소한다. */
+	/** 현재 claim generation을 DEAD로 종결한 뒤 device INVALID와 sibling 취소를 원자적으로 수행한다. */
 	public static final String INVALIDATE_PUSH_DEVICE = """
-		WITH invalidated AS (
-			UPDATE push_device
+		WITH matched AS MATERIALIZED (
+			SELECT nd.id, nd.push_device_id
+			FROM notification_delivery nd
+			WHERE nd.id = :deliveryId
+			  AND nd.push_device_id = :pushDeviceId
+			  AND nd.status = 'PROCESSING'
+			  AND nd.attempt_count = :generation
+			FOR UPDATE
+		), invalidated AS (
+			UPDATE push_device pd
 			SET device_status = 'INVALID', revoked_at = NULL
-			WHERE id = :pushDeviceId AND device_status IN ('ACTIVE', 'INVALID')
-			RETURNING id
+			FROM matched
+			WHERE pd.id = matched.push_device_id
+			  AND pd.device_status IN ('ACTIVE', 'INVALID')
+			RETURNING pd.id
+		), terminal AS (
+			UPDATE notification_delivery nd
+			SET status = 'DEAD', next_attempt_at = :at,
+				sent_at = NULL, provider_message_id = NULL
+			FROM invalidated
+			WHERE nd.id = :deliveryId
+			  AND nd.push_device_id = invalidated.id
+			  AND nd.status = 'PROCESSING'
+			  AND nd.attempt_count = :generation
+			RETURNING nd.push_device_id
 		), cancelled AS (
 			UPDATE notification_delivery nd
-			SET status = 'CANCELLED'
-			FROM invalidated
-			WHERE nd.push_device_id = invalidated.id
+			SET status = 'CANCELLED', next_attempt_at = :at,
+				sent_at = NULL, provider_message_id = NULL
+			FROM terminal
+			WHERE nd.push_device_id = terminal.push_device_id
 			  AND nd.status IN ('PENDING', 'FAILED')
 			RETURNING nd.id
 		)
-		SELECT count(*) FROM invalidated
+		SELECT count(*) FROM terminal
 		""";
 
 	/** 기존 회귀 테스트용 단건 경로도 attempt_count를 올려 새 claim과 동일한 monotonic fence를 유지한다. */
