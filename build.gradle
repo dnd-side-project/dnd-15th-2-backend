@@ -38,6 +38,7 @@ dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-jdbc'
 	implementation 'org.springframework.boot:spring-boot-starter-validation'
 	implementation 'org.springframework.boot:spring-boot-starter-web'
+	implementation 'com.google.auth:google-auth-library-oauth2-http:1.50.0'
   
 	// S3 presigned URL 발급과 HeadObject 검증에만 사용하는 동기 클라이언트.
 	// 처리량이 낮은 업로드 확인 용도
