@@ -24,6 +24,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
+import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.support.TransactionTemplate;
 
@@ -42,6 +44,7 @@ import com.dnd.qello.notification.push.ClaimedPushDelivery;
 import com.dnd.qello.notification.push.PushDeliveryTerminalResult;
 import com.dnd.qello.notification.repository.NotificationRepository;
 import com.dnd.qello.notification.repository.OutboxEventRepository;
+import com.dnd.qello.notification.repository.jdbc.sql.NotificationSql;
 
 @SpringBootTest
 @ActiveProfiles("test")
@@ -52,6 +55,8 @@ class PushDeliveryLeaseIntegrationTest extends PostgisContainerIntegrationTestSu
 
 	@Autowired
 	private JdbcTemplate jdbc;
+	@Autowired
+	private NamedParameterJdbcTemplate namedJdbc;
 	@Autowired
 	private NotificationRepository notifications;
 	@Autowired
@@ -189,7 +194,7 @@ class PushDeliveryLeaseIntegrationTest extends PostgisContainerIntegrationTestSu
 	}
 
 	@Test
-	@DisplayName("INT-019 실제 due claim CTE의 EXPLAIN은 predicate·locking·update 계획과 row estimate를 남긴다")
+	@DisplayName("INT-019 운영 claim SQL 상수의 EXPLAIN은 predicate·locking·update 계획과 row estimate를 남긴다")
 	void explainsDueAndStaleClaimPlanWithBoundedFixture() {
 		for (int index = 0; index < 120; index++) {
 			delivery("planner-pending-" + index, DeliveryStatus.PENDING, 0, NOW.minusSeconds(index));
@@ -204,36 +209,13 @@ class PushDeliveryLeaseIntegrationTest extends PostgisContainerIntegrationTestSu
 			delivery("planner-future-" + index, DeliveryStatus.PENDING, 0, NOW.plusSeconds(600));
 		}
 
-		List<String> planLines = jdbc.queryForList("""
-			EXPLAIN (COSTS TRUE)
-			WITH due AS MATERIALIZED (
-				SELECT id, next_attempt_at AS due_next_attempt_at
-				FROM notification_delivery
-				WHERE (
-					(status IN ('PENDING', 'FAILED') AND next_attempt_at <= ?)
-					OR (status = 'PROCESSING' AND next_attempt_at <= ?)
-				)
-				ORDER BY next_attempt_at, id
-				LIMIT 50
-				FOR UPDATE SKIP LOCKED
-			), claimed AS (
-				UPDATE notification_delivery AS nd
-				SET status = 'PROCESSING',
-					attempt_count = nd.attempt_count + 1,
-					next_attempt_at = ?,
-					sent_at = NULL,
-					provider_message_id = NULL
-				FROM due
-				WHERE nd.id = due.id
-				RETURNING nd.id AS delivery_id, nd.attempt_count AS generation,
-					nd.next_attempt_at AS lease_until
-			)
-			SELECT claimed.delivery_id, claimed.generation, claimed.lease_until
-			FROM claimed
-			JOIN due ON due.id = claimed.delivery_id
-			ORDER BY due.due_next_attempt_at, due.id
-			""", String.class, Timestamp.from(NOW), Timestamp.from(NOW),
-			Timestamp.from(NOW.plusSeconds(60)));
+		List<String> planLines = namedJdbc.queryForList(
+			"EXPLAIN (COSTS TRUE)\n" + NotificationSql.CLAIM_DUE_PUSH_DELIVERIES,
+			new MapSqlParameterSource()
+				.addValue("now", Timestamp.from(NOW))
+				.addValue("batchSize", 50)
+				.addValue("leaseUntil", Timestamp.from(NOW.plusSeconds(60))),
+			String.class);
 
 		String plan = String.join("\n", planLines);
 		assertThat(planLines).as("INT-019 EXPLAIN must return a planner result").isNotEmpty();
