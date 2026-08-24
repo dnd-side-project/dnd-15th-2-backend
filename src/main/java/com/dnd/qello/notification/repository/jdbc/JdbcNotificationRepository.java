@@ -9,13 +9,18 @@ import com.dnd.qello.notification.error.NotificationException;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 
+import java.nio.ByteBuffer;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Time;
 import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -198,17 +203,46 @@ public class JdbcNotificationRepository implements OutboxEventRepository, Notifi
 
     @Override
     public PushDevice saveDevice(PushDevice device) {
-        Long id = jdbc.queryForObject("""
-                INSERT INTO push_device (user_id, platform, token_ciphertext, token_fingerprint,
-                    device_status, last_seen_at, revoked_at)
-                VALUES (:userId, :platform, :tokenCiphertext, :tokenFingerprint, :status, :lastSeenAt, :revokedAt)
-                RETURNING id
-                """, new MapSqlParameterSource().addValue("userId", device.userId())
-                .addValue("platform", device.platform().name()).addValue("tokenCiphertext", device.tokenCiphertext())
-                .addValue("tokenFingerprint", device.tokenFingerprint()).addValue("status", device.status().name())
-                .addValue("lastSeenAt", timestamp(device.lastSeenAt())).addValue("revokedAt", timestamp(device.revokedAt())), Long.class);
-        return new PushDevice(id, device.userId(), device.platform(), device.tokenCiphertext(), device.tokenFingerprint(),
-                device.status(), device.lastSeenAt(), device.revokedAt());
+        return jdbc.queryForObject(NotificationSql.INSERT_PUSH_DEVICE, pushDeviceParams(
+                device.userId(), device.platform().name(), device.tokenCiphertext(), device.tokenFingerprint(),
+                device.status(), device.lastSeenAt(), device.revokedAt()), (rs, row) -> mapPushDevice(rs));
+    }
+
+    @Override
+    @Transactional
+    public PushDevice registerOrTransferDevice(
+            long userId, String platform, byte[] tokenCiphertext, String tokenFingerprint, Instant at) {
+        validatePushDeviceWrite(userId, platform, tokenCiphertext, tokenFingerprint, at);
+        return jdbc.queryForObject(NotificationSql.REGISTER_OR_TRANSFER_PUSH_DEVICE, pushDeviceParams(
+                userId, platform, tokenCiphertext, tokenFingerprint, PushDeviceStatus.ACTIVE, at, null)
+                .addValue("lockKey", advisoryLockKey(tokenFingerprint)),
+                (rs, row) -> mapPushDevice(rs));
+    }
+
+    @Override
+    @Transactional
+    public int revokeOwnedDevice(long userId, String platform, String tokenFingerprint, Instant at) {
+        validatePushDeviceLookup(userId, platform, tokenFingerprint, at);
+        Number revokedCount = jdbc.queryForObject(NotificationSql.REVOKE_OWNED_PUSH_DEVICE,
+                new MapSqlParameterSource().addValue("userId", userId).addValue("platform", platform)
+                        .addValue("tokenFingerprint", tokenFingerprint).addValue("revokedAt", timestamp(at))
+                        .addValue("lockKey", advisoryLockKey(tokenFingerprint)),
+                Number.class);
+        return revokedCount == null ? 0 : revokedCount.intValue();
+    }
+
+    @Override
+    public int cancelUndeliveredForDevice(long pushDeviceId, String reason, Instant at) {
+        if (pushDeviceId <= 0) {
+            throw new NotificationException(NotificationErrorCode.INVALID_ID, "pushDeviceId",
+                    "pushDeviceId는 양수여야 합니다.");
+        }
+        if (at == null) {
+            throw new NotificationException(NotificationErrorCode.INVALID_PUSH_DEVICE_REQUEST, "at",
+                    "취소 시각은 필수입니다.");
+        }
+        return jdbc.update(NotificationSql.CANCEL_UNDELIVERED_DELIVERIES_FOR_DEVICE,
+                new MapSqlParameterSource().addValue("pushDeviceId", pushDeviceId));
     }
 
 	@Override
@@ -250,6 +284,15 @@ public class JdbcNotificationRepository implements OutboxEventRepository, Notifi
                 .addValue("providerMessageId", d.providerMessageId());
     }
 
+    private static MapSqlParameterSource pushDeviceParams(
+            long userId, String platform, byte[] tokenCiphertext, String tokenFingerprint,
+            PushDeviceStatus status, Instant lastSeenAt, Instant revokedAt) {
+        return new MapSqlParameterSource().addValue("userId", userId).addValue("platform", platform)
+                .addValue("tokenCiphertext", tokenCiphertext.clone()).addValue("tokenFingerprint", tokenFingerprint)
+                .addValue("status", status.name()).addValue("lastSeenAt", timestamp(lastSeenAt))
+                .addValue("revokedAt", timestamp(revokedAt));
+    }
+
     private static OutboxEvent mapOutbox(ResultSet rs) throws SQLException {
         return new OutboxEvent(rs.getLong("id"), OutboxAggregateType.valueOf(rs.getString("aggregate_type")),
                 rs.getLong("aggregate_id"), OutboxEventType.valueOf(rs.getString("event_type")),
@@ -270,6 +313,13 @@ public class JdbcNotificationRepository implements OutboxEventRepository, Notifi
         return new NotificationDelivery(rs.getLong("id"), rs.getLong("notification_id"), rs.getLong("push_device_id"),
                 DeliveryStatus.valueOf(rs.getString("status")), rs.getInt("attempt_count"), instant(rs, "next_attempt_at"),
                 instant(rs, "created_at"), instant(rs, "sent_at"), rs.getString("provider_message_id"));
+    }
+
+    private static PushDevice mapPushDevice(ResultSet rs) throws SQLException {
+        return new PushDevice(rs.getLong("id"), rs.getLong("user_id"),
+                PushPlatform.valueOf(rs.getString("platform")), rs.getBytes("token_ciphertext"),
+                rs.getString("token_fingerprint"), PushDeviceStatus.valueOf(rs.getString("device_status")),
+                instant(rs, "last_seen_at"), instant(rs, "revoked_at"));
     }
 
     private static Long nullableLong(ResultSet rs, String column) throws SQLException {
@@ -294,6 +344,43 @@ public class JdbcNotificationRepository implements OutboxEventRepository, Notifi
         if (owner == null || owner.isBlank() || owner.length() > 100 || generation < 0 || at == null) {
             throw new NotificationException(NotificationErrorCode.INVALID_VALUE_RANGE, "lease",
                     "lease owner, 유효한 generation과 현재 시각이 필요합니다.");
+        }
+    }
+
+    private static void validatePushDeviceWrite(
+            long userId, String platform, byte[] tokenCiphertext, String tokenFingerprint, Instant at) {
+        validatePushDeviceLookup(userId, platform, tokenFingerprint, at);
+        if (tokenCiphertext == null || tokenCiphertext.length == 0) {
+            throw new NotificationException(NotificationErrorCode.INVALID_PUSH_DEVICE_REQUEST, "token",
+                    "암호화된 push token 값이 필요합니다.");
+        }
+    }
+
+    private static void validatePushDeviceLookup(long userId, String platform, String tokenFingerprint, Instant at) {
+        if (userId <= 0) {
+            throw new NotificationException(NotificationErrorCode.INVALID_ID, "userId", "userId는 양수여야 합니다.");
+        }
+        if (platform == null || Arrays.stream(PushPlatform.values()).noneMatch(value -> value.name().equals(platform))) {
+            throw new NotificationException(NotificationErrorCode.INVALID_PUSH_DEVICE_REQUEST, "platform",
+                    "platform 값이 올바르지 않습니다.");
+        }
+        if (tokenFingerprint == null || tokenFingerprint.isBlank()) {
+            throw new NotificationException(NotificationErrorCode.INVALID_PUSH_DEVICE_REQUEST, "token",
+                    "push token 지문 값이 필요합니다.");
+        }
+        if (at == null) {
+            throw new NotificationException(NotificationErrorCode.INVALID_PUSH_DEVICE_REQUEST, "at",
+                    "처리 시각은 필수입니다.");
+        }
+    }
+
+    private static long advisoryLockKey(String tokenFingerprint) {
+        try {
+            byte[] hash = MessageDigest.getInstance("SHA-256").digest(tokenFingerprint.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            return ByteBuffer.wrap(hash).getLong();
+        }
+        catch (NoSuchAlgorithmException exception) {
+            throw new IllegalStateException("SHA-256을 사용할 수 없습니다.", exception);
         }
     }
 

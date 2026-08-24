@@ -36,6 +36,10 @@ public enum NotificationErrorCode implements ErrorCode {
 	// 전역/종류별/quiet 설정 snapshot이나 quiet 값 자체가 계약을 만족하지 않음
 	INVALID_PREFERENCE(HttpStatus.BAD_REQUEST, "NOT-VAL-008", ErrorCategory.VAL, "알림 설정 값이 올바르지 않습니다."),
 
+	// push device 등록·해지 요청 본문(platform, token)이 계약을 만족하지 않음
+	INVALID_PUSH_DEVICE_REQUEST(HttpStatus.BAD_REQUEST, "NOT-VAL-009", ErrorCategory.VAL,
+		"푸시 기기 요청 값이 올바르지 않습니다."),
+
 	// 알림 대상이 게시글과 답변 중 최대 하나라는 규칙 위반
 	INVALID_NOTIFICATION_TARGET(HttpStatus.BAD_REQUEST, "NOT-DOM-001", ErrorCategory.DOM, "알림 대상이 올바르지 않습니다."),
 
@@ -55,7 +59,11 @@ public enum NotificationErrorCode implements ErrorCode {
 	ACCOUNT_NOT_ELIGIBLE(HttpStatus.FORBIDDEN, "NOT-APP-002", ErrorCategory.APP, "알림함을 사용할 수 없는 계정입니다."),
 
 	// 같은 중복 제거 키의 알림 또는 이벤트 중복. DB 유일성 제약에서 감지
-	DUPLICATED_EVENT(HttpStatus.CONFLICT, "NOT-INFRA-001", ErrorCategory.INFRA, "이미 처리된 알림입니다.");
+	DUPLICATED_EVENT(HttpStatus.CONFLICT, "NOT-INFRA-001", ErrorCategory.INFRA, "이미 처리된 알림입니다."),
+
+	// push token 보호/지문 계산 과정이 실패함. 상세 원인은 민감정보를 숨기기 위해 노출하지 않는다
+	PUSH_TOKEN_PROTECTION_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "NOT-INFRA-002", ErrorCategory.INFRA,
+		"푸시 토큰을 처리할 수 없습니다.");
 
 	private final HttpStatus httpStatus;
 	private final String code;

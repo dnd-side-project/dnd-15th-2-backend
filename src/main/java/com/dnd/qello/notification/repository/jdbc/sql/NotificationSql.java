@@ -148,6 +148,126 @@ public final class NotificationSql {
 		RETURNING notification_delivery.*
 		""";
 
+	public static final String INSERT_PUSH_DEVICE = """
+		INSERT INTO push_device
+			(user_id, platform, token_ciphertext, token_fingerprint, device_status, last_seen_at, revoked_at)
+		VALUES (:userId, :platform, :tokenCiphertext, :tokenFingerprint, :status, :lastSeenAt, :revokedAt)
+		RETURNING id, user_id, platform, token_ciphertext, token_fingerprint, device_status, last_seen_at, revoked_at
+		""";
+
+	/**
+	 * direct 호출에서도 트랜잭션 단위 원자성을 잃지 않도록 같은 fingerprint의 revoke,
+	 * delivery cancel, ACTIVE upsert를 한 SQL 문장 안에서 끝낸다.
+	 */
+	public static final String REGISTER_OR_TRANSFER_PUSH_DEVICE = """
+		WITH advisory_lock AS (
+			SELECT pg_advisory_xact_lock(:lockKey)
+		),
+		current_active AS MATERIALIZED (
+			SELECT pd.*
+			FROM push_device pd
+			CROSS JOIN advisory_lock
+			WHERE pd.token_fingerprint = :tokenFingerprint
+			  AND pd.device_status = 'ACTIVE'
+			FOR UPDATE
+		),
+		owner_platform_active AS MATERIALIZED (
+			SELECT pd.id
+			FROM push_device pd
+			CROSS JOIN advisory_lock
+			WHERE pd.user_id = :userId
+			  AND pd.platform = :platform
+			  AND pd.device_status = 'ACTIVE'
+			  AND pd.token_fingerprint <> :tokenFingerprint
+			FOR UPDATE
+		),
+		refreshed AS (
+			UPDATE push_device
+			SET platform = :platform,
+				token_ciphertext = :tokenCiphertext,
+				token_fingerprint = :tokenFingerprint,
+				device_status = 'ACTIVE',
+				last_seen_at = :lastSeenAt,
+				revoked_at = NULL
+			WHERE id IN (SELECT id FROM current_active WHERE user_id = :userId)
+			RETURNING push_device.*
+		),
+		revoked AS (
+			UPDATE push_device
+			SET device_status = 'REVOKED', revoked_at = :lastSeenAt
+			WHERE id IN (
+				SELECT id FROM current_active WHERE user_id <> :userId
+				UNION
+				SELECT id FROM owner_platform_active
+			)
+			RETURNING id
+		),
+		cancelled AS (
+			UPDATE notification_delivery AS nd
+			SET status = 'CANCELLED'
+			FROM revoked
+			WHERE nd.push_device_id = revoked.id
+			  AND nd.status IN ('PENDING', 'FAILED')
+			RETURNING nd.id
+		),
+		revocation_complete AS (
+			SELECT count(*) AS revoked_count
+			FROM revoked
+		),
+		inserted AS (
+			INSERT INTO push_device
+				(user_id, platform, token_ciphertext, token_fingerprint, device_status, last_seen_at, revoked_at)
+			SELECT :userId, :platform, :tokenCiphertext, :tokenFingerprint, 'ACTIVE', :lastSeenAt, NULL
+			FROM revocation_complete
+			WHERE NOT EXISTS (SELECT 1 FROM refreshed)
+			RETURNING id, user_id, platform, token_ciphertext, token_fingerprint, device_status, last_seen_at, revoked_at
+		)
+		SELECT id, user_id, platform, token_ciphertext, token_fingerprint, device_status, last_seen_at, revoked_at
+		FROM refreshed
+		UNION ALL
+		SELECT id, user_id, platform, token_ciphertext, token_fingerprint, device_status, last_seen_at, revoked_at
+		FROM inserted
+		""";
+
+	public static final String REVOKE_OWNED_PUSH_DEVICE = """
+		WITH advisory_lock AS (
+			SELECT pg_advisory_xact_lock(:lockKey)
+		),
+		current_active AS MATERIALIZED (
+			SELECT pd.id
+			FROM push_device pd
+			CROSS JOIN advisory_lock
+			WHERE pd.token_fingerprint = :tokenFingerprint
+			  AND pd.device_status = 'ACTIVE'
+			  AND pd.user_id = :userId
+			  AND pd.platform = :platform
+			FOR UPDATE
+		),
+		revoked AS (
+			UPDATE push_device
+			SET device_status = 'REVOKED', revoked_at = :revokedAt
+			WHERE id IN (SELECT id FROM current_active)
+			RETURNING id
+		),
+		cancelled AS (
+			UPDATE notification_delivery AS nd
+			SET status = 'CANCELLED'
+			FROM revoked
+			WHERE nd.push_device_id = revoked.id
+			  AND nd.status IN ('PENDING', 'FAILED')
+			RETURNING nd.id
+		)
+		SELECT count(*) FROM revoked
+		""";
+
+	/** 기기 철회/소유권 이전 시 아직 나가지 않은 전달만 취소한다. */
+	public static final String CANCEL_UNDELIVERED_DELIVERIES_FOR_DEVICE = """
+		UPDATE notification_delivery
+		SET status = 'CANCELLED'
+		WHERE push_device_id = :pushDeviceId
+		  AND status IN ('PENDING', 'FAILED')
+		""";
+
 	public static final String FIND_ACTIVE_PUSH_DEVICE_IDS = """
 		SELECT id
 		FROM push_device

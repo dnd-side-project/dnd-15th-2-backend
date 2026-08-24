@@ -34,5 +34,12 @@ public interface NotificationRepository {
 
 	PushDevice saveDevice(PushDevice device);
 
+	PushDevice registerOrTransferDevice(
+		long userId, String platform, byte[] tokenCiphertext, String tokenFingerprint, Instant at);
+
+	int revokeOwnedDevice(long userId, String platform, String tokenFingerprint, Instant at);
+
+	int cancelUndeliveredForDevice(long pushDeviceId, String reason, Instant at);
+
 	List<Long> findActiveDeviceIdsByUserId(long userId);
 }
