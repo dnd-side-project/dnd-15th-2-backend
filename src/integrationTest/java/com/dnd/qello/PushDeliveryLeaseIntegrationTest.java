@@ -189,7 +189,7 @@ class PushDeliveryLeaseIntegrationTest extends PostgisContainerIntegrationTestSu
 	}
 
 	@Test
-	@DisplayName("INT-019 due와 stale PROCESSING claim의 EXPLAIN은 notification_delivery 접근 경로와 planner 결과를 남긴다")
+	@DisplayName("INT-019 실제 due claim CTE의 EXPLAIN은 predicate·locking·update 계획과 row estimate를 남긴다")
 	void explainsDueAndStaleClaimPlanWithBoundedFixture() {
 		for (int index = 0; index < 120; index++) {
 			delivery("planner-pending-" + index, DeliveryStatus.PENDING, 0, NOW.minusSeconds(index));
@@ -205,21 +205,45 @@ class PushDeliveryLeaseIntegrationTest extends PostgisContainerIntegrationTestSu
 		}
 
 		List<String> planLines = jdbc.queryForList("""
-			EXPLAIN
-			SELECT id
-			FROM notification_delivery
-			WHERE (
-				(status IN ('PENDING', 'FAILED') AND next_attempt_at <= ?)
-				OR (status = 'PROCESSING' AND next_attempt_at <= ?)
+			EXPLAIN (COSTS TRUE)
+			WITH due AS MATERIALIZED (
+				SELECT id, next_attempt_at AS due_next_attempt_at
+				FROM notification_delivery
+				WHERE (
+					(status IN ('PENDING', 'FAILED') AND next_attempt_at <= ?)
+					OR (status = 'PROCESSING' AND next_attempt_at <= ?)
+				)
+				ORDER BY next_attempt_at, id
+				LIMIT 50
+				FOR UPDATE SKIP LOCKED
+			), claimed AS (
+				UPDATE notification_delivery AS nd
+				SET status = 'PROCESSING',
+					attempt_count = nd.attempt_count + 1,
+					next_attempt_at = ?,
+					sent_at = NULL,
+					provider_message_id = NULL
+				FROM due
+				WHERE nd.id = due.id
+				RETURNING nd.id AS delivery_id, nd.attempt_count AS generation,
+					nd.next_attempt_at AS lease_until
 			)
-			ORDER BY next_attempt_at, id
-			LIMIT 50
-			""", String.class, Timestamp.from(NOW), Timestamp.from(NOW));
+			SELECT claimed.delivery_id, claimed.generation, claimed.lease_until
+			FROM claimed
+			JOIN due ON due.id = claimed.delivery_id
+			ORDER BY due.due_next_attempt_at, due.id
+			""", String.class, Timestamp.from(NOW), Timestamp.from(NOW),
+			Timestamp.from(NOW.plusSeconds(60)));
 
 		String plan = String.join("\n", planLines);
 		assertThat(planLines).as("INT-019 EXPLAIN must return a planner result").isNotEmpty();
 		assertThat(plan).contains("notification_delivery");
+		assertThat(plan).contains("Update on notification_delivery");
+		assertThat(plan).contains("LockRows");
+		assertThat(plan).contains("Limit");
+		assertThat(plan).containsAnyOf("Sort", "Incremental Sort");
 		assertThat(plan).containsAnyOf("Index Scan", "Bitmap Heap Scan", "Seq Scan");
+		assertThat(plan).containsPattern("rows=\\d+");
 	}
 
 	private List<ClaimedPushDelivery> claim(int batchSize, Instant at, Instant leaseUntil) {

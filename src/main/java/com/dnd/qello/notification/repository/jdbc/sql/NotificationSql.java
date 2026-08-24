@@ -151,10 +151,12 @@ public final class NotificationSql {
 	/**
 	 * attempt_count를 lease generation으로 사용한다. due 후보를 먼저 잠근 뒤 같은 문장에서
 	 * 상태·시도 횟수·lease 시각을 갱신하여 두 worker가 같은 행을 claim하지 않게 한다.
+	 * data-modifying CTE의 RETURNING 순서는 보장되지 않으므로 due의 정렬 키를 보존하고
+	 * 최종 SELECT에서 다시 정렬한다.
 	 */
 	public static final String CLAIM_DUE_PUSH_DELIVERIES = """
 		WITH due AS MATERIALIZED (
-			SELECT id
+			SELECT id, next_attempt_at AS due_next_attempt_at
 			FROM notification_delivery
 			WHERE (
 				(status IN ('PENDING', 'FAILED') AND next_attempt_at <= :now)
@@ -163,8 +165,8 @@ public final class NotificationSql {
 			ORDER BY next_attempt_at, id
 			LIMIT :batchSize
 			FOR UPDATE SKIP LOCKED
-		)
-		UPDATE notification_delivery AS nd
+		), claimed AS (
+			UPDATE notification_delivery AS nd
 		SET status = 'PROCESSING',
 			attempt_count = nd.attempt_count + 1,
 			next_attempt_at = :leaseUntil,
@@ -174,6 +176,11 @@ public final class NotificationSql {
 		WHERE nd.id = due.id
 		RETURNING nd.id AS delivery_id, nd.attempt_count AS generation,
 			nd.next_attempt_at AS lease_until
+		)
+		SELECT claimed.delivery_id, claimed.generation, claimed.lease_until
+		FROM claimed
+		JOIN due ON due.id = claimed.delivery_id
+		ORDER BY due.due_next_attempt_at, due.id
 		""";
 
 	/** generation fence를 통과한 결과만 반영하며 provider payload나 token은 이 경계에 들어오지 않는다. */
