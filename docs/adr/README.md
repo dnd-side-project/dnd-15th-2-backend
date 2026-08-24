@@ -37,6 +37,7 @@ ADR은 **Architecture Decision Record**의 약자입니다.
 | [ADR-0005](0005-api-success-response-contract.md) | 성공 응답을 ApiResponse로 고정하고 controller가 직접 감싼다 | proposed |
 | [ADR-0006](0006-split-operator-and-device-authentication.md) | 운영자는 서버 세션, 앱 사용자는 기기 자격증명 기반 토큰으로 인증한다 | proposed |
 | [ADR-0007](0007-require-country-before-user-account-creation.md) | 일반 사용자 계정 생성 전에 국가를 검증한다 | accepted |
+| [ADR-0008](0008-adopt-fcm-push-delivery-pipeline.md) | FCM HTTP v1과 데이터베이스 lease·fencing 기반 push delivery pipeline을 채택한다 | accepted |
 
 역할은 다음과 같이 구분합니다.
 
