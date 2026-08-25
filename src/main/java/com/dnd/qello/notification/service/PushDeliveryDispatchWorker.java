@@ -120,7 +120,6 @@ public final class PushDeliveryDispatchWorker {
 
 	private DeliveryOutcome dispatchLoadedGroup(
 		ClaimedPushDispatchGroup claim, PushDispatchGroupContext context) {
-		long representativeId = representativeDeliveryId(context, List.of());
 		List<Long> ineligibleIds = new ArrayList<>();
 		List<String> ineligibleReasons = new ArrayList<>();
 		Map<Long, Set<Long>> eligibleByDevice = new LinkedHashMap<>();
@@ -145,12 +144,14 @@ public final class PushDeliveryDispatchWorker {
 		Instant at = clock.instant();
 		if (!ineligibleIds.isEmpty()
 			&& !groupClaims.cancelMemberDeliveries(claim.groupId(), claim.generation(), ineligibleIds, at)) {
-			return outcome(representativeId, claim.generation(), Outcome.STALE_CLAIM, "STALE_CLAIM");
+			return outcome(representativeDeliveryId(context, List.of()), claim.generation(),
+				Outcome.STALE_CLAIM, "STALE_CLAIM");
 		}
 		if (eligibleByDevice.isEmpty()) {
 			groupClaims.cancelGroup(claim.groupId(), claim.generation(), clock.instant());
 			String reasonCode = ineligibleReasons.isEmpty() ? "NO_ELIGIBLE_MEMBERS" : ineligibleReasons.getFirst();
-			return outcome(representativeId, claim.generation(), Outcome.CANCELLED, reasonCode);
+			return outcome(representativeDeliveryId(context, List.of()), claim.generation(),
+				Outcome.CANCELLED, reasonCode);
 		}
 
 		PushSuppressionPolicy.Decision suppression = suppressionPolicy.evaluate(
@@ -162,21 +163,23 @@ public final class PushDeliveryDispatchWorker {
 		if (suppression.action() == PushSuppressionPolicy.Action.DEFER) {
 			groupClaims.deferGroup(
 				claim.groupId(), claim.generation(), suppression.nextAttemptAt(), clock.instant());
-			return outcome(representativeId, claim.generation(), Outcome.RETRY_SCHEDULED,
-				suppression.reason().name());
+			return outcome(representativeDeliveryId(context, List.of()), claim.generation(),
+				Outcome.RETRY_SCHEDULED, suppression.reason().name());
 		}
 		if (suppression.action() == PushSuppressionPolicy.Action.CANCEL) {
 			groupClaims.cancelGroup(claim.groupId(), claim.generation(), clock.instant());
-			return outcome(representativeId, claim.generation(), Outcome.CANCELLED, suppression.reason().name());
+			return outcome(representativeDeliveryId(context, List.of()), claim.generation(),
+				Outcome.CANCELLED, suppression.reason().name());
 		}
 
 		List<ClaimedPushDeviceDispatch> devices = groupClaims.claimDevices(
 			claim.groupId(), claim.generation(), eligibleByDevice, clock.instant(), claim.leaseUntil());
 		if (devices.isEmpty()) {
 			groupClaims.cancelGroup(claim.groupId(), claim.generation(), clock.instant());
-			return outcome(representativeId, claim.generation(), Outcome.CANCELLED, "NO_CLAIMED_DEVICES");
+			return outcome(representativeDeliveryId(context, List.of()), claim.generation(),
+				Outcome.CANCELLED, "NO_CLAIMED_DEVICES");
 		}
-		representativeId = representativeDeliveryId(context, devices);
+		long representativeId = representativeDeliveryId(context, devices);
 
 		PushBudgetReservation reservation = groupClaims.reserveBudget(
 			claim.groupId(),
@@ -226,13 +229,18 @@ public final class PushDeliveryDispatchWorker {
 		ClaimedPushDeviceDispatch device
 	) {
 		try {
-			PushDispatchContext sample = memberContext(context, device.deviceId());
+			List<PushDispatchMemberContext> claimedMembers = claimedMembers(context, device);
+			PushDispatchContext sample = claimedMembers.stream()
+				.findFirst()
+				.map(PushDispatchMemberContext::dispatchContext)
+				.orElseThrow(() -> new NotificationException(
+					NotificationErrorCode.INVALID_VALUE_RANGE, "deviceId", "해당 기기의 member가 없습니다"));
 			PushToken token = tokenProtector.decrypt(sample.device().tokenCiphertext());
 			if (!clock.instant().isBefore(device.leaseUntil())) {
 				return new DeviceOutcome(Outcome.STALE_CLAIM, "LEASE_EXPIRED");
 			}
-			int count = distinctNotificationCount(context, device);
-			boolean hasRemainingTime = claimedMembers(context, device).stream()
+			int count = distinctNotificationCount(claimedMembers);
+			boolean hasRemainingTime = claimedMembers.stream()
 				.anyMatch(member -> member.dispatchContext().targetValidity().hasRemainingTime());
 			PushPayload payload = payloadFactory.create(
 				context.group().notificationType(), count, hasRemainingTime);
@@ -243,8 +251,9 @@ public final class PushDeliveryDispatchWorker {
 			}
 			return completeProviderResult(claim, device, providerResult, terminalAt);
 		} catch (PushTokenProtectionException failure) {
-			return completeDevice(claim, device, PushDeliveryTerminalResult.DEAD, clock.instant(),
-				clock.instant(), null, Outcome.DEAD, "TOKEN_DECRYPTION_FAILED");
+			Instant at = clock.instant();
+			return completeDevice(claim, device, PushDeliveryTerminalResult.DEAD, at,
+				at, null, Outcome.DEAD, "TOKEN_DECRYPTION_FAILED");
 		} catch (RuntimeException failure) {
 			return recordUnexpectedFailure(claim, device, clock.instant());
 		}
@@ -343,14 +352,6 @@ public final class PushDeliveryDispatchWorker {
 			processing, context.notification(), context.device(), context.actorId(), context.targetValidity());
 	}
 
-	private static PushDispatchContext memberContext(PushDispatchGroupContext context, long deviceId) {
-		return claimedMembers(context, deviceId).stream()
-			.findFirst()
-			.map(PushDispatchMemberContext::dispatchContext)
-			.orElseThrow(() -> new NotificationException(
-				NotificationErrorCode.INVALID_VALUE_RANGE, "deviceId", "해당 기기의 member가 없습니다"));
-	}
-
 	private static List<PushDispatchMemberContext> claimedMembers(
 		PushDispatchGroupContext context, ClaimedPushDeviceDispatch device) {
 		Set<Long> claimedIds = device.deliveryGenerations().keySet();
@@ -359,16 +360,8 @@ public final class PushDeliveryDispatchWorker {
 			.toList();
 	}
 
-	private static List<PushDispatchMemberContext> claimedMembers(
-		PushDispatchGroupContext context, long deviceId) {
-		return context.members().stream()
-			.filter(member -> member.dispatchContext().device().id() == deviceId)
-			.toList();
-	}
-
-	private static int distinctNotificationCount(
-		PushDispatchGroupContext context, ClaimedPushDeviceDispatch device) {
-		return (int) claimedMembers(context, device).stream()
+	private static int distinctNotificationCount(List<PushDispatchMemberContext> claimedMembers) {
+		return (int) claimedMembers.stream()
 			.map(member -> member.dispatchContext().notification().id())
 			.distinct()
 			.count();
