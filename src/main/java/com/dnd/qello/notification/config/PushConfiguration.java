@@ -1,5 +1,7 @@
 package com.dnd.qello.notification.config;
 
+import java.time.Clock;
+
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -14,18 +16,37 @@ import com.dnd.qello.notification.push.PushSendCommand;
 import com.dnd.qello.notification.push.fcm.FcmAccessTokenProvider;
 import com.dnd.qello.notification.push.fcm.FcmHttpV1PushProvider;
 import com.dnd.qello.notification.push.fcm.GoogleCredentialsFcmAccessTokenProvider;
+import com.dnd.qello.notification.push.policy.PushBudgetPolicy;
+import com.dnd.qello.notification.push.policy.PushGroupingPolicy;
+import com.dnd.qello.notification.push.policy.PushSuppressionPolicy;
 import com.dnd.qello.notification.push.security.AesGcmPushTokenProtector;
 import com.dnd.qello.notification.push.security.PushTokenProtector;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 @Configuration(proxyBeanMethods = false)
 @Import(PushConfiguration.ProductionPushConfiguration.class)
+@EnableConfigurationProperties(PushPolicyProperties.class)
 public class PushConfiguration {
 
 	@Bean
 	@Profile({"test", "local", "integration"})
 	public PushProvider noOpPushProvider() {
 		return new NoOpPushProvider();
+	}
+
+	@Bean
+	PushGroupingPolicy pushGroupingPolicy(PushPolicyProperties properties) {
+		return new PushGroupingPolicy(properties);
+	}
+
+	@Bean
+	PushSuppressionPolicy pushSuppressionPolicy(PushPolicyProperties properties) {
+		return new PushSuppressionPolicy(properties, Clock.systemUTC());
+	}
+
+	@Bean
+	PushBudgetPolicy pushBudgetPolicy(PushPolicyProperties properties) {
+		return new PushBudgetPolicy(properties);
 	}
 
 	@Configuration(proxyBeanMethods = false)

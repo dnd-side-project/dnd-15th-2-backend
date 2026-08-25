@@ -6,9 +6,6 @@ import com.dnd.qello.notification.repository.OutboxEventRepository;
 import com.dnd.qello.notification.repository.jdbc.sql.NotificationSql;
 import com.dnd.qello.notification.error.NotificationErrorCode;
 import com.dnd.qello.notification.error.NotificationException;
-import com.dnd.qello.notification.push.ClaimedPushDelivery;
-import com.dnd.qello.notification.push.PushDispatchContext;
-import com.dnd.qello.notification.push.PushDeliveryTerminalResult;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
@@ -20,7 +17,6 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.Time;
 import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
@@ -190,70 +186,6 @@ public class JdbcNotificationRepository implements OutboxEventRepository, Notifi
     }
 
     @Override
-    public List<ClaimedPushDelivery> claimDueDeliveries(int batchSize, Instant now, Instant leaseUntil) {
-        validatePushDeliveryClaimRequest(batchSize, now, leaseUntil);
-        return jdbc.query(NotificationSql.CLAIM_DUE_PUSH_DELIVERIES,
-                new MapSqlParameterSource().addValue("batchSize", batchSize)
-                        .addValue("now", timestamp(now)).addValue("leaseUntil", timestamp(leaseUntil)),
-                (rs, row) -> new ClaimedPushDelivery(rs.getLong("delivery_id"),
-                        rs.getInt("generation"), instant(rs, "lease_until")));
-    }
-
-    @Override
-    public Optional<PushDispatchContext> findPushDispatchContext(long deliveryId, int generation, Instant now) {
-        if (deliveryId <= 0) {
-            throw new NotificationException(NotificationErrorCode.INVALID_ID, "deliveryId",
-                    "deliveryId는 양수여야 합니다.");
-        }
-        if (generation <= 0) {
-            throw new NotificationException(NotificationErrorCode.INVALID_VALUE_RANGE, "generation",
-                    "generation은 양수여야 합니다.");
-        }
-        if (now == null) {
-            throw new NotificationException(NotificationErrorCode.REQUIRED_VALUE_MISSING, "now",
-                    "판정 시각은 필수입니다.");
-        }
-        return jdbc.query(NotificationSql.FIND_PUSH_DISPATCH_CONTEXT,
-                new MapSqlParameterSource().addValue("deliveryId", deliveryId)
-                        .addValue("generation", generation).addValue("now", timestamp(now))
-                        .addValue("at", timestamp(now)),
-                (rs, row) -> mapPushDispatchContext(rs)).stream().findFirst();
-    }
-
-    @Override
-    public boolean completeClaim(
-            long deliveryId, int generation, PushDeliveryTerminalResult result, Instant at) {
-        return completeClaim(deliveryId, generation, result, at, at, null);
-    }
-
-    @Override
-    public boolean completeClaim(
-            long deliveryId, int generation, PushDeliveryTerminalResult result, Instant at, Instant nextAttemptAt,
-            String providerMessageId) {
-        validatePushDeliveryTerminalRequest(deliveryId, generation, result, at, nextAttemptAt, providerMessageId);
-        return jdbc.update(NotificationSql.COMPLETE_PUSH_DELIVERY,
-                new MapSqlParameterSource().addValue("deliveryId", deliveryId)
-                        .addValue("generation", generation).addValue("terminalStatus", result.name())
-                        .addValue("at", timestamp(at)).addValue("nextAttemptAt", timestamp(nextAttemptAt))
-                        .addValue("providerMessageId", providerMessageId)) == 1;
-    }
-
-    @Override
-    public boolean invalidatePushDeviceAndCancelUndelivered(
-            long deliveryId, long pushDeviceId, int generation, Instant at) {
-        validatePushDeliveryTerminalRequest(
-                deliveryId, generation, PushDeliveryTerminalResult.DEAD, at, at, null);
-        if (pushDeviceId <= 0) {
-            throw new NotificationException(NotificationErrorCode.INVALID_ID, "pushDeviceId",
-                    "pushDeviceId는 양수여야 합니다.");
-        }
-        return jdbc.queryForObject(NotificationSql.INVALIDATE_PUSH_DEVICE,
-                new MapSqlParameterSource().addValue("deliveryId", deliveryId)
-                        .addValue("pushDeviceId", pushDeviceId).addValue("generation", generation)
-                        .addValue("at", timestamp(at)), Number.class).intValue() == 1;
-    }
-
-    @Override
     public Optional<NotificationDelivery> claimDelivery(long id, Instant at) {
         if (id <= 0) {
             throw new NotificationException(NotificationErrorCode.INVALID_ID, "deliveryId",
@@ -390,52 +322,6 @@ public class JdbcNotificationRepository implements OutboxEventRepository, Notifi
                 instant(rs, "last_seen_at"), instant(rs, "revoked_at"));
     }
 
-    private static PushDispatchContext mapPushDispatchContext(ResultSet rs) throws SQLException {
-        NotificationDelivery delivery = new NotificationDelivery(
-                nullableLong(rs, "delivery_id"),
-                rs.getLong("delivery_notification_id"),
-                rs.getLong("delivery_push_device_id"),
-                DeliveryStatus.valueOf(rs.getString("delivery_status")),
-                rs.getInt("delivery_attempt_count"),
-                instant(rs, "delivery_next_attempt_at"),
-                instant(rs, "delivery_created_at"),
-                instant(rs, "delivery_sent_at"),
-                rs.getString("delivery_provider_message_id"));
-        Notification notification = new Notification(
-                nullableLong(rs, "notification_id"),
-                rs.getLong("notification_recipient_id"),
-                rs.getLong("notification_outbox_event_id"),
-                NotificationType.valueOf(rs.getString("notification_type")),
-                rs.getString("notification_dedup_key"),
-                nullableLong(rs, "notification_direction_post_id"),
-                nullableLong(rs, "notification_answer_id"),
-                nullableLong(rs, "notification_report_id"),
-                NotificationStatus.valueOf(rs.getString("notification_status")),
-                instant(rs, "notification_created_at"),
-                instant(rs, "notification_read_at"));
-        PushDevice device = new PushDevice(
-                nullableLong(rs, "device_id"),
-                rs.getLong("device_user_id"),
-                PushPlatform.valueOf(rs.getString("device_platform")),
-                rs.getBytes("device_token_ciphertext"),
-                rs.getString("device_token_fingerprint"),
-                PushDeviceStatus.valueOf(rs.getString("device_status")),
-                instant(rs, "device_last_seen_at"),
-                instant(rs, "device_revoked_at"));
-        return new PushDispatchContext(
-                delivery,
-                notification,
-                device,
-                nullableLong(rs, "actor_id"),
-                new PushDispatchContext.DispatchValiditySnapshot(
-                        rs.getBoolean("recipient_active"),
-                        rs.getBoolean("actor_active"),
-                        rs.getBoolean("preference_enabled"),
-                        rs.getBoolean("blocked_in_either_direction"),
-                        rs.getBoolean("target_valid"),
-                        rs.getBoolean("has_remaining_time")));
-    }
-
     private static Long nullableLong(ResultSet rs, String column) throws SQLException {
         long value = rs.getLong(column);
         return rs.wasNull() ? null : value;
@@ -485,49 +371,6 @@ public class JdbcNotificationRepository implements OutboxEventRepository, Notifi
         if (at == null) {
             throw new NotificationException(NotificationErrorCode.INVALID_PUSH_DEVICE_REQUEST, "at",
                     "처리 시각은 필수입니다.");
-        }
-    }
-
-    private static void validatePushDeliveryClaimRequest(int batchSize, Instant now, Instant leaseUntil) {
-        if (batchSize <= 0) {
-            throw new NotificationException(NotificationErrorCode.INVALID_VALUE_RANGE, "batchSize",
-                    "batchSize는 양수여야 합니다.");
-        }
-        if (now == null || leaseUntil == null || !leaseUntil.isAfter(now)) {
-            throw new NotificationException(NotificationErrorCode.INVALID_VALUE_RANGE, "leaseUntil",
-                    "현재 시각 이후의 leaseUntil이 필요합니다.");
-        }
-    }
-
-    private static void validatePushDeliveryTerminalRequest(
-            long deliveryId, int generation, PushDeliveryTerminalResult result, Instant at,
-            Instant nextAttemptAt, String providerMessageId) {
-        if (deliveryId <= 0) {
-            throw new NotificationException(NotificationErrorCode.INVALID_ID, "deliveryId",
-                    "deliveryId는 양수여야 합니다.");
-        }
-        if (generation <= 0) {
-            throw new NotificationException(NotificationErrorCode.INVALID_VALUE_RANGE, "generation",
-                    "generation은 양수여야 합니다.");
-        }
-        if (result == null) {
-            throw new NotificationException(NotificationErrorCode.REQUIRED_VALUE_MISSING, "result",
-                    "terminal result는 필수입니다.");
-        }
-        if (at == null) {
-            throw new NotificationException(NotificationErrorCode.REQUIRED_VALUE_MISSING, "at",
-                    "처리 시각은 필수입니다.");
-        }
-        if (nextAttemptAt == null) {
-            throw new NotificationException(NotificationErrorCode.REQUIRED_VALUE_MISSING, "nextAttemptAt",
-                    "다음 시도 시각은 필수입니다.");
-        }
-        if (providerMessageId != null && (result != PushDeliveryTerminalResult.SENT
-                || providerMessageId.isBlank() || providerMessageId.length() > 255
-                || providerMessageId.chars().anyMatch(value -> Character.isWhitespace(value)
-                || Character.isSpaceChar(value) || Character.isISOControl(value)))) {
-            throw new NotificationException(NotificationErrorCode.INVALID_VALUE_RANGE, "providerMessageId",
-                    "provider message ID가 올바르지 않습니다.");
         }
     }
 

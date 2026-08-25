@@ -7,9 +7,6 @@ import java.util.Optional;
 import com.dnd.qello.notification.domain.Notification;
 import com.dnd.qello.notification.domain.NotificationDelivery;
 import com.dnd.qello.notification.domain.PushDevice;
-import com.dnd.qello.notification.push.ClaimedPushDelivery;
-import com.dnd.qello.notification.push.PushDispatchContext;
-import com.dnd.qello.notification.push.PushDeliveryTerminalResult;
 
 public interface NotificationRepository {
 
@@ -31,30 +28,10 @@ public interface NotificationRepository {
 
 	NotificationDelivery saveDeliveryIfAbsent(NotificationDelivery delivery);
 
-	List<ClaimedPushDelivery> claimDueDeliveries(int batchSize, Instant now, Instant leaseUntil);
-
-	/** provider 호출 직전에 현재 lease generation이 유효한 delivery와 eligibility 권위값을 읽는다. */
-	Optional<PushDispatchContext> findPushDispatchContext(long deliveryId, int generation, Instant now);
-
-	boolean completeClaim(long deliveryId, int generation, PushDeliveryTerminalResult result, Instant at);
-
-	/** SENT일 때만 검증된 provider message ID를 저장하는 generation-fenced terminal API. */
-	boolean completeClaim(
-		long deliveryId,
-		int generation,
-		PushDeliveryTerminalResult result,
-		Instant at,
-		Instant nextAttemptAt,
-		String providerMessageId);
-
-	/** 현재 claim만 DEAD로 종결하고 device INVALID와 sibling 취소를 한 transaction에서 처리한다. */
-	boolean invalidatePushDeviceAndCancelUndelivered(
-		long deliveryId, long pushDeviceId, int generation, Instant at);
-
-	/** 기존 fan-out 회귀 경로와의 호환 API. 신규 push dispatch는 fenced batch API를 사용한다. */
+	/** 기존 fan-out 회귀 경로와의 호환 API. 신규 push dispatch는 group claim API를 사용한다. */
 	Optional<NotificationDelivery> claimDelivery(long id, Instant at);
 
-	/** 기존 fan-out 회귀 경로와의 호환 API. 신규 push dispatch는 fenced terminal API를 사용한다. */
+	/** 기존 fan-out 회귀 경로와의 호환 API. 신규 push dispatch는 group terminal API를 사용한다. */
 	boolean updateDelivery(NotificationDelivery delivery);
 
 	PushDevice saveDevice(PushDevice device);
