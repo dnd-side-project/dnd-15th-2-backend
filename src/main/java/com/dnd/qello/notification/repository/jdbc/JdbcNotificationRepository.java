@@ -11,10 +11,6 @@ import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.nio.ByteBuffer;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
@@ -375,7 +371,7 @@ public class JdbcNotificationRepository implements OutboxEventRepository, Notifi
     }
 
     private static long userPlatformLockKey(long userId, String platform) {
-        return advisoryLockKey("push-device:user-platform", userId + ":" + platform);
+        return AdvisoryLockKeys.of("push-device:user-platform", userId + ":" + platform);
     }
 
     private void acquirePushDeviceWriteLocks(long userId, String platform, String tokenFingerprint) {
@@ -389,18 +385,7 @@ public class JdbcNotificationRepository implements OutboxEventRepository, Notifi
     }
 
     private static long fingerprintLockKey(String tokenFingerprint) {
-        return advisoryLockKey("push-device:fingerprint", tokenFingerprint);
-    }
-
-    private static long advisoryLockKey(String namespace, String value) {
-        try {
-            byte[] hash = MessageDigest.getInstance("SHA-256")
-                    .digest((namespace + ":" + value).getBytes(StandardCharsets.UTF_8));
-            return ByteBuffer.wrap(hash).getLong();
-        }
-        catch (NoSuchAlgorithmException exception) {
-            throw new IllegalStateException("SHA-256을 사용할 수 없습니다.", exception);
-        }
+        return AdvisoryLockKeys.of("push-device:fingerprint", tokenFingerprint);
     }
 
     private static Timestamp timestamp(Instant value) {
