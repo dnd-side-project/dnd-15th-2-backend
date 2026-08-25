@@ -1,6 +1,7 @@
 /**
  * Created at: 2026-08-24T21:15:00+09:00
- * Source scenario: TEST-PLAN-GH-179-PUSH-DELIVERY-UNIT-013 through UNIT-014
+ * Source scenario: TEST-PLAN-GH-179-PUSH-DELIVERY-UNIT-013 through UNIT-014,
+ * TEST-PLAN-GH-180-PUSH-BUNDLING-BUDGET-UNIT-018
  */
 package com.dnd.qello.notification.push.fcm;
 
@@ -125,6 +126,16 @@ class FcmHttpV1PushProviderTest {
 	}
 
 	@Test
+	@DisplayName("UNIT-018: 양의 정수 count payload도 allowlist로 보고 token-scoped INVALID_ARGUMENT를 InvalidToken으로 변환한다")
+	void treatsPositiveCountAsAllowlistedForInvalidToken() {
+		fakeServer.respondWith(400, """
+			{\"error\":{\"status\":\"INVALID_ARGUMENT\",\"details\":[{\"fieldViolations\":[{\"field\":\"message.token\"}]}]}}
+			""", null, Duration.ZERO);
+
+		assertThat(provider.send(commandWithCount("3"))).isInstanceOf(PushProviderResult.InvalidToken.class);
+	}
+
+	@Test
 	@DisplayName("UNIT-013: token 원인이 명확하지 않은 INVALID_ARGUMENT는 PermanentFailure로 보수적으로 변환한다")
 	void keepsAmbiguousInvalidArgumentPermanent() {
 		fakeServer.respondWith(400, "{\"error\":{\"status\":\"INVALID_ARGUMENT\"}}", null, Duration.ZERO);
@@ -200,9 +211,13 @@ class FcmHttpV1PushProviderTest {
 	}
 
 	private static PushSendCommand command() {
+		return commandWithCount("1");
+	}
+
+	private static PushSendCommand commandWithCount(String count) {
 		return new PushSendCommand(
 			PushToken.of(DEVICE_TOKEN),
-			new PushPayload("ANSWER_RECEIVED", "1", "true"));
+			new PushPayload("ANSWER_RECEIVED", count, "true"));
 	}
 
 	private static final class FakeFcmServer {

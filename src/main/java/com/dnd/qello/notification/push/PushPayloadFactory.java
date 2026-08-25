@@ -4,14 +4,12 @@ import java.util.Objects;
 
 import com.dnd.qello.notification.domain.NotificationType;
 
-/** dispatch snapshot을 privacy-safe FCM data payload로 변환한다. */
+/** type/count/hasRemainingTime만 가진 privacy-safe FCM data payload를 만든다. */
 public final class PushPayloadFactory {
 
-	public PushPayload create(PushDispatchContext context) {
-		Objects.requireNonNull(context, "context");
-		NotificationType type = context.notification().notificationType();
-		boolean hasRemainingTime = type == NotificationType.DIRECTION_POST_RECEIVED
-			&& context.targetValidity().hasRemainingTime();
-		return new PushPayload(type.name(), "1", Boolean.toString(hasRemainingTime));
+	public PushPayload create(NotificationType type, int count, boolean hasRemainingTime) {
+		Objects.requireNonNull(type, "type");
+		boolean remainingTime = type == NotificationType.DIRECTION_POST_RECEIVED && hasRemainingTime;
+		return new PushPayload(type.name(), Integer.toString(count), Boolean.toString(remainingTime));
 	}
 }

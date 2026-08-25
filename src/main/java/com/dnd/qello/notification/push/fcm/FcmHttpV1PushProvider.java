@@ -176,8 +176,16 @@ public final class FcmHttpV1PushProvider implements PushProvider {
 	private static boolean hasAllowlistedPayload(PushPayload payload) {
 		Map<String, String> data = payload.asData();
 		return data.keySet().equals(Set.of("type", "count", "hasRemainingTime"))
-			&& "1".equals(data.get("count"))
+			&& isPositiveCount(data.get("count"))
 			&& ("true".equals(data.get("hasRemainingTime")) || "false".equals(data.get("hasRemainingTime")));
+	}
+
+	private static boolean isPositiveCount(String count) {
+		try {
+			return count != null && Integer.parseInt(count) > 0;
+		} catch (NumberFormatException exception) {
+			return false;
+		}
 	}
 
 	private boolean isRetryable(HttpStatusCode statusCode, String reasonCode) {

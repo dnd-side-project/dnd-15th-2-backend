@@ -2,14 +2,22 @@ package com.dnd.qello.notification.service;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.transaction.support.TransactionTemplate;
 
+import com.dnd.qello.notification.config.PushPolicyProperties;
+import com.dnd.qello.notification.domain.DeliveryStatus;
+import com.dnd.qello.notification.domain.NotificationDelivery;
 import com.dnd.qello.notification.error.NotificationErrorCode;
 import com.dnd.qello.notification.error.NotificationException;
-import com.dnd.qello.notification.push.ClaimedPushDelivery;
 import com.dnd.qello.notification.push.PushDeliveryRetryPolicy;
 import com.dnd.qello.notification.push.PushDeliveryTerminalResult;
 import com.dnd.qello.notification.push.PushDispatchContext;
@@ -20,23 +28,35 @@ import com.dnd.qello.notification.push.PushPayloadFactory;
 import com.dnd.qello.notification.push.PushProvider;
 import com.dnd.qello.notification.push.PushProviderResult;
 import com.dnd.qello.notification.push.PushSendCommand;
+import com.dnd.qello.notification.push.group.ClaimedPushDeviceDispatch;
+import com.dnd.qello.notification.push.group.ClaimedPushDispatchGroup;
+import com.dnd.qello.notification.push.group.PushBudgetReservation;
+import com.dnd.qello.notification.push.group.PushDispatchGroupContext;
+import com.dnd.qello.notification.push.group.PushDispatchMemberContext;
+import com.dnd.qello.notification.push.policy.PushBudgetPolicy;
+import com.dnd.qello.notification.push.policy.PushSuppressionPolicy;
 import com.dnd.qello.notification.push.security.PushToken;
 import com.dnd.qello.notification.push.security.PushTokenProtectionException;
 import com.dnd.qello.notification.push.security.PushTokenProtector;
 
 /**
- * 명시적으로 호출된 due batch를 건별 격리해 처리한다.
+ * 명시적으로 호출된 due batch를 group 단위로 격리해 처리한다.
  *
- * <p>claim/context/terminal은 {@link PushDeliveryClaimService}의 짧은 transaction이고,
- * 복호화와 provider 호출은 그 transaction 경계 사이에서 수행한다. scheduler/poller 배선은
- * #182 범위이므로 이 클래스는 Spring bean으로 자동 활성화하지 않는다.</p>
+ * <p>편입/claim/context/device terminal은 짧은 transaction이고, 복호화와 provider 호출은
+ * 그 transaction 경계 사이에서 수행한다. scheduler/poller 배선은 #182 범위이므로 이 클래스는
+ * Spring bean으로 자동 활성화하지 않는다.</p>
  */
 public final class PushDeliveryDispatchWorker {
 
 	private static final Logger log = LoggerFactory.getLogger(PushDeliveryDispatchWorker.class);
 
-	private final PushDeliveryClaimService claimService;
+	private final PushDispatchGroupPlanner groupPlanner;
+	private final PushDispatchGroupClaimService groupClaims;
+	private final TransactionTemplate transactions;
 	private final PushDispatchEligibility eligibility;
+	private final PushSuppressionPolicy suppressionPolicy;
+	private final PushBudgetPolicy budgetPolicy;
+	private final PushPolicyProperties policyProperties;
 	private final PushPayloadFactory payloadFactory;
 	private final PushDeliveryRetryPolicy retryPolicy;
 	private final PushTokenProtector tokenProtector;
@@ -44,16 +64,26 @@ public final class PushDeliveryDispatchWorker {
 	private final Clock clock;
 
 	public PushDeliveryDispatchWorker(
-		PushDeliveryClaimService claimService,
+		PushDispatchGroupPlanner groupPlanner,
+		PushDispatchGroupClaimService groupClaims,
+		TransactionTemplate transactions,
 		PushDispatchEligibility eligibility,
+		PushSuppressionPolicy suppressionPolicy,
+		PushBudgetPolicy budgetPolicy,
+		PushPolicyProperties policyProperties,
 		PushPayloadFactory payloadFactory,
 		PushDeliveryRetryPolicy retryPolicy,
 		PushTokenProtector tokenProtector,
 		PushProvider provider,
 		Clock clock
 	) {
-		this.claimService = require(claimService, "claimService");
+		this.groupPlanner = require(groupPlanner, "groupPlanner");
+		this.groupClaims = require(groupClaims, "groupClaims");
+		this.transactions = require(transactions, "transactions");
 		this.eligibility = require(eligibility, "eligibility");
+		this.suppressionPolicy = require(suppressionPolicy, "suppressionPolicy");
+		this.budgetPolicy = require(budgetPolicy, "budgetPolicy");
+		this.policyProperties = require(policyProperties, "policyProperties");
 		this.payloadFactory = require(payloadFactory, "payloadFactory");
 		this.retryPolicy = require(retryPolicy, "retryPolicy");
 		this.tokenProtector = require(tokenProtector, "tokenProtector");
@@ -63,110 +93,222 @@ public final class PushDeliveryDispatchWorker {
 
 	public BatchResult dispatchBatch(BatchCommand command) {
 		require(command, "command");
-		List<ClaimedPushDelivery> claimed = claimService.claimDueDeliveries(
+		transactions.executeWithoutResult(status ->
+			groupPlanner.collectUngrouped(command.batchSize(), command.at()));
+		List<ClaimedPushDispatchGroup> claims = groupClaims.claimDueGroups(
 			command.batchSize(), command.at(), command.leaseUntil());
-		List<DeliveryOutcome> outcomes = claimed.stream()
-			.map(this::dispatchOne)
-			.toList();
-		return new BatchResult(claimed.size(), outcomes);
+		return new BatchResult(claims.size(), claims.stream().map(this::dispatchGroup).toList());
 	}
 
-	private DeliveryOutcome dispatchOne(ClaimedPushDelivery claim) {
+	private DeliveryOutcome dispatchGroup(ClaimedPushDispatchGroup claim) {
 		try {
-			Instant contextAt = clock.instant();
-			return claimService.findPushDispatchContext(claim.deliveryId(), claim.generation(), contextAt)
-				.map(context -> dispatchCurrentClaim(claim, context, contextAt))
-				.orElseGet(() -> stale(claim, "STALE_CLAIM"));
-		} catch (PushTokenProtectionException failure) {
-			return completeAfterTokenFailure(claim, clock.instant());
+			return dispatchCurrentGroup(claim);
 		} catch (RuntimeException failure) {
-			return recordUnexpectedFailure(claim, clock.instant());
+			log.warn("Push group failure isolated groupId={} generation={} reasonCode={}",
+				claim.groupId(), claim.generation(), "UNEXPECTED_FAILURE");
+			return outcome(claim.groupId(), claim.generation(), Outcome.FAILURE_RECORDING_FAILED,
+				"UNEXPECTED_FAILURE");
 		}
 	}
 
-	private DeliveryOutcome dispatchCurrentClaim(
-		ClaimedPushDelivery claim, PushDispatchContext context, Instant at) {
-		PushDispatchEligibility.Evaluation evaluation = eligibility.evaluate(context);
-		if (evaluation.decision() == PushDispatchDecision.CANCELLED) {
-			return complete(claim, PushDeliveryTerminalResult.CANCELLED, at, at, null,
-				Outcome.CANCELLED, evaluation.reasonCode().name());
-		}
-		if (evaluation.decision() == PushDispatchDecision.DEAD) {
-			return complete(claim, PushDeliveryTerminalResult.DEAD, at, at, null,
-				Outcome.DEAD, evaluation.reasonCode().name());
-		}
-
-		PushToken token = tokenProtector.decrypt(context.device().tokenCiphertext());
-		PushPayload payload = payloadFactory.create(context);
-		// lease가 이미 만료됐다면 다른 worker가 같은 delivery를 회수할 수 있으므로 provider를 호출하지 않는다.
-		// 종결은 generation fence가 막지만 provider 호출은 되돌릴 수 없다.
-		if (!clock.instant().isBefore(claim.leaseUntil())) {
-			return stale(claim, "LEASE_EXPIRED");
-		}
-		PushProviderResult providerResult = provider.send(new PushSendCommand(token, payload));
-		Instant terminalAt = clock.instant();
-		if (providerResult instanceof PushProviderResult.InvalidToken) {
-			return invalidateDevice(claim, context, terminalAt);
-		}
-		return completeProviderResult(claim, providerResult, terminalAt);
+	private DeliveryOutcome dispatchCurrentGroup(ClaimedPushDispatchGroup claim) {
+		Instant contextAt = clock.instant();
+		return groupClaims.loadContext(claim.groupId(), claim.generation(), contextAt)
+			.map(context -> dispatchLoadedGroup(claim, context))
+			.orElseGet(() -> outcome(claim.groupId(), claim.generation(), Outcome.STALE_CLAIM, "STALE_CLAIM"));
 	}
 
-	private DeliveryOutcome completeProviderResult(
-		ClaimedPushDelivery claim, PushProviderResult providerResult, Instant at) {
-		PushDeliveryRetryPolicy.Decision decision = retryPolicy.decide(claim.generation(), providerResult, at);
+	private DeliveryOutcome dispatchLoadedGroup(
+		ClaimedPushDispatchGroup claim, PushDispatchGroupContext context) {
+		long representativeId = representativeDeliveryId(context, List.of());
+		List<Long> ineligibleIds = new ArrayList<>();
+		List<String> ineligibleReasons = new ArrayList<>();
+		Map<Long, Set<Long>> eligibleByDevice = new LinkedHashMap<>();
+		for (PushDispatchMemberContext member : context.members()) {
+			DeliveryStatus status = member.dispatchContext().delivery().status();
+			if (status == DeliveryStatus.SENT || status == DeliveryStatus.DEAD
+				|| status == DeliveryStatus.CANCELLED) {
+				continue;
+			}
+			PushDispatchEligibility.Evaluation evaluation =
+				eligibility.evaluate(evaluable(member.dispatchContext()));
+			if (evaluation.decision() != PushDispatchDecision.SEND) {
+				ineligibleIds.add(member.deliveryId());
+				ineligibleReasons.add(evaluation.reasonCode().name());
+				continue;
+			}
+			eligibleByDevice
+				.computeIfAbsent(member.dispatchContext().device().id(), key -> new LinkedHashSet<>())
+				.add(member.deliveryId());
+		}
+
+		Instant at = clock.instant();
+		if (!ineligibleIds.isEmpty()
+			&& !groupClaims.cancelMemberDeliveries(claim.groupId(), claim.generation(), ineligibleIds, at)) {
+			return outcome(representativeId, claim.generation(), Outcome.STALE_CLAIM, "STALE_CLAIM");
+		}
+		if (eligibleByDevice.isEmpty()) {
+			groupClaims.cancelGroup(claim.groupId(), claim.generation(), clock.instant());
+			String reasonCode = ineligibleReasons.isEmpty() ? "NO_ELIGIBLE_MEMBERS" : ineligibleReasons.getFirst();
+			return outcome(representativeId, claim.generation(), Outcome.CANCELLED, reasonCode);
+		}
+
+		PushSuppressionPolicy.Decision suppression = suppressionPolicy.evaluate(
+			context.preference(),
+			context.group().notificationType(),
+			clock.instant(),
+			context.group().policyExpiresAt(),
+			context.lastRecommendationAttemptAt());
+		if (suppression.action() == PushSuppressionPolicy.Action.DEFER) {
+			groupClaims.deferGroup(
+				claim.groupId(), claim.generation(), suppression.nextAttemptAt(), clock.instant());
+			return outcome(representativeId, claim.generation(), Outcome.RETRY_SCHEDULED,
+				suppression.reason().name());
+		}
+		if (suppression.action() == PushSuppressionPolicy.Action.CANCEL) {
+			groupClaims.cancelGroup(claim.groupId(), claim.generation(), clock.instant());
+			return outcome(representativeId, claim.generation(), Outcome.CANCELLED, suppression.reason().name());
+		}
+
+		List<ClaimedPushDeviceDispatch> devices = groupClaims.claimDevices(
+			claim.groupId(), claim.generation(), eligibleByDevice, clock.instant(), claim.leaseUntil());
+		if (devices.isEmpty()) {
+			groupClaims.cancelGroup(claim.groupId(), claim.generation(), clock.instant());
+			return outcome(representativeId, claim.generation(), Outcome.CANCELLED, "NO_CLAIMED_DEVICES");
+		}
+		representativeId = representativeDeliveryId(context, devices);
+
+		PushBudgetReservation reservation = groupClaims.reserveBudget(
+			claim.groupId(),
+			claim.generation(),
+			budgetPolicy.budgetDate(clock.instant(), context.budgetZone()),
+			context.group().notificationType(),
+			policyProperties,
+			clock.instant());
+		if (reservation == PushBudgetReservation.LIMIT_EXCEEDED
+			|| reservation == PushBudgetReservation.STALE_GROUP) {
+			groupClaims.cancelGroup(claim.groupId(), claim.generation(), clock.instant());
+			return outcome(representativeId, claim.generation(),
+				reservation == PushBudgetReservation.STALE_GROUP ? Outcome.STALE_CLAIM : Outcome.CANCELLED,
+				reservation.name());
+		}
+
+		Outcome groupOutcome = null;
+		String reasonCode = "ACCEPTED";
+		for (ClaimedPushDeviceDispatch device : devices) {
+			DeviceOutcome deviceOutcome = dispatchDevice(claim, context, device);
+			if (groupOutcome == null) {
+				groupOutcome = deviceOutcome.outcome();
+				reasonCode = deviceOutcome.reasonCode();
+			} else {
+				groupOutcome = merge(groupOutcome, deviceOutcome.outcome());
+				if (deviceOutcome.outcome() != Outcome.SENT) {
+					reasonCode = deviceOutcome.reasonCode();
+				}
+			}
+		}
+		if (groupOutcome == null) {
+			groupOutcome = Outcome.CANCELLED;
+			reasonCode = "NO_CLAIMED_DEVICES";
+		}
+		try {
+			groupClaims.finalizeGroup(claim.groupId(), claim.generation(), clock.instant());
+		} catch (RuntimeException failure) {
+			log.warn("Push group finalize isolated groupId={} generation={} reasonCode={}",
+				claim.groupId(), claim.generation(), "FINALIZE_REJECTED");
+		}
+		return outcome(representativeId, claim.generation(), groupOutcome, reasonCode);
+	}
+
+	private DeviceOutcome dispatchDevice(
+		ClaimedPushDispatchGroup claim,
+		PushDispatchGroupContext context,
+		ClaimedPushDeviceDispatch device
+	) {
+		try {
+			PushDispatchContext sample = memberContext(context, device.deviceId());
+			PushToken token = tokenProtector.decrypt(sample.device().tokenCiphertext());
+			if (!clock.instant().isBefore(device.leaseUntil())) {
+				return new DeviceOutcome(Outcome.STALE_CLAIM, "LEASE_EXPIRED");
+			}
+			int count = distinctNotificationCount(context, device);
+			boolean hasRemainingTime = claimedMembers(context, device).stream()
+				.anyMatch(member -> member.dispatchContext().targetValidity().hasRemainingTime());
+			PushPayload payload = payloadFactory.create(
+				context.group().notificationType(), count, hasRemainingTime);
+			PushProviderResult providerResult = provider.send(new PushSendCommand(token, payload));
+			Instant terminalAt = clock.instant();
+			if (providerResult instanceof PushProviderResult.InvalidToken) {
+				return invalidateDevice(claim, device, terminalAt);
+			}
+			return completeProviderResult(claim, device, providerResult, terminalAt);
+		} catch (PushTokenProtectionException failure) {
+			return completeDevice(claim, device, PushDeliveryTerminalResult.DEAD, clock.instant(),
+				clock.instant(), null, Outcome.DEAD, "TOKEN_DECRYPTION_FAILED");
+		} catch (RuntimeException failure) {
+			return recordUnexpectedFailure(claim, device, clock.instant());
+		}
+	}
+
+	private DeviceOutcome completeProviderResult(
+		ClaimedPushDispatchGroup claim,
+		ClaimedPushDeviceDispatch device,
+		PushProviderResult providerResult,
+		Instant at
+	) {
+		PushDeliveryRetryPolicy.Decision decision =
+			retryPolicy.decide(deviceGeneration(device), providerResult, at);
 		if (decision.result() == PushDeliveryTerminalResult.SENT) {
 			String providerMessageId = ((PushProviderResult.Accepted)providerResult).providerMessageId();
-			return complete(claim, decision.result(), at, decision.nextAttemptAt(), providerMessageId,
-				Outcome.SENT, "ACCEPTED");
+			return completeDevice(claim, device, decision.result(), at, decision.nextAttemptAt(),
+				providerMessageId, Outcome.SENT, "ACCEPTED");
 		}
 		if (decision.result() == PushDeliveryTerminalResult.FAILED) {
-			return complete(claim, decision.result(), at, decision.nextAttemptAt(), null,
-				Outcome.RETRY_SCHEDULED, "RETRYABLE_FAILURE");
+			return completeDevice(claim, device, decision.result(), at, decision.nextAttemptAt(),
+				null, Outcome.RETRY_SCHEDULED, "RETRYABLE_FAILURE");
 		}
 		String reasonCode = providerResult instanceof PushProviderResult.PermanentFailure
 			? "PERMANENT_FAILURE"
 			: "MAX_ATTEMPTS";
-		return complete(claim, decision.result(), at, decision.nextAttemptAt(), null, Outcome.DEAD, reasonCode);
+		return completeDevice(claim, device, decision.result(), at, decision.nextAttemptAt(),
+			null, Outcome.DEAD, reasonCode);
 	}
 
-	private DeliveryOutcome invalidateDevice(
-		ClaimedPushDelivery claim, PushDispatchContext context, Instant at) {
-		boolean completed = claimService.invalidatePushDeviceAndCancelUndelivered(
-			claim.deliveryId(), context.device().id(), claim.generation(), at);
-		return completed
-			? outcome(claim, Outcome.DEAD, "INVALID_TOKEN")
-			: stale(claim, "TERMINAL_FENCE_REJECTED");
-	}
-
-	private DeliveryOutcome completeAfterTokenFailure(ClaimedPushDelivery claim, Instant at) {
+	private DeviceOutcome invalidateDevice(
+		ClaimedPushDispatchGroup claim, ClaimedPushDeviceDispatch device, Instant at) {
 		try {
-			return complete(claim, PushDeliveryTerminalResult.DEAD, at, at, null,
-				Outcome.DEAD, "TOKEN_DECRYPTION_FAILED");
-		} catch (RuntimeException terminalFailure) {
-			return recordUnexpectedFailure(claim, clock.instant());
+			boolean completed = groupClaims.invalidateClaimedDevice(
+				claim.groupId(), claim.generation(), device.deviceId(), device.deliveryGenerations(), at);
+			return completed
+				? new DeviceOutcome(Outcome.DEAD, "INVALID_TOKEN")
+				: new DeviceOutcome(Outcome.STALE_CLAIM, "TERMINAL_FENCE_REJECTED");
+		} catch (RuntimeException failure) {
+			return recordUnexpectedFailure(claim, device, clock.instant());
 		}
 	}
 
-	private DeliveryOutcome recordUnexpectedFailure(ClaimedPushDelivery claim, Instant at) {
-		log.warn("Push delivery failure isolated deliveryId={} generation={} reasonCode={}",
-			claim.deliveryId(), claim.generation(), "UNEXPECTED_FAILURE");
+	private DeviceOutcome recordUnexpectedFailure(
+		ClaimedPushDispatchGroup claim, ClaimedPushDeviceDispatch device, Instant at) {
+		log.warn("Push device failure isolated groupId={} deviceId={} generation={} reasonCode={}",
+			claim.groupId(), device.deviceId(), claim.generation(), "UNEXPECTED_FAILURE");
 		try {
 			PushDeliveryRetryPolicy.Decision decision = retryPolicy.decide(
-				claim.generation(), new PushProviderResult.RetryableFailure(null), at);
+				deviceGeneration(device), new PushProviderResult.RetryableFailure(null), at);
 			Outcome outcome = decision.result() == PushDeliveryTerminalResult.FAILED
 				? Outcome.RETRY_SCHEDULED
 				: Outcome.DEAD;
-			return complete(claim, decision.result(), at, decision.nextAttemptAt(), null,
-				outcome, "UNEXPECTED_FAILURE");
+			return completeDevice(claim, device, decision.result(), at, decision.nextAttemptAt(),
+				null, outcome, "UNEXPECTED_FAILURE");
 		} catch (RuntimeException failureRecordingFailure) {
-			log.warn("Push delivery failure recording isolated deliveryId={} generation={} reasonCode={}",
-				claim.deliveryId(), claim.generation(), "FAILURE_RECORDING_FAILED");
-			return outcome(claim, Outcome.FAILURE_RECORDING_FAILED, "FAILURE_RECORDING_FAILED");
+			log.warn("Push device failure recording isolated groupId={} deviceId={} generation={} reasonCode={}",
+				claim.groupId(), device.deviceId(), claim.generation(), "FAILURE_RECORDING_FAILED");
+			return new DeviceOutcome(Outcome.FAILURE_RECORDING_FAILED, "FAILURE_RECORDING_FAILED");
 		}
 	}
 
-	private DeliveryOutcome complete(
-		ClaimedPushDelivery claim,
+	private DeviceOutcome completeDevice(
+		ClaimedPushDispatchGroup claim,
+		ClaimedPushDeviceDispatch device,
 		PushDeliveryTerminalResult result,
 		Instant at,
 		Instant nextAttemptAt,
@@ -174,20 +316,101 @@ public final class PushDeliveryDispatchWorker {
 		Outcome completedOutcome,
 		String safeReasonCode
 	) {
-		boolean completed = claimService.completeClaim(
-			claim.deliveryId(), claim.generation(), result, at, nextAttemptAt, providerMessageId);
+		boolean completed = groupClaims.completeDevice(
+			claim.groupId(), claim.generation(), device.deviceId(), device.deliveryGenerations(),
+			result, at, nextAttemptAt, providerMessageId);
 		return completed
-			? outcome(claim, completedOutcome, safeReasonCode)
-			: stale(claim, "TERMINAL_FENCE_REJECTED");
+			? new DeviceOutcome(completedOutcome, safeReasonCode)
+			: new DeviceOutcome(Outcome.STALE_CLAIM, "TERMINAL_FENCE_REJECTED");
 	}
 
-	private static DeliveryOutcome stale(ClaimedPushDelivery claim, String safeReasonCode) {
-		return outcome(claim, Outcome.STALE_CLAIM, safeReasonCode);
+	private static PushDispatchContext evaluable(PushDispatchContext context) {
+		NotificationDelivery delivery = context.delivery();
+		if (delivery.status() == DeliveryStatus.PROCESSING) {
+			return context;
+		}
+		NotificationDelivery processing = new NotificationDelivery(
+			delivery.id(),
+			delivery.notificationId(),
+			delivery.pushDeviceId(),
+			DeliveryStatus.PROCESSING,
+			delivery.attemptCount(),
+			delivery.nextAttemptAt(),
+			delivery.createdAt(),
+			null,
+			null);
+		return new PushDispatchContext(
+			processing, context.notification(), context.device(), context.actorId(), context.targetValidity());
+	}
+
+	private static PushDispatchContext memberContext(PushDispatchGroupContext context, long deviceId) {
+		return claimedMembers(context, deviceId).stream()
+			.findFirst()
+			.map(PushDispatchMemberContext::dispatchContext)
+			.orElseThrow(() -> new NotificationException(
+				NotificationErrorCode.INVALID_VALUE_RANGE, "deviceId", "해당 기기의 member가 없습니다"));
+	}
+
+	private static List<PushDispatchMemberContext> claimedMembers(
+		PushDispatchGroupContext context, ClaimedPushDeviceDispatch device) {
+		Set<Long> claimedIds = device.deliveryGenerations().keySet();
+		return context.members().stream()
+			.filter(member -> claimedIds.contains(member.deliveryId()))
+			.toList();
+	}
+
+	private static List<PushDispatchMemberContext> claimedMembers(
+		PushDispatchGroupContext context, long deviceId) {
+		return context.members().stream()
+			.filter(member -> member.dispatchContext().device().id() == deviceId)
+			.toList();
+	}
+
+	private static int distinctNotificationCount(
+		PushDispatchGroupContext context, ClaimedPushDeviceDispatch device) {
+		return (int) claimedMembers(context, device).stream()
+			.map(member -> member.dispatchContext().notification().id())
+			.distinct()
+			.count();
+	}
+
+	private static int deviceGeneration(ClaimedPushDeviceDispatch device) {
+		return device.deliveryGenerations().values().stream().mapToInt(Integer::intValue).max().orElse(1);
+	}
+
+	private static long representativeDeliveryId(
+		PushDispatchGroupContext context, List<ClaimedPushDeviceDispatch> devices) {
+		return devices.stream()
+			.flatMap(device -> device.deliveryGenerations().keySet().stream())
+			.min(Long::compareTo)
+			.orElseGet(() -> context.members().stream()
+				.mapToLong(PushDispatchMemberContext::deliveryId)
+				.min()
+				.orElse(context.group().id() == null ? 1L : context.group().id()));
+	}
+
+	private static Outcome merge(Outcome current, Outcome next) {
+		if (current == Outcome.FAILURE_RECORDING_FAILED || next == Outcome.FAILURE_RECORDING_FAILED) {
+			return Outcome.FAILURE_RECORDING_FAILED;
+		}
+		if (current == Outcome.RETRY_SCHEDULED || next == Outcome.RETRY_SCHEDULED) {
+			return Outcome.RETRY_SCHEDULED;
+		}
+		if (current == Outcome.STALE_CLAIM || next == Outcome.STALE_CLAIM) {
+			return Outcome.STALE_CLAIM;
+		}
+		if (current == Outcome.SENT || next == Outcome.SENT) {
+			return Outcome.SENT;
+		}
+		if (current == Outcome.DEAD || next == Outcome.DEAD) {
+			return Outcome.DEAD;
+		}
+		return next;
 	}
 
 	private static DeliveryOutcome outcome(
-		ClaimedPushDelivery claim, Outcome outcome, String safeReasonCode) {
-		return new DeliveryOutcome(claim.deliveryId(), claim.generation(), outcome, safeReasonCode);
+		long deliveryId, int generation, Outcome outcome, String safeReasonCode) {
+		return new DeliveryOutcome(deliveryId, generation, outcome, safeReasonCode);
 	}
 
 	private static <T> T require(T value, String field) {
@@ -241,5 +464,8 @@ public final class PushDeliveryDispatchWorker {
 					"현재 시각 이후의 leaseUntil이 필요합니다");
 			}
 		}
+	}
+
+	private record DeviceOutcome(Outcome outcome, String reasonCode) {
 	}
 }
