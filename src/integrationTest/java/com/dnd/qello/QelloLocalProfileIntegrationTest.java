@@ -16,7 +16,13 @@ import org.springframework.test.context.ActiveProfiles;
  * Extended at: 2026-08-03T16:09:35+09:00
  * Extension scenario: TEST-PLAN-GH-31-LOCAL-PROFILE-CONTAINER-INTEGRATION
  */
-@SpringBootTest
+@SpringBootTest(properties = {
+	"qello.notification.push.policy.bundle-window=PT10M",
+	"qello.notification.push.policy.max-delay=PT8H",
+	"qello.notification.push.policy.daily-limit=5",
+	"qello.notification.push.policy.direction-reserved=2",
+	"qello.notification.push.policy.recommendation-min-interval=PT24H"
+})
 @ActiveProfiles("local")
 class QelloLocalProfileIntegrationTest extends PostgisContainerIntegrationTestSupport {
 

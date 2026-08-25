@@ -1,7 +1,12 @@
 /**
  * Created at: 2026-08-24T23:03:32+09:00
  * Source scenario: TEST-PLAN-GH-179-PUSH-DELIVERY-INT-008 through INT-017,
- * TEST-PLAN-GH-179-PUSH-DELIVERY-INT-007 (dispatch 경계의 lease 재확인)
+ * TEST-PLAN-GH-179-PUSH-DELIVERY-INT-007 (dispatch 경계의 lease 재확인),
+ * TEST-PLAN-GH-180-PUSH-BUNDLING-BUDGET-INT-012,
+ * TEST-PLAN-GH-180-PUSH-BUNDLING-BUDGET-INT-013,
+ * TEST-PLAN-GH-180-PUSH-BUNDLING-BUDGET-INT-014,
+ * TEST-PLAN-GH-180-PUSH-BUNDLING-BUDGET-INT-015,
+ * TEST-PLAN-GH-180-PUSH-BUNDLING-BUDGET-INT-017
  */
 package com.dnd.qello;
 
@@ -20,6 +25,7 @@ import java.time.ZoneOffset;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
@@ -38,6 +44,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.boot.http.client.ClientHttpRequestFactoryBuilder;
@@ -72,16 +79,28 @@ import com.dnd.qello.notification.push.security.ProtectedPushToken;
 import com.dnd.qello.notification.push.security.PushToken;
 import com.dnd.qello.notification.push.security.PushTokenKeyRing;
 import com.dnd.qello.notification.push.security.PushTokenProtector;
+import com.dnd.qello.notification.config.PushPolicyProperties;
+import com.dnd.qello.notification.push.policy.PushBudgetPolicy;
+import com.dnd.qello.notification.push.policy.PushGroupingPolicy;
+import com.dnd.qello.notification.push.policy.PushSuppressionPolicy;
 import com.dnd.qello.notification.repository.NotificationRepository;
 import com.dnd.qello.notification.repository.OutboxEventRepository;
-import com.dnd.qello.notification.service.PushDeliveryClaimService;
+import com.dnd.qello.notification.repository.PushDispatchGroupRepository;
 import com.dnd.qello.notification.service.PushDeliveryDispatchWorker;
+import com.dnd.qello.notification.service.PushDispatchGroupClaimService;
+import com.dnd.qello.notification.service.PushDispatchGroupPlanner;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 
-@SpringBootTest
+@SpringBootTest(properties = {
+	"qello.notification.push.policy.bundle-window=PT10M",
+	"qello.notification.push.policy.max-delay=PT8H",
+	"qello.notification.push.policy.daily-limit=5",
+	"qello.notification.push.policy.direction-reserved=2",
+	"qello.notification.push.policy.recommendation-min-interval=PT24H"
+})
 @ActiveProfiles("test")
 @ExtendWith(OutputCaptureExtension.class)
 class PushDeliveryDispatchIntegrationTest extends PostgisContainerIntegrationTestSupport {
@@ -90,7 +109,10 @@ class PushDeliveryDispatchIntegrationTest extends PostgisContainerIntegrationTes
 	private static final String TOKEN_SENTINEL = "fake-gh179-dispatch-token-sentinel";
 	private static final String PRIVATE_SENTINEL = "gh179-private-content-sentinel";
 	private static final Instant NOW = Instant.parse("2026-08-24T14:00:00Z");
+	private static final Instant WINDOW_END = NOW.plus(Duration.ofMinutes(10));
 	private static final Duration LEASE = Duration.ofSeconds(60);
+	private static final PushPolicyProperties POLICY = new PushPolicyProperties(
+		Duration.parse("PT10M"), Duration.parse("PT8H"), 5, 2, Duration.parse("PT24H"));
 	private static final byte[] ENCRYPTION_KEY = fixedKey((byte)0x31);
 	private static final byte[] FINGERPRINT_KEY = fixedKey((byte)0x51);
 
@@ -101,7 +123,11 @@ class PushDeliveryDispatchIntegrationTest extends PostgisContainerIntegrationTes
 	@Autowired
 	private OutboxEventRepository outboxEvents;
 	@Autowired
-	private PushDeliveryClaimService claims;
+	private PushDispatchGroupRepository groups;
+	@Autowired
+	private PushDispatchGroupClaimService groupClaims;
+	@Autowired
+	private TransactionTemplate transactions;
 
 	private AesGcmPushTokenProtector realProtector;
 	private MutableClock clock;
@@ -411,10 +437,10 @@ class PushDeliveryDispatchIntegrationTest extends PostgisContainerIntegrationTes
 		long succeedingDeviceId = device(recipientId, "after-rollback-device");
 		long failingId = targetlessDelivery(
 			recipientId, failingDeviceId, "invalid-rollback-current", DeliveryStatus.PENDING, 0, NOW);
-		long siblingId = targetlessDelivery(
-			recipientId, failingDeviceId, "invalid-rollback-sibling", DeliveryStatus.PENDING, 0, NOW.plusSeconds(1));
 		long succeedingId = targetlessDelivery(
 			recipientId, succeedingDeviceId, "after-rollback", DeliveryStatus.PENDING, 0, NOW);
+		long siblingId = targetlessDelivery(
+			recipientId, failingDeviceId, "invalid-rollback-sibling", DeliveryStatus.PENDING, 0, NOW.plusSeconds(1));
 		installCancellationFailureTrigger(failingDeviceId);
 		ScriptedProvider provider = new ScriptedProvider(
 			new PushProviderResult.InvalidToken(),
@@ -542,20 +568,23 @@ class PushDeliveryDispatchIntegrationTest extends PostgisContainerIntegrationTes
 	@Test
 	@DisplayName("INT-017 decrypt/provider 실패와 success·invalid·policy cancel 혼합 batch는 건별 실패를 격리하고 안전한 reason만 기록한다")
 	void isolatesMixedBatchFailuresAndDoesNotLogSensitiveFailureText(CapturedOutput output) {
-		long recipientId = account("mixed-recipient");
-		long brokenDevice = malformedDevice(recipientId, "mixed-broken-device");
-		long providerFailureDevice = device(recipientId, "mixed-provider-failure-device");
-		long acceptedDevice = device(recipientId, "mixed-accepted-device");
-		long invalidDevice = device(recipientId, "mixed-invalid-device");
+		long brokenRecipient = account("mixed-broken-recipient");
+		long failureRecipient = account("mixed-failure-recipient");
+		long acceptedRecipient = account("mixed-accepted-recipient");
+		long invalidRecipient = account("mixed-invalid-recipient");
+		long brokenDevice = malformedDevice(brokenRecipient, "mixed-broken-device");
+		long providerFailureDevice = device(failureRecipient, "mixed-provider-failure-device");
+		long acceptedDevice = device(acceptedRecipient, "mixed-accepted-device");
+		long invalidDevice = device(invalidRecipient, "mixed-invalid-device");
 		long cancelledRecipient = account("mixed-cancelled-recipient");
 		long cancelledDevice = device(cancelledRecipient, "mixed-cancelled-device");
-		long brokenId = targetlessDelivery(recipientId, brokenDevice, "mixed-broken", DeliveryStatus.PENDING, 0, NOW);
+		long brokenId = targetlessDelivery(brokenRecipient, brokenDevice, "mixed-broken", DeliveryStatus.PENDING, 0, NOW);
 		long providerFailureId = targetlessDelivery(
-			recipientId, providerFailureDevice, "mixed-provider-failure", DeliveryStatus.PENDING, 0, NOW);
+			failureRecipient, providerFailureDevice, "mixed-provider-failure", DeliveryStatus.PENDING, 0, NOW);
 		long acceptedId = targetlessDelivery(
-			recipientId, acceptedDevice, "mixed-accepted", DeliveryStatus.PENDING, 0, NOW);
+			acceptedRecipient, acceptedDevice, "mixed-accepted", DeliveryStatus.PENDING, 0, NOW);
 		long invalidId = targetlessDelivery(
-			recipientId, invalidDevice, "mixed-invalid", DeliveryStatus.PENDING, 0, NOW);
+			invalidRecipient, invalidDevice, "mixed-invalid", DeliveryStatus.PENDING, 0, NOW);
 		long cancelledId = targetlessDelivery(
 			cancelledRecipient, cancelledDevice, "mixed-cancelled", DeliveryStatus.PENDING, 0, NOW);
 		jdbc.update("INSERT INTO notification_user_setting (user_id, push_enabled) VALUES (?, FALSE)",
@@ -585,10 +614,214 @@ class PushDeliveryDispatchIntegrationTest extends PostgisContainerIntegrationTes
 		assertThat(output.getErr()).doesNotContain(TOKEN_SENTINEL, PRIVATE_SENTINEL);
 	}
 
+	@Test
+	@DisplayName("INT-012 알림 3개와 ACTIVE 기기 2대는 device별 provider 1회, count=3, delivery 6개 SENT, 예산 1만 소비한다")
+	void sendsGroupedPayloadPerDeviceAndConsumesBudgetOnce() {
+		long recipientId = account("bundle-recipient");
+		long deviceA = device(recipientId, "bundle-device-a");
+		long deviceB = device(recipientId, "bundle-device-b");
+		List<Long> notifications = List.of(
+			answerReceived(recipientId, "bundle-n1"),
+			answerReceived(recipientId, "bundle-n2"),
+			answerReceived(recipientId, "bundle-n3"));
+		List<Long> deliveries = new ArrayList<>();
+		for (long notificationId : notifications) {
+			deliveries.add(delivery(notificationId, deviceA, DeliveryStatus.PENDING, 0, NOW));
+			deliveries.add(delivery(notificationId, deviceB, DeliveryStatus.PENDING, 0, NOW));
+		}
+		ScriptedProvider provider = new ScriptedProvider(
+			new PushProviderResult.Accepted("projects/test/messages/bundle-a"),
+			new PushProviderResult.Accepted("projects/test/messages/bundle-b"));
+
+		clock.set(WINDOW_END);
+		PushDeliveryDispatchWorker.BatchResult result = worker(provider, new CountingProtector(realProtector))
+			.dispatchBatch(command(10, WINDOW_END));
+
+		assertThat(result.claimed()).isEqualTo(1);
+		assertThat(provider.calls()).isEqualTo(2);
+		assertThat(provider.payloads()).allSatisfy(data -> {
+			assertThat(data).containsOnlyKeys("type", "count", "hasRemainingTime");
+			assertThat(data).containsEntry("type", "ANSWER_RECEIVED");
+			assertThat(data).containsEntry("count", "3");
+			assertThat(data).containsEntry("hasRemainingTime", "false");
+			assertThat(data.toString()).doesNotContain(TOKEN_SENTINEL, PRIVATE_SENTINEL, "notificationId");
+		});
+		assertThat(deliveries).allSatisfy(id -> {
+			assertThat(status(id)).isEqualTo(DeliveryStatus.SENT.name());
+			assertThat(notificationStatus(id)).isEqualTo(NotificationStatus.UNREAD.name());
+		});
+		assertThat(providerMessageId(deliveries.get(0))).isEqualTo("projects/test/messages/bundle-a");
+		assertThat(providerMessageId(deliveries.get(1))).isEqualTo("projects/test/messages/bundle-b");
+		assertThat(consumedTotal(recipientId)).isEqualTo(1);
+		assertThat(groupStatusFor(recipientId)).isEqualTo("COMPLETED");
+	}
+
+	@Test
+	@DisplayName("INT-013 answer member 3개 중 block·hidden은 취소하고 유효 1개만 count=1로 SENT하며 notification 3개를 보존한다")
+	void cancelsBlockedAndHiddenAnswerMembersAndSendsDistinctCountOne() {
+		long recipientId = account("eligibility-recipient");
+		long deviceId = device(recipientId, "eligibility-device");
+		long validAuthor = account("eligibility-valid-author");
+		long blockedAuthor = account("eligibility-blocked-author");
+		long hiddenAuthor = account("eligibility-hidden-author");
+		long postId = directionPost(recipientId, "eligibility-post", NOW.plusSeconds(3600));
+		long validAnswer = answerFor(postId, validAuthor, "eligibility-valid", "PUBLISHED");
+		long blockedAnswer = answerFor(postId, blockedAuthor, "eligibility-blocked", "PUBLISHED");
+		long hiddenAnswer = answerFor(postId, hiddenAuthor, "eligibility-hidden", "HIDDEN");
+		long validDelivery = answerReceivedDelivery(recipientId, deviceId, validAnswer, "eligibility-valid");
+		long blockedDelivery = answerReceivedDelivery(recipientId, deviceId, blockedAnswer, "eligibility-blocked");
+		long hiddenDelivery = answerReceivedDelivery(recipientId, deviceId, hiddenAnswer, "eligibility-hidden");
+		jdbc.update("INSERT INTO user_block (blocker_id, blocked_id, created_at) VALUES (?, ?, ?)",
+			recipientId, blockedAuthor, Timestamp.from(NOW));
+		ScriptedProvider provider = new ScriptedProvider(
+			new PushProviderResult.Accepted("projects/test/messages/eligibility-valid"));
+
+		clock.set(WINDOW_END);
+		worker(provider, new CountingProtector(realProtector)).dispatchBatch(command(10, WINDOW_END));
+
+		assertThat(provider.calls()).isEqualTo(1);
+		assertThat(provider.payloads()).singleElement().satisfies(data ->
+			assertThat(data).containsEntry("count", "1"));
+		assertThat(status(validDelivery)).isEqualTo(DeliveryStatus.SENT.name());
+		assertThat(status(blockedDelivery)).isEqualTo(DeliveryStatus.CANCELLED.name());
+		assertThat(status(hiddenDelivery)).isEqualTo(DeliveryStatus.CANCELLED.name());
+		assertThat(notificationStatus(validDelivery)).isEqualTo(NotificationStatus.UNREAD.name());
+		assertThat(notificationStatus(blockedDelivery)).isEqualTo(NotificationStatus.UNREAD.name());
+		assertThat(notificationStatus(hiddenDelivery)).isEqualTo(NotificationStatus.UNREAD.name());
+		assertThat(consumedTotal(recipientId)).isEqualTo(1);
+	}
+
+	@Test
+	@DisplayName("INT-014 기기 A accepted·B retryable 후 accepted면 A 1회/B 2회, 성공 재전송 없음, 예산 1, group COMPLETED")
+	void retriesOnlyFailedDeviceAndKeepsBudgetAtOne() {
+		long recipientId = account("partial-recipient");
+		long deviceA = device(recipientId, "partial-device-a");
+		long deviceB = device(recipientId, "partial-device-b");
+		List<Long> notifications = List.of(
+			answerReceived(recipientId, "partial-n1"),
+			answerReceived(recipientId, "partial-n2"),
+			answerReceived(recipientId, "partial-n3"));
+		List<Long> sentOnA = new ArrayList<>();
+		List<Long> retriedOnB = new ArrayList<>();
+		for (long notificationId : notifications) {
+			sentOnA.add(delivery(notificationId, deviceA, DeliveryStatus.PENDING, 0, NOW));
+			retriedOnB.add(delivery(notificationId, deviceB, DeliveryStatus.PENDING, 0, NOW));
+		}
+		ScriptedProvider provider = new ScriptedProvider(
+			new PushProviderResult.Accepted("projects/test/messages/partial-a"),
+			new PushProviderResult.RetryableFailure(Duration.ofSeconds(20)),
+			new PushProviderResult.Accepted("projects/test/messages/partial-b"));
+		PushDeliveryDispatchWorker worker = worker(provider, new CountingProtector(realProtector));
+
+		clock.set(WINDOW_END);
+		worker.dispatchBatch(command(10, WINDOW_END));
+		assertThat(provider.calls()).isEqualTo(2);
+		assertThat(sentOnA).allSatisfy(id -> {
+			assertThat(status(id)).isEqualTo(DeliveryStatus.SENT.name());
+			assertThat(providerMessageId(id)).isEqualTo("projects/test/messages/partial-a");
+		});
+		assertThat(retriedOnB).allSatisfy(id -> assertThat(status(id)).isEqualTo(DeliveryStatus.FAILED.name()));
+		assertThat(consumedTotal(recipientId)).isEqualTo(1);
+
+		Instant retryAt = WINDOW_END.plusSeconds(20);
+		clock.set(retryAt);
+		worker.dispatchBatch(command(10, retryAt));
+
+		assertThat(provider.calls()).isEqualTo(3);
+		assertThat(provider.tokens()).containsExactly(
+			TOKEN_SENTINEL + "-partial-device-a",
+			TOKEN_SENTINEL + "-partial-device-b",
+			TOKEN_SENTINEL + "-partial-device-b");
+		assertThat(sentOnA).allSatisfy(id -> {
+			assertThat(status(id)).isEqualTo(DeliveryStatus.SENT.name());
+			assertThat(providerMessageId(id)).isEqualTo("projects/test/messages/partial-a");
+		});
+		assertThat(retriedOnB).allSatisfy(id -> {
+			assertThat(status(id)).isEqualTo(DeliveryStatus.SENT.name());
+			assertThat(providerMessageId(id)).isEqualTo("projects/test/messages/partial-b");
+		});
+		assertThat(consumedTotal(recipientId)).isEqualTo(1);
+		assertThat(groupStatusFor(recipientId)).isEqualTo("COMPLETED");
+	}
+
+	@Test
+	@DisplayName("INT-015 첫 group invalid token은 그 기기 미발송을 모든 group에서 취소하고 다른 기기와 notification은 보존한다")
+	void invalidTokenCancelsDeviceAcrossGroupsWithoutTouchingOtherDevices() {
+		long recipientId = account("cross-group-recipient");
+		long deviceA = device(recipientId, "cross-group-device-a");
+		long deviceB = device(recipientId, "cross-group-device-b");
+		long firstNotification = answerReceived(recipientId, "cross-group-first");
+		long secondNotification = answerReacted(recipientId, "cross-group-second");
+		long firstA = delivery(firstNotification, deviceA, DeliveryStatus.PENDING, 0, NOW);
+		long firstB = delivery(firstNotification, deviceB, DeliveryStatus.PENDING, 0, NOW);
+		long secondA = delivery(secondNotification, deviceA, DeliveryStatus.PENDING, 0, NOW);
+		PushProvider provider = new DeviceScriptedProvider(Map.of(
+			TOKEN_SENTINEL + "-cross-group-device-a", List.of(new PushProviderResult.InvalidToken()),
+			TOKEN_SENTINEL + "-cross-group-device-b",
+			List.of(new PushProviderResult.Accepted("projects/test/messages/cross-group-b"))));
+
+		clock.set(WINDOW_END);
+		worker(provider, new CountingProtector(realProtector)).dispatchBatch(command(1, WINDOW_END));
+
+		assertThat(status(firstA)).isEqualTo(DeliveryStatus.DEAD.name());
+		assertThat(status(secondA)).isEqualTo(DeliveryStatus.CANCELLED.name());
+		assertThat(status(firstB)).isEqualTo(DeliveryStatus.SENT.name());
+		assertThat(deviceStatus(deviceA)).isEqualTo(PushDeviceStatus.INVALID.name());
+		assertThat(deviceStatus(deviceB)).isEqualTo(PushDeviceStatus.ACTIVE.name());
+		assertThat(notificationStatus(firstA)).isEqualTo(NotificationStatus.UNREAD.name());
+		assertThat(notificationStatus(secondA)).isEqualTo(NotificationStatus.UNREAD.name());
+		assertThat(providerMessageId(firstB)).isEqualTo("projects/test/messages/cross-group-b");
+	}
+
+	@Test
+	@DisplayName("INT-017 유효 member 4개의 FCM wire는 count=4와 세 data key만 보내고 accepted ID를 member delivery에 반영한다")
+	void groupedWirePayloadUsesDistinctCountAndOmitsPrivacySentinels() throws Exception {
+		long recipientId = account("wire-bundle-recipient");
+		long deviceId = device(recipientId, "wire-bundle-device");
+		List<Long> deliveries = new ArrayList<>();
+		for (int index = 1; index <= 4; index++) {
+			deliveries.add(delivery(
+				answerReceived(recipientId, "wire-bundle-n" + index),
+				deviceId, DeliveryStatus.PENDING, 0, NOW));
+		}
+		try (WireFcmServer server = new WireFcmServer(
+			"{\"name\":\"projects/test-project/messages/test-message-wire-180\"}")) {
+			server.start();
+			FcmHttpV1PushProvider realProvider = new FcmHttpV1PushProvider(
+				restClient(server.baseUrl()),
+				() -> "test-only-bearer",
+				new ObjectMapper(),
+				"test-project");
+
+			clock.set(WINDOW_END);
+			worker(realProvider, realProtector).dispatchBatch(command(10, WINDOW_END));
+
+			assertThat(deliveries).allSatisfy(id -> {
+				assertThat(status(id)).isEqualTo(DeliveryStatus.SENT.name());
+				assertThat(providerMessageId(id))
+					.isEqualTo("projects/test-project/messages/test-message-wire-180");
+			});
+			JsonNode message = new ObjectMapper().readTree(server.requestBody()).path("message");
+			assertThat(message.fieldNames()).toIterable().containsExactlyInAnyOrder("token", "data");
+			assertThat(message.path("token").asText()).isEqualTo(TOKEN_SENTINEL + "-wire-bundle-device");
+			assertThat(message.path("data").fieldNames()).toIterable()
+				.containsExactlyInAnyOrder("type", "count", "hasRemainingTime");
+			assertThat(message.path("data").path("type").asText()).isEqualTo("ANSWER_RECEIVED");
+			assertThat(message.path("data").path("count").asText()).isEqualTo("4");
+			assertThat(message.path("data").path("hasRemainingTime").asText()).isEqualTo("false");
+			assertThat(server.requestBody()).doesNotContain(PRIVATE_SENTINEL, "notificationId", "nickname", "body");
+		}
+	}
+
 	private PushDeliveryDispatchWorker worker(PushProvider provider, PushTokenProtector protector) {
 		return new PushDeliveryDispatchWorker(
-			claims,
+			new PushDispatchGroupPlanner(groups, new PushGroupingPolicy(POLICY)),
+			groupClaims,
+			transactions,
 			new PushDispatchEligibility(),
+			new PushSuppressionPolicy(POLICY, clock),
+			new PushBudgetPolicy(POLICY),
+			POLICY,
 			new PushPayloadFactory(),
 			new PushDeliveryRetryPolicy(3, Duration.ofSeconds(10), Duration.ofSeconds(60)),
 			protector,
@@ -635,6 +868,45 @@ class PushDeliveryDispatchIntegrationTest extends PostgisContainerIntegrationTes
 		Notification notification = notification(recipientId, NotificationType.QUESTION_PROPOSAL_REVIEWED,
 			suffix, null);
 		return delivery(notification.id(), deviceId, status, attemptCount, nextAttemptAt);
+	}
+
+	private long answerReceived(long recipientId, String suffix) {
+		return notification(recipientId, NotificationType.ANSWER_RECEIVED, suffix, null).id();
+	}
+
+	private long answerReacted(long recipientId, String suffix) {
+		return notification(recipientId, NotificationType.ANSWER_REACTED, suffix, null).id();
+	}
+
+	private long answerReceivedDelivery(long recipientId, long deviceId, long answerId, String suffix) {
+		OutboxEvent event = outboxEvents.save(OutboxEvent.pending(
+			OutboxAggregateType.ANSWER, answerId, OutboxEventType.ANSWER_PUBLISHED,
+			"gh179-dispatch-outbox-" + suffix + "-" + (++sequence), "{}", NOW));
+		Notification saved = notifications.save(new Notification(
+			null, recipientId, event.id(), NotificationType.ANSWER_RECEIVED,
+			"gh179-dispatch-notification-" + suffix + "-" + sequence,
+			null, answerId, null, NotificationStatus.UNREAD, NOW, null));
+		return delivery(saved.id(), deviceId, DeliveryStatus.PENDING, 0, NOW);
+	}
+
+	private long answerFor(long postId, long authorId, String suffix, String status) {
+		long postRecipientId = jdbc.queryForObject("""
+			INSERT INTO post_recipient
+				(post_id, recipient_id, status, distance_band, matched_bearing_deg, matched_region_code,
+				 matched_at, discovered_at, opened_at, inbound_bearing_deg, distance_m)
+			VALUES (?, ?, 'OPENED', 'NEAR', 45, ?, ?, ?, ?, 225, 5000)
+			RETURNING id
+			""", Long.class, postId, authorId, REGION,
+			Timestamp.from(NOW), Timestamp.from(NOW), Timestamp.from(NOW));
+		boolean published = "PUBLISHED".equals(status);
+		return jdbc.queryForObject("""
+			INSERT INTO answer
+				(post_recipient_id, author_id, status, idempotency_key, body_text, coarse_region_code,
+				 bearing_from_sender_deg, distance_band, distance_m, moderation_status, submitted_at, published_at)
+			VALUES (?, ?, ?, ?, ?, ?, 45, 'NEAR', 5000, 'PASSED', ?, ?)
+			RETURNING id
+			""", Long.class, postRecipientId, authorId, status, "gh179-dispatch-answer-" + suffix + "-" + (++sequence),
+			PRIVATE_SENTINEL, REGION, Timestamp.from(NOW), published ? Timestamp.from(NOW) : null);
 	}
 
 	private long directionPostDelivery(long recipientId, long deviceId, long postId, String suffix, Instant at) {
@@ -735,7 +1007,33 @@ class PushDeliveryDispatchIntegrationTest extends PostgisContainerIntegrationTes
 			"SELECT device_status FROM push_device WHERE id = ?", String.class, deviceId);
 	}
 
+	private int consumedTotal(long userId) {
+		List<Integer> totals = jdbc.query(
+			"SELECT consumed_total FROM push_daily_budget WHERE user_id = ?",
+			(rs, row) -> rs.getInt(1), userId);
+		return totals.isEmpty() ? 0 : totals.getFirst();
+	}
+
+	private String groupStatusFor(long recipientId) {
+		return jdbc.queryForObject(
+			"SELECT status FROM push_dispatch_group WHERE recipient_id = ?", String.class, recipientId);
+	}
+
 	private void cleanupFixtures() {
+		jdbc.update("""
+			DELETE FROM push_daily_budget
+			WHERE user_id IN (SELECT id FROM user_account WHERE coarse_region_code = ?)
+			""", REGION);
+		jdbc.update("""
+			DELETE FROM push_dispatch_group_member
+			WHERE group_id IN (
+				SELECT id FROM push_dispatch_group WHERE recipient_id IN (
+					SELECT id FROM user_account WHERE coarse_region_code = ?))
+			""", REGION);
+		jdbc.update("""
+			DELETE FROM push_dispatch_group
+			WHERE recipient_id IN (SELECT id FROM user_account WHERE coarse_region_code = ?)
+			""", REGION);
 		jdbc.update("""
 			DELETE FROM notification_delivery
 			WHERE notification_id IN (
@@ -752,6 +1050,11 @@ class PushDeliveryDispatchIntegrationTest extends PostgisContainerIntegrationTes
 			DELETE FROM user_block WHERE blocker_id IN (SELECT id FROM user_account WHERE coarse_region_code = ?)
 			   OR blocked_id IN (SELECT id FROM user_account WHERE coarse_region_code = ?)
 			""", REGION, REGION);
+		jdbc.update("DELETE FROM answer WHERE coarse_region_code = ?", REGION);
+		jdbc.update("""
+			DELETE FROM post_recipient
+			WHERE post_id IN (SELECT id FROM direction_post WHERE coarse_region_code = ?)
+			""", REGION);
 		jdbc.update("DELETE FROM direction_post WHERE coarse_region_code = ?", REGION);
 		jdbc.update("DELETE FROM approved_question WHERE question_text LIKE 'GH179 Dispatch question %'");
 		jdbc.update("DELETE FROM user_account WHERE coarse_region_code = ?", REGION);
@@ -827,6 +1130,7 @@ class PushDeliveryDispatchIntegrationTest extends PostgisContainerIntegrationTes
 
 		private final Deque<Object> results = new ArrayDeque<>();
 		private final List<Map<String, String>> payloads = new ArrayList<>();
+		private final List<String> tokens = new ArrayList<>();
 		private final AtomicInteger calls = new AtomicInteger();
 		private final AtomicBoolean transactionObserved = new AtomicBoolean();
 
@@ -840,6 +1144,7 @@ class PushDeliveryDispatchIntegrationTest extends PostgisContainerIntegrationTes
 			transactionObserved.compareAndSet(false, TransactionSynchronizationManager.isActualTransactionActive());
 			PushPayload payload = command.payload();
 			payloads.add(Map.copyOf(payload.asData()));
+			tokens.add(command.token().exposeForProvider());
 			Object next = results.isEmpty()
 				? new PushProviderResult.Accepted("projects/test/messages/default-scripted")
 				: results.removeFirst();
@@ -859,6 +1164,31 @@ class PushDeliveryDispatchIntegrationTest extends PostgisContainerIntegrationTes
 
 		private List<Map<String, String>> payloads() {
 			return List.copyOf(payloads);
+		}
+
+		private List<String> tokens() {
+			return List.copyOf(tokens);
+		}
+	}
+
+	private static final class DeviceScriptedProvider implements PushProvider {
+
+		private final Map<String, Deque<PushProviderResult>> resultsByToken = new LinkedHashMap<>();
+		private final AtomicInteger calls = new AtomicInteger();
+
+		private DeviceScriptedProvider(Map<String, List<PushProviderResult>> resultsByToken) {
+			resultsByToken.forEach((token, results) ->
+				this.resultsByToken.put(token, new ArrayDeque<>(results)));
+		}
+
+		@Override
+		public synchronized PushProviderResult send(PushSendCommand command) {
+			calls.incrementAndGet();
+			Deque<PushProviderResult> results = resultsByToken.get(command.token().exposeForProvider());
+			if (results == null || results.isEmpty()) {
+				throw new IllegalStateException("SAFE_UNSCRIPTED_DEVICE_TOKEN");
+			}
+			return results.removeFirst();
 		}
 	}
 

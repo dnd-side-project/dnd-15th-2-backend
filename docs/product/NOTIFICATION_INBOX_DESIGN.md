@@ -69,13 +69,20 @@ F07의 "①②③은 서로를 대신하지 않는다. ③이 억제되거나 �
 | B | N2 | #177 | fan-out 확장 — `ANSWER_PUBLISHED`→`ANSWER_RECEIVED`(질문자만), `ANSWER_REACTED`, `QUESTION_PROPOSAL_REVIEWED`, `QUESTION_RECOMMENDED` 소비자 | #176 |
 | C | N3 | #178 | 알림 설정 API — 종별 on/off, 방해 금지 시간. **스키마 변경 필요**(§12-2) | #176 |
 | D | N4 | #179 | 푸시 토큰 등록 + 발송 파이프라인. **인프라 설계 승인 선행** | #178 |
-| E | N5 | #180 | 묶음·일 상한·방해 금지 억제 | #179 |
+| E | N5 | #180 | 묶음·일 상한·방해 금지 억제 — **구현 완료, 저장소 스위트 검증됨**. 운영 다섯 값·live FCM/mobile·#182는 미검증 | #179 |
 | F | N6 | #181 | 인앱 신호 — 카드 배지(수신자별 읽음 기준선), 탭 상단 카운터 | #177 |
 | G | W1 | #182 | 워커 주기 실행 활성화 — fan-out·매칭·만료 스윕·moderation 워커 공통 | 없음 |
 | — | N7 | — | N1에 흡수. 알림 진입 판정 | — |
 
 상위 Issue는 #183이고 A~G가 그 sub-issue다. `REPORT_RESOLVED` 소비자는 #155가
 소유하므로 B의 범위에서 제외했다.
+
+N5(#180)는 `APP-DESIGN-GH-180-001`과 `TEST-PLAN-GH-180-PUSH-BUNDLING-BUDGET`으로
+구현했다. 논리 `push_dispatch_group`이 알림함 행을 합치지 않고 provider 호출만 묶고,
+group당 예산은 첫 provider 호출 직전에 한 번만 소비한다. 승인된 UNIT-001~018,
+INT-001~019/021과 전체 회귀 INT-020은 저장소 스위트에서 통과했다. 운영 정책 다섯
+값(`UNKNOWN`), live FCM/mobile, #182 scheduler는 이 이슈에서 닫히지 않으므로
+production readiness를 PASS로 보지 않는다.
 
 `W1`을 N1에서 분리하는 이유는 §11-4에 있다.
 

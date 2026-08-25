@@ -10,11 +10,19 @@ public record PushPayload(String type, String count, String hasRemainingTime) {
 			|| hasRemainingTime == null || hasRemainingTime.isBlank()) {
 			throw new IllegalArgumentException("push payload 필드는 비어 있을 수 없습니다");
 		}
-		if (!"1".equals(count)) {
-			throw new IllegalArgumentException("push payload count는 1이어야 합니다");
+		if (!isPositiveCount(count)) {
+			throw new IllegalArgumentException("push payload count는 양의 정수여야 합니다");
 		}
 		if (!"true".equals(hasRemainingTime) && !"false".equals(hasRemainingTime)) {
 			throw new IllegalArgumentException("hasRemainingTime은 boolean 문자열이어야 합니다");
+		}
+	}
+
+	public static boolean isPositiveCount(String value) {
+		try {
+			return value != null && Integer.parseInt(value) > 0;
+		} catch (NumberFormatException exception) {
+			return false;
 		}
 	}
 
