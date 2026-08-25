@@ -116,6 +116,32 @@ FCM 성공 응답의 `name`을 `providerMessageId`로 해석하고 기존
 `notification_delivery.provider_message_id`에 저장한다. 성공 응답에서 식별자를 읽을 수
 없으면 성공으로 기록하지 않고 안전한 permanent failure로 분류한다.
 
+### 논리 group 계층과 group당 1회 예산 (Issue #180)
+
+Issue #179의 token 보호, FCM HTTP v1 adapter, delivery claim·lease·generation fencing,
+payload allowlist 결정은 그대로 둔다. `notification_delivery`는 기기별 provider 결과
+원장으로 유지한다.
+
+Issue #180은 그 위에 논리 `push_dispatch_group`과 notification 단위 member를 둔다.
+알림함 `notification` 행은 합치지 않고, 짧은 시간의 같은 종류 알림만 실제 provider
+호출에서 한 건으로 묶는다. `ANSWER_RECEIVED`와 `ANSWER_REACTED`만 묶음 창을 쓰며 서로
+다른 group이다. 다른 종류는 notification별 singleton이고, 질문 추천은 같은 cycle만 한
+group에 모은다.
+
+일일 예산은 기기 수가 아니라 사용자 local date의 논리 group 수를 센다. group 하나는 첫
+provider 호출 직전에 예산을 한 번만 소비한다. 같은 group의 다중 기기 호출과 retry는
+추가 소비하지 않으며, provider 실패나 응답 유실 뒤에도 이미 소비한 예산을 복원하지
+않는다. 일반 알림은 질문글 도착용 예약량을 쓸 수 없고 `DIRECTION_POST_RECEIVED`만 전체
+상한 안에서 예약량을 쓸 수 있다.
+
+quiet hours, global/type OFF, 질문 추천 빈도는 provider 호출 직전 최신 snapshot으로
+적용한다. `pushEnabled=false`가 quiet보다 우선이고, 저장된 quiet 세 값은 지우지 않는다.
+억제·지연·취소는 notification 원장과 콘텐츠 열람 자격을 바꾸지 않는다.
+
+묶음 창, 최대 지연, 일일 상한, 질문글 예약량, 추천 최소 간격은
+`qello.notification.push.policy`로 외부 주입한다. 운영 다섯 값은 `UNKNOWN`이며 이 ADR은
+숫자를 확정하지 않는다. worker 자동 polling은 계속 Issue #182 범위다.
+
 ### secret과 인프라 경계
 
 기존 D-2 ECS·SSM 설계를 확장한다. FCM credential, AES key ring과 HMAC key는 사람이
@@ -180,11 +206,15 @@ current로 되돌린 뒤 검증된 버전을 배포한다.
 
 worker crash는 lease 만료 후 다른 worker가 회수한다. FCM 수락 여부를 확정할 수 없는
 delivery는 자동으로 성공 처리하지 않으며 at-least-once 재시도 위험을 운영 지표와 runbook에
-명시한다. schema 변경은 없으므로 migration rollback은 발생하지 않는다.
+명시한다. #179 범위의 schema 변경은 없으므로 그 시점의 migration rollback은 발생하지
+않는다. Issue #180은 V28에 `push_dispatch_group`, `push_dispatch_group_member`,
+`push_daily_budget`을 추가하며 기존 V1~V27과 delivery 컬럼은 수정하지 않는다.
 
 ## 범위 밖 결정
 
-- 묶음 발송, 일일 즉시 push 상한과 방해 금지 시간은 Issue #180에서 다룬다.
+- Issue #180의 논리 group 계층과 group당 1회 예산 소비는 위 절에 기록한다. 운영 정책
+  다섯 숫자, live FCM/mobile 실기기 검증과 production 주입 값은 이 ADR이 확정하지 않으며
+  현재 `UNKNOWN`/unverified다.
 - worker scheduler와 polling 활성화는 Issue #182에서 다룬다.
 - Firebase Installation ID 전환, APNs 직접 adapter와 multi-provider routing은 후속 Issue로
   분리한다.
@@ -193,12 +223,14 @@ delivery는 자동으로 성공 처리하지 않으며 at-least-once 재시도 �
 
 ## 관련 자료
 
-- GitHub Issue: #179
+- GitHub Issue: #179, #180
 - Infrastructure 설계: Issue #132, PR #134, D-2 push secret addendum
 - 관련 결정: `docs/adr/0004-adopt-terraform-for-aws-iac.md`
 - 작업 계약: `TASK.md`
-- 테스트 계획: `docs/test-plans/gh-179-TEST-PLAN-GH-179-PUSH-DELIVERY.md`
-- 테스트 보고서: `docs/reports/tests/gh-179-TEST-PLAN-GH-179-PUSH-DELIVERY.md`
+- 테스트 계획: `docs/test-plans/gh-179-TEST-PLAN-GH-179-PUSH-DELIVERY.md`,
+  `docs/test-plans/gh-180-TEST-PLAN-GH-180-PUSH-BUNDLING-BUDGET.md`
+- 테스트 보고서: `docs/reports/tests/gh-179-TEST-PLAN-GH-179-PUSH-DELIVERY.md`,
+  `docs/reports/tests/gh-180-TEST-PLAN-GH-180-PUSH-BUNDLING-BUDGET.md`
 
 ## 승인
 
