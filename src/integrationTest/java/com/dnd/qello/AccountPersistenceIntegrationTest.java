@@ -118,7 +118,8 @@ class AccountPersistenceIntegrationTest extends PostgisContainerIntegrationTestS
 		// + operator_action_audit(V20, #113 — 운영자 행위 감사 원장)
 		// + notification_seen_state(V24, #176 — 알림함 열람 기준선)
 		// + notification_user_setting(V26, #178 — 사용자 공통 알림 설정)
-		assertThat(applicationTableCount).isEqualTo(51);
+		// + push_dispatch_group/push_dispatch_group_member/push_daily_budget(V28, #180)
+		assertThat(applicationTableCount).isEqualTo(54);
 	}
 
 	@Test

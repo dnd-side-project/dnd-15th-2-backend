@@ -70,6 +70,7 @@ class FlywayMigrationContractTest {
 			"V25__add_report_case_sla_and_manual_review_link.sql",
 			"V26__split_notification_user_setting.sql",
 			"V27__add_self_harm_sub_reason_and_evidence_purge_exception.sql",
+			"V28__add_push_dispatch_group_and_budget.sql",
 			"V2__add_reactions_and_skip_pending.sql",
 			"V3__add_user_account_password_hash.sql",
 			"V4__add_user_account_optimistic_lock.sql",

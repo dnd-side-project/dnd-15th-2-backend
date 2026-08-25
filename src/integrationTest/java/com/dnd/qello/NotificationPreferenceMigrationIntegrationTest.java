@@ -64,7 +64,7 @@ class NotificationPreferenceMigrationIntegrationTest extends PostgisContainerInt
 
 		MigrateResult result = migrateToLatest();
 
-		assertThat(result.migrationsExecuted).isEqualTo(3);
+		assertThat(result.migrationsExecuted).isEqualTo(4);
 		for (Map.Entry<String, Boolean> entry : ENABLED_BY_TYPE.entrySet()) {
 			assertThat(enabled(userId, entry.getKey())).isEqualTo(entry.getValue());
 		}

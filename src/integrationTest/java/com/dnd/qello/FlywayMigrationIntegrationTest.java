@@ -62,7 +62,10 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 		"spring_session",
 		"spring_session_attributes",
 		"device_credential",
-		"operator_action_audit"
+		"operator_action_audit",
+		"push_dispatch_group",
+		"push_dispatch_group_member",
+		"push_daily_budget"
 	);
 
 	private static final Set<String> EXPECTED_INDEXES = Set.of(
@@ -131,7 +134,11 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 		"operator_action_audit_target_idx",
 		"operator_action_audit_operator_idx",
 		"uq_user_account_nickname_ci",
-		"idx_report_reporter_answer_suppression"
+		"idx_report_reporter_answer_suppression",
+		"uq_push_dispatch_group_collecting",
+		"push_dispatch_group_due_idx",
+		"push_dispatch_group_recommendation_history_idx",
+		"uq_push_dispatch_group_member_notification"
 	);
 
 	private static final Set<String> EXPECTED_FUNCTIONS = Set.of(
@@ -305,6 +312,11 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 			FROM flyway_schema_history
 			WHERE version = '27' AND success
 			""", Integer.class);
+		Integer successfulV28 = jdbcTemplate.queryForObject("""
+			SELECT count(*)
+			FROM flyway_schema_history
+			WHERE version = '28' AND success
+			""", Integer.class);
 		String postgisVersion = jdbcTemplate.queryForObject(
 			"SELECT PostGIS_Version()", String.class);
 
@@ -335,7 +347,8 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 		assertThat(successfulV25).isEqualTo(1);
 		assertThat(successfulV26).isEqualTo(1);
 		assertThat(successfulV27).isEqualTo(1);
-		assertThat(flyway.info().applied()).hasSize(27);
+		assertThat(successfulV28).isEqualTo(1);
+		assertThat(flyway.info().applied()).hasSize(28);
 		assertThat(postgisVersion).isNotBlank();
 	}
 
@@ -400,8 +413,10 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 		// V22(#166)이 user_account.fk_user_account_profile_image를 추가해 54에서 55가 됐다.
 		// user_account는 V1 catalog에 속하므로 이 FK는 총계에 반영된다.
 		// V26(#178)이 fk_notification_user_setting_user 1개를 추가해 55에서 56이 됐다.
-		assertThat(countConstraints(constraints, "f")).isEqualTo(56);
-		assertThat(countConstraints(constraints, "u")).isEqualTo(21);
+		// V28(#180)이 group, member, budget의 FK 4개를 추가해 60이 됐다.
+		assertThat(countConstraints(constraints, "f")).isEqualTo(60);
+		// V28(#180)이 aggregation key UNIQUE 제약 1개를 추가해 22가 됐다.
+		assertThat(countConstraints(constraints, "u")).isEqualTo(22);
 		// V7(#81, device_credential)이 4개, V8(#78)이 ck_post_recipient_inbound_bearing,
 		// ck_post_recipient_distance_m, ck_post_recipient_answers_read_at,
 		// ck_answer_distance_m, ck_answer_edit_count, ck_answer_edit_count_edited_at
@@ -415,13 +430,15 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 		// V26(#178)이 notification_user_setting의 CHECK 2개를 추가하고
 		// notification_preference의 ck_notification_preference_quiet_hours 1개를 제거해
 		// 124에서 125가 됐다.
-		assertThat(countConstraints(constraints, "c")).isEqualTo(125);
+		// V28(#180)이 group CHECK 7개와 budget count CHECK 1개를 추가해 133이 됐다.
+		assertThat(countConstraints(constraints, "c")).isEqualTo(133);
 		// V20(#113)이 operator_action_audit의 조회 인덱스 2개를 추가해 62에서 64가 됐다.
 		// V21(#168)이 uq_user_account_nickname_ci 1개를 추가해 64에서 65가 됐다.
 		// CREATE UNIQUE INDEX로 만든 부분 인덱스라 pg_constraint에는 잡히지 않는다 —
 		// countConstraints(constraints, "u")는 그대로다.
 		// V23(#155)이 report(reporter_id, answer_id) 부분 인덱스 1개를 추가해 65에서 66이 됐다.
-		assertThat(EXPECTED_INDEXES).hasSize(66);
+		// V28(#180)이 group/member 조회·멱등성 인덱스 4개를 추가해 70이 됐다.
+		assertThat(EXPECTED_INDEXES).hasSize(70);
 		assertThat(EXPECTED_FUNCTIONS).hasSize(11);
 		assertThat(EXPECTED_TRIGGERS).hasSize(10);
 
