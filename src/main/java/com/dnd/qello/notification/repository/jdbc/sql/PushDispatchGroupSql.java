@@ -49,6 +49,7 @@ public final class PushDispatchGroupSql {
 		ORDER BY n.created_at, n.id
 		""";
 
+	/** 계획서(2026-08-25 push-bundling-budget)가 지정한 Postgres 측 hash 기반 grouping lock. */
 	public static final String ACQUIRE_GROUPING_LOCK = """
 		SELECT pg_advisory_xact_lock(hashtextextended(:groupingKey, 0))
 		""";
@@ -73,7 +74,7 @@ public final class PushDispatchGroupSql {
 		FOR UPDATE
 		""";
 
-	public static final String INSERT_GROUP = """
+	private static final String INSERT_GROUP_BODY = """
 		INSERT INTO push_dispatch_group (
 			recipient_id, notification_type, aggregation_key, status,
 			window_started_at, collect_until, policy_expires_at, attempt_count,
@@ -84,20 +85,11 @@ public final class PushDispatchGroupSql {
 			:windowStartedAt, :collectUntil, :policyExpiresAt, :attemptCount,
 			:nextAttemptAt, :budgetLocalDate, :budgetConsumedAt, :firstAttemptedAt,
 			:createdAt, :completedAt)
-		RETURNING *
 		""";
 
-	public static final String UPSERT_GROUP = """
-		INSERT INTO push_dispatch_group (
-			recipient_id, notification_type, aggregation_key, status,
-			window_started_at, collect_until, policy_expires_at, attempt_count,
-			next_attempt_at, budget_local_date, budget_consumed_at, first_attempted_at,
-			created_at, completed_at)
-		VALUES (
-			:recipientId, :notificationType, :aggregationKey, :status,
-			:windowStartedAt, :collectUntil, :policyExpiresAt, :attemptCount,
-			:nextAttemptAt, :budgetLocalDate, :budgetConsumedAt, :firstAttemptedAt,
-			:createdAt, :completedAt)
+	public static final String INSERT_GROUP = INSERT_GROUP_BODY + "RETURNING *\n";
+
+	public static final String UPSERT_GROUP = INSERT_GROUP_BODY + """
 		ON CONFLICT (aggregation_key) DO UPDATE
 		SET aggregation_key = push_dispatch_group.aggregation_key
 		RETURNING *
@@ -294,18 +286,23 @@ public final class PushDispatchGroupSql {
 		ORDER BY nd.id
 		""";
 
+	/** group generation+PROCESSING fence를 잠그는 CTE 본문. 다른 group 종료 문장이 공유한다. */
+	private static final String LOCKED_PROCESSING_GROUP = """
+		SELECT id
+		FROM push_dispatch_group
+		WHERE id = :groupId
+		  AND attempt_count = :generation
+		  AND status = 'PROCESSING'
+		FOR UPDATE
+		""";
+
 	/**
 	 * group generation+PROCESSING fence 뒤 미발송 member delivery만 취소한다.
 	 * delivery attempt_count는 group generation과 다른 카운터라 PROCESSING 조건에 넣지 않는다.
 	 */
 	public static final String CANCEL_GROUP = """
 		WITH locked AS (
-			SELECT id
-			FROM push_dispatch_group
-			WHERE id = :groupId
-			  AND attempt_count = :generation
-			  AND status = 'PROCESSING'
-			FOR UPDATE
+		""" + LOCKED_PROCESSING_GROUP + """
 		), cancelled_deliveries AS (
 			UPDATE notification_delivery nd
 			SET status = 'CANCELLED',
@@ -370,23 +367,11 @@ public final class PushDispatchGroupSql {
 		  AND budget_consumed_at IS NULL
 		""";
 
-	public static final String LOCK_GROUP_PROCESSING = """
-		SELECT id
-		FROM push_dispatch_group
-		WHERE id = :groupId
-		  AND attempt_count = :generation
-		  AND status = 'PROCESSING'
-		FOR UPDATE
-		""";
+	public static final String LOCK_GROUP_PROCESSING = LOCKED_PROCESSING_GROUP;
 
 	public static final String CANCEL_MEMBER_DELIVERIES = """
 		WITH locked AS (
-			SELECT id
-			FROM push_dispatch_group
-			WHERE id = :groupId
-			  AND attempt_count = :generation
-			  AND status = 'PROCESSING'
-			FOR UPDATE
+		""" + LOCKED_PROCESSING_GROUP + """
 		)
 		UPDATE notification_delivery nd
 		SET status = 'CANCELLED',
@@ -401,18 +386,13 @@ public final class PushDispatchGroupSql {
 		""";
 
 	public static final String CLAIM_DEVICES = """
-		WITH locked_group AS (
-			SELECT id
-			FROM push_dispatch_group
-			WHERE id = :groupId
-			  AND attempt_count = :generation
-			  AND status = 'PROCESSING'
-			FOR UPDATE
+		WITH locked AS (
+		""" + LOCKED_PROCESSING_GROUP + """
 		), due AS MATERIALIZED (
 			SELECT nd.id, nd.push_device_id, nd.next_attempt_at
 			FROM notification_delivery nd
 			JOIN push_dispatch_group_member m ON m.notification_id = nd.notification_id
-			JOIN locked_group g ON g.id = m.group_id
+			JOIN locked g ON g.id = m.group_id
 			WHERE nd.id IN (:deliveryIds)
 			  AND nd.next_attempt_at <= :now
 			  AND (
@@ -469,12 +449,7 @@ public final class PushDispatchGroupSql {
 
 	public static final String FINALIZE_GROUP = """
 		WITH locked AS (
-			SELECT id
-			FROM push_dispatch_group
-			WHERE id = :groupId
-			  AND attempt_count = :generation
-			  AND status = 'PROCESSING'
-			FOR UPDATE
+		""" + LOCKED_PROCESSING_GROUP + """
 		), retry AS (
 			SELECT min(nd.next_attempt_at) AS next_at
 			FROM notification_delivery nd
