@@ -1,14 +1,18 @@
 package com.dnd.qello.notification.repository.jdbc;
 
+import static com.dnd.qello.notification.repository.jdbc.NotificationRowMappers.instant;
+import static com.dnd.qello.notification.repository.jdbc.NotificationRowMappers.nullableLong;
+import static com.dnd.qello.notification.repository.jdbc.NotificationRowMappers.timestamp;
+import static com.dnd.qello.notification.repository.jdbc.NotificationRowMappers.toLocalTime;
+
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.Time;
-import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.EnumMap;
 import java.util.LinkedHashMap;
@@ -20,6 +24,7 @@ import java.util.Set;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
+import org.springframework.jdbc.core.namedparam.SqlParameterSource;
 import org.springframework.stereotype.Repository;
 
 import com.dnd.qello.notification.config.PushPolicyProperties;
@@ -53,9 +58,11 @@ import com.dnd.qello.notification.repository.jdbc.sql.PushDispatchGroupSql;
 public class JdbcPushDispatchGroupRepository implements PushDispatchGroupRepository {
 
 	private final NamedParameterJdbcTemplate jdbc;
+	private final PushBudgetPolicy budgetPolicy;
 
-	public JdbcPushDispatchGroupRepository(NamedParameterJdbcTemplate jdbc) {
+	public JdbcPushDispatchGroupRepository(NamedParameterJdbcTemplate jdbc, PushBudgetPolicy budgetPolicy) {
 		this.jdbc = jdbc;
+		this.budgetPolicy = budgetPolicy;
 	}
 
 	@Override
@@ -283,7 +290,7 @@ public class JdbcPushDispatchGroupRepository implements PushDispatchGroupReposit
 		PushBudgetPolicy.BudgetSnapshot snapshot = jdbc.queryForObject(PushDispatchGroupSql.LOCK_DAILY_BUDGET,
 			budgetParams, (rs, row) -> new PushBudgetPolicy.BudgetSnapshot(
 				rs.getInt("consumed_total"), rs.getInt("consumed_general")));
-		PushBudgetPolicy.Decision decision = new PushBudgetPolicy(properties).decide(snapshot, type);
+		PushBudgetPolicy.Decision decision = budgetPolicy.decide(snapshot, type);
 		if (decision == PushBudgetPolicy.Decision.DENY) {
 			return PushBudgetReservation.LIMIT_EXCEEDED;
 		}
@@ -394,33 +401,24 @@ public class JdbcPushDispatchGroupRepository implements PushDispatchGroupReposit
 			&& (providerMessageId == null || providerMessageId.isBlank())) {
 			providerMessageId = null;
 		}
-		if (deliveryGenerations == null || deliveryGenerations.isEmpty()) {
-			throw new NotificationException(NotificationErrorCode.REQUIRED_VALUE_MISSING, "deliveryGenerations",
-				"delivery generation은 필수입니다.");
-		}
+		requireValidDeliveryGenerationEntries(deliveryGenerations);
 		if (!lockGroupProcessing(groupId, groupGeneration)) {
 			return false;
 		}
-		int updated = 0;
-		for (Map.Entry<Long, Integer> entry : deliveryGenerations.entrySet()) {
-			if (entry.getKey() == null || entry.getKey() <= 0
-				|| entry.getValue() == null || entry.getValue() <= 0) {
-				throw new NotificationException(NotificationErrorCode.INVALID_VALUE_RANGE, "deliveryGenerations",
-					"delivery generation이 올바르지 않습니다.");
-			}
-			updated += jdbc.update(PushDispatchGroupSql.COMPLETE_DEVICE_DELIVERY,
-				new MapSqlParameterSource()
-					.addValue("groupId", groupId)
-					.addValue("groupGeneration", groupGeneration)
-					.addValue("deviceId", deviceId)
-					.addValue("deliveryId", entry.getKey())
-					.addValue("generation", entry.getValue())
-					.addValue("terminalStatus", result.name())
-					.addValue("at", timestamp(at))
-					.addValue("nextAttemptAt", timestamp(nextAttemptAt))
-					.addValue("providerMessageId",
-						result == PushDeliveryTerminalResult.SENT ? providerMessageId : null));
-		}
+		String safeProviderMessageId = result == PushDeliveryTerminalResult.SENT ? providerMessageId : null;
+		SqlParameterSource[] batchParams = deliveryGenerations.entrySet().stream()
+			.map(entry -> new MapSqlParameterSource()
+				.addValue("groupId", groupId)
+				.addValue("groupGeneration", groupGeneration)
+				.addValue("deviceId", deviceId)
+				.addValue("deliveryId", entry.getKey())
+				.addValue("generation", entry.getValue())
+				.addValue("terminalStatus", result.name())
+				.addValue("at", timestamp(at))
+				.addValue("nextAttemptAt", timestamp(nextAttemptAt))
+				.addValue("providerMessageId", safeProviderMessageId))
+			.toArray(SqlParameterSource[]::new);
+		int updated = Arrays.stream(jdbc.batchUpdate(PushDispatchGroupSql.COMPLETE_DEVICE_DELIVERY, batchParams)).sum();
 		if (updated == 0) {
 			return false;
 		}
@@ -457,27 +455,23 @@ public class JdbcPushDispatchGroupRepository implements PushDispatchGroupReposit
 		requireGeneration(groupGeneration);
 		requireDeviceId(deviceId);
 		requireAt(at);
-		if (deliveryGenerations == null || deliveryGenerations.isEmpty()) {
-			throw new NotificationException(NotificationErrorCode.REQUIRED_VALUE_MISSING, "deliveryGenerations",
-				"delivery generation은 필수입니다.");
-		}
+		requireDeliveryGenerations(deliveryGenerations);
 		if (!lockGroupProcessing(groupId, groupGeneration)) {
 			return false;
 		}
-		int dead = 0;
-		for (Map.Entry<Long, Integer> entry : deliveryGenerations.entrySet()) {
-			dead += jdbc.update(PushDispatchGroupSql.COMPLETE_DEVICE_DELIVERY,
-				new MapSqlParameterSource()
-					.addValue("groupId", groupId)
-					.addValue("groupGeneration", groupGeneration)
-					.addValue("deviceId", deviceId)
-					.addValue("deliveryId", entry.getKey())
-					.addValue("generation", entry.getValue())
-					.addValue("terminalStatus", PushDeliveryTerminalResult.DEAD.name())
-					.addValue("at", timestamp(at))
-					.addValue("nextAttemptAt", timestamp(at))
-					.addValue("providerMessageId", null));
-		}
+		SqlParameterSource[] batchParams = deliveryGenerations.entrySet().stream()
+			.map(entry -> new MapSqlParameterSource()
+				.addValue("groupId", groupId)
+				.addValue("groupGeneration", groupGeneration)
+				.addValue("deviceId", deviceId)
+				.addValue("deliveryId", entry.getKey())
+				.addValue("generation", entry.getValue())
+				.addValue("terminalStatus", PushDeliveryTerminalResult.DEAD.name())
+				.addValue("at", timestamp(at))
+				.addValue("nextAttemptAt", timestamp(at))
+				.addValue("providerMessageId", null))
+			.toArray(SqlParameterSource[]::new);
+		int dead = Arrays.stream(jdbc.batchUpdate(PushDispatchGroupSql.COMPLETE_DEVICE_DELIVERY, batchParams)).sum();
 		if (dead == 0) {
 			return false;
 		}
@@ -500,6 +494,24 @@ public class JdbcPushDispatchGroupRepository implements PushDispatchGroupReposit
 				.addValue("groupId", groupId)
 				.addValue("generation", generation),
 			(rs, row) -> rs.getLong("id")).stream().findFirst().isPresent();
+	}
+
+	private static void requireDeliveryGenerations(Map<Long, Integer> deliveryGenerations) {
+		if (deliveryGenerations == null || deliveryGenerations.isEmpty()) {
+			throw new NotificationException(NotificationErrorCode.REQUIRED_VALUE_MISSING, "deliveryGenerations",
+				"delivery generation은 필수입니다.");
+		}
+	}
+
+	private static void requireValidDeliveryGenerationEntries(Map<Long, Integer> deliveryGenerations) {
+		requireDeliveryGenerations(deliveryGenerations);
+		for (Map.Entry<Long, Integer> entry : deliveryGenerations.entrySet()) {
+			if (entry.getKey() == null || entry.getKey() <= 0
+				|| entry.getValue() == null || entry.getValue() <= 0) {
+				throw new NotificationException(NotificationErrorCode.INVALID_VALUE_RANGE, "deliveryGenerations",
+					"delivery generation이 올바르지 않습니다.");
+			}
+		}
 	}
 
 	private static void requireDeviceId(long deviceId) {
@@ -709,26 +721,8 @@ public class JdbcPushDispatchGroupRepository implements PushDispatchGroupReposit
 		}
 	}
 
-	private static LocalTime toLocalTime(Time value) {
-		return value == null ? null : value.toLocalTime();
-	}
-
-	private static Long nullableLong(ResultSet rs, String column) throws SQLException {
-		long value = rs.getLong(column);
-		return rs.wasNull() ? null : value;
-	}
-
 	private static LocalDate localDate(ResultSet rs, String column) throws SQLException {
 		java.sql.Date value = rs.getDate(column);
 		return value == null ? null : value.toLocalDate();
-	}
-
-	private static Timestamp timestamp(Instant value) {
-		return value == null ? null : Timestamp.from(value);
-	}
-
-	private static Instant instant(ResultSet rs, String column) throws SQLException {
-		Timestamp value = rs.getTimestamp(column);
-		return value == null ? null : value.toInstant();
 	}
 }

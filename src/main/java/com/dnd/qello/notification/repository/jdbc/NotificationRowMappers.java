@@ -2,8 +2,10 @@ package com.dnd.qello.notification.repository.jdbc;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Time;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.time.LocalTime;
 
 import com.dnd.qello.notification.domain.NotificationStatus;
 import com.dnd.qello.notification.domain.NotificationType;
@@ -12,7 +14,7 @@ import com.dnd.qello.notification.view.NotificationTargetDecision;
 import com.dnd.qello.notification.view.NotificationTargetKind;
 import com.dnd.qello.notification.view.NotificationTargetState;
 
-/** JdbcNotificationInboxQueryRepository가 공유하는 ResultSet 변환 헬퍼. */
+/** 이 패키지의 Jdbc 저장소들이 공유하는 ResultSet/파라미터 변환 헬퍼. */
 final class NotificationRowMappers {
 
 	private NotificationRowMappers() {
@@ -43,7 +45,15 @@ final class NotificationRowMappers {
 		return value == null ? null : value.toInstant();
 	}
 
-	private static Long nullableLong(ResultSet rs, String column) throws SQLException {
+	static Timestamp timestamp(Instant value) {
+		return value == null ? null : Timestamp.from(value);
+	}
+
+	static LocalTime toLocalTime(Time value) {
+		return value == null ? null : value.toLocalTime();
+	}
+
+	static Long nullableLong(ResultSet rs, String column) throws SQLException {
 		long value = rs.getLong(column);
 		return rs.wasNull() ? null : value;
 	}
