@@ -54,6 +54,7 @@ import com.dnd.qello.notification.error.NotificationErrorCode;
 import com.dnd.qello.notification.error.NotificationException;
 import com.dnd.qello.notification.service.NotificationInboxService;
 import com.dnd.qello.notification.service.NotificationPreferenceService;
+import com.dnd.qello.notification.service.PushDeviceService;
 import com.dnd.qello.notification.service.UpdateNotificationPreferences;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
@@ -71,6 +72,9 @@ class NotificationPreferenceApiMockMvcTest {
 	@Mock
 	private NotificationPreferenceService preferenceService;
 
+	@Mock
+	private PushDeviceService pushDeviceService;
+
 	private MockMvc mockMvc;
 
 	@BeforeEach
@@ -81,7 +85,7 @@ class NotificationPreferenceApiMockMvcTest {
 	private MockMvc buildMockMvc(boolean authenticated) {
 		Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
 		return MockMvcBuilders.standaloneSetup(
-				new NotificationController(inboxService, preferenceService, new ApiResponseFactory(clock)))
+				new NotificationController(inboxService, preferenceService, pushDeviceService, new ApiResponseFactory(clock)))
 			.setCustomArgumentResolvers(new AuthenticationResolver(authenticated))
 			.setMessageConverters(new MappingJackson2HttpMessageConverter(objectMapper()))
 			.setValidator(new LocalValidatorFactoryBean())

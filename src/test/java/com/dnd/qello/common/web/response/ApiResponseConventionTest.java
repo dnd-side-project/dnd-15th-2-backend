@@ -75,7 +75,7 @@ class ApiResponseConventionTest {
 	}
 
 	// ApiResponse<T> 또는 ResponseEntity<ApiResponse<T>>만 허용.
-	// 본문 없는 성공도 200과 data: null로 나가므로 void는 허용하지 않는다.
+	// 204 No Content도 Java signature는 ResponseEntity<ApiResponse<Void>>를 유지한다.
 	private static boolean isWrapped(Type returnType) {
 		if (!(returnType instanceof ParameterizedType parameterized)) {
 			return false;
@@ -134,6 +134,11 @@ class ApiResponseConventionTest {
 		@GetMapping("/convention/wrapped-entity")
 		ResponseEntity<ApiResponse<String>> wrappedEntity() {
 			return null;
+		}
+
+		@GetMapping("/convention/wrapped-no-content-entity")
+		ResponseEntity<ApiResponse<Void>> wrappedNoContentEntity() {
+			return ResponseEntity.noContent().build();
 		}
 	}
 

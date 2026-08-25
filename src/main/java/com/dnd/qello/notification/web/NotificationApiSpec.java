@@ -7,6 +7,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -14,6 +15,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import com.dnd.qello.common.openapi.OpenApiConfiguration;
 import com.dnd.qello.common.web.response.ApiErrorResponse;
 import com.dnd.qello.common.web.response.ApiResponse;
+import com.dnd.qello.notification.web.request.PushDeviceRequest;
 import com.dnd.qello.notification.web.request.UpdateNotificationPreferencesRequest;
 import com.dnd.qello.notification.web.response.NotificationCardResponse;
 import com.dnd.qello.notification.web.response.NotificationListingResponse;
@@ -131,6 +133,46 @@ public interface NotificationApiSpec {
 	@PutMapping("/notifications/preferences")
 	ResponseEntity<ApiResponse<NotificationPreferenceResponse>> replacePreferences(
 		@Valid @RequestBody(required = false) UpdateNotificationPreferencesRequest request,
+		@Parameter(hidden = true) Authentication authentication);
+
+	@Operation(
+		summary = "푸시 기기 등록 또는 최신화",
+		description = """
+			인증된 사용자의 FCM registration token을 등록합니다.
+
+			앱 로그인이 필요합니다.
+
+			서버는 token 원문을 응답에 저장하지 않고, 오류와 로그에도 redaction된 형태만 남깁니다.
+			같은 사용자가 같은 기기를 다시 등록하면 최신 token 보호값과 마지막 확인 시각만 갱신합니다.""")
+	@ApiResponses({
+		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "204", description = "기기 등록 또는 최신화가 완료되었습니다.", content = @Content),
+		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "platform 또는 token 값이 계약을 만족하지 않습니다. (NOT-VAL-009)", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
+		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "앱 액세스 토큰이 유효하지 않습니다.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
+		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "500", description = "푸시 token 보호 처리에 실패했습니다. (NOT-INFRA-002)", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class)))
+	})
+	@PostMapping("/notifications/devices")
+	ResponseEntity<ApiResponse<Void>> registerDevice(
+		@RequestBody(required = true) PushDeviceRequest request,
+		@Parameter(hidden = true) Authentication authentication);
+
+	@Operation(
+		summary = "푸시 기기 해지",
+		description = """
+			인증된 사용자의 FCM registration token을 해지합니다.
+
+			앱 로그인이 필요합니다.
+
+			서버는 token 원문을 응답에 저장하지 않고, 오류와 로그에도 redaction된 형태만 남깁니다.
+			같은 token이 없거나 이미 해지된 상태여도 멱등하게 204 No Content를 돌려줍니다.""")
+	@ApiResponses({
+		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "204", description = "기기 해지가 완료되었습니다.", content = @Content),
+		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "platform 또는 token 값이 계약을 만족하지 않습니다. (NOT-VAL-009)", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
+		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "앱 액세스 토큰이 유효하지 않습니다.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
+		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "500", description = "푸시 token 보호 처리에 실패했습니다. (NOT-INFRA-002)", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class)))
+	})
+	@PostMapping("/notifications/devices/revoke")
+	ResponseEntity<ApiResponse<Void>> revokeDevice(
+		@RequestBody(required = true) PushDeviceRequest request,
 		@Parameter(hidden = true) Authentication authentication);
 
 	@Operation(

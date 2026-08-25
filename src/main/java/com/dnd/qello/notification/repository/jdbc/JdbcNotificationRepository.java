@@ -6,10 +6,18 @@ import com.dnd.qello.notification.repository.OutboxEventRepository;
 import com.dnd.qello.notification.repository.jdbc.sql.NotificationSql;
 import com.dnd.qello.notification.error.NotificationErrorCode;
 import com.dnd.qello.notification.error.NotificationException;
+import com.dnd.qello.notification.push.ClaimedPushDelivery;
+import com.dnd.qello.notification.push.PushDispatchContext;
+import com.dnd.qello.notification.push.PushDeliveryTerminalResult;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Time;
@@ -25,6 +33,10 @@ import java.util.stream.Collectors;
 
 @Repository
 public class JdbcNotificationRepository implements OutboxEventRepository, NotificationRepository {
+
+    private static final Set<String> PUSH_PLATFORM_NAMES = EnumSet.allOf(PushPlatform.class).stream()
+            .map(Enum::name)
+            .collect(Collectors.toUnmodifiableSet());
 
     private final NamedParameterJdbcTemplate jdbc;
 
@@ -178,37 +190,127 @@ public class JdbcNotificationRepository implements OutboxEventRepository, Notifi
     }
 
     @Override
+    public List<ClaimedPushDelivery> claimDueDeliveries(int batchSize, Instant now, Instant leaseUntil) {
+        validatePushDeliveryClaimRequest(batchSize, now, leaseUntil);
+        return jdbc.query(NotificationSql.CLAIM_DUE_PUSH_DELIVERIES,
+                new MapSqlParameterSource().addValue("batchSize", batchSize)
+                        .addValue("now", timestamp(now)).addValue("leaseUntil", timestamp(leaseUntil)),
+                (rs, row) -> new ClaimedPushDelivery(rs.getLong("delivery_id"),
+                        rs.getInt("generation"), instant(rs, "lease_until")));
+    }
+
+    @Override
+    public Optional<PushDispatchContext> findPushDispatchContext(long deliveryId, int generation, Instant now) {
+        if (deliveryId <= 0) {
+            throw new NotificationException(NotificationErrorCode.INVALID_ID, "deliveryId",
+                    "deliveryId는 양수여야 합니다.");
+        }
+        if (generation <= 0) {
+            throw new NotificationException(NotificationErrorCode.INVALID_VALUE_RANGE, "generation",
+                    "generation은 양수여야 합니다.");
+        }
+        if (now == null) {
+            throw new NotificationException(NotificationErrorCode.REQUIRED_VALUE_MISSING, "now",
+                    "판정 시각은 필수입니다.");
+        }
+        return jdbc.query(NotificationSql.FIND_PUSH_DISPATCH_CONTEXT,
+                new MapSqlParameterSource().addValue("deliveryId", deliveryId)
+                        .addValue("generation", generation).addValue("now", timestamp(now))
+                        .addValue("at", timestamp(now)),
+                (rs, row) -> mapPushDispatchContext(rs)).stream().findFirst();
+    }
+
+    @Override
+    public boolean completeClaim(
+            long deliveryId, int generation, PushDeliveryTerminalResult result, Instant at) {
+        return completeClaim(deliveryId, generation, result, at, at, null);
+    }
+
+    @Override
+    public boolean completeClaim(
+            long deliveryId, int generation, PushDeliveryTerminalResult result, Instant at, Instant nextAttemptAt,
+            String providerMessageId) {
+        validatePushDeliveryTerminalRequest(deliveryId, generation, result, at, nextAttemptAt, providerMessageId);
+        return jdbc.update(NotificationSql.COMPLETE_PUSH_DELIVERY,
+                new MapSqlParameterSource().addValue("deliveryId", deliveryId)
+                        .addValue("generation", generation).addValue("terminalStatus", result.name())
+                        .addValue("at", timestamp(at)).addValue("nextAttemptAt", timestamp(nextAttemptAt))
+                        .addValue("providerMessageId", providerMessageId)) == 1;
+    }
+
+    @Override
+    public boolean invalidatePushDeviceAndCancelUndelivered(
+            long deliveryId, long pushDeviceId, int generation, Instant at) {
+        validatePushDeliveryTerminalRequest(
+                deliveryId, generation, PushDeliveryTerminalResult.DEAD, at, at, null);
+        if (pushDeviceId <= 0) {
+            throw new NotificationException(NotificationErrorCode.INVALID_ID, "pushDeviceId",
+                    "pushDeviceId는 양수여야 합니다.");
+        }
+        return jdbc.queryForObject(NotificationSql.INVALIDATE_PUSH_DEVICE,
+                new MapSqlParameterSource().addValue("deliveryId", deliveryId)
+                        .addValue("pushDeviceId", pushDeviceId).addValue("generation", generation)
+                        .addValue("at", timestamp(at)), Number.class).intValue() == 1;
+    }
+
+    @Override
     public Optional<NotificationDelivery> claimDelivery(long id, Instant at) {
-        int updated = jdbc.update("""
-                UPDATE notification_delivery
-                SET status = 'PROCESSING', next_attempt_at = :at
-                WHERE id = :id AND status IN ('PENDING', 'FAILED') AND next_attempt_at <= :at
-                """, new MapSqlParameterSource().addValue("id", id).addValue("at", timestamp(at)));
-        return updated == 1 ? findDeliveryById(id) : Optional.empty();
+        if (id <= 0) {
+            throw new NotificationException(NotificationErrorCode.INVALID_ID, "deliveryId",
+                    "deliveryId는 양수여야 합니다.");
+        }
+        if (at == null) {
+            throw new NotificationException(NotificationErrorCode.REQUIRED_VALUE_MISSING, "at",
+                    "처리 시각은 필수입니다.");
+        }
+        return jdbc.query(NotificationSql.CLAIM_SINGLE_LEGACY_PUSH_DELIVERY,
+                new MapSqlParameterSource().addValue("id", id).addValue("at", timestamp(at)),
+                (rs, row) -> mapDelivery(rs)).stream().findFirst();
     }
 
     @Override
     public boolean updateDelivery(NotificationDelivery delivery) {
-        return jdbc.update("""
-                UPDATE notification_delivery SET status = :status, attempt_count = :attemptCount,
-                    next_attempt_at = :nextAttemptAt, sent_at = :sentAt,
-                    provider_message_id = :providerMessageId WHERE id = :id
-                """, deliveryParams(delivery).addValue("id", delivery.id())) == 1;
+        if (delivery == null || delivery.id() == null || delivery.id() <= 0) {
+            throw new NotificationException(NotificationErrorCode.INVALID_ID, "deliveryId",
+                    "deliveryId는 양수여야 합니다.");
+        }
+        if (delivery.status() != DeliveryStatus.SENT && delivery.status() != DeliveryStatus.FAILED
+                && delivery.status() != DeliveryStatus.DEAD && delivery.status() != DeliveryStatus.CANCELLED) {
+            throw new NotificationException(NotificationErrorCode.INVALID_NOTIFICATION_STATUS, "status",
+                    "PROCESSING에서 종결 상태로만 전이할 수 있습니다.");
+        }
+        return jdbc.update(NotificationSql.COMPLETE_LEGACY_PUSH_DELIVERY,
+                deliveryParams(delivery).addValue("id", delivery.id())) == 1;
     }
 
     @Override
     public PushDevice saveDevice(PushDevice device) {
-        Long id = jdbc.queryForObject("""
-                INSERT INTO push_device (user_id, platform, token_ciphertext, token_fingerprint,
-                    device_status, last_seen_at, revoked_at)
-                VALUES (:userId, :platform, :tokenCiphertext, :tokenFingerprint, :status, :lastSeenAt, :revokedAt)
-                RETURNING id
-                """, new MapSqlParameterSource().addValue("userId", device.userId())
-                .addValue("platform", device.platform().name()).addValue("tokenCiphertext", device.tokenCiphertext())
-                .addValue("tokenFingerprint", device.tokenFingerprint()).addValue("status", device.status().name())
-                .addValue("lastSeenAt", timestamp(device.lastSeenAt())).addValue("revokedAt", timestamp(device.revokedAt())), Long.class);
-        return new PushDevice(id, device.userId(), device.platform(), device.tokenCiphertext(), device.tokenFingerprint(),
-                device.status(), device.lastSeenAt(), device.revokedAt());
+        return jdbc.queryForObject(NotificationSql.INSERT_PUSH_DEVICE, pushDeviceParams(
+                device.userId(), device.platform().name(), device.tokenCiphertext(), device.tokenFingerprint(),
+                device.status(), device.lastSeenAt(), device.revokedAt()), (rs, row) -> mapPushDevice(rs));
+    }
+
+    @Override
+    @Transactional
+    public PushDevice registerOrTransferDevice(
+            long userId, String platform, byte[] tokenCiphertext, String tokenFingerprint, Instant at) {
+        validatePushDeviceWrite(userId, platform, tokenCiphertext, tokenFingerprint, at);
+        acquirePushDeviceWriteLocks(userId, platform, tokenFingerprint);
+        return jdbc.queryForObject(NotificationSql.REGISTER_OR_TRANSFER_PUSH_DEVICE, pushDeviceParams(
+                userId, platform, tokenCiphertext, tokenFingerprint, PushDeviceStatus.ACTIVE, at, null),
+                (rs, row) -> mapPushDevice(rs));
+    }
+
+    @Override
+    @Transactional
+    public int revokeOwnedDevice(long userId, String platform, String tokenFingerprint, Instant at) {
+        validatePushDeviceLookup(userId, platform, tokenFingerprint, at);
+        acquirePushDeviceWriteLocks(userId, platform, tokenFingerprint);
+        Number revokedCount = jdbc.queryForObject(NotificationSql.REVOKE_OWNED_PUSH_DEVICE,
+                new MapSqlParameterSource().addValue("userId", userId).addValue("platform", platform)
+                        .addValue("tokenFingerprint", tokenFingerprint).addValue("revokedAt", timestamp(at)),
+                Number.class);
+        return revokedCount == null ? 0 : revokedCount.intValue();
     }
 
 	@Override
@@ -250,6 +352,15 @@ public class JdbcNotificationRepository implements OutboxEventRepository, Notifi
                 .addValue("providerMessageId", d.providerMessageId());
     }
 
+    private static MapSqlParameterSource pushDeviceParams(
+            long userId, String platform, byte[] tokenCiphertext, String tokenFingerprint,
+            PushDeviceStatus status, Instant lastSeenAt, Instant revokedAt) {
+        return new MapSqlParameterSource().addValue("userId", userId).addValue("platform", platform)
+                .addValue("tokenCiphertext", tokenCiphertext.clone()).addValue("tokenFingerprint", tokenFingerprint)
+                .addValue("status", status.name()).addValue("lastSeenAt", timestamp(lastSeenAt))
+                .addValue("revokedAt", timestamp(revokedAt));
+    }
+
     private static OutboxEvent mapOutbox(ResultSet rs) throws SQLException {
         return new OutboxEvent(rs.getLong("id"), OutboxAggregateType.valueOf(rs.getString("aggregate_type")),
                 rs.getLong("aggregate_id"), OutboxEventType.valueOf(rs.getString("event_type")),
@@ -270,6 +381,59 @@ public class JdbcNotificationRepository implements OutboxEventRepository, Notifi
         return new NotificationDelivery(rs.getLong("id"), rs.getLong("notification_id"), rs.getLong("push_device_id"),
                 DeliveryStatus.valueOf(rs.getString("status")), rs.getInt("attempt_count"), instant(rs, "next_attempt_at"),
                 instant(rs, "created_at"), instant(rs, "sent_at"), rs.getString("provider_message_id"));
+    }
+
+    private static PushDevice mapPushDevice(ResultSet rs) throws SQLException {
+        return new PushDevice(rs.getLong("id"), rs.getLong("user_id"),
+                PushPlatform.valueOf(rs.getString("platform")), rs.getBytes("token_ciphertext"),
+                rs.getString("token_fingerprint"), PushDeviceStatus.valueOf(rs.getString("device_status")),
+                instant(rs, "last_seen_at"), instant(rs, "revoked_at"));
+    }
+
+    private static PushDispatchContext mapPushDispatchContext(ResultSet rs) throws SQLException {
+        NotificationDelivery delivery = new NotificationDelivery(
+                nullableLong(rs, "delivery_id"),
+                rs.getLong("delivery_notification_id"),
+                rs.getLong("delivery_push_device_id"),
+                DeliveryStatus.valueOf(rs.getString("delivery_status")),
+                rs.getInt("delivery_attempt_count"),
+                instant(rs, "delivery_next_attempt_at"),
+                instant(rs, "delivery_created_at"),
+                instant(rs, "delivery_sent_at"),
+                rs.getString("delivery_provider_message_id"));
+        Notification notification = new Notification(
+                nullableLong(rs, "notification_id"),
+                rs.getLong("notification_recipient_id"),
+                rs.getLong("notification_outbox_event_id"),
+                NotificationType.valueOf(rs.getString("notification_type")),
+                rs.getString("notification_dedup_key"),
+                nullableLong(rs, "notification_direction_post_id"),
+                nullableLong(rs, "notification_answer_id"),
+                nullableLong(rs, "notification_report_id"),
+                NotificationStatus.valueOf(rs.getString("notification_status")),
+                instant(rs, "notification_created_at"),
+                instant(rs, "notification_read_at"));
+        PushDevice device = new PushDevice(
+                nullableLong(rs, "device_id"),
+                rs.getLong("device_user_id"),
+                PushPlatform.valueOf(rs.getString("device_platform")),
+                rs.getBytes("device_token_ciphertext"),
+                rs.getString("device_token_fingerprint"),
+                PushDeviceStatus.valueOf(rs.getString("device_status")),
+                instant(rs, "device_last_seen_at"),
+                instant(rs, "device_revoked_at"));
+        return new PushDispatchContext(
+                delivery,
+                notification,
+                device,
+                nullableLong(rs, "actor_id"),
+                new PushDispatchContext.DispatchValiditySnapshot(
+                        rs.getBoolean("recipient_active"),
+                        rs.getBoolean("actor_active"),
+                        rs.getBoolean("preference_enabled"),
+                        rs.getBoolean("blocked_in_either_direction"),
+                        rs.getBoolean("target_valid"),
+                        rs.getBoolean("has_remaining_time")));
     }
 
     private static Long nullableLong(ResultSet rs, String column) throws SQLException {
@@ -294,6 +458,105 @@ public class JdbcNotificationRepository implements OutboxEventRepository, Notifi
         if (owner == null || owner.isBlank() || owner.length() > 100 || generation < 0 || at == null) {
             throw new NotificationException(NotificationErrorCode.INVALID_VALUE_RANGE, "lease",
                     "lease owner, 유효한 generation과 현재 시각이 필요합니다.");
+        }
+    }
+
+    private static void validatePushDeviceWrite(
+            long userId, String platform, byte[] tokenCiphertext, String tokenFingerprint, Instant at) {
+        validatePushDeviceLookup(userId, platform, tokenFingerprint, at);
+        if (tokenCiphertext == null || tokenCiphertext.length == 0) {
+            throw new NotificationException(NotificationErrorCode.INVALID_PUSH_DEVICE_REQUEST, "token",
+                    "암호화된 push token 값이 필요합니다.");
+        }
+    }
+
+    private static void validatePushDeviceLookup(long userId, String platform, String tokenFingerprint, Instant at) {
+        if (userId <= 0) {
+            throw new NotificationException(NotificationErrorCode.INVALID_ID, "userId", "userId는 양수여야 합니다.");
+        }
+        if (platform == null || !PUSH_PLATFORM_NAMES.contains(platform)) {
+            throw new NotificationException(NotificationErrorCode.INVALID_PUSH_DEVICE_REQUEST, "platform",
+                    "platform 값이 올바르지 않습니다.");
+        }
+        if (tokenFingerprint == null || tokenFingerprint.isBlank()) {
+            throw new NotificationException(NotificationErrorCode.INVALID_PUSH_DEVICE_REQUEST, "token",
+                    "push token 지문 값이 필요합니다.");
+        }
+        if (at == null) {
+            throw new NotificationException(NotificationErrorCode.INVALID_PUSH_DEVICE_REQUEST, "at",
+                    "처리 시각은 필수입니다.");
+        }
+    }
+
+    private static void validatePushDeliveryClaimRequest(int batchSize, Instant now, Instant leaseUntil) {
+        if (batchSize <= 0) {
+            throw new NotificationException(NotificationErrorCode.INVALID_VALUE_RANGE, "batchSize",
+                    "batchSize는 양수여야 합니다.");
+        }
+        if (now == null || leaseUntil == null || !leaseUntil.isAfter(now)) {
+            throw new NotificationException(NotificationErrorCode.INVALID_VALUE_RANGE, "leaseUntil",
+                    "현재 시각 이후의 leaseUntil이 필요합니다.");
+        }
+    }
+
+    private static void validatePushDeliveryTerminalRequest(
+            long deliveryId, int generation, PushDeliveryTerminalResult result, Instant at,
+            Instant nextAttemptAt, String providerMessageId) {
+        if (deliveryId <= 0) {
+            throw new NotificationException(NotificationErrorCode.INVALID_ID, "deliveryId",
+                    "deliveryId는 양수여야 합니다.");
+        }
+        if (generation <= 0) {
+            throw new NotificationException(NotificationErrorCode.INVALID_VALUE_RANGE, "generation",
+                    "generation은 양수여야 합니다.");
+        }
+        if (result == null) {
+            throw new NotificationException(NotificationErrorCode.REQUIRED_VALUE_MISSING, "result",
+                    "terminal result는 필수입니다.");
+        }
+        if (at == null) {
+            throw new NotificationException(NotificationErrorCode.REQUIRED_VALUE_MISSING, "at",
+                    "처리 시각은 필수입니다.");
+        }
+        if (nextAttemptAt == null) {
+            throw new NotificationException(NotificationErrorCode.REQUIRED_VALUE_MISSING, "nextAttemptAt",
+                    "다음 시도 시각은 필수입니다.");
+        }
+        if (providerMessageId != null && (result != PushDeliveryTerminalResult.SENT
+                || providerMessageId.isBlank() || providerMessageId.length() > 255
+                || providerMessageId.chars().anyMatch(value -> Character.isWhitespace(value)
+                || Character.isSpaceChar(value) || Character.isISOControl(value)))) {
+            throw new NotificationException(NotificationErrorCode.INVALID_VALUE_RANGE, "providerMessageId",
+                    "provider message ID가 올바르지 않습니다.");
+        }
+    }
+
+    private static long userPlatformLockKey(long userId, String platform) {
+        return advisoryLockKey("push-device:user-platform", userId + ":" + platform);
+    }
+
+    private void acquirePushDeviceWriteLocks(long userId, String platform, String tokenFingerprint) {
+        acquireTransactionAdvisoryLock(userPlatformLockKey(userId, platform));
+        acquireTransactionAdvisoryLock(fingerprintLockKey(tokenFingerprint));
+    }
+
+    private void acquireTransactionAdvisoryLock(long lockKey) {
+        jdbc.query(NotificationSql.ACQUIRE_TRANSACTION_ADVISORY_LOCK,
+                new MapSqlParameterSource("lockKey", lockKey), (ResultSet rs) -> null);
+    }
+
+    private static long fingerprintLockKey(String tokenFingerprint) {
+        return advisoryLockKey("push-device:fingerprint", tokenFingerprint);
+    }
+
+    private static long advisoryLockKey(String namespace, String value) {
+        try {
+            byte[] hash = MessageDigest.getInstance("SHA-256")
+                    .digest((namespace + ":" + value).getBytes(StandardCharsets.UTF_8));
+            return ByteBuffer.wrap(hash).getLong();
+        }
+        catch (NoSuchAlgorithmException exception) {
+            throw new IllegalStateException("SHA-256을 사용할 수 없습니다.", exception);
         }
     }
 
