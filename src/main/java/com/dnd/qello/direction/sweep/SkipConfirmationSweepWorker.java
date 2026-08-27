@@ -19,8 +19,9 @@ import lombok.extern.slf4j.Slf4j;
  * 도메인 전이, 슬롯 해제는 {@link ReceiveSlotReleaseService#confirmSkip}이 소유하며
  * 이 클래스는 batch 시각과 limit만 전달하고 후보를 행별로 반복한다.
  *
- * <p>RecipientExpirationSweepWorker와 같은 이유로 자체 트랜잭션을 열지 않고 trigger도
- * 갖지 않는다.</p>
+ * <p>RecipientExpirationSweepWorker와 같은 이유로 자체 트랜잭션을 열지 않고 스스로
+ * trigger를 갖지 않는다. 주기 실행은 {@code SkipConfirmationSweepScheduledAdapter}가
+ * {@code qello.worker.scheduling} 설정으로 구동한다.</p>
  */
 @Service
 @RequiredArgsConstructor
