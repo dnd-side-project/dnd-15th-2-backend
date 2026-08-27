@@ -15,10 +15,15 @@ secret 취급은 `docs/harness/SECRET_HANDLING.md`와 `AGENTS.md` 4.10을 따른
 | Device 등록·해지 API | 구현됨 (`#179`) |
 | token 암호화·fingerprint | 구현됨 (`#179`) |
 | FCM HTTP v1 adapter | 구현됨 (`#179`) |
-| dispatch worker 로직 | 구현됨, **Spring bean 미등록** (`#182`) |
+| dispatch worker 로직 | 구현됨 (`#179`) |
+| dispatch worker·retry policy bean 등록 | 구현됨, 조건부 (`#182`) |
+| scheduler/poller 배선 | 구현됨, **기본 비활성** (`#182`) |
+| 운영 주기·batch·lease·retry 수치 | **미결정. 사람 작업** |
 | Firebase 프로젝트·credential | **미생성. 사람 작업** |
 | SSM SecureString·ECS 주입 | **미구현. 별도 설계 승인 필요** |
-| scheduler/poller 배선 | **미구현** (`#182`) |
+
+`#182`이 주기 실행 기반을 붙였지만 `qello.worker.scheduling.enabled`의 기본값이
+`false`이므로 아무것도 자동 실행되지 않는다. 발송을 실제로 켜는 것은 8단계다.
 
 `local`, `test`, `integration` profile에서는 `PushConfiguration`의
 `NoOpPushProvider`가 등록되어 아래 설정이 하나도 없어도 애플리케이션이 기동한다.
@@ -40,7 +45,7 @@ secret 취급은 `docs/harness/SECRET_HANDLING.md`와 `AGENTS.md` 4.10을 따른
 | 5 | 관리형 secret 저장소 등록 | secret owner | 1, 4 |
 | 6 | runtime 주입 인프라 | 승인된 인프라 workflow | 5 |
 | 7 | 기동 확인과 등록 경로 검증 | 백엔드 | 6 |
-| 8 | worker 활성화 | 백엔드 (`#182`) | 7 |
+| 8 | worker 수치 결정과 활성화 | 백엔드 + secret owner | 7 |
 | 9 | 실기기 수신 검증 | 모바일 | 2, 3, 8 |
 
 ## 3. 단계 1 — Firebase 프로젝트와 서비스 계정
@@ -178,19 +183,63 @@ AI 에이전트는 apply를 실행하지 않는다.
 
 이 시점에는 `notification_delivery`가 쌓이기만 하고 발송은 일어나지 않는다.
 
-## 10. 단계 8 — worker 활성화
+## 10. 단계 8 — worker 수치 결정과 활성화
 
-`PushDeliveryDispatchWorker`는 의도적으로 Spring bean으로 등록돼 있지 않다.
-`PushDeliveryRetryPolicy`도 아직 어디에서도 생성되지 않는다. 둘 다 `#182`에서
-배선한다.
+`#182`이 `PushDeliveryDispatchWorker`, `PushDeliveryRetryPolicy`와 주기 실행
+adapter를 배선했다. 세 bean은 `qello.worker.scheduling.enabled`와
+`qello.worker.scheduling.push-delivery-dispatch.enabled`가 **모두 `true`일 때만**
+등록된다. 둘 중 하나라도 꺼져 있으면 bean 자체가 만들어지지 않으므로 push
+dispatch 경로가 존재하지 않는다.
 
-`#182`에서 결정해야 하는 값:
+`#182`은 코드 경로만 만들었고 운영 수치는 결정하지 않았다. 이 단계에서 값을
+정하고 주입한다.
 
-- `maxAttempts` — 초과 시 `DEAD`
-- `baseBackoff`, `backoffCap` — 지수 backoff 상한. provider가 `Retry-After`를
-  주면 그 값을 우선한다
-- batch size, lease 기간, polling 주기
-- 다중 인스턴스에서의 중복 claim 방지 확인
+### 10.1 활성화 gate
+
+| 키 | 기본값 | 의미 |
+| --- | --- | --- |
+| `qello.worker.scheduling.enabled` | `false` (`QELLO_WORKER_SCHEDULING_ENABLED`) | 전체 worker scheduling |
+| `qello.worker.scheduling.push-delivery-dispatch.enabled` | 없음 | push dispatch worker |
+
+global gate가 꺼져 있으면 scheduler thread pool, lease owner, metrics bean까지
+전부 등록되지 않는다. 롤백은 이 값을 `false`로 되돌리고 재배포하는 것이다.
+
+### 10.2 결정해야 하는 값
+
+enabled 상태에서 아래 값이 비어 있거나 0 이하이면 **기동에 실패한다.** 운영
+fallback 기본값은 두지 않는다. 어떤 블록의 어떤 값이 왜 거절됐는지는 예외
+메시지가 `qello.worker.scheduling.<블록>.<필드>` 형태로 가리킨다.
+
+| 키 | 제약 | 결정 기준 |
+| --- | --- | --- |
+| `qello.worker.scheduling.pool-size` | 양수 | 활성화한 worker 수와 동시 실행 허용치 |
+| `...push-delivery-dispatch.fixed-delay` | 양수 기간 | 발송 지연 허용치 대 DB polling 비용 |
+| `...push-delivery-dispatch.batch-size` | 양수 | 한 주기에 claim할 group 수 |
+| `...push-delivery-dispatch.lease-duration` | 양수 기간 | 한 batch의 최악 처리 시간보다 길어야 한다 |
+| `...push-delivery-dispatch.retry.max-attempts` | 양수 | 초과 시 `DEAD` |
+| `...push-delivery-dispatch.retry.base-backoff` | 양수 기간 | 지수 backoff 시작값 |
+| `...push-delivery-dispatch.retry.backoff-cap` | `base-backoff` 이상 | 지수 backoff 상한 |
+
+provider가 `Retry-After`를 주면 그 값을 backoff보다 우선한다.
+
+`lease-duration`이 한 batch의 실제 처리 시간보다 짧으면 lease가 만료된 뒤
+다른 instance가 같은 group을 다시 claim한다. 이 경우에도 `STALE_CLAIM`
+fencing이 중복 발송을 막지만, 처리량이 낭비되므로 `batch-size`와 함께 정한다.
+
+### 10.3 활성화 후 확인
+
+1. 기동 로그에 설정 검증 예외가 없는지 확인한다.
+2. `qello-worker-` prefix thread에서 dispatch가 도는지 확인한다.
+3. `worker=push_delivery_dispatch` tag로 아래 metric이 등록되는지 확인한다.
+   tag는 `worker`와 `outcome`뿐이며 owner, 행 ID, 사용자 정보는 포함하지 않는다.
+   (`qello.worker.scanned.total`은 sweep worker만 기록한다.)
+   - `qello.worker.claimed.total`
+   - `qello.worker.outcome.total`
+4. `outcome=SENT`와 `outcome=DEAD` 추이를 확인한다. `BATCH_FAILED`가 반복되면
+   해당 주기가 통째로 실패한 것이므로 즉시 gate를 되돌린다.
+5. 다중 instance로 띄운 경우 같은 group이 두 번 발송되지 않는지 확인한다.
+   lease owner는 application context마다 생성되는 UUID이며, 서로 다른
+   instance의 owner가 실제로 겹치지 않는지는 `#182`에서 검증하지 않았다.
 
 ## 11. 단계 9 — 실기기 수신 검증
 
@@ -223,7 +272,11 @@ fingerprint key를 교체하면 기존 fingerprint가 전부 무효가 되어 �
 - Firebase 프로젝트의 조직 소유권과 결제 계정 관리
 - Apple Developer 멤버십 갱신
 - 알림 발송량 상한, 방해 금지 시간, 묶음 처리 (`#180`)
-- 발송 실패율 관측과 경보. 현재 metric exporter가 없어 지표가 프로세스 밖으로
-  나가지 않는다
+- 발송 실패율 경보. `#182`이 counter를 등록하지만 metric exporter와 alert rule이
+  없어 지표가 프로세스 밖으로 나가지 않는다
+- 운영 주기·batch·lease·retry 수치의 적정성. `#182`은 값을 검증만 하고 결정하지
+  않았다
+- 다중 instance 동시 실행 시 lease owner 유일성. 단일 context 안의 안정성만
+  검증했다
 - push 성공 여부와 무관하게 보존되는 `notification` 원장과 콘텐츠 열람 자격은
   이 절차의 영향을 받지 않는다
