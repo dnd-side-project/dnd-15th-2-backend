@@ -158,42 +158,42 @@ class WorkerSchedulingPropertiesTest {
 		assertThatThrownBy(() -> propertiesWith(
 			new WorkerSchedulingProperties.OutboxSettings(true, Duration.ZERO, 1, Duration.ofSeconds(1), retry())))
 			.isInstanceOf(IllegalArgumentException.class)
-			.hasMessage("fixedDelay");
+			.hasMessage("qello.worker.scheduling.directionMatching.fixedDelay: 양수인 기간이어야 합니다");
 		assertThatThrownBy(() -> propertiesWith(
 			new WorkerSchedulingProperties.OutboxSettings(true, Duration.ofSeconds(-1), 1, Duration.ofSeconds(1), retry())))
 			.isInstanceOf(IllegalArgumentException.class)
-			.hasMessage("fixedDelay");
+			.hasMessage("qello.worker.scheduling.directionMatching.fixedDelay: 양수인 기간이어야 합니다");
 		assertThatThrownBy(() -> propertiesWith(
 			new WorkerSchedulingProperties.OutboxSettings(true, Duration.ofSeconds(1), 0, Duration.ofSeconds(1), retry())))
 			.isInstanceOf(IllegalArgumentException.class)
-			.hasMessage("batchSize");
+			.hasMessage("qello.worker.scheduling.directionMatching.batchSize: 양수여야 합니다");
 		assertThatThrownBy(() -> propertiesWith(
 			new WorkerSchedulingProperties.OutboxSettings(true, Duration.ofSeconds(1), -1, Duration.ofSeconds(1), retry())))
 			.isInstanceOf(IllegalArgumentException.class)
-			.hasMessage("batchSize");
+			.hasMessage("qello.worker.scheduling.directionMatching.batchSize: 양수여야 합니다");
 		assertThatThrownBy(() -> propertiesWith(
 			new WorkerSchedulingProperties.OutboxSettings(true, Duration.ofSeconds(1), 1, Duration.ZERO, retry())))
 			.isInstanceOf(IllegalArgumentException.class)
-			.hasMessage("leaseDuration");
+			.hasMessage("qello.worker.scheduling.directionMatching.leaseDuration: 양수인 기간이어야 합니다");
 		assertThatThrownBy(() -> propertiesWith(
 			new WorkerSchedulingProperties.OutboxSettings(true, Duration.ofSeconds(1), 1, Duration.ofSeconds(-1), retry())))
 			.isInstanceOf(IllegalArgumentException.class)
-			.hasMessage("leaseDuration");
+			.hasMessage("qello.worker.scheduling.directionMatching.leaseDuration: 양수인 기간이어야 합니다");
 		assertThatThrownBy(() -> propertiesWith(
 			new WorkerSchedulingProperties.OutboxSettings(true, Duration.ofSeconds(1), 1, Duration.ofSeconds(1),
 				new WorkerSchedulingProperties.OutboxRetrySettings(0, Duration.ofSeconds(1), Duration.ofSeconds(2)))))
 			.isInstanceOf(IllegalArgumentException.class)
-			.hasMessage("maxAttempts");
+			.hasMessage("qello.worker.scheduling.directionMatching.retry.maxAttempts: 양수여야 합니다");
 		assertThatThrownBy(() -> propertiesWith(
 			new WorkerSchedulingProperties.OutboxSettings(true, Duration.ofSeconds(1), 1, Duration.ofSeconds(1),
 				new WorkerSchedulingProperties.OutboxRetrySettings(-1, Duration.ofSeconds(1), Duration.ofSeconds(2)))))
 			.isInstanceOf(IllegalArgumentException.class)
-			.hasMessage("maxAttempts");
+			.hasMessage("qello.worker.scheduling.directionMatching.retry.maxAttempts: 양수여야 합니다");
 		assertThatThrownBy(() -> propertiesWith(
 			new WorkerSchedulingProperties.OutboxSettings(true, Duration.ofSeconds(1), 1, Duration.ofSeconds(1),
 				new WorkerSchedulingProperties.OutboxRetrySettings(1, Duration.ofSeconds(2), Duration.ofSeconds(1)))))
 			.isInstanceOf(IllegalArgumentException.class)
-			.hasMessage("maxDelay");
+			.hasMessage("qello.worker.scheduling.directionMatching.retry.maxDelay: baseDelay 이상이어야 합니다");
 	}
 
 	private WorkerSchedulingProperties propertiesWith(WorkerSchedulingProperties.OutboxSettings directionMatching) {
