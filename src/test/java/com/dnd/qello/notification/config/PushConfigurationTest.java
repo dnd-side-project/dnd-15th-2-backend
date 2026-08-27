@@ -1,14 +1,18 @@
 /**
  * Created at: 2026-08-24T20:10:00+09:00
+ * Extended at: 2026-08-27T15:13:23+09:00
  * Source scenario: TEST-PLAN-GH-179-PUSH-DELIVERY-UNIT-015,
- * TEST-PLAN-GH-180-PUSH-BUNDLING-BUDGET-UNIT-001
+ * TEST-PLAN-GH-180-PUSH-BUNDLING-BUDGET-UNIT-001,
+ * TEST-PLAN-GH-182-CORE-WORKER-SCHEDULING-UNIT-018, UNIT-019
  */
 package com.dnd.qello.notification.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
 
 import java.nio.charset.StandardCharsets;
+import java.time.Clock;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -26,11 +30,21 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.transaction.PlatformTransactionManager;
 
+import com.dnd.qello.notification.push.PushDeliveryRetryPolicy;
+import com.dnd.qello.notification.push.PushDispatchEligibility;
+import com.dnd.qello.notification.push.PushPayloadFactory;
+import com.dnd.qello.notification.push.fcm.FcmAccessTokenProvider;
+import com.dnd.qello.notification.push.fcm.FcmHttpV1PushProvider;
+import com.dnd.qello.notification.push.fcm.GoogleCredentialsFcmAccessTokenProvider;
 import com.dnd.qello.notification.push.policy.PushBudgetPolicy;
 import com.dnd.qello.notification.push.policy.PushGroupingPolicy;
 import com.dnd.qello.notification.push.policy.PushSuppressionPolicy;
+import com.dnd.qello.notification.repository.PushDispatchGroupRepository;
 import com.dnd.qello.notification.service.PushDeliveryDispatchWorker;
+import com.dnd.qello.notification.service.PushDispatchGroupClaimService;
+import com.dnd.qello.notification.service.PushDispatchGroupPlanner;
 
 import com.dnd.qello.notification.push.security.AesGcmPushTokenProtector;
 import com.dnd.qello.notification.push.security.ProtectedPushToken;
@@ -65,6 +79,17 @@ class PushConfigurationTest {
 		"QELLO_NOTIFICATION_PUSH_DAILY_LIMIT=5",
 		"QELLO_NOTIFICATION_PUSH_DIRECTION_RESERVED=2",
 		"QELLO_NOTIFICATION_PUSH_RECOMMENDATION_MIN_INTERVAL=PT24H"
+	};
+	private static final String[] PUSH_SCHEDULING_ENABLED_PROPERTIES = {
+		"qello.worker.scheduling.enabled=true",
+		"qello.worker.scheduling.pool-size=1",
+		"qello.worker.scheduling.push-delivery-dispatch.enabled=true",
+		"qello.worker.scheduling.push-delivery-dispatch.fixed-delay=PT0.05S",
+		"qello.worker.scheduling.push-delivery-dispatch.batch-size=7",
+		"qello.worker.scheduling.push-delivery-dispatch.lease-duration=PT30S",
+		"qello.worker.scheduling.push-delivery-dispatch.retry.max-attempts=3",
+		"qello.worker.scheduling.push-delivery-dispatch.retry.base-backoff=PT1S",
+		"qello.worker.scheduling.push-delivery-dispatch.retry.backoff-cap=PT30S"
 	};
 
 	@Test
@@ -234,6 +259,42 @@ class PushConfigurationTest {
 			});
 	}
 
+	@Test
+	@DisplayName("UNIT-018: push scheduling enabled는 planner·payload·retry·worker를 각각 하나만 등록하고 retry 값이 일치한다")
+	void enabledPushSchedulingWiresSinglePlannerPayloadRetryAndWorkerBeans() {
+		enabledPushSchedulingContext("test")
+			.run(context -> {
+				assertThat(context).hasNotFailed();
+				assertThat(context).hasSingleBean(PushDispatchGroupPlanner.class);
+				assertThat(context).hasSingleBean(PushPayloadFactory.class);
+				assertThat(context).hasSingleBean(PushDeliveryRetryPolicy.class);
+				assertThat(context).hasSingleBean(PushDeliveryDispatchWorker.class);
+				assertThat(context.getBean(PushDeliveryRetryPolicy.class))
+					.extracting(
+						PushDeliveryRetryPolicy::maxAttempts,
+						PushDeliveryRetryPolicy::baseBackoff,
+						PushDeliveryRetryPolicy::backoffCap)
+					.containsExactly(3, Duration.ofSeconds(1), Duration.ofSeconds(30));
+			});
+	}
+
+	@ParameterizedTest(name = "프로필 {0}")
+	@ValueSource(strings = {"test", "local"})
+	@DisplayName("UNIT-019: push scheduling enabled여도 test/local은 NoOp provider만 쓰고 실제 FCM client를 만들지 않는다")
+	void enabledPushSchedulingKeepsNoOpProviderAndDoesNotBuildFcmClient(String profile) {
+		enabledPushSchedulingContext(profile)
+			.run(context -> {
+				assertThat(context).hasNotFailed();
+				assertThat(context.getBeansOfType(com.dnd.qello.notification.push.PushProvider.class).values())
+					.hasSize(1)
+					.anySatisfy(bean -> assertThat(bean.getClass().getSimpleName().toLowerCase())
+						.containsAnyOf("fake", "noop"));
+				assertThat(context).doesNotHaveBean(FcmHttpV1PushProvider.class);
+				assertThat(context).doesNotHaveBean(FcmAccessTokenProvider.class);
+				assertThat(context).doesNotHaveBean(GoogleCredentialsFcmAccessTokenProvider.class);
+			});
+	}
+
 	@ParameterizedTest(name = "누락 키 {0}")
 	@ValueSource(strings = {
 		"QELLO_NOTIFICATION_PUSH_BUNDLE_WINDOW", "QELLO_NOTIFICATION_PUSH_MAX_DELAY",
@@ -270,6 +331,27 @@ class PushConfigurationTest {
 	private static String envelopeKeyId(byte[] envelope) {
 		int keyIdLength = Byte.toUnsignedInt(envelope[1]);
 		return new String(envelope, 2, keyIdLength, StandardCharsets.UTF_8);
+	}
+
+	private ApplicationContextRunner enabledPushSchedulingContext(String profile) {
+		return new ApplicationContextRunner()
+			.withConfiguration(AutoConfigurations.of(ConfigurationPropertiesAutoConfiguration.class))
+			.withUserConfiguration(PushConfiguration.class)
+			.withBean(PushDispatchGroupRepository.class, () -> mock(PushDispatchGroupRepository.class))
+			.withBean(PushDispatchGroupClaimService.class, () -> mock(PushDispatchGroupClaimService.class))
+			.withBean(PushDispatchEligibility.class, PushDispatchEligibility::new)
+			.withBean(PushTokenProtector.class, () -> mock(PushTokenProtector.class))
+			.withBean(PlatformTransactionManager.class, () -> mock(PlatformTransactionManager.class))
+			.withBean(Clock.class, Clock::systemUTC)
+			.withPropertyValues(enabledPushSchedulingProperties(profile));
+	}
+
+	private static String[] enabledPushSchedulingProperties(String profile) {
+		List<String> values = new ArrayList<>();
+		values.add("spring.profiles.active=" + profile);
+		values.addAll(Arrays.asList(POLICY_FIXTURE_PROPERTIES));
+		values.addAll(Arrays.asList(PUSH_SCHEDULING_ENABLED_PROPERTIES));
+		return values.toArray(String[]::new);
 	}
 
 	private static String[] testProfileWithPolicyFixtures() {
