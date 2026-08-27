@@ -8,7 +8,6 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import com.dnd.qello.direction.matching.DirectionMatchingWorker;
-import com.dnd.qello.notification.domain.ExponentialJitterBackoffStrategy;
 import com.dnd.qello.notification.domain.OutboxRetryPolicy;
 import com.dnd.qello.scheduling.WorkerInstanceIdentity;
 import com.dnd.qello.scheduling.config.WorkerSchedulingProperties;
@@ -36,9 +35,7 @@ public class DirectionMatchingScheduledAdapter {
 		this.identity = identity;
 		this.clock = clock;
 		this.metrics = metrics;
-		var retry = settings.retry();
-		this.retryPolicy = new OutboxRetryPolicy(retry.maxAttempts(), ExponentialJitterBackoffStrategy.withRandomJitter(
-			retry.baseDelay(), retry.maxDelay()));
+		this.retryPolicy = settings.retry().toPolicy();
 	}
 
 	@Scheduled(fixedDelayString = "${qello.worker.scheduling.direction-matching.fixed-delay}")

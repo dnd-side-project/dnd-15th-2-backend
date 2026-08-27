@@ -7,7 +7,6 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
-import com.dnd.qello.notification.domain.ExponentialJitterBackoffStrategy;
 import com.dnd.qello.notification.domain.OutboxRetryPolicy;
 import com.dnd.qello.notification.fanout.NotificationFanOutWorker;
 import com.dnd.qello.scheduling.WorkerInstanceIdentity;
@@ -36,9 +35,7 @@ public class NotificationFanOutScheduledAdapter {
 		this.identity = identity;
 		this.clock = clock;
 		this.metrics = metrics;
-		var retry = settings.retry();
-		this.retryPolicy = new OutboxRetryPolicy(retry.maxAttempts(), ExponentialJitterBackoffStrategy.withRandomJitter(
-			retry.baseDelay(), retry.maxDelay()));
+		this.retryPolicy = settings.retry().toPolicy();
 	}
 
 	@Scheduled(fixedDelayString = "${qello.worker.scheduling.notification-fan-out.fixed-delay}")

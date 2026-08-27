@@ -81,9 +81,7 @@ public class PushConfiguration {
 
 		@Bean
 		PushDeliveryRetryPolicy pushDeliveryRetryPolicy(WorkerSchedulingProperties properties) {
-			var retry = properties.pushDeliveryDispatch().retry();
-			return new PushDeliveryRetryPolicy(
-				retry.maxAttempts(), retry.baseBackoff(), retry.backoffCap());
+			return properties.pushDeliveryDispatch().retry().toPolicy();
 		}
 
 		@Bean
