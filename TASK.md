@@ -97,6 +97,10 @@
   대상이다. 구현 증거로 갱신했으며 PR diff에 포함되지 않는다.
 - 현재 working tree의 tracked 변경은 scheduling orchestration, Push 조건부 wiring,
   설계·테스트 계획·테스트 보고서와 이 계약이다. 커밋과 PR은 별도 harness 승인 전 만들지 않는다.
+- 정리 작업으로 다음을 추가 변경했다. worker scheduler bean을 `taskScheduler`에서
+  `workerTaskScheduler`로 분리하고 `SchedulingConfigurer`로 명시 연결, retry policy 생성을
+  `OutboxRetrySettings.toPolicy()`·`PushRetrySettings.toPolicy()`로 통합, 설정 검증 오류
+  메시지에 worker 블록과 위반 규칙 표기(테스트 단언 9건 동반 수정), 위 sweep worker javadoc 2건 갱신.
 
 ## Validation
 
@@ -133,7 +137,7 @@ Gradle 결과와 Task 8 final 검증(전부 exit 0)에 근거한다. 운영 pool
 - [x] context별 owner 안정성과 실제 PostgreSQL claim/reclaim/fencing 계약이 유지된다. (UNIT-005 identity 타입 안정성 PASS. INT-005/007/008 PostgreSQL claim/reclaim/fencing PASS. INT-004 두 독립 ApplicationContext bean owner 비교는 NOT_RUN — 다중 context 안정성을 overclaim하지 않는다)
 - [x] Push helper·retry·worker bean이 조건부로 구성되고 local/test는 실제 FCM을 호출하지 않는다. (UNIT-018/019. live FCM은 미검증)
 - [x] metric 이름과 tag가 승인된 enum allowlist에 한정된다. (UNIT-014..016)
-- [x] 기존 worker production source와 DB migration을 변경하지 않는다. (Task 8 Step 4 `git diff origin/main` 지정 worker/repository/migration 경로 empty, `src/main/resources/db/migration` empty)
+- [x] 기존 worker의 실행 로직과 DB migration을 변경하지 않는다. (Task 8 Step 4 `git diff origin/main` 지정 worker/repository/migration 경로 empty, `src/main/resources/db/migration` empty. 이후 정리 작업에서 `RecipientExpirationSweepWorker`·`SkipConfirmationSweepWorker`의 javadoc 2건만 갱신했다 — 두 주석이 "trigger를 갖지 않는다"고 단언했으나 이 작업이 두 worker에 scheduled adapter를 붙여 사실과 달라졌기 때문이다. 실행 로직·시그니처·DB는 변경 없음)
 - [x] 신규 JUnit 5 테스트가 `@DisplayName`, 정확한 생성 시각과 source scenario 규칙을 지킨다.
 - [x] 테스트 보고서에 application, DB, concurrency, transaction, 외부 API와 장애 복구 위험을 기록한다.
 - [x] 모든 focused 및 final 검증이 통과하거나 실행 불가 항목이 `BLOCKED`로 기록된다. (`./harness check` exit 0; `./harness pr-ready --project-tests` exit 0, `./gradlew check` BUILD SUCCESSFUL, unit 998 / integration 717, failures=0; `npm run hooks:validate` exit 0; `git diff --check` exit 0. INT-004 두 context는 NOT_RUN, `./harness test-run`은 Task 7에서 BLOCKED로 기록됨. 운영 숫자와 live FCM은 미검증)

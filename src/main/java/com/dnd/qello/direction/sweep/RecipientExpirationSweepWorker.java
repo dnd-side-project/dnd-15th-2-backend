@@ -23,8 +23,10 @@ import lombok.extern.slf4j.Slf4j;
  * {@code ReceiveSlotReleaseService.expire}의 {@code @Transactional}이다. 한 행의
  * 실패가 이미 커밋된 다른 행을 되돌리지 않는다.</p>
  *
- * <p>DirectionMatchingWorker·AnswerModerationVerdictWorker와 같은 이유로 아무
- * trigger(@Scheduled 등)도 갖지 않는다. 운영 주기 실행 활성화는 이 이슈의 범위 밖이다.</p>
+ * <p>DirectionMatchingWorker·AnswerModerationVerdictWorker와 같은 이유로 이 클래스는
+ * 스스로 trigger를 갖지 않는다.
+ * 주기 실행은 {@code RecipientExpirationSweepScheduledAdapter}가 {@code qello.worker.scheduling}
+ * 설정으로 구동하며, 그 gate가 꺼져 있으면 adapter 자체가 등록되지 않는다.</p>
  */
 @Service
 @RequiredArgsConstructor
