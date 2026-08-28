@@ -1,6 +1,7 @@
 # Test Report: TEST-PLAN-GH-163-CANDIDATE-INDEX-REMEASUREMENT
 
 > Created at: `2026-08-28T16:44:43+09:00`
+> Revised at: `2026-08-28T17:04:00+09:00`
 > GitHub Issue: `#163`
 > Branch: `perf/gh-163-candidate-index-remeasurement`
 > Task ID: `GH-163-CANDIDATE-INDEX-REMEASUREMENT`
@@ -28,7 +29,8 @@
 
 | Command / suite | Result | Tests | Duration | Evidence |
 | --- | --- | --- | --- | --- |
-| `./gradlew performanceTest --tests '*DirectionMatchingIndexPlanPerformanceIntegrationTest'` | PASS | 5 JUnit methods (PERF-001 through PERF-005) | 26s | Fresh focused measurement completed; class-level `@Tag("performance")` plus this command is PERF-006 focused evidence. |
+| `./gradlew performanceTest --tests '*DirectionMatchingIndexPlanPerformanceIntegrationTest'` | PASS | 5 JUnit methods (PERF-001 through PERF-005) | 26s | Original Task 2 focused measurement; class-level `@Tag("performance")` plus this command is PERF-006 focused evidence. |
+| `./gradlew performanceTest --tests '*DirectionMatchingIndexPlanPerformanceIntegrationTest'` (plan-rows revision) | PASS | 5 JUnit methods (PERF-001 through PERF-005) | 28s | Fresh focused re-run confirmed `plan rows=1` for both target relations in all four observations. Access paths, actual rows, loops, filter counts, buffers, and GiST outcomes matched the earlier full-suite evidence. |
 | `./gradlew performanceTest` | PASS | Full tagged performance suite | 37s | Fresh full performance run completed; this is PERF-006 full-suite evidence and supplied the four observations below. |
 | `./harness test-run --id TEST-PLAN-GH-163-CANDIDATE-INDEX-REMEASUREMENT` | PASS | Configured unit and non-performance integration regression suites | 5m 44s | Harness completed test and integration tasks successfully and scaffolded this report. |
 | `./harness check` | PASS | Repository policy checks | 0.5s | Secret, JUnit policy, convention, commit-format, workflow, label, and Husky validations passed. |
@@ -52,18 +54,20 @@ All durations are observational only; no timing is a pass/fail threshold.
 
 ### Fresh sanitized plan observations
 
-Fixture preconditions passed before every observation: 100,000 synthetic accounts, 10,000 valid presences, 10,000 inside `POLICY_BASELINE`, and 25 inside `SELECTIVITY_PROBE`. The following is the complete allowed plan summary: relation access path, index name, actual rows/loops, filtered rows, buffer summary, and timings. It intentionally excludes raw EXPLAIN JSON, identifiers, coordinates, credentials, URLs, and server details.
+Fixture preconditions passed before every observation: 100,000 synthetic accounts, 10,000 valid presences, 10,000 inside `POLICY_BASELINE`, and 25 inside `SELECTIVITY_PROBE`. The following is the complete allowed plan summary: relation access path, index name, plan rows, actual rows/loops, filtered rows, buffer summary, and timings. It intentionally excludes raw EXPLAIN JSON, identifiers, coordinates, credentials, URLs, and server details. Access paths, actual rows, loops, filter counts, buffers, timings, and GiST outcomes are the original full-suite observations. Plan rows were added from a later focused re-run that reproduced the same non-timing fields.
 
 | Query | Radius | `active_user_presence` evidence | `user_account` evidence | Partial GiST | Timing observation |
 | --- | --- | --- | --- | --- | --- |
-| Preview | `POLICY_BASELINE` | Seq Scan; actual 10,000, loops 1, filtered 0, hit/read 143/0 | Index Scan `uq_user_account_id_role`; actual 1, loops 10,000, filtered 0, hit/read 30,000/0 | `NOT_USED` | planning 1.166ms; execution 299.718ms |
-| Matching | `POLICY_BASELINE` | Seq Scan; actual 1,251, loops 1, filtered 8,749, hit/read 143/0 | Index Scan `uq_user_account_id_role`; actual 1, loops 1,251, filtered 0, hit/read 3,753/0 | `NOT_USED` | planning 1.662ms; execution 28.767ms |
-| Preview | `SELECTIVITY_PROBE` | Bitmap Heap Scan via `active_user_presence_position_gix`; actual 25, loops 1, filtered 21, hit/read 8/0 | Index Scan `uq_user_account_id_role`; actual 1, loops 25, filtered 0, hit/read 75/0 | `USED` | planning 4.111ms; execution 3.887ms |
-| Matching | `SELECTIVITY_PROBE` | Bitmap Heap Scan via `active_user_presence_position_gix`; actual 4, loops 1, filtered 42, hit/read 8/0 | Index Scan `uq_user_account_id_role`; actual 1, loops 4, filtered 0, hit/read 12/0 | `USED` | planning 0.967ms; execution 0.211ms |
+| Preview | `POLICY_BASELINE` | Seq Scan; plan 1, actual 10,000, loops 1, filtered 0, hit/read 143/0 | Index Scan `uq_user_account_id_role`; plan 1, actual 1, loops 10,000, filtered 0, hit/read 30,000/0 | `NOT_USED` | planning 1.166ms; execution 299.718ms |
+| Matching | `POLICY_BASELINE` | Seq Scan; plan 1, actual 1,251, loops 1, filtered 8,749, hit/read 143/0 | Index Scan `uq_user_account_id_role`; plan 1, actual 1, loops 1,251, filtered 0, hit/read 3,753/0 | `NOT_USED` | planning 1.662ms; execution 28.767ms |
+| Preview | `SELECTIVITY_PROBE` | Bitmap Heap Scan via `active_user_presence_position_gix`; plan 1, actual 25, loops 1, filtered 21, hit/read 8/0 | Index Scan `uq_user_account_id_role`; plan 1, actual 1, loops 25, filtered 0, hit/read 75/0 | `USED` | planning 4.111ms; execution 3.887ms |
+| Matching | `SELECTIVITY_PROBE` | Bitmap Heap Scan via `active_user_presence_position_gix`; plan 1, actual 4, loops 1, filtered 42, hit/read 8/0 | Index Scan `uq_user_account_id_role`; plan 1, actual 1, loops 4, filtered 0, hit/read 12/0 | `USED` | planning 0.967ms; execution 0.211ms |
 
 ### Result interpretation
 
 Both SQL shapes independently have `NOT_USED` at `POLICY_BASELINE` and `USED` at `SELECTIVITY_PROBE`. The partial GiST is therefore conditionally useful when the distance predicate is selective. This does **not** satisfy #127's operating-default claim, because the actual GLOBAL/20,100km baseline did not use the index for either query. The 5km result is only a diagnostic and is not a policy recommendation.
+
+Planner `plan rows` were 1 for every target-relation node after `ANALYZE`, while actual rows were much higher (10,000 and 1,251 at the policy baseline; 25 and 4 at the probe). That estimate gap is recorded as a geography-selectivity observation, not as an ANALYZE failure and not as a reason to rewrite production SQL.
 
 The required query-rewrite decision is `NOT_RECOMMENDED`: probe use already demonstrates that the existing query can use the partial GiST under a selective distance predicate, while baseline non-use alone is not a reason to rewrite production SQL. No query, index, migration, production source, or follow-up Issue was created by this task.
 
@@ -83,7 +87,7 @@ The 100,000-account fixture raises local container CPU, memory, and elapsed-time
 
 ### Database and migrations
 
-No schema, migration, or index definition changed. PostgreSQL plans can differ with production statistics, data distribution, PostgreSQL/PostGIS version, and cache state. Timings remain observations rather than service objectives.
+No schema, migration, or index definition changed. PostgreSQL plans can differ with production statistics, data distribution, PostgreSQL/PostGIS version, and cache state. Timings remain observations rather than service objectives. After `ANALYZE`, planner `plan rows` stayed at 1 for every target-relation node while actual rows were much higher; geography `ST_DWithin` selectivity estimates therefore remain a residual measurement limit.
 
 ### Concurrency and idempotency
 
