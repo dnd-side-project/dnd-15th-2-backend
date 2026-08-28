@@ -104,16 +104,26 @@ npm run hooks:validate
 git diff --check
 ```
 
+## Task 2 execution evidence
+
+- Measured commit: `c62f7620bf3010da6b7ac6cdc1f08e5f5cb957a2`
+- Report: `docs/reports/tests/gh-163-TEST-PLAN-GH-163-CANDIDATE-INDEX-REMEASUREMENT.md`
+- Fresh measurement: the focused and full `performanceTest` commands passed. The approved fixture verified 100,000 synthetic accounts, 10,000 valid presences, 10,000 policy-baseline candidates, 25 selectivity-probe candidates, and 9,975 probe-external presences.
+- Fresh conclusion: both preview and matching used no partial GiST at the actual `GLOBAL / 0..20,100km` policy baseline and used `active_user_presence_position_gix` at the diagnostic 5km probe. #127's operating-default claim remains unsatisfied; this task alone does not recommend a production query rewrite.
+- Executed checks: focused performance test, full `performanceTest`, `harness test-run`, `harness check`, `harness pr-ready --project-tests`, `npm run hooks:validate`, and `git diff --check` all passed. The `pr-ready` optional local-main fast-forward helper could not update a `main` branch held by another worktree; it did not change this branch and did not block the successful readiness checks.
+- Scope review through the measured commit found no production source, SQL, migration, or index definition change. Residual risk is that local synthetic cardinality and planner behavior do not represent production data distribution, cache state, or load.
+- Final contract: `PASS`; issue `#163`; task ID `GH-163-CANDIDATE-INDEX-REMEASUREMENT`; design ID `N/A` (test-only task); no blocked or failed required checks; no additional human decision is required to record this evidence. Any production policy, SQL, index, or follow-up Issue requires separate human approval.
+
 ## Completion criteria
 
 - [x] 사람이 100,000:10,000 비율, 100km 분포와 이중 반경 비교를 포함한 테스트 계획을 승인했다. (`2026-08-28T15:53:41+09:00`)
-- [ ] 합성 데이터가 계정 100,000개, presence 10,000개와 20,100km·5km 선택도를 결정적으로 만든다.
-- [ ] preview 집계 SQL을 정책 기본값과 선택도 진단값으로 각각 측정한다.
-- [ ] matching 후보 SQL을 정책 기본값과 선택도 진단값으로 각각 측정한다.
-- [ ] 각 실행계획에 두 대상 relation의 접근 경로가 존재하고 측정 데이터 전제 검증이 통과한다.
-- [ ] 정책 기본값과 선택도 진단값의 결과를 구분해 #127 충족 범위가 과장 없이 기록된다.
-- [ ] 선택도 진단에서도 인덱스가 미사용이면 쿼리 형태 변경 검토 여부와 근거가 기록된다.
-- [ ] production source, query, migration과 인덱스 정의를 변경하지 않는다.
-- [ ] 신규 JUnit 5 테스트가 `@DisplayName`, 정확한 생성 시각과 source scenario 규칙을 지킨다.
-- [ ] 테스트 보고서가 애플리케이션, DB, 동시성, 트랜잭션, 외부 API와 장애 복구 위험을 구분한다.
-- [ ] focused 및 final 검증이 통과하거나 실행 불가 항목이 `BLOCKED`로 기록된다.
+- [x] 합성 데이터가 계정 100,000개, presence 10,000개와 20,100km·5km 선택도를 결정적으로 만든다. (fresh performance evidence)
+- [x] preview 집계 SQL을 정책 기본값과 선택도 진단값으로 각각 측정한다. (fresh performance evidence)
+- [x] matching 후보 SQL을 정책 기본값과 선택도 진단값으로 각각 측정한다. (fresh performance evidence)
+- [x] 각 실행계획에 두 대상 relation의 접근 경로가 존재하고 측정 데이터 전제 검증이 통과한다. (fresh performance evidence)
+- [x] 정책 기본값과 선택도 진단값의 결과를 구분해 #127 충족 범위가 과장 없이 기록된다. (REPORT-001)
+- [x] 선택도 진단에서 partial GiST가 사용되었고, 쿼리 형태 변경 `NOT_RECOMMENDED` 근거가 기록된다. (REPORT-001)
+- [x] production source, query, migration과 인덱스 정의를 변경하지 않는다. (Issue-branch scope review)
+- [x] 신규 JUnit 5 테스트가 `@DisplayName`, 정확한 생성 시각과 source scenario 규칙을 지킨다. (Task 1 class review and focused/full execution)
+- [x] 테스트 보고서가 애플리케이션, DB, 동시성, 트랜잭션, 외부 API와 장애 복구 위험을 구분한다. (REPORT-001)
+- [x] focused 및 final 검증이 통과하거나 실행 불가 항목이 `BLOCKED`로 기록된다. (all required commands passed)
