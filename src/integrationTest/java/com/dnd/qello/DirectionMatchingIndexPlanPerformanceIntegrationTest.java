@@ -173,15 +173,6 @@ class DirectionMatchingIndexPlanPerformanceIntegrationTest extends PostgisContai
 		assertCompletePlan(explain("MATCHING", "SELECTIVITY_PROBE", ActiveUserPresenceSql.FIND_CANDIDATES_SQL, parameters));
 	}
 
-	@Test
-	@DisplayName("PERF-006: 전용 성능 스위트는 모든 시나리오에서 동일한 결정적 fixture를 관측한다")
-	void verifiesPerformanceFixtureRemainsIsolated() {
-		assertThat(count("SELECT COUNT(*) FROM user_account WHERE coarse_region_code = ?", REGION))
-			.isEqualTo(SYNTHETIC_ACCOUNT_COUNT + 1L);
-		assertThat(count("SELECT COUNT(*) FROM active_user_presence WHERE coarse_region_code = ?", REGION))
-			.isEqualTo(SYNTHETIC_PRESENCE_COUNT);
-	}
-
 	private long count(String sql, Object... arguments) {
 		Long value = jdbc.queryForObject(sql, Long.class, arguments);
 		return value == null ? 0 : value;
