@@ -73,5 +73,8 @@ override.tf.json
 ### Subagent-driven-development scratch workspace ###
 .superpowers/
 
+### Isolated git worktrees ###
+.worktrees/
+
 ### macOS ###
 .DS_Store
