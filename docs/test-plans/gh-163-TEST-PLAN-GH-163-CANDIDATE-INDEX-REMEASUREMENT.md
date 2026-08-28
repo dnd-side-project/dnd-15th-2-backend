@@ -272,3 +272,101 @@ git diff --check
 - Reviewer: Human partner
 - Decision: `APPROVED`
 - Approved at: `2026-08-28T15:53:41+09:00`
+
+## 15. SDD implementation tasks
+
+### Task 1: Candidate index plan performance suite
+
+**Files:**
+
+- Create: `src/integrationTest/java/com/dnd/qello/DirectionMatchingIndexPlanPerformanceIntegrationTest.java`
+- Do not modify production source, SQL constants, migrations, `build.gradle`, or the existing #127 performance class.
+
+**Scenarios:** PERF-001 through PERF-006.
+
+**Requirements:**
+
+1. Use JUnit 5 with `@Tag("performance")`, `@SpringBootTest`,
+   `@ActiveProfiles("test")`, and `PostgisContainerIntegrationTestSupport`.
+2. Put an exact `Created at` ISO 8601 timestamp and
+   `Source scenario: TEST-PLAN-GH-163-CANDIDATE-INDEX-REMEASUREMENT-PERF-001 through PERF-006`
+   in the class header. Every test method has `@DisplayName`.
+3. Seed one isolated dataset for the class: 100,000 synthetic ACTIVE accounts, presence for
+   exactly 10,000 of them, a separate excluded user, fixed `NOW`, and a unique region/prefix.
+4. Place the 10,000 positions deterministically in a 100km disk with the approved square-root
+   radial formula and golden-angle bearings. Do not use `random()`.
+5. Verify before explaining queries: 100,000 synthetic accounts, 10,000 synthetic presence,
+   policy maximum radius contains all 10,000, and the 5km probe contains exactly 25.
+6. Read baseline min/max values from `DirectionPostPolicy`; the probe changes only maximum
+   distance to 5,000m and is labeled `SELECTIVITY_PROBE`, never an operating policy.
+7. Run `ANALYZE user_account, active_user_presence` after seeding.
+8. Explain the unmodified `FIND_CANDIDATE_COUNTS_BY_SEGMENT_SQL` and
+   `FIND_CANDIDATES_SQL` for both `POLICY_BASELINE` and `SELECTIVITY_PROBE`.
+9. Parse the full JSON explain result and recursively collect each target relation's node type,
+   index name, plan/actual rows, loops, rows removed by filter, shared hit/read blocks, planning
+   time, execution time, and whether `active_user_presence_position_gix` appears.
+10. Assert data shape, parse completeness, both relation access paths, and at least one matching
+    candidate in the 5km north sector. Do not assert that GIST must or must not be used and do not
+    assert latency thresholds.
+11. Print only a sanitized, deterministic evidence summary; never print raw plans, row IDs,
+    coordinates, server values, or credentials.
+12. Clean up in FK-safe order. A forced abort remains isolated by Testcontainers disposal.
+13. Follow TDD for test infrastructure: first demonstrate the data-shape test failing without the
+    seeding implementation, then add the minimal deterministic seed and complete the observation
+    scenarios. Characterization scenarios may pass against existing production SQL; report them
+    as observations, not fabricated RED evidence.
+
+**Verification:**
+
+```bash
+./gradlew performanceTest --tests '*DirectionMatchingIndexPlanPerformanceIntegrationTest'
+./gradlew performanceTest
+./harness check
+git diff --check
+```
+
+**Commit:** `perf(direction): measure candidate index plans (#163)`
+
+### Task 2: Measurement report and task evidence
+
+**Files:**
+
+- Create: `docs/reports/tests/gh-163-TEST-PLAN-GH-163-CANDIDATE-INDEX-REMEASUREMENT.md`
+- Modify: `TASK.md` only to record executed evidence, checked completion criteria, residual risk,
+  and the final PASS/FAIL/BLOCKED contract.
+- Do not modify the Task 1 test class or any production source. If Task 1 is defective, return
+  `BLOCKED` to the orchestrator rather than fixing it in this task.
+
+**Scenarios:** REPORT-001 and final validation.
+
+**Requirements:**
+
+1. Run the approved performance suite and capture the four query/radius observations from test
+   output without copying raw plan JSON or sensitive values.
+2. Run `./harness test-run --id TEST-PLAN-GH-163-CANDIDATE-INDEX-REMEASUREMENT` to execute
+   unit/integration checks and scaffold the report from `templates/test-report.md`.
+3. Complete every applicable report section, including commands, counts, access paths, GIST
+   outcomes, timings/buffer summaries, application, infrastructure, database, concurrency,
+   transaction, external API, failure recovery, regression and residual risks.
+4. Compare each SQL's `POLICY_BASELINE` and `SELECTIVITY_PROBE` independently using §10.
+   Baseline non-use alone never recommends a rewrite. Probe non-use requires actual rows,
+   filtered rows and buffers before `RECOMMENDED` or `NOT_RECOMMENDED` is selected.
+5. State #127 fulfillment narrowly: only baseline GIST use satisfies its original operating-default
+   claim; probe-only use proves conditional index value but not baseline use.
+6. Update `TASK.md` only with evidence actually produced. Never mark an unexecuted command passed.
+7. Run every final check below. Classify environment failures separately and record all unverified
+   scope if a required check cannot run.
+
+**Verification:**
+
+```bash
+./gradlew performanceTest --tests '*DirectionMatchingIndexPlanPerformanceIntegrationTest'
+./gradlew performanceTest
+./harness test-run --id TEST-PLAN-GH-163-CANDIDATE-INDEX-REMEASUREMENT
+./harness check
+./harness pr-ready --project-tests
+npm run hooks:validate
+git diff --check
+```
+
+**Commit:** `perf(direction): report candidate index remeasurement (#163)`
