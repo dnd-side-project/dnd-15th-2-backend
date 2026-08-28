@@ -1,7 +1,7 @@
 # Test Report: TEST-PLAN-GH-163-CANDIDATE-INDEX-REMEASUREMENT
 
 > Created at: `2026-08-28T16:44:43+09:00`
-> Revised at: `2026-08-28T17:04:00+09:00`
+> Revised at: `2026-08-28T17:37:15+09:00`
 > GitHub Issue: `#163`
 > Branch: `perf/gh-163-candidate-index-remeasurement`
 > Task ID: `GH-163-CANDIDATE-INDEX-REMEASUREMENT`
@@ -12,7 +12,7 @@
 - Result: `PASS`
 - Tested scope: Task 1's isolated PostgreSQL/PostGIS performance integration test, its deterministic 100,000-account/10,000-presence fixture, and current preview and matching candidate SQL at the actual `GLOBAL / 0..20,100km` policy baseline and diagnostic 5km selectivity probe.
 - Unverified scope: production data distributions, production cache and statistics, production load, and any future query rewrite. No production behavior was changed or load-tested.
-- Release recommendation: no release-affecting source change is proposed. The partial GiST is conditionally useful at the diagnostic radius, but the current policy baseline did not use it; a production query rewrite is `NOT_RECOMMENDED` from this task alone.
+- Release recommendation: no release-affecting source change is proposed. The partial GiST is the access method for indexed radius search, not for the sender's compass sector, and it is not required for `ST_DWithin` correctness. The current policy baseline did not use it; a production query rewrite or operating-radius change is `NOT_RECOMMENDED` from this task alone.
 
 ## 2. Environment
 
@@ -71,6 +71,36 @@ Planner `plan rows` were 1 for every target-relation node after `ANALYZE`, while
 
 The required query-rewrite decision is `NOT_RECOMMENDED`: probe use already demonstrates that the existing query can use the partial GiST under a selective distance predicate, while baseline non-use alone is not a reason to rewrite production SQL. No query, index, migration, production source, or follow-up Issue was created by this task.
 
+### What the index accelerates
+
+`active_user_presence_position_gix` is a GiST index on `position geography(Point,4326)` with `WHERE receive_allowed = TRUE`. Candidate matching applies two different predicates:
+
+1. Radius: `ST_DWithin(p.position, origin.point, :maxDistanceMeters)`
+2. Direction: `ST_Azimuth` to compute bearing, then a 45° sector comparison
+
+GiST can accelerate the radius predicate when that circle is selective. It cannot accelerate the compass-sector test. The sector is a computed filter on bearing, not a lookup of "people inside the sender's direction." Matching SQL applies the sector after the distance CTE; preview aggregates bearings into all eight segments after the same radius predicate.
+
+The matching counts match that split. At `POLICY_BASELINE` the presence node kept 1,251 of 10,000 rows and filtered 8,749: about one-eighth of the disk, which is the 45° north sector, after reading every presence row with a Seq Scan. At `SELECTIVITY_PROBE` GiST first narrowed to the 5km circle (25 presences in the fixture), then the north sector left 4 rows. Probe GiST use is therefore "points in a small circle," not "points in that direction."
+
+The index is also not required for radius search to be correct. Without it, `ST_DWithin` still answers by scanning and filtering, which is the baseline plan observed here. B-tree cannot serve `geography` `ST_DWithin`. GiST is the index type required only when radius search should be an indexed access path. That is schema insurance for selective distance search, not a general latency knob and not a gate on matching correctness.
+
+### Why the index was introduced
+
+The index entered the approved schema in `#35`/`#36` (`V1`), not because GLOBAL 20,100km was measured to use it.
+
+- DBML/ERD described it as the core index that accelerates direction-and-distance candidate search, and ERD assumed the matching query would pick spatial candidates with GiST first.
+- The V1 comment explains only the partial predicate: matching always looks at `receive_allowed = TRUE`, so excluding opted-out coordinates keeps the index smaller and cheaper to maintain.
+- `#39` listed spatial-index `EXPLAIN` verification (INT-010) and recorded it `NOT_RUN`. Distance and bearing correctness were tested; planner selection was not.
+- `#127` then treated "10k-scale queries use this GiST" as a completion condition. That claim was an unmeasured inference from the index existing, not from V1's comment.
+
+Current candidate SQL also differs from the ERD assumption: it joins `user_account` and uses GLOBAL 20,100km, so `ST_DWithin` is true for essentially every valid presence. Planner non-use at the policy baseline is the expected cost decision when the circle contains everyone, not proof that the index is dead. Probe `USED` shows the designed radius path still exists when the circle is actually selective.
+
+### What this does not change
+
+These observations do not recommend shrinking the operating radius to force GiST use. The 5km probe is not a product radius. `#122` already forbade silently narrowing GLOBAL to a region because a query was slow. A smaller radius would change who receives a direction post; it is a product decision, not an index-tuning step. An intermediate radius that still contains most real users would likely keep the same Seq Scan.
+
+No ADR is opened here. The task records measurement and interpretation. Keeping or dropping the index, changing `delivery-scope` or max distance, or rewriting SQL remains a separate human decision with its own Issue.
+
 ## 5. Failures and diagnostics
 
 No required command failed and no required command is blocked. `./harness pr-ready --project-tests` reported that its optional local-main fast-forward helper could not fetch into a `main` branch checked out by another worktree. The helper left `main` and this branch unchanged; all required readiness checks completed successfully. This is a shared-worktree environment notice, not a test or implementation failure.
@@ -79,7 +109,7 @@ No required command failed and no required command is blocked. `./harness pr-rea
 
 ### Application code
 
-No application source changed. The evidence characterizes only the two current SQL shapes and does not establish behavior or performance of unimplemented rewrites.
+No application source changed. The evidence characterizes only the two current SQL shapes and does not establish behavior or performance of unimplemented rewrites. Compass-sector filtering is a bearing comparison and is not an indexed GiST lookup; changing sector SQL or operating radius is outside this task.
 
 ### Infrastructure and resource limits
 
@@ -107,7 +137,7 @@ Fixture cleanup deletes presence records before accounts and the dedicated regio
 
 ## 7. Regression and residual risk
 
-The focused and full performance suites, unit/integration regression harness, repository checks, readiness checks, Husky validation, and whitespace validation passed. A review of the Issue branch changes through the measured commit found only test-plan/task metadata, `.gitignore`, and the Task 1 integration-test class; no production source, SQL, migration, or index definition was changed. Residual risk is limited to the difference between the controlled synthetic fixture and real operating data and workload. Any policy, SQL, index, or follow-up work requires separate human review.
+The focused and full performance suites, unit/integration regression harness, repository checks, readiness checks, Husky validation, and whitespace validation passed. A review of the Issue branch changes through the measured commit found only test-plan/task metadata, `.gitignore`, and the Task 1 integration-test class; no production source, SQL, migration, or index definition was changed. Residual risk is limited to the difference between the controlled synthetic fixture and real operating data and workload. Planner non-use at GLOBAL must not be read as a requirement to drop the index or shrink the product radius. Any policy, SQL, index, or follow-up work requires separate human review.
 
 ## 8. Artifacts
 
