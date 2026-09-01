@@ -124,6 +124,12 @@ tasks.register('checkstyleFixture', Checkstyle) {
 	source fixturePath.isPresent() ? files(fixturePath.get()) : files()
 }
 
+tasks.register('validateJavaConventionBaseline', Exec) {
+	description = 'Validates Java convention baseline metadata.'
+	group = 'verification'
+	commandLine 'python3', 'scripts/validate-java-conventions.py'
+}
+
 tasks.register('integrationTest', Test) {
 	description = 'Runs JUnit 5 integration tests.'
 	group = 'verification'
