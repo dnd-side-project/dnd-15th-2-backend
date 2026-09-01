@@ -1,0 +1,30 @@
+<?xml version="1.0"?>
+<!DOCTYPE module PUBLIC
+    "-//Checkstyle//DTD Checkstyle Configuration 1.3//EN"
+    "https://checkstyle.org/dtds/configuration_1_3.dtd">
+<module name="Checker">
+  <property name="charset" value="UTF-8"/>
+  <module name="SuppressionFilter">
+    <property name="file" value="${qelloBaselineSuppressions}"/>
+  </module>
+  <module name="RegexpMultiline">
+    <property name="format" value="spotless:(off|on)|CHECKSTYLE:(OFF|ON)|@SuppressWarnings\(\s*\&quot;qello:"/>
+    <property name="message" value="QELLO-JAVA-BYPASS-001: inline convention bypass is prohibited"/>
+    <property name="fileExtensions" value="java"/>
+  </module>
+  <module name="TreeWalker">
+    <module name="AvoidStarImport">
+      <property name="id" value="QELLO-JAVA-IMPORT-001"/>
+    </module>
+    <module name="MethodLength">
+      <property name="max" value="50"/>
+      <property name="countEmpty" value="false"/>
+      <property name="tokens" value="METHOD_DEF"/>
+      <property name="id" value="QELLO-JAVA-SIZE-001"/>
+    </module>
+    <module name="CyclomaticComplexity">
+      <property name="max" value="15"/>
+      <property name="id" value="QELLO-JAVA-CPLX-001"/>
+    </module>
+  </module>
+</module>
