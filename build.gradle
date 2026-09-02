@@ -155,6 +155,12 @@ tasks.register('javaConventionArchitectureTest', Test) {
 	useJUnitPlatform()
 	filter {
 		includeTestsMatching '*JavaConventionArchitectureTest'
+		includeTestsMatching '*ProductionConvention*'
+		includeTestsMatching '*ChangedJavaTypesTest'
+	}
+	def manifest = providers.gradleProperty('qelloConventionManifest')
+	if (manifest.isPresent()) {
+		systemProperty 'qelloConventionManifest', manifest.get()
 	}
 }
 
