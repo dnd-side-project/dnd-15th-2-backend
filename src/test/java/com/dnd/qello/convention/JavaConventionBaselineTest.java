@@ -93,8 +93,9 @@ class JavaConventionBaselineTest {
 	}
 
 	@Test
-	@DisplayName("현재 Git blob과 다른 LEGACY hash는 QELLO-JAVA-BASELINE-006으로 거절한다")
-	void rejectsStaleLegacyHash(@TempDir Path temporaryDirectory) throws IOException, InterruptedException {
+	@DisplayName("origin/main 대비 LEGACY 추가나 hash 변경은 QELLO-JAVA-BASELINE-007으로 거절한다")
+	void rejectsLegacyAdditionOrHashExtension(@TempDir Path temporaryDirectory)
+			throws IOException, InterruptedException {
 		Path baseline = temporaryDirectory.resolve("baseline.json");
 		Files.writeString(baseline, """
 				{
@@ -116,7 +117,7 @@ class JavaConventionBaselineTest {
 		CommandResult result = run("--baseline", baseline.toString());
 
 		assertThat(result.exitCode()).isNotZero();
-		assertThat(result.output()).contains("QELLO-JAVA-BASELINE-006");
+		assertThat(result.output()).contains("QELLO-JAVA-BASELINE-007");
 	}
 
 	@Test
