@@ -2,6 +2,7 @@
  * Created at: 2026-09-02T00:38:56+09:00
  * Source scenario: TEST-PLAN-GH-208-JAVA-CONVENTION-GATES-UNIT-010 through UNIT-014
  * Source scenario: TEST-PLAN-GH-210-PRODUCTION-CONVENTION-RATCHET-UNIT-005 through UNIT-012
+ * Source scenario: TEST-PLAN-GH-212-INBOX-LIST-ISOLATION-INT-004
  */
 package com.dnd.qello.architecture;
 
@@ -9,9 +10,11 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import com.dnd.qello.architecture.fixture.ClassWriteTransactionalService;
+import com.dnd.qello.architecture.fixture.CollaboratingTransactionalService;
 import com.dnd.qello.architecture.fixture.ConstructorAutowiredService;
 import com.dnd.qello.architecture.fixture.FieldInjectedService;
 import com.dnd.qello.architecture.fixture.PrivateTransactionalService;
+import com.dnd.qello.architecture.fixture.QueryLikeTransactionalService;
 import com.dnd.qello.architecture.fixture.ReadOnlyTransactionalService;
 import com.dnd.qello.architecture.fixture.SelfInvokingTransactionalService;
 import com.dnd.qello.architecture.fixture.SetterInjectedService;
@@ -83,5 +86,14 @@ class JavaConventionArchitectureTest {
 
 		assertThatThrownBy(() -> ProductionConventionRules.noTransactionSelfInvocationRule().check(classes))
 				.hasMessageContaining("QELLO-JAVA-TX-003");
+	}
+
+	@Test
+	@DisplayName("다른 Service의 트랜잭션 메서드 호출은 QELLO-JAVA-TX-003이 아니다")
+	void acceptsCollaboratorTransactionCall() {
+		JavaClasses classes = new ClassFileImporter().importClasses(
+				CollaboratingTransactionalService.class, QueryLikeTransactionalService.class);
+
+		ProductionConventionRules.noTransactionSelfInvocationRule().check(classes);
 	}
 }

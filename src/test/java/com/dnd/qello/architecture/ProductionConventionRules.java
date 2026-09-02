@@ -98,11 +98,16 @@ public final class ProductionConventionRules {
 					@Override
 					public void check(JavaClass item, ConditionEvents events) {
 						for (JavaMethodCall call : item.getMethodCallsFromSelf()) {
-							if (call.getTarget().isAnnotatedWith(Transactional.class)) {
-								events.add(SimpleConditionEvent.violated(call,
-										"QELLO-JAVA-TX-003: " + call.getOrigin().getFullName()
-												+ " -> " + call.getTarget().getFullName()));
+							if (!call.getTarget().isAnnotatedWith(Transactional.class)) {
+								continue;
 							}
+							if (!call.getOrigin().getOwner().getName()
+									.equals(call.getTarget().getOwner().getName())) {
+								continue;
+							}
+							events.add(SimpleConditionEvent.violated(call,
+									"QELLO-JAVA-TX-003: " + call.getOrigin().getFullName()
+											+ " -> " + call.getTarget().getFullName()));
 						}
 					}
 				});
