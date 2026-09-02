@@ -356,6 +356,7 @@ def validation_commands() -> list[list[str]]:
         [python, "scripts/validate-workflows.py"],
         [python, "scripts/validate-labels.py"],
         [python, "scripts/validate-husky.py"],
+        [python, "scripts/validate-java-conventions.py", "--self-test"],
     ]
 
 

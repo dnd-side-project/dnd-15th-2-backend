@@ -1,5 +1,7 @@
 plugins {
 	id 'java'
+	id 'checkstyle'
+	id 'com.diffplug.spotless' version '8.10.1'
 	id 'org.springframework.boot' version '3.5.16'
 	id 'io.spring.dependency-management' version '1.1.7'
 }
@@ -16,6 +18,22 @@ java {
 
 repositories {
 	mavenCentral()
+}
+
+checkstyle {
+	toolVersion = '14.1.0'
+	configFile = file('config/checkstyle/checkstyle.xml')
+}
+
+spotless {
+	encoding 'UTF-8'
+	ratchetFrom 'origin/main'
+
+	java {
+		target 'src/**/*.java'
+		eclipse('4.26').configFile('config/spotless/eclipse-java-formatter.xml')
+		importOrderFile('config/spotless/java-import-order.txt')
+	}
 }
 
 sourceSets {
@@ -71,6 +89,8 @@ dependencies {
 
 	testImplementation 'org.springframework.boot:spring-boot-starter-test'
 	testImplementation 'org.springframework.security:spring-security-test'
+	testImplementation 'com.tngtech.archunit:archunit-junit5:1.4.2'
+	testImplementation 'com.github.javaparser:javaparser-core:3.28.2'
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 	testCompileOnly 'org.projectlombok:lombok'
 	testAnnotationProcessor 'org.projectlombok:lombok'
@@ -83,6 +103,123 @@ dependencies {
 
 tasks.named('test') {
 	useJUnitPlatform()
+}
+
+tasks.withType(Checkstyle).configureEach {
+	maxWarnings = 0
+	configProperties = [
+		qelloBaselineSuppressions: layout.buildDirectory
+			.file('generated/checkstyle/baseline-suppressions.xml').get().asFile.absolutePath
+	]
+}
+
+tasks.register('checkstyleFixture', Checkstyle) {
+	description = 'Runs Checkstyle against one Java fixture passed as qelloStaticFixture.'
+	group = 'verification'
+	classpath = files()
+	configFile = file('config/checkstyle/checkstyle.xml')
+	maxWarnings = 0
+
+	def fixturePath = providers.gradleProperty('qelloStaticFixture')
+	source fixturePath.isPresent() ? files(fixturePath.get()) : files()
+	dependsOn 'validateJavaConventionBaseline'
+}
+
+tasks.register('validateJavaConventionBaseline', Exec) {
+	description = 'Validates Java convention baseline metadata.'
+	group = 'verification'
+	def suppressionOutput = layout.buildDirectory.file('generated/checkstyle/baseline-suppressions.xml')
+	outputs.file(suppressionOutput)
+	inputs.file('config/java-conventions/baseline.json')
+	inputs.file('TASK.md')
+	commandLine 'python3', 'scripts/validate-java-conventions.py',
+		'--suppression-output', suppressionOutput.get().asFile.absolutePath
+}
+
+tasks.register('javaConventionSourceTest', Test) {
+	description = 'Runs Java source convention tests.'
+	group = 'verification'
+	testClassesDirs = sourceSets.test.output.classesDirs
+	classpath = sourceSets.test.runtimeClasspath
+	useJUnitPlatform()
+	filter {
+		includeTestsMatching '*JavaSourceConventionTest'
+	}
+}
+
+tasks.register('javaConventionArchitectureTest', Test) {
+	description = 'Runs Java architecture convention tests.'
+	group = 'verification'
+	testClassesDirs = sourceSets.test.output.classesDirs
+	classpath = sourceSets.test.runtimeClasspath
+	useJUnitPlatform()
+	filter {
+		includeTestsMatching '*JavaConventionArchitectureTest'
+	}
+}
+
+def conventionManifestFiles = {
+	def manifestProperty = providers.gradleProperty('qelloConventionManifest')
+	if (!manifestProperty.isPresent()) {
+		return files()
+	}
+	def manifestPath = file(manifestProperty.get()).canonicalFile
+	def repositoryRoot = rootDir.canonicalFile
+	def manifest = new groovy.json.JsonSlurper().parse(manifestPath)
+	def paths = manifest.paths
+	if (!(paths instanceof List)) {
+		throw new GradleException('qelloConventionManifest.paths must be an array')
+	}
+	def resolved = paths.collect { relativePath ->
+		if (!(relativePath instanceof String) || !relativePath.endsWith('.java')) {
+			throw new GradleException('staged convention manifest contains a non-Java path')
+		}
+		def candidate = file(relativePath).canonicalFile
+		if (!candidate.toPath().startsWith(repositoryRoot.toPath())) {
+			throw new GradleException('staged convention manifest escapes the repository')
+		}
+		candidate
+	}
+	if (resolved.toSet().size() != resolved.size()) {
+		throw new GradleException('staged convention manifest contains duplicate paths')
+	}
+	files(resolved)
+}
+
+tasks.register('checkstyleStagedJava', Checkstyle) {
+	description = 'Runs Checkstyle against staged Java files from qelloConventionManifest.'
+	group = 'verification'
+	classpath = sourceSets.main.compileClasspath
+	configFile = file('config/checkstyle/checkstyle.xml')
+	maxWarnings = 0
+	source conventionManifestFiles()
+	dependsOn 'validateJavaConventionBaseline'
+}
+
+tasks.named('checkstyleMain') {
+	dependsOn 'validateJavaConventionBaseline'
+}
+
+tasks.matching { it.name == 'checkstyleTest' || it.name == 'checkstyleIntegrationTest' }.configureEach {
+	enabled = false
+}
+
+tasks.register('javaConventionStagedCheck') {
+	description = 'Runs Java convention checks for staged Java files.'
+	group = 'verification'
+	dependsOn 'spotlessJavaCheck', 'checkstyleStagedJava', 'validateJavaConventionBaseline',
+		'javaConventionSourceTest', 'javaConventionArchitectureTest'
+}
+
+tasks.register('javaConventionCheck') {
+	description = 'Runs the complete Java convention check.'
+	group = 'verification'
+	dependsOn 'spotlessJavaCheck', 'checkstyleMain', 'validateJavaConventionBaseline',
+		'javaConventionSourceTest', 'javaConventionArchitectureTest'
+}
+
+tasks.named('check') {
+	dependsOn 'javaConventionCheck'
 }
 
 tasks.register('integrationTest', Test) {

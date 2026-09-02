@@ -1,130 +1,150 @@
-# GitHub Issue #163 Task Contract
+# GitHub Issue #208 Task Contract
 
-> Generated at: `2026-08-28T15:07:30+09:00`
+> Generated at: `2026-09-02T00:05:41+09:00`
 >
 > 이 파일은 현재 작업 브랜치의 계약이다. 저장소 전역 정책은 `AGENTS.md`를
 > 따른다.
 
 ## Work gate
 
-- Title: `후보 조회 부분 GIST 인덱스 사용 여부 재측정`
-- GitHub Issue: `#163`
-- Branch: `perf/gh-163-candidate-index-remeasurement`
+- Title: `Java 코드 컨벤션 자동 검증 기반 구축`
+- GitHub Issue: `#208`
+- Branch: `chore/gh-208-java-convention-gates`
 - Base branch: `main`
-- Task ID: `GH-163-CANDIDATE-INDEX-REMEASUREMENT`
-- Test plan: `TEST-PLAN-GH-163-CANDIDATE-INDEX-REMEASUREMENT`
+- Task ID: `GH-208-JAVA-CONVENTION-GATES`
+- Design ID: `APP-DESIGN-GH-208-001`
+- Design path:
+  `docs/superpowers/specs/2026-09-02-java-convention-gates-design.md`
+- Design status: `APPROVED_FOR_PLAN`
+- Design approval evidence: `2026-09-02T00:08:29+09:00` 사용자가 네 개 설계
+  섹션 전체를 승인하고 Issue #208 작업 진행을 요청함
+- Test plan: `TEST-PLAN-GH-208-JAVA-CONVENTION-GATES`
 - Test plan path:
-  `docs/test-plans/gh-163-TEST-PLAN-GH-163-CANDIDATE-INDEX-REMEASUREMENT.md`
+  `docs/test-plans/gh-208-TEST-PLAN-GH-208-JAVA-CONVENTION-GATES.md`
+- Test plan status: `APPROVED_FOR_IMPLEMENTATION_PLAN`
+- Test plan approval evidence: `2026-09-02T00:21:29+09:00` 사용자가
+  `TEST-PLAN-GH-208-JAVA-CONVENTION-GATES`를 승인함
+- Implementation plan:
+  `docs/superpowers/plans/2026-09-02-java-convention-gates.md`
+- Implementation plan status: `APPROVED_FOR_BUILD`
+- Implementation plan approval evidence: `2026-09-02T00:38:56+09:00` 사용자가
+  구현 계획을 승인하고 현재 #208 checkout에서 구현 시작을 요청함
 - Implementation gate: `APPROVED_FOR_BUILD`
-- Approval evidence: `2026-08-28T15:53:41+09:00` 사용자가 이중 반경 테스트 계획을 승인하고 구현 진행을 요청함
 
 ## Objective
 
-- GitHub Issue #127의 10,000명 성능 측정이 만든 `user_account`와
-  `active_user_presence`의 1:1 비율 및 반경 내부 집중 분포를 제거한다.
-- 계정 수가 presence 수보다 충분히 많고 공간 조건의 선택도가 낮은 합성 데이터에서
-  preview·matching 후보 조회 SQL의 실행계획을 다시 측정한다.
-- 부분 GIST 인덱스 `active_user_presence_position_gix`의 사용 여부를 관측 근거와
-  함께 결론 내리되, 결과에 따른 SQL·인덱스 변경은 이 작업에 포함하지 않는다.
+- Java 포맷, Spring bean 생성자 주입, Lombok 사용, Service 트랜잭션 경계와
+  메서드 복잡도 규칙을 사람이 읽는 문서와 실행 가능한 검증으로 일치시킨다.
+- 개발자와 에이전트가 변경한 Java 코드가 commit 전에 빠르게 검증되고,
+  동일한 계약이 Gradle `check`와 GitHub Actions에서 최종 강제되게 한다.
+- 기존 위반은 일괄 소스 변경 없이 중앙 baseline으로 동결하고, 새 위반과
+  변경된 legacy target의 위반 연장을 차단한다.
 
 ## Scope
 
-- 별도 `@Tag("performance")` PostgreSQL/PostGIS 통합 테스트 추가
-- 합성 계정 100,000개와 그중 presence 10,000개를 생성하는 10:1 데이터 모양
-- presence를 원점 기준 최대 100km에 결정적으로 분산
-- 현재 정책과 같은 `GLOBAL / 20,100km` 및 선택도 진단용 5km 반경을 분리 측정
-- 합성 데이터의 계정:presence 비율과 두 반경의 선택도를 실행계획 측정 전에 검증
-- `FIND_CANDIDATE_COUNTS_BY_SEGMENT_SQL`과 `FIND_CANDIDATES_SQL`에
-  `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)` 실행
-- `active_user_presence`·`user_account`의 접근 경로, 인덱스명, 실제 행 수와 buffer
-  요약을 민감정보 없이 기록
-- 두 쿼리별 GIST 사용 여부와 결과별 후속 판단을 테스트 보고서에 기록
-
-100,000:10,000 비율과 100km 분포는 운영 실측값이 아니라 Issue의 예시와 공간
-선택도를 통제하기 위한 합성 가정이다. 20,100km는 현재 저장소의 실제 기본 정책값이고,
-5km는 정책 변경안이 아니라 planner 선택도 진단값으로만 사용한다.
+- `docs/harness/JAVA_CONVENTIONS.md`에 Java·Lombok·트랜잭션·복잡도 정책 기록
+- Spotless와 고정된 Eclipse JDT formatter 설정
+- 탭 들여쓰기, 120자 줄 길이, import 순서와 기본 공백·개행 규칙
+- `origin/main` 기준 변경 파일 formatter ratchet
+- Checkstyle 기반 production source 구조·길이·복잡도 검사
+- ArchUnit 기반 field injection, transaction annotation과 self-invocation 검사
+- 단순 Spring bean 생성자의 `@RequiredArgsConstructor` 전환 규칙
+- DB Service의 클래스 `@Transactional(readOnly = true)` 기본값과 method write override 규칙
+- `LEGACY`와 `JUSTIFIED_EXCEPTION`을 분리한 중앙 baseline과 canonical Git blob hash 검증
+- staged Java만 검사하는 `javaConventionStagedCheck`
+- 전체 convention을 묶는 `javaConventionCheck`와 Gradle `check` 연결
+- 부분 staging Java 차단과 기존 Husky pre-commit·pre-push 연결
+- GitHub Actions `java-conventions` job과 필요한 `origin/main` fetch
+- positive·negative fixture 기반 검증기 자체 테스트
+- package별 후속 정리를 위한 GitHub Project draft tracking reference
 
 ## Explicit exclusions
 
-- `ActiveUserPresenceSql` 쿼리 변경
-- 인덱스·migration·production schema 변경
-- 실제 운영 데이터 또는 운영 부하 테스트
-- `delivery-scope` 정책 변경
-- 5km를 운영 정책 또는 제품 요구사항으로 채택
-- 실행 시간 임계값 단언
-- 측정 결과에 따른 후속 성능 개선 구현 또는 별도 Issue 자동 생성
+- production Service의 생성자, 트랜잭션 또는 메서드 본문 리팩터링
+- 기존 Java source 전체의 일괄 formatter 적용
+- API, domain, persistence, schema, migration과 query 동작 변경
+- package별 후속 Repository Issue 일괄 생성
+- 새 제품 기능, 배포, 인프라와 production 변경
+- hook, baseline 또는 CI를 우회하는 기능
+- 테스트 계획과 구현 계획 승인 전 build script, hook, workflow와 test source 수정
 - 인프라 apply, 배포, 프로덕션 변경은 별도 승인 없이는 실행하지 않는다.
 - Secret, 계정 식별자, 토큰, `.env` 값은 기록하지 않는다.
 
 ## Approved decisions
 
-- `DEC-163-001`: 계정 100,000개 중 presence 10,000개인 10:1 합성 cardinality를 사용한다.
-- `DEC-163-002`: presence는 100km 원 안에 결정적으로 분산하되 운영 분포라고 주장하지 않는다.
-- `DEC-163-003`: 현재 정책값 20,100km와 선택도 진단값 5km를 분리 측정한다.
-- `DEC-163-004`: GIST 사용 여부는 단언하지 않고 쿼리·반경별 관측값으로 보고한다.
-- `DEC-163-005`: #127 성능 테스트는 보존하고 #163 전용 클래스를 추가한다.
-- `DEC-163-006`: planner 설정이나 hint로 GIST 사용을 강제하지 않는다.
-- `DEC-163-007`: #127 충족 범위와 쿼리 재작성 검토는 정책값·진단값 결과를 구분한다.
+- `DEC-208-001`: Gradle task를 실행 가능한 단일 기준으로 두고 Husky와 CI는 같은 task를 호출한다.
+- `DEC-208-002`: Spotless Eclipse JDT formatter와 `origin/main` ratchet으로 변경 파일부터 적용한다.
+- `DEC-208-003`: 단순 주입 생성자는 `@RequiredArgsConstructor`를 사용하고 의미 있는 생성자는 근거 있는 예외로 남긴다.
+- `DEC-208-004`: DB Service는 클래스 read-only를 기본으로 하고 쓰기 method만 `@Transactional`을 재정의한다.
+- `DEC-208-005`: 외부 I/O 경계, `TransactionTemplate`, `NOT_SUPPORTED`와 주입 metadata는 명시적 예외로 허용한다.
+- `DEC-208-006`: 새 코드의 method length는 50줄, cyclomatic complexity는 15를 상한으로 둔다.
+- `DEC-208-007`: 기존 위반은 `LEGACY`, 의도적인 예외는 `JUSTIFIED_EXCEPTION`으로 분리하고 정확한 target만 등록한다.
+- `DEC-208-008`: 변경된 legacy target은 baseline hash 갱신으로 연장하지 않고 해당 위반을 해소한다.
+- `DEC-208-009`: pre-commit은 staged Java만 검사하고 같은 파일의 partial staging은 차단한다.
+- `DEC-208-010`: 첫 package pilot은 별도 작업에서 `feed`를 우선 검토하며 이 Issue에서는 production refactor를 하지 않는다.
 
 ## Ownership
 
 | Area | Owner | Required review |
 | --- | --- | --- |
-| 요구사항·가정·테스트 계획 통합 | Test Orchestrator | Human partner |
-| 합성 데이터·실행계획 성능 통합 테스트 | Test Executor | Independent verifier |
-| 테스트 결과 보고서와 결과별 후속 판단 | Test Executor | PM reviewer |
-| 전체 diff·정책·재현성 독립 검증 | Independent verifier | Human partner |
-
-실행자는 승인된 테스트 계획에서 배정된 파일만 수정한다. 검증자는 테스트를 통과시키기
-위해 production source나 테스트 소스를 수정하지 않는다.
+| 요구사항·설계·Issue 계약 통합 | Orchestrator | Human partner |
+| Gradle·formatter·Checkstyle·ArchUnit 구현 | Execution agent | Independent verifier |
+| baseline inventory와 exception 근거 | Execution agent | PM reviewer |
+| Husky·GitHub Actions 연결 | Execution agent | Independent verifier |
+| positive·negative fixture 및 회귀 검증 | Test executor | Independent verifier |
+| 최종 범위·위험·증거 승인 | PM reviewer | Human partner |
 
 ## Existing user-owned changes
 
-- 작업 시작 시 `git status --short`는 비어 있었고 기존 사용자 변경은 없었다.
-- 로컬 `main`과 `origin/main`은 `938046e`에서 일치했다.
-- 이 브랜치에서 현재 생성한 변경은 이 `TASK.md`, 승인된 테스트 계획과 격리
-  worktree용 `.gitignore` 항목뿐이다.
+- Issue intake 시작 시 `main`의 `git status --short`는 비어 있었고 기존 사용자 변경은 없었다.
+- `./harness start`가 최신 `origin/main`에서
+  `chore/gh-208-java-convention-gates`를 생성했다.
+- 현재 변경은 `./harness task-init --replace`가 만든 `TASK.md`, 이 계약 구체화,
+  승인된 설계 문서, 승인된 테스트 계획과 draft 구현 계획뿐이다.
+- 범위 밖 기존 파일과 다른 사용자의 변경을 자동 정리하거나 되돌리지 않는다.
 
 ## Validation
 
-Focused checks:
+Planning checks:
 
 ```bash
-./gradlew performanceTest --tests '*DirectionMatchingIndexPlanPerformanceIntegrationTest'
-```
-
-Final checks:
-
-```bash
-./gradlew performanceTest
-./harness test-run --id TEST-PLAN-GH-163-CANDIDATE-INDEX-REMEASUREMENT
-./harness check
-./harness pr-ready --project-tests
-npm run hooks:validate
+rg -n "TODO|TBD|PLACEHOLDER" TASK.md \
+  docs/superpowers/specs/2026-09-02-java-convention-gates-design.md
 git diff --check
 ```
 
-## Task 2 execution evidence
+Implementation checks after separate plan approval:
 
-- Measured commit: `c62f7620bf3010da6b7ac6cdc1f08e5f5cb957a2`
-- Report: `docs/reports/tests/gh-163-TEST-PLAN-GH-163-CANDIDATE-INDEX-REMEASUREMENT.md`
-- Fresh measurement: the focused and full `performanceTest` commands passed. The approved fixture verified 100,000 synthetic accounts, 10,000 valid presences, 10,000 policy-baseline candidates, 25 selectivity-probe candidates, and 9,975 probe-external presences.
-- Plan-rows revision: a later focused `performanceTest` of `DirectionMatchingIndexPlanPerformanceIntegrationTest` passed in 28s and confirmed `plan rows=1` for both target relations in all four observations. Access paths, actual rows, loops, filter counts, buffers, and GiST `USED`/`NOT_USED` matched the earlier full-suite evidence.
-- Fresh conclusion: both preview and matching used no partial GiST at the actual `GLOBAL / 0..20,100km` policy baseline and used `active_user_presence_position_gix` at the diagnostic 5km probe. #127's operating-default claim remains unsatisfied; this task alone does not recommend a production query rewrite. Planner estimates stayed at 1 row per target-relation node after `ANALYZE` even when actual rows were much higher; that gap is recorded as a selectivity-estimate observation, not as a rewrite reason.
-- Executed checks: focused performance test, full `performanceTest`, `harness test-run`, `harness check`, `harness pr-ready --project-tests`, `npm run hooks:validate`, and `git diff --check` all passed. The `pr-ready` optional local-main fast-forward helper could not update a `main` branch held by another worktree; it did not change this branch and did not block the successful readiness checks.
-- Scope review through the measured commit found no production source, SQL, migration, or index definition change. Residual risk is that local synthetic cardinality and planner behavior do not represent production data distribution, cache state, or load.
-- Final contract: `PASS`; issue `#163`; task ID `GH-163-CANDIDATE-INDEX-REMEASUREMENT`; design ID `N/A` (test-only task); no blocked or failed required checks; no additional human decision is required to record this evidence. Any production policy, SQL, index, or follow-up Issue requires separate human approval.
+```bash
+./gradlew javaConventionCheck
+./gradlew check
+npm run hooks:validate
+npm run hooks:pre-commit
+./harness check
+./harness pr-ready --project-tests
+git diff --check
+```
+
+검증기 자체 테스트는 positive fixture가 통과하고 각 negative fixture가 기대한
+rule ID 하나로 실패하는지 확인한다. 실제 staged hook 검증은 별도 임시 Git index
+fixture에서 실행해 현재 작업 index를 훼손하지 않는다.
 
 ## Completion criteria
 
-- [x] 사람이 100,000:10,000 비율, 100km 분포와 이중 반경 비교를 포함한 테스트 계획을 승인했다. (`2026-08-28T15:53:41+09:00`)
-- [x] 합성 데이터가 계정 100,000개, presence 10,000개와 20,100km·5km 선택도를 결정적으로 만든다. (fresh performance evidence)
-- [x] preview 집계 SQL을 정책 기본값과 선택도 진단값으로 각각 측정한다. (fresh performance evidence)
-- [x] matching 후보 SQL을 정책 기본값과 선택도 진단값으로 각각 측정한다. (fresh performance evidence)
-- [x] 각 실행계획에 두 대상 relation의 접근 경로가 존재하고 측정 데이터 전제 검증이 통과한다. (fresh performance evidence)
-- [x] 정책 기본값과 선택도 진단값의 결과를 구분해 #127 충족 범위가 과장 없이 기록된다. (REPORT-001)
-- [x] 선택도 진단에서 partial GiST가 사용되었고, 쿼리 형태 변경 `NOT_RECOMMENDED` 근거가 기록된다. (REPORT-001)
-- [x] production source, query, migration과 인덱스 정의를 변경하지 않는다. (Issue-branch scope review)
-- [x] 신규 JUnit 5 테스트가 `@DisplayName`, 정확한 생성 시각과 source scenario 규칙을 지킨다. (Task 1 class review and focused/full execution)
-- [x] 테스트 보고서가 애플리케이션, DB, 동시성, 트랜잭션, 외부 API와 장애 복구 위험을 구분한다. (REPORT-001)
-- [x] focused 및 final 검증이 통과하거나 실행 불가 항목이 `BLOCKED`로 기록된다. (all required commands passed)
+- [ ] 사람이 risk-based 테스트 계획과 구현 계획을 별도로 승인했다.
+- [ ] Spotless, Eclipse JDT formatter, Checkstyle과 ArchUnit 버전이 고정됐다.
+- [ ] formatter 설정과 `JAVA_CONVENTIONS.md`가 같은 포맷 계약을 표현한다.
+- [ ] `spotlessApply`, `javaConventionStagedCheck`, `javaConventionCheck`가 동작한다.
+- [ ] 전체 convention 검증이 Gradle `check`에 연결됐다.
+- [ ] 기존 위반 inventory가 정확한 target, 분류, 근거와 tracking reference를 가진다.
+- [ ] 새 `LEGACY`, wildcard suppression과 근거 없는 예외가 차단된다.
+- [ ] canonical Git blob hash가 달라진 legacy target은 실패한다.
+- [ ] field injection, 단순 명시적 생성자, class write transaction이 차단된다.
+- [ ] private transaction method와 transaction self-invocation이 차단된다.
+- [ ] method length 50과 cyclomatic complexity 15 상한이 변경 코드에 적용된다.
+- [ ] partial staging Java가 명확한 메시지로 차단된다.
+- [ ] formatter 위반 메시지가 `./gradlew spotlessApply`를 안내한다.
+- [ ] positive·negative fixture가 기대한 원인으로 통과·실패한다.
+- [ ] 기존 production source와 runtime 동작을 변경하지 않는다.
+- [ ] 전체 Java source를 일괄 포맷하지 않는다.
+- [ ] 필수 local check와 GitHub Actions 결과, 실행 시간과 미검증 범위가 보고된다.

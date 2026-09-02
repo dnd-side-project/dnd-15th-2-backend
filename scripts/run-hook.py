@@ -4,8 +4,11 @@
 from __future__ import annotations
 
 import argparse
+import json
+import re
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Sequence
 
@@ -43,6 +46,45 @@ def staged_files() -> list[str]:
     ]
 
 
+def staged_java_files(files: list[str]) -> list[str]:
+	return [path for path in files if path.endswith(".java") and path.startswith("src/")]
+
+
+def ensure_java_not_partially_staged(files: list[str]) -> None:
+	for path in staged_java_files(files):
+		result = subprocess.run(["git", "diff", "--quiet", "--", path], cwd=ROOT, check=False)
+		if result.returncode != 0:
+			print(
+				f"QELLO-JAVA-STAGED-001: {path} has both staged and unstaged changes; stage or separate the file.",
+				file=sys.stderr,
+			)
+			raise SystemExit(1)
+
+
+def run_staged_java_gate(files: list[str]) -> None:
+	java_files = staged_java_files(files)
+	if not java_files:
+		return
+	ensure_java_not_partially_staged(files)
+	manifest_path = None
+	try:
+		with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", suffix=".json", delete=False) as manifest:
+			json.dump({"paths": java_files}, manifest)
+			manifest_path = manifest.name
+		spotless_files = ",".join(
+			re.escape(str((ROOT / path).resolve())) for path in java_files
+		)
+		run([
+			"./gradlew",
+			"javaConventionStagedCheck",
+			f"-PqelloConventionManifest={manifest_path}",
+			f"-PspotlessFiles={spotless_files}",
+		])
+	finally:
+		if manifest_path:
+			Path(manifest_path).unlink(missing_ok=True)
+
+
 def pre_commit() -> None:
     files = staged_files()
     if not files:
@@ -52,6 +94,7 @@ def pre_commit() -> None:
     run([sys.executable, "scripts/validate-conventions.py"])
     run(["git", "diff", "--cached", "--check"])
     run([sys.executable, "scripts/preflight.py", "--staged"])
+    run_staged_java_gate(files)
 
     if any(
         path.endswith(".java")
