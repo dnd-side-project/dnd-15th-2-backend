@@ -65,6 +65,19 @@ public class ExampleService {
 - 정적 규칙은 업무 의미상 read/write를 완전히 추론하지 않는다. class read-only 기본값과
   package별 integration test로 실제 transaction behavior를 확인한다.
 
+## production scan과 changed-file ratchet
+
+ArchUnit TX/injection 규칙은 production `@Service`를 대상으로 한다.
+
+- 감사 inventory는 전체 production Service를 읽지만 `javaConventionCheck`를 실패시키지 않는다.
+- `javaConventionCheck`는 `origin/main` 대비 변경된 production Java의 `@Service`에만 규칙을 강제한다.
+- `javaConventionStagedCheck`는 `qelloConventionManifest` 경로 집합에 같은 규칙을 적용한다.
+- 새 production Service 파일은 즉시 강제된다. 미수정 legacy는 Project draft로 추적한다.
+- 기존 위반을 `LEGACY`로 추가하거나 hash만 갱신하지 않는다.
+- field와 setter `@Autowired`는 `QELLO-JAVA-INJECTION-001`이다. constructor `@Autowired`는
+  이 규칙의 대상이 아니다.
+- `origin/main`이 없으면 검사를 건너뛰지 않고 configuration failure로 종료한다.
+
 ## 메서드 복잡도
 
 - method length 50줄 초과는 `QELLO-JAVA-SIZE-001`이다.
