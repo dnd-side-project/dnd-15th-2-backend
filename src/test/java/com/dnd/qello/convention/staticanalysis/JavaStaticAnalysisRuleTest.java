@@ -27,7 +27,12 @@ class JavaStaticAnalysisRuleTest {
 		assertThat(output)
 				.contains("spotlessApply")
 				.contains("spotlessJavaCheck")
-				.contains("checkstyleMain");
+				.contains("checkstyleMain")
+				.contains("javaConventionSourceTest")
+				.contains("javaConventionArchitectureTest")
+				.contains("javaConventionStagedCheck")
+				.contains("javaConventionCheck")
+				.contains("checkstyleStagedJava");
 	}
 
 	@Test

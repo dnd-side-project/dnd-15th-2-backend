@@ -11,6 +11,7 @@ import subprocess
 import sys
 from datetime import date
 from pathlib import Path
+from xml.sax.saxutils import escape
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -24,6 +25,11 @@ KNOWN_RULES = {
     "QELLO-JAVA-TX-001",
     "QELLO-JAVA-TX-002",
     "QELLO-JAVA-TX-003",
+}
+CHECKSTYLE_RULES = {
+    "QELLO-JAVA-IMPORT-001": "AvoidStarImport",
+    "QELLO-JAVA-SIZE-001": "MethodLength",
+    "QELLO-JAVA-CPLX-001": "CyclomaticComplexity",
 }
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 DECISION_RE = re.compile(r"^- `(?P<decision>DEC-[A-Z0-9-]+)`: ", re.MULTILINE)
@@ -101,6 +107,13 @@ def source_path(target: str) -> str:
     return "src/main/java/" + class_name.replace(".", "/") + ".java"
 
 
+def git_bytes(revision: str, path: str) -> bytes:
+	result = subprocess.run(["git", "show", f"{revision}:{path}"], cwd=ROOT, capture_output=True, check=False)
+	if result.returncode != 0:
+		raise ValueError(f"cannot read Git blob {revision}:{path}")
+	return result.stdout
+
+
 def git_blob_sha256(revision: str, path: str) -> str:
     result = subprocess.run(
         ["git", "show", f"{revision}:{path}"],
@@ -128,6 +141,47 @@ def validate_hashes(document: object, revision: str) -> list[tuple[str, str]]:
         if entry.get("sourceSha256") != actual:
             errors.append(error("QELLO-JAVA-BASELINE-006", f"stale hash for {entry['target']}"))
     return errors
+
+
+def validate_lifecycle(document: object, revision: str) -> list[tuple[str, str]]:
+    try:
+        base = json.loads(git_bytes(revision, "config/java-conventions/baseline.json"))
+    except ValueError:
+        return []
+    base_entries = {entry.get("id"): entry for entry in base.get("entries", []) if isinstance(entry, dict)}
+    if not base_entries and document.get("bootstrapIssue") == 208:
+        return []
+    errors = []
+    for entry in document.get("entries", []) if isinstance(document, dict) else []:
+        if not isinstance(entry, dict) or entry.get("classification") != "LEGACY":
+            continue
+        previous = base_entries.get(entry.get("id"))
+        if previous is None or previous.get("sourceSha256") != entry.get("sourceSha256"):
+            errors.append(error("QELLO-JAVA-BASELINE-007", f"legacy baseline addition or extension: {entry.get('id')}"))
+    return errors
+
+
+def write_suppressions(document: object, output: Path) -> None:
+    entries = document.get("entries", []) if isinstance(document, dict) else []
+    rows = []
+    for entry in entries:
+        if not isinstance(entry, dict) or entry.get("classification") != "LEGACY":
+            continue
+        check = CHECKSTYLE_RULES.get(entry.get("rule"))
+        if check is None:
+            continue
+        path = source_path(entry["target"])
+        rows.append(f'  <suppress checks="{escape(check)}" files="{escape(path)}"/>')
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(
+        '<?xml version="1.0"?>\n'
+        '<!DOCTYPE suppressions PUBLIC "-//Checkstyle//DTD SuppressionFilter Configuration 1.2//EN" '
+        '"https://checkstyle.org/dtds/suppressions_1_2.dtd">\n'
+        "<suppressions>\n"
+        + "\n".join(sorted(set(rows)))
+        + "\n</suppressions>\n",
+        encoding="utf-8",
+    )
 
 
 def self_test() -> list[tuple[str, str]]:
@@ -162,6 +216,7 @@ def main() -> int:
     parser.add_argument("--baseline", default="config/java-conventions/baseline.json")
     parser.add_argument("--task-file", default="TASK.md")
     parser.add_argument("--base-ref", default="origin/main")
+    parser.add_argument("--suppression-output")
     args = parser.parse_args()
 
     if args.self_test:
@@ -176,10 +231,14 @@ def main() -> int:
             document = json.loads((ROOT / args.baseline).read_text(encoding="utf-8"))
             errors = validate_document(document, decisions)
             if not errors:
+                errors.extend(validate_lifecycle(document, args.base_ref))
+            if not errors:
                 errors.extend(validate_hashes(document, args.base_ref))
         except (OSError, ValueError, json.JSONDecodeError) as exception:
             errors = [error("QELLO-JAVA-BASELINE-001", str(exception))]
         if not errors:
+            if args.suppression_output:
+                write_suppressions(document, Path(args.suppression_output))
             print("Java convention baseline validation passed.")
             return 0
 
