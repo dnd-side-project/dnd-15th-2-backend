@@ -4,6 +4,7 @@ import java.time.Clock;
 import java.time.Instant;
 
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.dnd.qello.direction.config.SkipConfirmationProperties;
@@ -22,6 +23,7 @@ import lombok.RequiredArgsConstructor;
 /** 인증 subject를 검증하고 수신함 조회와 사용자 상태 명령의 feature 경계를 제공한다. */
 @Service
 @RequiredArgsConstructor
+@Transactional(readOnly = true)
 public class InboxApplicationService {
 
 	private final AccountEligibilityGate accountEligibilityGate;
@@ -30,7 +32,11 @@ public class InboxApplicationService {
 	private final Clock clock;
 	private final SkipConfirmationProperties skipConfirmationProperties;
 
-	@Transactional(readOnly = true)
+	/**
+	 * 목록과 칩 집계가 같은 snapshot을 보게 REPEATABLE_READ를 여기서 연다. 바깥 기본 READ_COMMITTED에 참여하면
+	 * InboxQueryService의 isolation은 무시된다.
+	 */
+	@Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
 	public InboxListing list(long recipientId, InboxCategory category, String directionSegmentKey) {
 		accountEligibilityGate.require(recipientId);
 		Instant at = clock.instant();
@@ -48,7 +54,7 @@ public class InboxApplicationService {
 			throw mapCommandException(exception);
 		}
 		return queryService.detail(recipientId, postRecipientId, at)
-			.orElseThrow(() -> new FeedException(FeedErrorCode.INBOX_ITEM_NOT_FOUND));
+				.orElseThrow(() -> new FeedException(FeedErrorCode.INBOX_ITEM_NOT_FOUND));
 	}
 
 	@Transactional
@@ -83,14 +89,15 @@ public class InboxApplicationService {
 			throw new FeedException(FeedErrorCode.INBOX_TRANSITION_CONFLICT);
 		}
 		return recipient.getSkipRequestedAt()
-			.plusSeconds(skipConfirmationProperties.skipConfirmationGraceSeconds());
+				.plusSeconds(skipConfirmationProperties.skipConfirmationGraceSeconds());
 	}
 
 	private FeedException mapCommandException(DirectionException exception) {
 		if (exception.getErrorCode() == DirectionErrorCode.INVALID_RECIPIENT_STATE) {
-			return new FeedException(FeedErrorCode.INBOX_TRANSITION_CONFLICT, "status", exception.getReason(), exception);
+			return new FeedException(FeedErrorCode.INBOX_TRANSITION_CONFLICT, "status", exception.getReason(),
+					exception);
 		}
 		return new FeedException(
-			FeedErrorCode.INBOX_ITEM_NOT_FOUND, "postRecipientId", "수신함 항목을 찾을 수 없습니다.", exception);
+				FeedErrorCode.INBOX_ITEM_NOT_FOUND, "postRecipientId", "수신함 항목을 찾을 수 없습니다.", exception);
 	}
 }

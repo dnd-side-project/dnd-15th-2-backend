@@ -60,6 +60,8 @@ public class ExampleService {
 - 클래스 단위 write `@Transactional`은 금지한다.
 - 실제 변경 entry method에만 method-level `@Transactional`을 붙인다.
 - private/protected transaction method와 self-invocation을 금지한다.
+  self-invocation은 같은 클래스 내부에서 `@Transactional` 메서드를 직접 호출하는
+  경우다. 다른 Spring bean의 트랜잭션 메서드 호출은 해당하지 않는다.
 - `TransactionTemplate`, `Propagation.NOT_SUPPORTED`, external I/O boundary와 특별한
   propagation/isolation은 중앙 baseline의 `JUSTIFIED_EXCEPTION`으로 등록한다.
 - 정적 규칙은 업무 의미상 read/write를 완전히 추론하지 않는다. class read-only 기본값과
