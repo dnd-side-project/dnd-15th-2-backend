@@ -247,6 +247,13 @@ class DirectionMatchingE3PerformanceIntegrationTest extends PostgisContainerInte
 	/**
 	 * 접근 경로 자체는 단언하지 않는다. 대상 relation 두 개가 계획에 존재하고, 수집된 각 노드가 추정 행 수·실제 행
 	 * 수·loop·block 합계를 실제로 담고 있는지만 확인해 관측 증거가 비어 있는 채로 통과하지 않게 한다.
+	 *
+	 * <p>
+	 * {@code DirectionMatchingPerformanceProbe}는 EXPLAIN JSON에 해당 키가 없으면 0.0을 돌려준다.
+	 * 그래서 네 지표의 하한은 모두 0.0을 거부해야 키를 실제로 읽었다는 검증이 된다. 실제 행 수의 하한 1.0은 이 fixture에서 참인
+	 * 주장이다 — 두 반경 모두 후보 집합이 비어 있지 않고 합성 계정이 전부 ACTIVE라 두 대상 relation이 loop당 최소 한 행을
+	 * 낸다. 이 전제가 깨지면 조용히 통과하지 않고 실패해야 한다. JSON 수치는 NaN이 될 수 없으므로 NaN 검사는 두지 않는다.
+	 * </p>
 	 */
 	private void assertCompletePlan(FixtureScale scale, PlanObservation observation) {
 		String label = condition(scale, observation.queryKind(), observation.radius());
@@ -258,11 +265,11 @@ class DirectionMatchingE3PerformanceIntegrationTest extends PostgisContainerInte
 				.allSatisfy(node -> {
 					assertThat(node.nodeType()).as("%s node type", node.relation()).isNotBlank();
 					assertThat(node.planRows()).as("%s plan rows", node.relation())
-							.isNotNaN().isGreaterThanOrEqualTo(1.0);
+							.isGreaterThanOrEqualTo(1.0);
 					assertThat(node.actualRows()).as("%s actual rows", node.relation())
-							.isNotNaN().isGreaterThanOrEqualTo(0.0);
+							.isGreaterThanOrEqualTo(1.0);
 					assertThat(node.actualLoops()).as("%s actual loops", node.relation())
-							.isNotNaN().isGreaterThanOrEqualTo(1.0);
+							.isGreaterThanOrEqualTo(1.0);
 					assertThat(node.sharedBlocksHit() + node.sharedBlocksRead())
 							.as("%s block totals", node.relation()).isGreaterThan(0.0);
 				});
