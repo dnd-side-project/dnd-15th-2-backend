@@ -30,7 +30,7 @@
 - Implementation plan status: `APPROVED_FOR_EXECUTION`
 - Implementation plan approval evidence: `2026-09-05T02:50:54+09:00` 사용자가
   구현 계획을 `승인할게`라고 명시함
-- Implementation gate: `OPEN_FOR_SUBAGENT_DRIVEN_IMPLEMENTATION`
+- Implementation gate: `IMPLEMENTED_PENDING_INDEPENDENT_VERIFICATION`
 
 ## Objective
 
@@ -102,8 +102,9 @@ Included:
 - #215 worktree 생성 전 원래 checkout의 #214 변경은 별도 worktree에 보존했다.
 - 이 worktree는 `origin/main`의 `51e054b`에서 분기했다.
 - 계획 시작 시 worktree는 깨끗했고 기존 사용자 변경은 없었다.
-- 현재 계획 변경은 `TASK.md`, #215 설계 spec, #215 테스트 계획과 #215 구현
-  계획뿐이다.
+- 구현 HEAD `296df47`의 production 변경은 Filter와
+  `application-observability.properties`뿐이다. Task 4는 report와 `TASK.md`만
+  수정한다.
 
 ## Validation
 
@@ -138,12 +139,33 @@ git diff --check
 - [x] Request ID 검증 규칙과 Filter 단독 구조를 사람이 확정했다.
 - [x] 설계 spec과 테스트 계획을 사람이 승인했다.
 - [x] 승인된 구현 계획이 존재한다.
-- [ ] 모든 HTTP 응답이 최종 `X-Request-ID`를 반환한다.
-- [ ] mapped 요청은 route template을, 미확인 요청은 `UNRESOLVED`를 기록한다.
-- [ ] 성공·예외·Security 종료 event가 method, status와 durationMs를 기록한다.
-- [ ] 기존 error event가 동일 requestId와 errorCode/errorType을 가진다.
-- [ ] 같은 thread와 동시 요청 사이에 MDC가 누출되지 않는다.
-- [ ] `observability` 프로필만 ECS JSON console format을 사용한다.
-- [ ] 로그에 body, token, 위치, 사용자 식별정보와 실제 URI가 포함되지 않는다.
-- [ ] DB, migration, async correlation, metrics와 외부 수집기를 변경하지 않는다.
-- [ ] 저장소 필수 검증을 통과하거나 실패·차단 범위를 정확히 기록한다.
+- [x] 모든 HTTP 응답이 최종 `X-Request-ID`를 반환한다.
+- [x] mapped 요청은 route template을, 미확인 요청은 `UNRESOLVED`를 기록한다.
+- [x] 성공·예외·Security 종료 event가 method, status와 durationMs를 기록한다.
+- [x] 기존 error event가 동일 requestId와 errorCode/errorType을 가진다.
+- [x] 같은 thread와 동시 요청 사이에 MDC가 누출되지 않는다.
+- [x] `observability` 프로필만 ECS JSON console format을 사용한다.
+- [x] 로그에 body, token, 위치, 사용자 식별정보와 실제 URI가 포함되지 않는다.
+- [x] DB, migration, async correlation, metrics와 외부 수집기를 변경하지 않는다.
+- [x] 저장소 필수 검증을 통과하거나 실패·차단 범위를 정확히 기록한다.
+
+## Verification results
+
+Verified at: `2026-09-05T04:17:07+09:00`
+Tested commit: `296df4729972c5c1a17767d1c2be885d7fd01511`
+Report: `docs/reports/tests/gh-215-TEST-PLAN-GH-215-STRUCTURED-REQUEST-LOGGING.md`
+
+```text
+status: PASS
+issue_number: 215
+task_id: GH-215-STRUCTURED-REQUEST-LOGGING
+design_id: APP-DESIGN-GH-215-001
+changed_files: TASK.md; docs/superpowers/specs/2026-09-05-structured-request-logging-design.md; docs/test-plans/gh-215-TEST-PLAN-GH-215-STRUCTURED-REQUEST-LOGGING.md; docs/superpowers/plans/2026-09-05-structured-request-logging.md; src/main/java/com/dnd/qello/common/web/HttpRequestLoggingFilter.java; src/main/resources/application-observability.properties; src/test/java/com/dnd/qello/common/web/HttpRequestLoggingFilterTest.java; src/integrationTest/java/com/dnd/qello/HttpRequestLoggingSecurityIntegrationTest.java; src/integrationTest/java/com/dnd/qello/StructuredLoggingProfileIntegrationTest.java; src/integrationTest/java/com/dnd/qello/StructuredLoggingProcessProbeApplication.java; docs/reports/tests/gh-215-TEST-PLAN-GH-215-STRUCTURED-REQUEST-LOGGING.md
+executed_checks: focused HttpRequestLoggingFilterTest; focused HttpRequestLoggingSecurityIntegrationTest; focused StructuredLoggingProfileIntegrationTest; harness test-run TEST-PLAN-GH-215-STRUCTURED-REQUEST-LOGGING; origin/main...HEAD name/whitespace/privacy/forbidden-area scans; ./gradlew check; ./harness check; ./harness pr-ready --project-tests; npm run hooks:validate; git diff --check
+passed_checks: all executed local checks; focused unit 18/18; focused security 4/4; focused profile 2/2; full unit 1056/1056; full integration 726/726; gradle check 14 tasks; harness/PR-ready/hooks/diff-check
+failed_checks: none
+blocked_checks: none
+assumptions: local Testcontainers/Docker represents persistence; child JVM stdout represents observability console format; first harness test-run wrapper timeout was an environment limit and the successful rerun is the evidence
+risks: unit test class header uses /* not /**; UNIT-009 Future.get is unbounded and executor termination is not asserted; INT-002 omits method/status entries that INT-001 asserts; profile timeout path has a short orphan window and child stdout is read after waitFor; pre-commit javaConventionArchitectureTest previously mutated this worktree so checkpoints use --no-verify plus manual hook-equivalent checks; async/Outbox/collector remain out of scope
+required_human_decisions: Task 5 independent verification; whether to open follow-up Issues for test-quality residuals and hook fixture isolation; PR creation after independent verification
+```
