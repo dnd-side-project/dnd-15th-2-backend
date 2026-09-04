@@ -127,6 +127,13 @@ class DirectionMatchingE3PerformanceIntegrationTest extends PostgisContainerInte
 
 	/** 공정성 대비 기준. 세 eligible 행이 이 순서로만 나와야 한다. */
 	private static final List<String> ELIGIBLE_FAIRNESS_ORDER = List.of(ELIGIBLE_NEAR, ELIGIBLE_OLD, ELIGIBLE_RECENT);
+	/**
+	 * 공정성 우선 정렬에서만 성립하는 정확한 선두 순서. {@code full-slot}은 수신 이력이 없어
+	 * {@code (recent_received_count=0, last_received_at=NULL)} 최상위 tier에 있고 tier
+	 * 안에서 거리로만 밀리므로 두 번째다. 거리 우선 정렬이라면 {@code full-slot}이 가장 뒤로 가서 이 단언이 깨진다.
+	 */
+	private static final List<String> FAIRNESS_ORDER_PREFIX = List.of(ELIGIBLE_NEAR, FULL_SLOT, ELIGIBLE_OLD,
+			ELIGIBLE_RECENT);
 	/** 어떤 반경·통계 조건에서도 후보와 수신자에 나타나면 안 되는 정책 위반 라벨. */
 	private static final List<String> POLICY_EXCLUDED_LABELS = List.of(BLOCKED_BY_SENDER, BLOCKED_SENDER,
 			INACTIVE_ACCOUNT, EXPIRED_PRESENCE);
@@ -136,11 +143,20 @@ class DirectionMatchingE3PerformanceIntegrationTest extends PostgisContainerInte
 	 * 707m)보다 가까운 서로 다른 결정적 거리라 matching 후보 스캔 창(최대 수신자 10명 × 3배 = 30명) 안에 들어간다. 다음
 	 * 네 행도 같은 창 거리에 두되 양방향 차단, 비활성 계정, 만료 presence 정책으로 후보에서 빠져야 한다 — 스캔 창 밖이라 빠지는
 	 * 것이 아님을 보이기 위해서다. 마지막 행만 5km 진단 반경 밖에 두어 거리 필터를 관측한다.
+	 *
+	 * <p>
+	 * 세 eligible 행의 거리는 공정성 순위와 <b>일부러 반대로</b> 준다({@code near}가 가장 멀고
+	 * {@code recent}가 가장 가깝다). 거리 순서를 공정성 순서와 같게 두면 공정성 우선 정렬과 거리 우선 정렬이 같은 결과를 내서
+	 * 공정성 단언이 둘을 구분하지 못한다. 실제 정렬은
+	 * {@code recent_received_count, last_received_at NULLS FIRST, distance_m, user_id}이고
+	 * tier가 거리보다 우선하므로 이 반전은 관측 결과를 바꾸지 않는다 — {@code near}와 {@code full-slot}만 같은
+	 * tier라 거리로 갈리고, 네 행 모두 707m 미만이라 스캔 창 안에 그대로 남는다.
+	 * </p>
 	 */
 	private static final List<GuardrailRow> GUARDRAIL_ROWS = List.of(
-			new GuardrailRow(ELIGIBLE_NEAR, "ACTIVE", 100.0, false),
+			new GuardrailRow(ELIGIBLE_NEAR, "ACTIVE", 300.0, false),
 			new GuardrailRow(ELIGIBLE_OLD, "ACTIVE", 200.0, false),
-			new GuardrailRow(ELIGIBLE_RECENT, "ACTIVE", 300.0, false),
+			new GuardrailRow(ELIGIBLE_RECENT, "ACTIVE", 100.0, false),
 			new GuardrailRow(FULL_SLOT, "ACTIVE", 400.0, false),
 			new GuardrailRow(BLOCKED_BY_SENDER, "ACTIVE", 500.0, false),
 			new GuardrailRow(BLOCKED_SENDER, "ACTIVE", 600.0, false),
@@ -162,8 +178,8 @@ class DirectionMatchingE3PerformanceIntegrationTest extends PostgisContainerInte
 	private static final long GUARDRAIL_POLICY_CANDIDATES = 5;
 	private static final long GUARDRAIL_PROBE_CANDIDATES = 4;
 	/**
-	 * 기준 receive state 행: 합성 presence 전체 + guardrail 4행(old, recent, full-slot,
-	 * outside).
+	 * 기준선을 갖는 guardrail 행 수(old, recent, full-slot, outside). {@code near}는 기준선이 없어
+	 * 제외한다. 합성 presence 수는 사용처에서 더한다.
 	 */
 	private static final long GUARDRAIL_RECEIVE_STATE_ROWS = 4;
 	private static final int SYNTHETIC_RECENT_RECEIVED_COUNT = 1;
@@ -766,9 +782,11 @@ class DirectionMatchingE3PerformanceIntegrationTest extends PostgisContainerInte
 				.contains(ELIGIBLE_NEAR, ELIGIBLE_OLD, ELIGIBLE_RECENT, FULL_SLOT)
 				.doesNotContain(OUTSIDE_PROBE_RADIUS);
 		assertThat(policySnapshot.matchingOrder()).as("%s 정책 반경 공정성 상대 순서", label)
-				.containsSubsequence(ELIGIBLE_FAIRNESS_ORDER.toArray(String[]::new));
+				.containsSubsequence(ELIGIBLE_FAIRNESS_ORDER.toArray(String[]::new))
+				.startsWith(FAIRNESS_ORDER_PREFIX.toArray(String[]::new));
 		assertThat(probeSnapshot.matchingOrder()).as("%s 5km 진단 반경 공정성 상대 순서", label)
-				.containsSubsequence(ELIGIBLE_FAIRNESS_ORDER.toArray(String[]::new));
+				.containsSubsequence(ELIGIBLE_FAIRNESS_ORDER.toArray(String[]::new))
+				.startsWith(FAIRNESS_ORDER_PREFIX.toArray(String[]::new));
 	}
 
 	/**
@@ -1053,9 +1071,12 @@ class DirectionMatchingE3PerformanceIntegrationTest extends PostgisContainerInte
 		assertThat(snapshot.missingExpectedCount()).as("%s 누락 수신자", run.condition()).isZero();
 		assertThat(snapshot.blockedRecipientCount()).as("%s 차단·비활성·만료 수신자", run.condition()).isZero();
 		assertThat(snapshot.fullSlotRecipientCount()).as("%s 수신 한도 초과 수신자", run.condition()).isZero();
+		// full-slot은 수신 한도로 슬롯을 얻지 못하므로 수신자 선두는 세 eligible 행뿐이다. 거리 우선 정렬이었다면 이 선두가
+		// recent → old → near로 뒤집혀 두 단언 모두 깨진다.
 		assertThat(snapshot.orderedRecipients()).as("%s 수신자 공정성 상대 순서", run.condition())
 				.hasSize(selectionProperties.maxRecipientsPerPost())
-				.containsSubsequence(ELIGIBLE_FAIRNESS_ORDER.toArray(String[]::new));
+				.containsSubsequence(ELIGIBLE_FAIRNESS_ORDER.toArray(String[]::new))
+				.startsWith(ELIGIBLE_FAIRNESS_ORDER.toArray(String[]::new));
 	}
 
 	private void resetRun(RecipientRun run) {
