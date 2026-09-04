@@ -235,11 +235,13 @@ class HttpRequestLoggingFilterTest {
 				.header("Authorization", tokenSentinel)
 				.header("X-Location", locationSentinel)
 				.header("X-User", userSentinel))
-				.andExpect(status().isOk());
+				.andExpect(status().isBadRequest());
 
 		List<String> sentinels = List.of(pathSentinel, querySentinel, bodySentinel, tokenSentinel, locationSentinel,
 				userSentinel);
-		assertNoSentinels(requestLogs.events, sentinels);
+		assertThat(completionEvents()).singleElement();
+		assertThat(errorLogs.events).singleElement();
+		assertNoSentinels(completionEvents(), sentinels);
 		assertNoSentinels(errorLogs.events, sentinels);
 	}
 
@@ -312,7 +314,11 @@ class HttpRequestLoggingFilterTest {
 	}
 
 	private static Map<String, Object> keyValueFields(ILoggingEvent event) {
-		return event.getKeyValuePairs().stream()
+		List<org.slf4j.event.KeyValuePair> keyValuePairs = event.getKeyValuePairs();
+		if (keyValuePairs == null) {
+			return Map.of();
+		}
+		return keyValuePairs.stream()
 				.collect(java.util.stream.Collectors.toMap(pair -> pair.key, pair -> pair.value));
 	}
 
@@ -389,8 +395,9 @@ class HttpRequestLoggingFilterTest {
 		}
 
 		@PostMapping("/probe/private/{pathSentinel}")
-		ResponseEntity<Void> privateProbe(@PathVariable String pathSentinel, @RequestBody String body) {
-			return ResponseEntity.ok().build();
+		void privateProbe(@PathVariable String pathSentinel, @RequestBody String body) {
+			throw new AccountException(
+					AccountErrorCode.INVALID_TIMEZONE, "timezone", "timezone은 유효한 IANA ID여야 합니다");
 		}
 	}
 }
