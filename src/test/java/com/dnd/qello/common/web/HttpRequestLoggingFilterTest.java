@@ -235,13 +235,20 @@ class HttpRequestLoggingFilterTest {
 				.header("Authorization", tokenSentinel)
 				.header("X-Location", locationSentinel)
 				.header("X-User", userSentinel))
+				.andExpect(status().isOk());
+		mockMvc.perform(get("/probe/domain?q=" + querySentinel)
+				.contentType(MediaType.TEXT_PLAIN)
+				.content(bodySentinel)
+				.header("Authorization", tokenSentinel)
+				.header("X-Location", locationSentinel)
+				.header("X-User", userSentinel))
 				.andExpect(status().isBadRequest());
 
 		List<String> sentinels = List.of(pathSentinel, querySentinel, bodySentinel, tokenSentinel, locationSentinel,
 				userSentinel);
-		assertThat(completionEvents()).singleElement();
+		assertThat(completionEvents()).hasSize(2);
 		assertThat(errorLogs.events).singleElement();
-		assertNoSentinels(completionEvents(), sentinels);
+		assertNoSentinels(requestLogs.events, sentinels);
 		assertNoSentinels(errorLogs.events, sentinels);
 	}
 
@@ -395,9 +402,8 @@ class HttpRequestLoggingFilterTest {
 		}
 
 		@PostMapping("/probe/private/{pathSentinel}")
-		void privateProbe(@PathVariable String pathSentinel, @RequestBody String body) {
-			throw new AccountException(
-					AccountErrorCode.INVALID_TIMEZONE, "timezone", "timezone은 유효한 IANA ID여야 합니다");
+		ResponseEntity<Void> privateProbe(@PathVariable String pathSentinel, @RequestBody String body) {
+			return ResponseEntity.ok().build();
 		}
 	}
 }
