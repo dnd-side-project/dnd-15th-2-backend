@@ -12,6 +12,7 @@ package com.dnd.qello;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 import java.util.function.Supplier;
 
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -78,7 +79,7 @@ final class DirectionMatchingPerformanceProbe {
 				percentileMillis(sortedNanos, 0.95),
 				percentileMillis(sortedNanos, 0.99));
 
-		String sanitizedLine = String.format(
+		String sanitizedLine = String.format(Locale.ROOT,
 				"experiment=%s condition=%s calls=%d rows=%d total_exec_ms=%.3f "
 						+ "mean_exec_ms=%.3f client_p50_ms=%.3f client_p95_ms=%.3f "
 						+ "client_p99_ms=%.3f shared_hit=%d shared_read=%d temp_read=%d temp_written=%d",
@@ -164,6 +165,15 @@ final class DirectionMatchingPerformanceProbe {
 		JsonNode children = node.path("Plans");
 		if (children.isArray()) {
 			for (JsonNode child : children) {
+				// SubPlan·InitPlan 자식은 상관 서브쿼리(예: NOT EXISTS user_block)처럼 이
+				// 노드의 접근 경로가 아닌 별도 계획이다. 이 자식으로 내려가면 대상
+				// relation과 무관한 인덱스를 그 relation의 인덱스로 잘못 귀속시킬 수
+				// 있어 제외한다. Bitmap Heap Scan의 Bitmap Index Scan 자식처럼 같은
+				// 접근 경로에 속한 자식(Outer/Inner 등)만 계속 내려간다.
+				String parentRelationship = text(child, "Parent Relationship");
+				if ("SubPlan".equals(parentRelationship) || "InitPlan".equals(parentRelationship)) {
+					continue;
+				}
 				String nestedIndexName = findIndexName(child);
 				if (!MISSING_TEXT.equals(nestedIndexName)) {
 					return nestedIndexName;
