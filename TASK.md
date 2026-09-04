@@ -120,32 +120,91 @@ git diff --check
 
 ## Completion criteria
 
-- [ ] 사람이 테스트 계획 §11 Human approval과 이 `TASK.md`의 승인 상태를
-      승인했다. (`PENDING`)
-- [ ] `pg_stat_statements`가 performanceTest에서만 활성화되고 일반
+- [x] 사람이 테스트 계획 §11 Human approval과 이 `TASK.md`의 승인 상태를
+      승인했다. (`APPROVED`, `2026-09-05T01:22:10+09:00`)
+- [x] `pg_stat_statements`가 performanceTest에서만 활성화되고 일반
       integrationTest에는 영향을 주지 않는다.
-- [ ] 세 규모(10K:1K, 50K:5K, 100K:10K)에서 후보 조회 실행계획과 SQL 통계를
+- [x] 세 규모(10K:1K, 50K:5K, 100K:10K)에서 후보 조회 실행계획과 SQL 통계를
       측정한다.
-- [ ] 동일한 100,000:10,000 fixture에서 통계 설정(100→1000)만 변경한 전후
+- [x] 동일한 100,000:10,000 fixture에서 통계 설정(100→1000)만 변경한 전후
       비교를 수행한다.
-- [ ] preview segment count와 matching candidate 순서 및 집합이 전후
+- [x] preview segment count와 matching candidate 순서 및 집합이 전후
       동일하다.
-- [ ] 최종 수신자 집합이 동일하고 중복과 누락이 0이다.
-- [ ] 차단, 비활성 계정, 만료 presence, 공정성과 수신 한도 정책이 통계 변경
+- [x] 최종 수신자 집합이 동일하고 중복과 누락이 0이다.
+- [x] 차단, 비활성 계정, 만료 presence, 공정성과 수신 한도 정책이 통계 변경
       전후에 유지된다.
-- [ ] 측정 결과는 로컬 합성 실험의 한계와 함께 비식별 보고서로 기록된다.
-- [ ] performanceTest와 저장소 필수 검증을 통과한다.
-- [ ] 신규 Issue, 일치하는 성능 브랜치, 승인된 `TASK.md`와 승인된 테스트
+- [x] 측정 결과는 로컬 합성 실험의 한계와 함께 비식별 보고서로 기록된다.
+- [x] performanceTest와 저장소 필수 검증을 통과한다.
+- [x] 신규 Issue, 일치하는 성능 브랜치, 승인된 `TASK.md`와 승인된 테스트
       계획이 존재한다. (Task 1)
-- [ ] 일반 integrationTest는 performance 전용 preload flag와 독립적으로
+- [x] 일반 integrationTest는 performance 전용 preload flag와 독립적으로
       유지된다.
-- [ ] 10K:1K, 50K:5K, 100K:10K 세 규모의 관측이 모두 신선하고
+- [x] 10K:1K, 50K:5K, 100K:10K 세 규모의 관측이 모두 신선하고
       비식별화되어 있다.
-- [ ] 지연시간이나 GiST access path를 깨지기 쉬운 pass/fail 임계값으로
+- [x] 지연시간이나 GiST access path를 깨지기 쉬운 pass/fail 임계값으로
       사용하지 않는다.
-- [ ] 보고서는 신선한 증거로부터 `SUPPORTED`/`REJECTED`/`INVALID`를 판정하고
+- [x] 보고서는 신선한 증거로부터 `SUPPORTED`/`REJECTED`/`INVALID`를 판정하고
       운영 영향을 과장하지 않는다.
-- [ ] production 소스, 쿼리, 인덱스, migration, Compose, Terraform, workflow,
+- [x] production 소스, 쿼리, 인덱스, migration, Compose, Terraform, workflow,
       외부 서비스 변경이 없다.
-- [ ] 모든 필수 performance·저장소 검증 명령이 통과하거나 최종 상태가
+- [x] 모든 필수 performance·저장소 검증 명령이 통과하거나 최종 상태가
       정확히 `FAIL`/`BLOCKED`로 기록된다.
+
+## Final verification contract
+
+```text
+status: PASS
+issue_number: 214
+task_id: GH-214-POSTGIS-E3-EVIDENCE
+design_id: N/A (local test-only experiment)
+changed_files:
+  TASK.md
+  build.gradle
+  docs/superpowers/plans/2026-09-04-postgis-e3-evidence.md
+  docs/test-plans/gh-214-TEST-PLAN-GH-214-POSTGIS-E3-EVIDENCE.md
+  docs/reports/tests/gh-214-TEST-PLAN-GH-214-POSTGIS-E3-EVIDENCE.md
+  docs/reports/tests/gh-214-TEST-PLAN-GH-214-POSTGIS-E3-EVIDENCE-sanitized-console.txt
+  templates/performance-experiment-report.md
+  src/integrationTest/java/com/dnd/qello/DirectionMatchingE3PerformanceIntegrationTest.java
+  src/integrationTest/java/com/dnd/qello/DirectionMatchingPerformanceProbe.java
+  src/integrationTest/java/com/dnd/qello/DirectionMatchingPerformanceProbeIntegrationTest.java
+  src/integrationTest/java/com/dnd/qello/PgStatStatementsPerformanceIntegrationTest.java
+  src/integrationTest/java/com/dnd/qello/PostgisContainerIntegrationTestSupport.java
+executed_checks:
+  ./harness test-run --id TEST-PLAN-GH-214-POSTGIS-E3-EVIDENCE
+  ./gradlew performanceTest --tests '*PgStatStatementsPerformanceIntegrationTest'
+  ./gradlew performanceTest --tests '*DirectionMatchingPerformanceProbeIntegrationTest'
+  ./gradlew performanceTest --tests '*DirectionMatchingE3PerformanceIntegrationTest'
+  ./gradlew performanceTest
+  ./harness check
+  ./harness pr-ready --project-tests
+  npm run hooks:validate
+  git diff --check
+  git diff --name-only origin/main...HEAD
+  git diff --check origin/main...HEAD
+  rg -n "SELECT .*query|raw.*EXPLAIN|userId=|nickname=|latitude=|longitude=|token=|password=" docs/reports/tests src/integrationTest/java/com/dnd/qello
+passed_checks:
+  ./harness test-run --id TEST-PLAN-GH-214-POSTGIS-E3-EVIDENCE
+  ./gradlew performanceTest --tests '*PgStatStatementsPerformanceIntegrationTest'
+  ./gradlew performanceTest --tests '*DirectionMatchingPerformanceProbeIntegrationTest'
+  ./gradlew performanceTest --tests '*DirectionMatchingE3PerformanceIntegrationTest'
+  ./gradlew performanceTest
+  ./harness check
+  ./harness pr-ready --project-tests
+  npm run hooks:validate
+  git diff --check
+  git diff --name-only origin/main...HEAD
+  git diff --check origin/main...HEAD
+  rg -n "SELECT .*query|raw.*EXPLAIN|userId=|nickname=|latitude=|longitude=|token=|password=" docs/reports/tests src/integrationTest/java/com/dnd/qello
+failed_checks: none
+blocked_checks: none
+assumptions: synthetic 10:1 100km disk; statistics targets 100 and 1000; ANALYZE limited to user_account and active_user_presence; PERF-006 fixture is not PERF-005
+risks: local planner/host/cache differences and no fixed Testcontainers resources
+required_human_decisions: production change remains a separate Issue
+```
+
+Experiment conclusion recorded in `docs/reports/tests/gh-214-TEST-PLAN-GH-214-POSTGIS-E3-EVIDENCE.md`:
+
+```text
+REJECTED: statistics target 1000 did not materially change estimates/access path, while all guardrails remained equal.
+```
