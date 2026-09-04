@@ -3,7 +3,7 @@
 > Created at: `2026-09-05T02:13:20+09:00`
 > GitHub Issue: `#215`
 > Design: `APP-DESIGN-GH-215-001`
-> Status: `DRAFT_FOR_HUMAN_APPROVAL`
+> Status: `APPROVED_FOR_IMPLEMENTATION_PLAN`
 
 ## 1. Objective
 
@@ -89,8 +89,8 @@ MDC가 누출되지 않음을 검증한다. `observability` 프로필의 실제 
 
 | Scenario ID | Components | Setup | Action | Expected result | Cleanup |
 | --- | --- | --- | --- | --- | --- |
-| TEST-PLAN-GH-215-STRUCTURED-REQUEST-LOGGING-INT-001 | Filter, 실제 app SecurityFilterChain, MockMvc | 인증 없는 app API 요청과 wrong-role로 인증한 operator API 요청 | 401과 403 모두 같은 `X-Request-ID`, 실제 status와 `UNRESOLVED`, MDC cleanup | ListAppender detach, MDC owned key 제거 |
-| TEST-PLAN-GH-215-STRUCTURED-REQUEST-LOGGING-INT-002 | Filter, fallback SecurityFilterChain | 존재하지 않는 식별자 포함 path와 invalid Request ID | 실제 path를 기록하지 않고 `UNRESOLVED`, 새 UUID response header, 실제 4xx status | ListAppender detach, MDC owned key 제거 |
+| TEST-PLAN-GH-215-STRUCTURED-REQUEST-LOGGING-INT-001 | Filter, 실제 app SecurityFilterChain, MockMvc | 인증 없는 app API 요청과 wrong-role로 인증한 operator API 요청 | 401과 403 모두 같은 `X-Request-ID`, 실제 status와 `UNRESOLVED`, MDC cleanup | CapturingAppender detach, MDC owned key 제거 |
+| TEST-PLAN-GH-215-STRUCTURED-REQUEST-LOGGING-INT-002 | Filter, fallback SecurityFilterChain | 존재하지 않는 식별자 포함 path와 invalid Request ID | 실제 path를 기록하지 않고 `UNRESOLVED`, 새 UUID response header, 실제 4xx status | CapturingAppender detach, MDC owned key 제거 |
 | TEST-PLAN-GH-215-STRUCTURED-REQUEST-LOGGING-INT-003 | Filter, GlobalExceptionHandler, mapped test endpoint | deterministic DomainException | APP_ERROR의 requestId/errorCode/errorType과 completion requestId가 연결되고 기존 response contract 유지 | test context 종료 |
 | TEST-PLAN-GH-215-STRUCTURED-REQUEST-LOGGING-INT-004 | minimal child Spring process, observability profile, Boot logging system | service name `qello`, version fallback `unknown`, MDC probe value | probe stdout 한 줄이 ECS JSON이며 service, ecs, level, message와 MDC member를 파싱 가능 | process 종료, output memory 폐기 |
 | TEST-PLAN-GH-215-STRUCTURED-REQUEST-LOGGING-INT-005 | 같은 minimal child process, default profile | structured property 없이 probe 실행 | probe line이 ECS JSON이 아니며 process exit 0 | process 종료, output memory 폐기 |
@@ -138,8 +138,9 @@ MDC가 누출되지 않음을 검증한다. `observability` 프로필의 실제 
   generated ID는 정확한 UUID string이 아니라 lowercase UUID format과 unsafe input 비재사용을
   검증한다.
 - External API doubles: 없다. child JVM과 local MockMvc만 사용한다.
-- Log capture: 전용 logger에 Logback ListAppender를 attach하고 각 test에서 event count,
-  MDC map과 key-value pairs만 검사한다. 전체 console log를 보고서에 복사하지 않는다.
+- Log capture: 전용 logger에 emitting thread에서 `prepareForDeferredProcessing()`을 호출하고
+  `CopyOnWriteArrayList`에 저장하는 test appender를 attach한다. 각 test에서는 event count,
+  고정된 MDC map과 key-value pairs만 검사하며 전체 console log를 보고서에 복사하지 않는다.
 - Cleanup: appender detach, MDC owned key 제거, executor/process 종료를 실패 경로에서도 실행한다.
 
 실제 자격 증명이나 `.env` 값을 기록하지 않는다.
@@ -183,5 +184,9 @@ implementation plan에서 별도로 지정한다. 같은 file 변경이 필요�
 ## 11. Human approval
 
 - Reviewer: human partner
-- Decision: `PENDING`
-- Approved at: not recorded
+- Decision: `APPROVED_FOR_IMPLEMENTATION_PLAN`
+- Approved at: `2026-09-05T02:29:39+09:00`
+- Evidence: 설계 spec과 테스트 계획을 `승인할게`라고 명시함
+- Post-approval correction at `2026-09-05T02:45:35+09:00`: 구현 계획 독립 감사에서
+  concurrent append와 MDC snapshot의 결정성을 보장하도록 test appender만 구체화함.
+  승인 scenario와 production contract는 변경하지 않음.

@@ -15,15 +15,19 @@
 - Design ID: `APP-DESIGN-GH-215-001`
 - Design path:
   `docs/superpowers/specs/2026-09-05-structured-request-logging-design.md`
-- Design status: `DRAFT_FOR_HUMAN_REVIEW`
+- Design status: `APPROVED_FOR_IMPLEMENTATION_PLAN`
 - Approved architecture choice: `DEC-215-001` Filter 단독 구조
 - Architecture approval evidence: `2026-09-05T02:11:00+09:00` 사용자가
   `1번으로 설계확정`이라고 명시함
 - Test plan: `TEST-PLAN-GH-215-STRUCTURED-REQUEST-LOGGING`
 - Test plan path:
   `docs/test-plans/gh-215-TEST-PLAN-GH-215-STRUCTURED-REQUEST-LOGGING.md`
-- Test plan status: `DRAFT_FOR_HUMAN_APPROVAL`
-- Implementation plan: 승인된 설계와 테스트 계획을 기준으로 별도 작성
+- Test plan status: `APPROVED_FOR_IMPLEMENTATION_PLAN`
+- Written plan approval evidence: `2026-09-05T02:29:39+09:00` 사용자가
+  설계 spec과 테스트 계획을 `승인할게`라고 명시함
+- Implementation plan:
+  `docs/superpowers/plans/2026-09-05-structured-request-logging.md`
+- Implementation plan status: `DRAFT_FOR_HUMAN_APPROVAL`
 - Implementation gate: `BLOCKED_PENDING_PLAN_APPROVAL`
 
 ## Objective
@@ -96,7 +100,8 @@ Included:
 - #215 worktree 생성 전 원래 checkout의 #214 변경은 별도 worktree에 보존했다.
 - 이 worktree는 `origin/main`의 `51e054b`에서 분기했다.
 - 계획 시작 시 worktree는 깨끗했고 기존 사용자 변경은 없었다.
-- 현재 계획 변경은 `TASK.md`, #215 설계 spec과 #215 테스트 계획뿐이다.
+- 현재 계획 변경은 `TASK.md`, #215 설계 spec, #215 테스트 계획과 #215 구현
+  계획뿐이다.
 
 ## Validation
 
@@ -105,7 +110,8 @@ Planning checks:
 ```bash
 rg -n "T[B]D|T[O]DO|PLACE[H]OLDER" TASK.md \
   docs/superpowers/specs/2026-09-05-structured-request-logging-design.md \
-  docs/test-plans/gh-215-TEST-PLAN-GH-215-STRUCTURED-REQUEST-LOGGING.md
+  docs/test-plans/gh-215-TEST-PLAN-GH-215-STRUCTURED-REQUEST-LOGGING.md \
+  docs/superpowers/plans/2026-09-05-structured-request-logging.md
 git diff --check
 ./harness status
 ```
@@ -128,7 +134,7 @@ git diff --check
 
 - [x] GitHub Issue #215와 일치하는 격리 worktree 및 branch가 존재한다.
 - [x] Request ID 검증 규칙과 Filter 단독 구조를 사람이 확정했다.
-- [ ] 설계 spec과 테스트 계획을 사람이 승인했다.
+- [x] 설계 spec과 테스트 계획을 사람이 승인했다.
 - [ ] 승인된 구현 계획이 존재한다.
 - [ ] 모든 HTTP 응답이 최종 `X-Request-ID`를 반환한다.
 - [ ] mapped 요청은 route template을, 미확인 요청은 `UNRESOLVED`를 기록한다.

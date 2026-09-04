@@ -3,9 +3,11 @@
 > Design ID: `APP-DESIGN-GH-215-001`
 > GitHub Issue: `#215`
 > Task ID: `GH-215-STRUCTURED-REQUEST-LOGGING`
-> Status: `DRAFT_FOR_HUMAN_REVIEW`
+> Status: `APPROVED_FOR_IMPLEMENTATION_PLAN`
 > Architecture decision approved by: human partner at `2026-09-05T02:11:00+09:00`
 > Approval evidence: Servlet Filter 단독 구조를 `1번으로 설계확정`이라고 명시함
+> Written spec approved by: human partner at `2026-09-05T02:29:39+09:00`
+> Written spec approval evidence: 설계 spec과 테스트 계획을 `승인할게`라고 명시함
 
 ## 1. 목적
 
@@ -183,7 +185,8 @@ src/integrationTest/java/com/dnd/qello/StructuredLoggingProcessProbeApplication.
 `HttpRequestLoggingFilter`가 Request ID 정책, response header, MDC와 완료 event의 단일
 production owner다. 별도 public API나 설정 binding class는 만들지 않는다.
 
-unit test는 standalone MockMvc와 Logback ListAppender로 filter behavior를 검증한다.
+unit test는 standalone MockMvc와 emitting thread에서 MDC snapshot을 고정하는 thread-safe
+test appender로 filter behavior를 검증한다.
 Security integration test는 실제 FilterChain 앞뒤의 401/403 경계를 확인한다. structured
 profile integration test는 별도 최소 Spring process를 시작해 observability profile의 실제
 console line을 JSON으로 파싱하고 default profile 출력이 JSON으로 바뀌지 않았음을 확인한다.
@@ -222,6 +225,10 @@ console line을 JSON으로 파싱하고 default profile 출력이 JSON으로 바
 - privacy: body, token, 위치, 사용자 식별자, 실제 URI와 query sentinel 부재
 - regression: 전체 unit/integration suite와 source/migration diff gate
 
+Post-approval planning clarification (`2026-09-05T02:45:35+09:00`): 기본 Logback
+`ListAppender`는 concurrent append와 지연 MDC 조회에 적합하지 않으므로 scenario 변경 없이
+동기 snapshot·thread-safe test appender를 사용한다.
+
 ## 11. 배포와 롤백
 
 application behavior 변경은 응답 `X-Request-ID` 추가와 완료 event 추가뿐이다. ECS 출력은
@@ -230,8 +237,8 @@ profile opt-in이므로 `observability`를 활성화하지 않은 실행은 기�
 문제가 생기면 profile 활성화를 제거해 JSON format만 즉시 되돌릴 수 있다. 코드 롤백은
 Filter와 전용 테스트를 한 변경 단위로 되돌리며 DB 복구나 데이터 migration은 없다.
 
-## 12. 남은 승인
+## 12. 승인 상태
 
-- 이 written spec과 risk-based test plan의 사람 승인
-- 승인 후 작성할 implementation plan의 사람 승인
+- 이 written spec과 risk-based test plan의 사람 승인 완료
+- implementation plan의 사람 승인 대기
 - 구현 이후 독립 verifier의 spec·quality 검토
