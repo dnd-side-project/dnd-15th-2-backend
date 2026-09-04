@@ -20,6 +20,8 @@ import java.util.function.Consumer;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
+import jakarta.servlet.ServletException;
+
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -41,6 +43,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.HandlerMapping;
 
 import com.dnd.qello.account.error.AccountErrorCode;
 import com.dnd.qello.account.error.AccountException;
@@ -201,6 +204,32 @@ class HttpRequestLoggingFilterTest {
 	}
 
 	@Test
+	@DisplayName("완료 로그 기록이 실패해도 원래 chain 예외를 보존하고 completion 예외를 suppressed로 남긴다")
+	void preservesOriginalExceptionWhenCompletionLoggingFails() {
+		HttpRequestLoggingFilter filter = new HttpRequestLoggingFilter();
+		ServletException chainFailure = new ServletException("chain failure");
+		RuntimeException completionFailure = new RuntimeException("completion failure");
+		MockHttpServletRequest request = new MockHttpServletRequest("GET", "/probe/failure") {
+
+			@Override
+			public Object getAttribute(String name) {
+				if (HandlerMapping.BEST_MATCHING_PATTERN_ATTRIBUTE.equals(name)) {
+					throw completionFailure;
+				}
+				return super.getAttribute(name);
+			}
+		};
+		MockHttpServletResponse response = new MockHttpServletResponse();
+
+		assertThatThrownBy(() -> filter.doFilter(request, response, (ignoredRequest, ignoredResponse) -> {
+			throw chainFailure;
+		})).isSameAs(chainFailure)
+				.satisfies(exception -> assertThat(exception.getSuppressed()).containsExactly(completionFailure));
+
+		assertThat(MDC.get(REQUEST_ID_MDC_KEY)).isNull();
+	}
+
+	@Test
 	@DisplayName("같은 thread의 연속 요청은 request ID를 누출하지 않고 unrelated MDC를 보존한다")
 	void doesNotLeakRequestIdAcrossSequentialRequestsOnTheSameThread() throws Exception {
 		MDC.put(UNRELATED_MDC_KEY, "preserved-value");
@@ -333,9 +362,11 @@ class HttpRequestLoggingFilterTest {
 		for (ILoggingEvent event : events) {
 			for (String sentinel : sentinels) {
 				assertThat(event.getFormattedMessage()).doesNotContain(sentinel);
+				assertThat(mdc(event).values())
+						.allSatisfy(value -> assertThat(String.valueOf(value)).doesNotContain(sentinel));
+				assertThat(keyValueFields(event).values())
+						.allSatisfy(value -> assertThat(String.valueOf(value)).doesNotContain(sentinel));
 			}
-			assertThat(mdc(event).values()).doesNotContainAnyElementsOf(sentinels);
-			assertThat(keyValueFields(event).values()).doesNotContainAnyElementsOf(sentinels);
 		}
 	}
 

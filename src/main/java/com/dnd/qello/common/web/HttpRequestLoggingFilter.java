@@ -39,11 +39,13 @@ public final class HttpRequestLoggingFilter extends OncePerRequestFilter {
 		MDC.put(REQUEST_ID_MDC_KEY, requestId);
 		long startedAtNanos = System.nanoTime();
 		boolean failed = false;
+		Throwable chainFailure = null;
 
 		try {
 			filterChain.doFilter(request, response);
 		} catch (IOException | ServletException | RuntimeException | Error exception) {
 			failed = true;
+			chainFailure = exception;
 			throw exception;
 		} finally {
 			try {
@@ -53,6 +55,12 @@ public final class HttpRequestLoggingFilter extends OncePerRequestFilter {
 						.addKeyValue("status", completionStatus(response, failed))
 						.addKeyValue("durationMs", elapsedMillis(startedAtNanos))
 						.log("http_request_completed");
+			} catch (RuntimeException | Error completionFailure) {
+				if (chainFailure != null) {
+					chainFailure.addSuppressed(completionFailure);
+				} else {
+					throw completionFailure;
+				}
 			} finally {
 				MDC.remove(REQUEST_ID_MDC_KEY);
 			}
