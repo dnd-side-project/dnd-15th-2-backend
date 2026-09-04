@@ -1,3 +1,7 @@
+/**
+ * Created at: 2026-08-03T16:09:35+09:00
+ * Source scenario: TEST-PLAN-GH-31-POSTGIS-TESTCONTAINERS-SUPPORT
+ */
 package com.dnd.qello;
 
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
@@ -7,25 +11,34 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.DockerImageName;
 
-/**
- * Created at: 2026-08-03T16:09:35+09:00
- * Source scenario: TEST-PLAN-GH-31-POSTGIS-TESTCONTAINERS-SUPPORT
- */
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 abstract class PostgisContainerIntegrationTestSupport {
 
 	private static final DockerImageName POSTGIS_IMAGE = DockerImageName
-		// Testcontainers DockerImageName does not accept the Compose tag@digest form.
-		.parse("postgis/postgis:16-3.5-alpine")
-		.asCompatibleSubstituteFor("postgres");
+			// Testcontainers DockerImageName does not accept the Compose tag@digest form.
+			.parse("postgis/postgis:16-3.5-alpine")
+			.asCompatibleSubstituteFor("postgres");
+
+	private static final String PG_STAT_STATEMENTS_ENABLED = "qello.test.postgres.pg-stat-statements-enabled";
 
 	@Container
 	@ServiceConnection
-	static final PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>(POSTGIS_IMAGE)
-		.withDatabaseName("qello_test")
-		.withUsername("qello_test")
-		.withPassword("test-only")
-		.withCreateContainerCmdModifier(command -> command.withPlatform("linux/amd64"));
+	static final PostgreSQLContainer<?> postgres = postgresContainer();
+
+	private static PostgreSQLContainer<?> postgresContainer() {
+		PostgreSQLContainer<?> container = new PostgreSQLContainer<>(POSTGIS_IMAGE)
+				.withDatabaseName("qello_test")
+				.withUsername("qello_test")
+				.withPassword("test-only")
+				.withCreateContainerCmdModifier(command -> command.withPlatform("linux/amd64"));
+		if (Boolean.getBoolean(PG_STAT_STATEMENTS_ENABLED)) {
+			container.withCommand(
+					"postgres",
+					"-c",
+					"shared_preload_libraries=pg_stat_statements");
+		}
+		return container;
+	}
 
 }
