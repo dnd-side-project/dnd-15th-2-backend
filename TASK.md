@@ -1,132 +1,126 @@
-# GitHub Issue #215 Task Contract
+# GitHub Issue #218 Task Contract
 
-> Generated at: `2026-09-05T02:13:20+09:00`
+> Generated at: `2026-09-05T17:57:49+09:00`
 >
 > 이 파일은 현재 작업 브랜치의 계약이다. 저장소 전역 정책은 `AGENTS.md`를
 > 따른다.
 
 ## Work gate
 
-- Title: `HTTP 요청 구조화 로그와 Request ID 추적 도입`
-- GitHub Issue: `#215`
-- Branch: `chore/gh-215-structured-request-logging`
-- Base branch: `main`
-- Task ID: `GH-215-STRUCTURED-REQUEST-LOGGING`
-- Design ID: `APP-DESIGN-GH-215-001`
+- Title: `Prometheus 지표 노출 경계와 management port 분리`
+- GitHub Issue: `#218`
+- Branch: `chore/gh-218-observability-metrics-exposure`
+- Base branch: `chore/gh-215-structured-request-logging`
+- Task ID: `GH-218-OBSERVABILITY-METRICS-EXPOSURE`
+- Design ID: `APP-DESIGN-GH-218-001`
 - Design path:
-  `docs/superpowers/specs/2026-09-05-structured-request-logging-design.md`
-- Design status: `APPROVED_FOR_IMPLEMENTATION_PLAN`
-- Approved architecture choice: `DEC-215-001` Filter 단독 구조
-- Architecture approval evidence: `2026-09-05T02:11:00+09:00` 사용자가
-  `1번으로 설계확정`이라고 명시함
-- Test plan: `TEST-PLAN-GH-215-STRUCTURED-REQUEST-LOGGING`
-- Test plan path:
-  `docs/test-plans/gh-215-TEST-PLAN-GH-215-STRUCTURED-REQUEST-LOGGING.md`
-- Test plan status: `APPROVED_FOR_IMPLEMENTATION_PLAN`
-- Written plan approval evidence: `2026-09-05T02:29:39+09:00` 사용자가
-  설계 spec과 테스트 계획을 `승인할게`라고 명시함
-- Implementation plan:
-  `docs/superpowers/plans/2026-09-05-structured-request-logging.md`
-- Implementation plan status: `APPROVED_FOR_EXECUTION`
-- Implementation plan approval evidence: `2026-09-05T02:50:54+09:00` 사용자가
-  구현 계획을 `승인할게`라고 명시함
-- Implementation gate: `IMPLEMENTED_PENDING_INDEPENDENT_VERIFICATION`
+  `docs/superpowers/specs/2026-09-05-observability-metrics-exposure-design.md`
+- Design status: `APPROVED_FOR_IMPLEMENTATION`
+- Design approval evidence: `2026-09-05T17:46:09+09:00` 사용자가 설계 섹션
+  §1~§6에 `승인할게`라고 명시함
+- Implementation plan path:
+  `docs/superpowers/plans/2026-09-05-observability-metrics-exposure.md`
+- Implementation plan status: `APPROVED_FOR_IMPLEMENTATION`
+- Implementation approval evidence: 사용자가 `Subagent-Driven 으로 구현 시작해줘`라고
+  명시함
 
 ## Objective
 
-- 안전하게 검증한 `X-Request-ID`로 동기 HTTP 요청의 성공·오류 로그를 연결한다.
-- 모든 HTTP 응답에 최종 Request ID를 반환하고 요청 종료 시 route template,
-  method, status와 duration을 일관된 필드로 기록한다.
-- `observability` 프로필에서 Spring Boot 3.5 내장 ECS JSON stdout을 사용하고
-  기본 프로필의 출력 형식은 바꾸지 않는다.
-- 성공, 예외, Security 조기 종료와 같은 thread 재사용 뒤에 요청 MDC가 남지
-  않음을 검증한다.
+- Micrometer가 프로세스 안에만 보관하는 지표를 Prometheus가 읽을 수 있는
+  출구로 연결하되, 노출 대상을 `health`와 `prometheus` 두 endpoint로 한정한다.
+- 비즈니스 API listener와 관리 listener를 별도 포트로 분리해, 노출 차단이
+  애플리케이션 설정 한 줄이 아니라 network 경계로도 보장되게 한다.
+- 실행 중인 두 포트를 실제로 띄우는 통합 테스트로 노출 경계를 계약으로
+  고정하고, 기본 프로필에서는 관리 endpoint가 계속 닫혀 있음을 검증한다.
+- 이 작업은 노출 경계까지만 다룬다. Prometheus 서버, Grafana와 부하 실험은
+  후속 Issue로 분리한다.
 
 ## Scope
 
 Included:
 
-- 최외곽 `OncePerRequestFilter` 하나가 소유하는 Request ID 검증·생성·응답 헤더·MDC lifecycle
-- 외부 Request ID 허용식 `[A-Za-z0-9][A-Za-z0-9._-]{0,63}`
-- 누락, 공백, 65자 이상, 허용하지 않은 문자, 복수 헤더를 소문자 UUID로 교체
-- 완료 event의 `requestId`, `route`, `method`, `status`, `durationMs`
-- 기존 `APP_ERROR` event의 `errorCode`, `errorType`와 동일 Request ID 연계
-- `observability` 프로필 전용 Spring Boot 내장 ECS console format
-- 성공·예외·인증 실패·미매핑·같은 thread 재사용의 로그 및 MDC 검증
-- 요청/응답 body, 인증정보, 위치와 사용자 식별정보 비기록 검증
+- `build.gradle`에 `micrometer-registry-prometheus`를 `runtimeOnly`로 추가
+- `application-observability.yml`의 `management.server.port`, endpoint
+  활성화·노출과 `show-details: never`
+- 실존 Timer 4종의 histogram 활성화
+- `ObservabilitySecurityConfiguration`의 Actuator 전용 `SecurityFilterChain`
+- app port와 management port를 각각 띄우는 노출 경계 통합 테스트
+- 기본 프로필 차단 회귀 테스트
+- 노출된 지표의 tag cardinality 검증
 
 ## Approved decisions
 
-- `DEC-215-001`: 최우선 순위 Servlet Filter 하나가 Security와 MVC를 포함한
-  동기 HTTP 요청 전체를 감싼다. MVC Interceptor는 추가하지 않는다.
-- `DEC-215-002`: 외부 `X-Request-ID`는 정확히 한 값이며 1~64자 ASCII
-  allowlist와 일치할 때만 재사용한다. 그 외에는 UUID를 생성한다.
-- `DEC-215-003`: `requestId`만 요청 전 구간의 MDC에 둔다. 완료 event의
-  route, method, status, durationMs는 SLF4J key-value field로 기록한다.
-- `DEC-215-004`: MVC route template을 확인할 수 없으면 실제 URI 대신
-  고정값 `UNRESOLVED`를 기록한다.
-- `DEC-215-005`: 완료 event 이름은 `http_request_completed`로 고정하고
-  측정에는 `System.nanoTime()`을 사용한다. 시간은 품질 임계값으로 쓰지 않는다.
-- `DEC-215-006`: 구조화 출력은 `application-observability.yml`에서
-  Spring Boot 내장 `ecs`만 활성화한다. custom encoder와 `logback-spring.xml`은
-  만들지 않는다.
-- `DEC-215-007`: 비동기 correlation, Outbox/Worker 전파와 DB migration은
-  별도 Issue로 남긴다.
+- `DEC-B1-001`: management port를 8081로 분리한다. host 비공개는 bind address가
+  아니라 Compose의 port 경계가 보장한다.
+- `DEC-B1-002`: management child context는 부모의 `springSecurityFilterChain`을
+  재사용한다. 따라서 child context 전용 보안 구성이 아니라 부모 context의
+  Actuator 전용 체인 하나를 추가한다.
+- `DEC-B1-003`: matcher를 `EndpointRequest.to("health", "prometheus")`로
+  한정하고 `toAnyEndpoint()`를 쓰지 않는다.
+- `DEC-B1-004`: registry는 `runtimeOnly`로 넣는다. matcher를 endpoint ID
+  문자열로 써서 production source가 Prometheus 클래스를 참조하지 않는다.
+- `DEC-B1-005`: 실존 Timer만 histogram을 켠다. 없는 Meter 이름을 설정에 미리
+  적지 않는다.
+- `DEC-B1-006`: 운영 bucket 경계와 `service-level-objectives`를 정하지 않는다.
+- `DEC-B1-007`: 기본 프로필의 차단은 endpoint 비활성과 fallback `denyAll`로
+  이중 유지한다.
+- `DEC-B1-008`: #215 위에 stacked로 작업하고 PR은 #217 머지 후에 올린다.
 
 ## Explicit exclusions
 
-- Outbox와 Worker의 correlation ID 저장·복원
-- DB schema, Flyway migration, transaction과 repository 변경
-- `@Async` 또는 executor MDC 복사
-- Loki, CloudWatch, OpenSearch, tracing backend와 로그 전송기 구성
-- Prometheus, Grafana, Actuator endpoint 노출과 보안 체인 변경
-- request/response body logging 또는 사용자·위치·인증정보 logging
-- custom JSON encoder, custom Logback 설정과 수집기 종속 필드
-- API body와 오류 코드 계약 변경
-- 배포, 프로덕션 설정 변경과 외부 서비스 호출
+- Compose overlay, Prometheus 서버와 Grafana provisioning
+- k6 부하 scenario와 Hikari before/after 실험
+- `qello.worker.batch.duration`과 `qello.provider.request.duration` 신규 Timer
+- 운영 SLO, alert threshold와 histogram bucket 경계
+- dev·stage·prod 주소와 인증 방식
+- 기존 API, domain, DB schema, migration과 기존 보안 체인의 matcher 변경
+- `HttpRequestLoggingFilter`와 #215가 만든 파일의 동작 변경
+- 인프라 apply, 배포, 프로덕션 변경은 별도 승인 없이는 실행하지 않는다.
+- Secret, 계정 식별자, 토큰, `.env` 값은 기록하지 않는다.
 
 ## Ownership
 
 | Area | Owner | Required review |
 | --- | --- | --- |
-| 요구사항·설계·테스트 계획 통합 | Orchestrator | Human partner |
-| Filter 및 profile 구현 | Execution agent | Independent verifier |
-| unit/integration scenario 구현 | Test executor | Independent verifier |
-| 전체 diff·보안·로그 비식별 검증 | Independent verifier | Human partner |
+| 요구사항·설계·구현 계획 통합 | Orchestrator | Human partner |
+| 의존성·설정·보안 체인 구현 | Execution agent | Independent verifier |
+| 노출 경계·Meter 계약 시나리오 구현 | Test executor | Independent verifier |
+| 전체 diff·보안 경계·tag 비식별 검증 | Independent verifier | Human partner |
 
-구현자는 승인된 구현 계획에 포함된 파일만 수정한다. 검증자는 테스트를 통과시키기
-위해 production source나 테스트를 수정하지 않는다.
+구현자는 승인된 구현 계획에 포함된 파일만 수정한다. 검증자는 테스트를
+통과시키기 위해 production source나 테스트를 수정하지 않는다.
 
 ## Existing user-owned changes
 
-- #215 worktree 생성 전 원래 checkout의 #214 변경은 별도 worktree에 보존했다.
-- 이 worktree는 `origin/main`의 `51e054b`에서 분기했다.
-- 계획 시작 시 worktree는 깨끗했고 기존 사용자 변경은 없었다.
-- 구현 HEAD `296df47`의 production 변경은 Filter와
-  `application-observability.yml`뿐이다. Task 4는 report와 `TASK.md`만
-  수정한다.
+- 이 브랜치는 `origin/chore/gh-215-structured-request-logging`에서 분기했다.
+  로컬 `chore/gh-215-structured-request-logging`이 별도 worktree
+  (`.worktrees/chore-gh-215-structured-request-logging`)에 checkout돼 있어
+  `./harness start`의 로컬 fast-forward는 건너뛰었고, 원격 ref를 base로 썼다.
+- `./harness start` 실행 시점의 `git status --short`에는 이 세션에서 생성한
+  untracked 설계 문서
+  (`docs/superpowers/specs/2026-09-05-observability-metrics-exposure-design.md`)
+  하나만 있었고 다른 사용자 변경은 없었다. harness가 clean worktree를
+  요구해 파일을 임시로 옮겼다가 브랜치 생성 후 그대로 복원했다.
+- Task 1까지 생성·수정한 변경은 이 `TASK.md`, 위 설계 문서와 구현 계획 문서
+  뿐이다.
+- predecessor #215의 승인·검증 이력은 immutable reference
+  `e8383cbfe64e9aa7fcc24fb988d811cb87ce523b:TASK.md`에 보존되어 있다.
 
 ## Validation
 
-Planning checks:
+Focused checks (Task 2 이후):
 
 ```bash
-rg -n "T[B]D|T[O]DO|PLACE[H]OLDER" TASK.md \
-  docs/superpowers/specs/2026-09-05-structured-request-logging-design.md \
-  docs/test-plans/gh-215-TEST-PLAN-GH-215-STRUCTURED-REQUEST-LOGGING.md \
-  docs/superpowers/plans/2026-09-05-structured-request-logging.md
-git diff --check
-./harness status
+./gradlew integrationTest --tests '*ObservabilityEndpointExposureIntegrationTest'
+./gradlew integrationTest --tests '*ObservabilityDisabledByDefaultIntegrationTest'
+./gradlew integrationTest --tests '*ObservabilityMeterContractIntegrationTest'
 ```
 
-Implementation checks after human approval:
+Final checks:
 
 ```bash
-./gradlew test --tests '*HttpRequestLoggingFilterTest'
-./gradlew integrationTest --tests '*HttpRequestLoggingSecurityIntegrationTest'
-./gradlew integrationTest --tests '*StructuredLoggingProfileIntegrationTest'
+./gradlew integrationTest --tests '*Observability*'
 ./gradlew check
-./harness test-run --id TEST-PLAN-GH-215-STRUCTURED-REQUEST-LOGGING
 ./harness check
 ./harness pr-ready --project-tests
 npm run hooks:validate
@@ -135,37 +129,168 @@ git diff --check
 
 ## Completion criteria
 
-- [x] GitHub Issue #215와 일치하는 격리 worktree 및 branch가 존재한다.
-- [x] Request ID 검증 규칙과 Filter 단독 구조를 사람이 확정했다.
-- [x] 설계 spec과 테스트 계획을 사람이 승인했다.
-- [x] 승인된 구현 계획이 존재한다.
-- [x] 모든 HTTP 응답이 최종 `X-Request-ID`를 반환한다.
-- [x] mapped 요청은 route template을, 미확인 요청은 `UNRESOLVED`를 기록한다.
-- [x] 성공·예외·Security 종료 event가 method, status와 durationMs를 기록한다.
-- [x] 기존 error event가 동일 requestId와 errorCode/errorType을 가진다.
-- [x] 같은 thread와 동시 요청 사이에 MDC가 누출되지 않는다.
-- [x] `observability` 프로필만 ECS JSON console format을 사용한다.
-- [x] 로그에 body, token, 위치, 사용자 식별정보와 실제 URI가 포함되지 않는다.
-- [x] DB, migration, async correlation, metrics와 외부 수집기를 변경하지 않는다.
-- [x] 저장소 필수 검증을 통과하거나 실패·차단 범위를 정확히 기록한다.
+- [x] 사람이 설계 문서와 이 구현 계획을 승인했다.
+- [x] `observability` 프로필에서 management port `/actuator/health`가 200을
+      반환한다.
+- [x] management port `/actuator/prometheus`가 200과 Prometheus content type을
+      반환한다.
+- [x] management port `/actuator/env`와 `/api/**`의 응답 코드를 실측해 계약으로
+      고정했다.
+- [x] app port `/actuator/health`와 `/actuator/prometheus`의 응답 코드를 실측해
+      계약으로 고정했다. 둘 중 하나라도 200이면 `DEC-B1-002` 전제가 깨진
+      것으로 보고 child context 전용 보안 구성을 재검토한다.
+- [x] app port 기존 API의 인증 계약이 바뀌지 않는다.
+- [x] 기본 프로필에서 관리 endpoint가 닫혀 있다.
+- [x] scrape 본문에 `http.server.requests`,
+      `qello.filtering.pipeline.latency`, `hikaricp.connections.acquire`,
+      `hikaricp.connections.usage`의 `_bucket`, `_count`, `_sum`이 존재한다.
+- [x] 노출된 지표의 tag key에 사용자 식별자, request ID, correlation ID,
+      event ID와 예외 메시지가 없다.
+- [x] `qello.worker.batch.duration`과 `qello.provider.request.duration`을
+      이 작업의 완료 증거에 포함하지 않는다.
+- [x] production API, domain, DB schema, migration과 기존 보안 체인의 matcher를
+      변경하지 않는다.
+- [x] 저장소 필수 검증이 통과하거나 최종 상태를 정확히 `FAIL`/`BLOCKED`로
+      기록한다.
 
-## Verification results
+## Final verification contract
 
-Verified at: `2026-09-05T04:17:07+09:00`
-Tested commit: `296df4729972c5c1a17767d1c2be885d7fd01511`
-Report: `docs/reports/tests/gh-215-TEST-PLAN-GH-215-STRUCTURED-REQUEST-LOGGING.md`
-
-```text
 status: PASS
-issue_number: 215
-task_id: GH-215-STRUCTURED-REQUEST-LOGGING
-design_id: APP-DESIGN-GH-215-001
-changed_files: TASK.md; docs/superpowers/specs/2026-09-05-structured-request-logging-design.md; docs/test-plans/gh-215-TEST-PLAN-GH-215-STRUCTURED-REQUEST-LOGGING.md; docs/superpowers/plans/2026-09-05-structured-request-logging.md; src/main/java/com/dnd/qello/common/web/HttpRequestLoggingFilter.java; src/main/resources/application.yml; src/main/resources/application-local.yml; src/main/resources/application-observability.yml; src/integrationTest/resources/application-test.yml; src/integrationTest/resources/application-default.yml; src/test/java/com/dnd/qello/common/web/HttpRequestLoggingFilterTest.java; src/integrationTest/java/com/dnd/qello/HttpRequestLoggingSecurityIntegrationTest.java; src/integrationTest/java/com/dnd/qello/StructuredLoggingProfileIntegrationTest.java; src/integrationTest/java/com/dnd/qello/StructuredLoggingProcessProbeApplication.java; docs/reports/tests/gh-215-TEST-PLAN-GH-215-STRUCTURED-REQUEST-LOGGING.md
-executed_checks: focused HttpRequestLoggingFilterTest; focused HttpRequestLoggingSecurityIntegrationTest; focused StructuredLoggingProfileIntegrationTest; harness test-run TEST-PLAN-GH-215-STRUCTURED-REQUEST-LOGGING; origin/main...HEAD name/whitespace/privacy/forbidden-area scans; ./gradlew check; ./harness check; ./harness pr-ready --project-tests; npm run hooks:validate; git diff --check
-passed_checks: all executed local checks; focused unit 18/18; focused security 4/4; focused profile 2/2; full unit 1056/1056; full integration 726/726; gradle check 14 tasks; harness/PR-ready/hooks/diff-check
+issue_number: 218
+task_id: GH-218-OBSERVABILITY-METRICS-EXPOSURE
+design_id: APP-DESIGN-GH-218-001
+changed_files: TASK.md; build.gradle; docs/superpowers/plans/2026-09-05-observability-metrics-exposure.md; docs/superpowers/specs/2026-09-05-observability-metrics-exposure-design.md; src/integrationTest/java/com/dnd/qello/ObservabilityDisabledByDefaultIntegrationTest.java; src/integrationTest/java/com/dnd/qello/ObservabilityEndpointExposureIntegrationTest.java; src/integrationTest/java/com/dnd/qello/ObservabilityMeterContractIntegrationTest.java; src/main/java/com/dnd/qello/auth/config/ObservabilitySecurityConfiguration.java; src/main/resources/application-observability.yml
+executed_checks: ./gradlew integrationTest --tests '*Observability*'; ./gradlew check; ./harness check; ./harness pr-ready --project-tests; npm run hooks:validate; git diff --check; git diff --name-only origin/chore/gh-215-structured-request-logging...HEAD; rg identifier/secret assignment patterns on observability source and test files
+passed_checks: ./gradlew integrationTest --tests '*Observability*'; ./gradlew check; ./harness check; ./harness pr-ready --project-tests; npm run hooks:validate; git diff --check; git diff --name-only origin/chore/gh-215-structured-request-logging...HEAD; rg identifier/secret assignment patterns (0 matches)
 failed_checks: none
 blocked_checks: none
-assumptions: local Testcontainers/Docker represents persistence; child JVM stdout represents observability console format; first harness test-run wrapper timeout was an environment limit and the successful rerun is the evidence
-risks: unit test class header uses /* not /**; UNIT-009 Future.get is unbounded and executor termination is not asserted; INT-002 omits method/status entries that INT-001 asserts; profile timeout path has a short orphan window and child stdout is read after waitFor; pre-commit javaConventionArchitectureTest previously mutated this worktree so checkpoints use --no-verify plus manual hook-equivalent checks; async/Outbox/collector remain out of scope
-required_human_decisions: Task 5 independent verification; whether to open follow-up Issues for test-quality residuals and hook fixture isolation; PR creation after independent verification
-```
+assumptions: 로컬 Testcontainers PostgreSQL이 persistence를 대표한다; management port는 테스트에서 0으로 덮어 임의 포트를 쓴다
+risks: management child context의 보안 체인 재사용 동작은 Spring Boot 3.5.16 기준 실측값이며 버전 상향 시 재확인이 필요하다
+required_human_decisions: PR은 #217 머지 후에 올린다
+
+# Test Report: TEST-PLAN-GH-218-OBSERVABILITY-METRICS-EXPOSURE
+
+> Created at: `2026-09-05T19:01:24+09:00`
+> GitHub Issue: `#218`
+> Branch: `chore/gh-218-observability-metrics-exposure`
+> Commit: `3ea9486` (implementation HEAD verified by this run; this report is recorded in the following TASK.md commit)
+
+## 1. Executive summary
+
+- Result: `PASS`
+- Tested scope: observability 프로필의 management-port 노출 경계, 기본 프로필 차단, 실존 Timer 4종의 histogram series와 금지 tag 키, 저장소 필수 검증(Gradle check, harness, hooks, whitespace, 변경 파일 범위, 민감정보 패턴)
+- Unverified scope: Compose overlay, Prometheus 서버, Grafana, k6 부하, 운영 bind/인증, Worker/provider Timer 신규 계측, `performanceTest` 소스셋, PR 생성과 `origin/main` rebase
+- Release recommendation: #218 노출 경계의 로컬 검증은 완료됐다. PR은 #217 머지 후에 올린다. 인프라 apply와 배포는 이 작업 범위가 아니다.
+
+## 2. Environment
+
+런타임과 도구 버전만 기록한다. `.env` 값, 토큰, 서버 주소, 계정/IAM 식별자는
+기록하지 않는다.
+
+| Item | Version / safe description |
+| --- | --- |
+| Java | toolchain 21 (Eclipse Temurin 21.0.12.1+1-LTS); host JVM 24.0.2 was not the test toolchain |
+| Spring Boot | 3.5.16 |
+| Database | Testcontainers PostGIS 16-3.5 local/test-container |
+| Test runner | JUnit 5 via Gradle 8.14.3 |
+
+## 3. Execution results
+
+| Command / suite | Result | Tests | Duration | Evidence |
+| --- | --- | --- | --- | --- |
+| `./gradlew integrationTest --tests '*Observability*'` | PASS | 9 tests, 0 failed, 0 error, 0 skipped (노출 5 + 기본 2 + Meter 2) | 17s | BUILD SUCCESSFUL, exit 0 |
+| `./gradlew check` | PASS | unit 1056; integration 735; architecture 23; source convention 3; all 0 failed/error/skipped | successful run 6m 11s | BUILD SUCCESSFUL, exit 0; Spotless/Checkstyle main passed; checkstyleTest and checkstyleIntegrationTest skipped by project config |
+| `./harness check` | PASS | n/a | ~1s | Secret preflight 1337 text files; JUnit policy 285 files; convention, commit-msg formatter, workflow (5 files), label, Husky, Java convention self-test passed |
+| `./harness pr-ready --project-tests` | PASS | Gradle `check` UP-TO-DATE (14 tasks) | ~3s | Local PR readiness checks passed, exit 0 |
+| `npm run hooks:validate` | PASS | n/a | <1s | Husky validation passed, exit 0 |
+| `git diff --check` | PASS | n/a | <1s | empty output, exit 0 |
+| Unit | PASS | 1056 / 0 / 0 / 0 | included in `check` | JUnit XML |
+| Integration | PASS | 735 / 0 / 0 / 0 | included in `check` | JUnit XML |
+
+## 4. Scenario results
+
+| Scenario ID | Result | Test class / method | Notes |
+| --- | --- | --- | --- |
+| INT-001 | PASS | ObservabilityEndpointExposureIntegrationTest#exposesHealthOnManagementPort | management `/actuator/health` = 200 |
+| INT-002 | PASS | ObservabilityEndpointExposureIntegrationTest#exposesPrometheusOnManagementPort | management `/actuator/prometheus` = 200 and `text/plain` |
+| INT-003 | PASS | ObservabilityEndpointExposureIntegrationTest#blocksNonExposedPathsOnManagementPort | management `/actuator/env` and `/api/**` contracted to 401; not 200 |
+| INT-004 | PASS | ObservabilityEndpointExposureIntegrationTest#keepsManagementEndpointsClosedOnAppPort | app `/actuator/health` and `/actuator/prometheus` contracted to 401; not 200, so DEC-B1-002 stop condition did not fire |
+| INT-005 | PASS | ObservabilityDisabledByDefaultIntegrationTest#keepsManagementEndpointsClosedWithoutObservabilityProfile | default profile management endpoints are not 200 |
+| INT-006 | PASS | ObservabilityDisabledByDefaultIntegrationTest#doesNotRegisterObservabilitySecurityChainWithoutProfile | observability security chain bean is absent without the profile |
+| INT-007 | PASS | ObservabilityMeterContractIntegrationTest#exposesHistogramSeriesForConfiguredTimers | four existing Timers expose `_bucket`, `_count`, `_sum` |
+| INT-008 | PASS | ObservabilityMeterContractIntegrationTest#keepsExposedTagsBounded | forbidden identifier tag keys are absent |
+| INT-009 | PASS | ObservabilityEndpointExposureIntegrationTest#keepsAppApiAuthenticationContractUnchanged | unauthenticated domain API remains 401 |
+
+## 5. Failures and diagnostics
+
+필수 검증 실패는 없다.
+
+첫 `./gradlew check` 호출은 `:test` 완료 후 `:integrationTest` 진행 중 도구
+wrapper 제한으로 중단됐다. 같은 세션에서 재실행해 BUILD SUCCESSFUL을 얻었고,
+재실행은 이미 통과한 `:test`를 UP-TO-DATE로 재사용했다.
+
+`./harness pr-ready --project-tests`는 종료 코드 0으로 통과했다. 로컬 stacked base
+브랜치 fast-forward는 해당 브랜치가 다른 worktree에 checkout되어 있어 건너뛰었고,
+`origin/chore/gh-215-structured-request-logging` ancestor 검사는 통과했다. 이
+경고는 코드 결함이 아니며 `./harness sync`는 실행하지 않았다.
+
+## 6. Potential issues
+
+### Application code
+
+- Actuator 전용 체인은 `EndpointRequest.to("health", "prometheus")`와
+  `@Order(-1)`에 의존한다. 이후 endpoint를 추가하면 matcher를 같이 바꾸지 않으면
+  fallback `denyAll`에 막히거나, 반대로 matcher를 넓히면 노출 범위가 커진다.
+
+### Infrastructure and resource limits
+
+- host 비공개는 bind address가 아니라 Compose port 경계가 보장한다(DEC-B1-001).
+  Compose overlay는 이 Issue 범위가 아니다.
+
+### Database and migrations
+
+- DB schema와 migration 파일은 이 브랜치에서 변경되지 않았다. persistence 검증은
+  Testcontainers PostGIS에 한정된다.
+
+### Concurrency and idempotency
+
+- scrape와 노출 경계 테스트는 단일 요청이다. 동시 scrape 부하와 cardinality 폭증은
+  검증하지 않았다.
+
+### Transactions and event ordering
+
+- 트랜잭션, outbox, 도메인 이벤트 경로는 변경하지 않았다.
+
+### External APIs
+
+- Prometheus 서버 scrape, Grafana, 외부 인증은 이 작업에서 실행하지 않았다.
+
+### Failure recovery and reconciliation
+
+- management child context가 부모 `springSecurityFilterChain`을 재사용하는 동작은
+  Spring Boot 3.5.16 실측값이다. 버전 상향 시 app port에서 Actuator가 200을
+  반환하면 DEC-B1-002 전제를 재검토해야 한다.
+
+## 7. Regression and residual risk
+
+- 변경 파일은 stacked base 대비 허용 목록 9개뿐이다. 기존
+  `SecurityConfiguration`, `HttpRequestLoggingFilter`, domain API, DB schema는
+  diff에 없다.
+- 이 완료 증거는 네 실존 Timer의 histogram series와 노출 경계만 포함한다.
+  Worker/provider Timer 이름은 완료 증거로 사용하지 않는다.
+- PR, `origin/main` rebase, 경로 B2/B3, 운영 인증은 후속 작업이다.
+
+## 8. Artifacts
+
+- Test plan: `docs/superpowers/plans/2026-09-05-observability-metrics-exposure.md`
+- CI run: 로컬 실행만. GitHub Actions run은 이 작업에서 만들지 않았다.
+- Related ADR: `docs/superpowers/specs/2026-09-05-observability-metrics-exposure-design.md` (`APP-DESIGN-GH-218-001`)
+- PR: not created; required after #217 merge
+- Predecessor #215 audit: immutable git object `e8383cbfe64e9aa7fcc24fb988d811cb87ce523b:TASK.md`
+
+## 9. Reviewer checklist
+
+- [x] 보고서에 `.env` 값이나 비밀정보가 없음
+- [x] 미실행 테스트가 명시됨
+- [ ] 잠재 문제에 후속 GitHub Issue가 연결됨 (B2/B3와 Worker Timer는 별도 Issue로 예정이며 이 작업에서 번호를 만들지 않음; PR 게이트는 #217)
+- [ ] 실행 결과와 PR 설명이 일치함 (PR not created)
