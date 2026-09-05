@@ -28,3 +28,18 @@ management:
   metrics:
     tags:
       application: ${spring.application.name}
+    distribution:
+      # Meter 이름에 점이 있으므로 대괄호로 감싼다. 감싸지 않으면 중첩 map으로
+      # 파싱돼 설정이 조용히 무시된다.
+      #
+      # 실제로 등록되는 Timer만 적는다(#218 DEC-B1-005). 존재하지 않는 이름을
+      # 적어 두면 Spring Boot가 오류 없이 무시해, 설정만 보고 관측이 된다고
+      # 오해하게 된다. worker batch와 provider Timer는 계측 자체가 없어
+      # 후속 Worker Observability 작업에서 함께 추가한다.
+      #
+      # 운영 SLO가 없으므로 bucket 경계를 고정하지 않는다(DEC-B1-006).
+      percentiles-histogram:
+        "[http.server.requests]": true
+        "[qello.filtering.pipeline.latency]": true
+        "[hikaricp.connections.acquire]": true
+        "[hikaricp.connections.usage]": true
