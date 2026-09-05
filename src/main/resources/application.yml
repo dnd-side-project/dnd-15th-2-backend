@@ -1,0 +1,147 @@
+spring:
+  application:
+    name: qello
+  flyway:
+    # 스키마 변경은 Flyway만 소유한다(ADR-0001). Hibernate는 DDL을 만들지 않고 검증만 한다.
+    enabled: true
+    locations: classpath:db/migration
+    # clean은 운영 데이터를 지울 수 있으므로 끈다.
+    clean-disabled: true
+    # 빈 DB가 아닌 기존 스키마를 빈 이력으로 속이지 않는다(ADR-0001).
+    baseline-on-migrate: false
+    validate-migration-naming: true
+  jpa:
+    generate-ddl: false
+    hibernate:
+      ddl-auto: validate
+    # 요청이 끝난 뒤에도 persistence session을 열어 두면 레이어 경계가 흐려진다.
+    open-in-view: false
+    properties:
+      hibernate:
+        jdbc:
+          # 저장 시각은 UTC. 사용자 표시 타임존과 분리한다.
+          time_zone: UTC
+  session:
+    store-type: jdbc
+    jdbc:
+      # 세션 테이블은 Flyway가 소유한다(V6). 라이브러리 자동 초기화를 끈다.
+      initialize-schema: never
+
+springdoc:
+  # 스펙 엔드포인트를 기본으로 끈다. 운영에서는 라우트 자체가 생기지 않으므로
+  # 인증 규칙에 기대지 않고 노출을 막는다. 스펙은 docs/api/openapi.json으로 커밋하며
+  # 생성은 local과 test 프로필에서만 한다.
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
+  # CI가 스펙 산출물의 변경 여부로 자동 커밋을 판단하므로 키 순서가 안정적이어야 한다.
+  writer-with-order-by-keys: true
+
+qello:
+  worker:
+    # Core worker scheduling은 운영 수치 승인과 명시적 활성화 전까지 꺼 둔다.
+    scheduling:
+      enabled: ${QELLO_WORKER_SCHEDULING_ENABLED:false}
+  direction:
+    # 사용자별 활성 미처리 수신 상한. DB CHECK가 아니라 운영 설정값이며, DB는 안전 상한 50만만 강제한다.
+    receive-capacity: 5
+    # 발송 한 건에서 확정할 수 있는 최대 수신자 수. 운영 실험에 따라 조정한다.
+    max-recipients-per-post: 10
+    # 방향 칩과 구간 필터가 참조할 ACTIVE direction_scheme의 code.
+    scheme-code: OCTANT
+    # 넘김 되돌리기 유예 시간. 이 시간이 지나야 SKIPPED로 확정되고 슬롯이 해제된다.
+    skip-confirmation-grace-seconds: 5
+    post:
+      # 질문글은 국가·대략 지역과 무관하게 방향·거리로 후보를 찾는다.
+      delivery-scope: GLOBAL
+      # 발송 거리 하한(m). 0이면 작성자 바로 옆도 후보에 포함한다.
+      min-distance-meters: 0
+      # 발송 거리 상한(m). GLOBAL 최대 20100km를 넘을 수 없다.
+      max-distance-meters: 20100000
+      # 질문글 만료 시간. preview와 submit/worker가 같은 snapshot을 쓴다.
+      ttl: PT12H
+      # 질문글 본문 상한. 300 code point로 고정이며 설정만으로 바꾸지 않는다.
+      max-body-code-points: 300
+      # 질문글 미디어 상한. 1장으로 고정이며 설정만으로 바꾸지 않는다.
+      max-media-count: 1
+    presence:
+      # 마지막 관측 위치를 신규 매칭에 사용할 수 있는 MVP 기간.
+      ttl: PT24H
+      # 위치 갱신 요청에서 허용하는 최대 수평 정확도(m).
+      max-accuracy-meters: 100
+      # 기기와 서버 시계 차이로 미래로 보이는 관측 시각의 허용 오차.
+      max-future-skew: PT30S
+      # API가 받아들이는 과거 위치 관측값의 최대 나이.
+      max-observation-age: PT5M
+  feed:
+    # 정확 거리 노출의 근거리 하한. 이 미만은 distance_band만 나간다.
+    near-distance-floor-m: 10000
+  media:
+    # 업로드 허용 MIME. JPEG/PNG만 지원하며 확장자는 신뢰하지 않는다.
+    allowed-mime-types: image/jpeg,image/png
+    # 객체 최대 크기(bytes). 10MiB.
+    max-byte-size: 10485760
+    # 업로드 presigned PUT 수명. 느린 회선에서 최대 크기 PUT이 끝날 시간을 잰다.
+    upload-url-ttl: PT10M
+    # 조회 URL의 수명은 응답 수신부터 렌더링까지만 덮으면 된다. private 버킷의 presigned GET은
+    # 그 객체에 대한 bearer 자격증명이라 수명이 곧 노출 창이므로 업로드 TTL과 분리해 짧게 둔다.
+    view-url-ttl: PT5M
+    # 프로필 이미지를 설정하지 않은 사용자에게 내려줄 기본 이미지 객체 키. 객체는 버킷에
+    # 사전 배치돼 있어야 한다(#166). presigned 발급은 객체 존재를 확인하지 않는다.
+    default-profile-image-key: ${QELLO_MEDIA_DEFAULT_PROFILE_IMAGE_KEY:media/defaults/profile-image.png}
+    s3:
+      # 미디어 버킷 리전. endpoint-override가 비어 있으면 실제 AWS 엔드포인트를 쓴다.
+      region: ap-northeast-2
+  notification:
+    push:
+      fcm:
+        # D-2 secret-backed FCM wiring. 실제 값은 ECS runtime identity가 읽는 SSM SecureString으로만 주입한다.
+        # local/test/integration에서는 NoOpPushProvider가 등록되어 아래 값이 없어도 기동한다.
+        # 그 외 프로필은 비어 있거나 형식이 틀리면 기동에 실패한다.
+        project-id: ${QELLO_NOTIFICATION_PUSH_FCM_PROJECT_ID}
+        credential-json: ${QELLO_NOTIFICATION_PUSH_FCM_CREDENTIAL_JSON}
+        # timeout은 secret이 아니다. 운영 실험값이며 환경변수로 빼지 않는다.
+        connect-timeout: PT3S
+        read-timeout: PT5S
+      token-protection:
+        # D-2 token protection key ring. key material은 standard Base64로 인코딩한 32-byte secret만 주입한다.
+        # 암호화 write는 항상 current key만 쓰고, previous는 회전 중 복호화 read에만 참여한다.
+        # previous key ID와 encryption key는 둘 다 있거나 둘 다 없어야 한다.
+        current-key-id: ${QELLO_NOTIFICATION_PUSH_TOKEN_CURRENT_KEY_ID}
+        current-encryption-key-base64: ${QELLO_NOTIFICATION_PUSH_TOKEN_CURRENT_ENCRYPTION_KEY_BASE64}
+        previous-key-id: ${QELLO_NOTIFICATION_PUSH_TOKEN_PREVIOUS_KEY_ID:}
+        previous-encryption-key-base64: ${QELLO_NOTIFICATION_PUSH_TOKEN_PREVIOUS_ENCRYPTION_KEY_BASE64:}
+        fingerprint-key-base64: ${QELLO_NOTIFICATION_PUSH_TOKEN_FINGERPRINT_KEY_BASE64}
+      policy:
+        # 묶음·예산·추천 간격(#180). 운영 값은 UNKNOWN이며 임의 fallback을 두지 않는다.
+        # 비운영 프로필은 application-test.yml의 fixture만 쓴다.
+        # ANSWER_RECEIVED·ANSWER_REACTED만 이 창 안에서 같은 종류끼리 한 논리 group으로 합류한다.
+        bundle-window: ${QELLO_NOTIFICATION_PUSH_BUNDLE_WINDOW}
+        # quiet hours 지연의 상한. 첫 notification부터 이 시각을 넘으면 미발송 delivery만 취소한다. bundle-window 이상이어야 한다.
+        max-delay: ${QELLO_NOTIFICATION_PUSH_MAX_DELAY}
+        # 사용자 단위 일일 즉시 push 상한. 기기 수·retry와 무관하고 논리 group당 한 번만 센다.
+        daily-limit: ${QELLO_NOTIFICATION_PUSH_DAILY_LIMIT}
+        # daily-limit 안에서 DIRECTION_POST_RECEIVED만 쓸 수 있는 예약량. 일반 알림은 daily-limit - reserved까지만 소비한다.
+        direction-reserved: ${QELLO_NOTIFICATION_PUSH_DIRECTION_RESERVED}
+        # 질문 추천 push 사이 최소 간격. 같은 cycle 중복 억제와는 별개이며, 실제 provider 시도가 없던 group은 이 기준을 전진시키지 않는다.
+        recommendation-min-interval: ${QELLO_NOTIFICATION_PUSH_RECOMMENDATION_MIN_INTERVAL}
+  filtering:
+    answer-moderation:
+      # 답변 moderation 최초 판정 유예 시간
+      deadline-window: PT5M
+    production:
+      # 필터링 production 활성화 게이트(#113, INV-CMP-005·INV-CMP-006).
+      # 기본은 비활성이다. 법률·계약·보안 확인이 끝나기 전에는 켤 수 없다.
+      # 확인 항목은 docs/filtering-production-gate.md를 따른다.
+      enabled: false
+
+management:
+  endpoints:
+    # 관측 지표(#113). Micrometer의 MeterRegistry만 쓰고 exporter는 붙이지 않는다 —
+    # 관측·경보 도구가 미결정이다. 관리 endpoint는 전부 닫는다. 열린 actuator
+    # endpoint 자체가 공격면이며, 지표는 프로세스 안에만 머문다.
+    web:
+      exposure:
+        include: ""
+    enabled-by-default: false

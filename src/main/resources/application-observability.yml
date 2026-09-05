@@ -1,0 +1,8 @@
+logging:
+  structured:
+    format:
+      console: ecs
+    ecs:
+      service:
+        name: ${spring.application.name}
+        version: ${QELLO_APP_VERSION:unknown}

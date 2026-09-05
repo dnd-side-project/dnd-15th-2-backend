@@ -1,0 +1,16 @@
+# Default-profile integration contexts still bind production properties, so they use obvious fixed test-only keys.
+qello:
+  notification:
+    push:
+      token-protection:
+        current-key-id: integration-default-current
+        current-encryption-key-base64: YmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmI=
+        fingerprint-key-base64: cnJycnJycnJycnJycnJycnJycnJycnJycnJycnJycnI=
+      policy:
+        # Default-profile integration contexts still bind required policy properties.
+        # Test-only fixtures. These are not production recommendations.
+        bundle-window: PT10M
+        max-delay: PT8H
+        daily-limit: 5
+        direction-reserved: 2
+        recommendation-min-interval: PT24H

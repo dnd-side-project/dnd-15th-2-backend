@@ -7,8 +7,6 @@
  */
 package com.dnd.qello;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 import java.math.BigDecimal;
 import java.sql.Timestamp;
 import java.time.Instant;
@@ -29,6 +27,8 @@ import com.dnd.qello.feed.service.InboxQueryService;
 import com.dnd.qello.feed.view.InboxCard;
 import com.dnd.qello.feed.view.InboxCategory;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 @SpringBootTest
 @ActiveProfiles("test")
 class InboxQueryIntegrationTest extends PostgisContainerIntegrationTestSupport {
@@ -36,7 +36,7 @@ class InboxQueryIntegrationTest extends PostgisContainerIntegrationTestSupport {
 	private static final String REGION = "TEST-INBOXQ";
 	private static final Instant NOW = Instant.parse("2026-08-06T12:00:00Z");
 	private static final long DEFAULT_DISTANCE_M = 5000L;
-	/** application.properties의 qello.feed.near-distance-floor-m 기본값과 일치시킨다. */
+	/** application.yml의 qello.feed.near-distance-floor-m 기본값과 일치시킨다. */
 	private static final long NEAR_FLOOR_M = 10_000L;
 
 	@Autowired
@@ -61,36 +61,39 @@ class InboxQueryIntegrationTest extends PostgisContainerIntegrationTestSupport {
 		jdbc.update("DELETE FROM user_block");
 		jdbc.update("DELETE FROM user_account WHERE coarse_region_code = ?", REGION);
 		jdbc.update("DELETE FROM region_code WHERE code = ?", REGION);
-		jdbc.update("INSERT INTO region_code (code, parent_code, display_name, level) VALUES ('KR', NULL, 'Korea', 'COUNTRY') ON CONFLICT (code, level) DO NOTHING");
-		jdbc.update("INSERT INTO region_code (code, parent_code, display_name, level) VALUES (?, 'KR', 'Inbox Query', 'REGION')", REGION);
+		jdbc.update(
+				"INSERT INTO region_code (code, parent_code, display_name, level) VALUES ('KR', NULL, 'Korea', 'COUNTRY') ON CONFLICT (code, level) DO NOTHING");
+		jdbc.update(
+				"INSERT INTO region_code (code, parent_code, display_name, level) VALUES (?, 'KR', 'Inbox Query', 'REGION')",
+				REGION);
 
 		senderId = account("iq-sender");
 		recipientId = account("iq-recipient");
 		questionId = jdbc.queryForObject("""
-			INSERT INTO approved_question
-				(source_type, status, question_text, answer_format, active_from, approved_at, approved_by)
-			VALUES ('OPERATOR', 'ACTIVE', '오늘 뭐 하고 있나요?', 'TEXT', ?, ?, ?)
-			RETURNING id
-			""", Long.class, Timestamp.from(NOW.minusSeconds(60)), Timestamp.from(NOW), senderId);
+				INSERT INTO approved_question
+					(source_type, status, question_text, answer_format, active_from, approved_at, approved_by)
+				VALUES ('OPERATOR', 'ACTIVE', '오늘 뭐 하고 있나요?', 'TEXT', ?, ?, ?)
+				RETURNING id
+				""", Long.class, Timestamp.from(NOW.minusSeconds(60)), Timestamp.from(NOW), senderId);
 	}
 
 	private long account(String nickname) {
 		return jdbc.queryForObject("""
-			INSERT INTO user_account (role, country_code, status, coarse_region_code, locale, timezone, nickname)
-			VALUES ('USER', 'KR', 'ACTIVE', ?, 'ko-KR', 'Asia/Seoul', ?)
-			RETURNING id
-			""", Long.class, REGION, nickname);
+				INSERT INTO user_account (role, country_code, status, coarse_region_code, locale, timezone, nickname)
+				VALUES ('USER', 'KR', 'ACTIVE', ?, 'ko-KR', 'Asia/Seoul', ?)
+				RETURNING id
+				""", Long.class, REGION, nickname);
 	}
 
 	private long post(long author, String key, Instant expiresAt, String status) {
 		return jdbc.queryForObject("""
-			INSERT INTO direction_post
-				(sender_id, approved_question_id, status, idempotency_key, body_text,
-				 coarse_region_code, moderation_status, submitted_at, published_at, expires_at)
-			VALUES (?, ?, ?, ?, '본문', ?, 'PASSED', ?, ?, ?)
-			RETURNING id
-			""", Long.class, author, questionId, status, key, REGION,
-			Timestamp.from(NOW), Timestamp.from(NOW), Timestamp.from(expiresAt));
+				INSERT INTO direction_post
+					(sender_id, approved_question_id, status, idempotency_key, body_text,
+					 coarse_region_code, moderation_status, submitted_at, published_at, expires_at)
+				VALUES (?, ?, ?, ?, '본문', ?, 'PASSED', ?, ?, ?)
+				RETURNING id
+				""", Long.class, author, questionId, status, key, REGION,
+				Timestamp.from(NOW), Timestamp.from(NOW), Timestamp.from(expiresAt));
 	}
 
 	private long recipient(long targetPostId, String status, Instant matchedAt) {
@@ -103,22 +106,24 @@ class InboxQueryIntegrationTest extends PostgisContainerIntegrationTestSupport {
 		// 강제한다. SKIPPED/EXPIRED/BLOCKED/ANSWERED는 자신의 종결 타임스탬프에 더해
 		// capacity_released_at도 채워야 하고, SKIPPED는 skip_requested_at도 함께 필요하다.
 		String[] columns = switch (status) {
-			case "SKIP_PENDING" -> new String[] {"discovered_at", "skip_requested_at"};
-			case "OPENED" -> new String[] {"discovered_at", "opened_at"};
-			case "ANSWERED" -> new String[] {"discovered_at", "opened_at", "capacity_released_at"};
-			case "SKIPPED" -> new String[] {"discovered_at", "skip_requested_at", "skipped_at", "capacity_released_at"};
-			case "EXPIRED" -> new String[] {"expired_at", "capacity_released_at"};
-			case "BLOCKED" -> new String[] {"blocked_at", "capacity_released_at"};
+			case "SKIP_PENDING" -> new String[]{"discovered_at", "skip_requested_at"};
+			case "OPENED" -> new String[]{"discovered_at", "opened_at"};
+			case "ANSWERED" -> new String[]{"discovered_at", "opened_at", "capacity_released_at"};
+			case "SKIPPED" -> new String[]{"discovered_at", "skip_requested_at", "skipped_at", "capacity_released_at"};
+			case "EXPIRED" -> new String[]{"expired_at", "capacity_released_at"};
+			case "BLOCKED" -> new String[]{"blocked_at", "capacity_released_at"};
 			default -> new String[0];
 		};
 		if (columns.length == 0) {
-			return jdbc.queryForObject("""
-				INSERT INTO post_recipient
-					(post_id, recipient_id, status, distance_band, matched_bearing_deg, matched_region_code, matched_at,
-					 inbound_bearing_deg, distance_m)
-				VALUES (?, ?, ?, 'NEAR', 45, ?, ?, 225, ?)
-				RETURNING id
-				""", Long.class, targetPostId, recipientId, status, REGION, Timestamp.from(matchedAt), distanceM);
+			return jdbc.queryForObject(
+					"""
+							INSERT INTO post_recipient
+								(post_id, recipient_id, status, distance_band, matched_bearing_deg, matched_region_code, matched_at,
+								 inbound_bearing_deg, distance_m)
+							VALUES (?, ?, ?, 'NEAR', 45, ?, ?, 225, ?)
+							RETURNING id
+							""",
+					Long.class, targetPostId, recipientId, status, REGION, Timestamp.from(matchedAt), distanceM);
 		}
 		String columnList = String.join(", ", columns);
 		String placeholderList = Arrays.stream(columns).map(column -> "?").collect(Collectors.joining(", "));
@@ -131,25 +136,29 @@ class InboxQueryIntegrationTest extends PostgisContainerIntegrationTestSupport {
 		params[5] = distanceM;
 		Arrays.fill(params, 6, params.length, Timestamp.from(matchedAt));
 		return jdbc.queryForObject("""
-			INSERT INTO post_recipient
-				(post_id, recipient_id, status, distance_band, matched_bearing_deg, matched_region_code,
-				 matched_at, inbound_bearing_deg, distance_m, %s)
-			VALUES (?, ?, ?, 'NEAR', 45, ?, ?, 225, ?, %s)
-			RETURNING id
-			""".formatted(columnList, placeholderList), Long.class, params);
+				INSERT INTO post_recipient
+					(post_id, recipient_id, status, distance_band, matched_bearing_deg, matched_region_code,
+					 matched_at, inbound_bearing_deg, distance_m, %s)
+				VALUES (?, ?, ?, 'NEAR', 45, ?, ?, 225, ?, %s)
+				RETURNING id
+				""".formatted(columnList, placeholderList), Long.class, params);
 	}
 
 	private long answer(long postRecipientId, long authorId, String key, Instant publishedAt) {
 		return jdbc.queryForObject("""
-			INSERT INTO answer
-				(post_recipient_id, author_id, status, idempotency_key, body_text, coarse_region_code,
-				 bearing_from_sender_deg, distance_band, distance_m, moderation_status, submitted_at, published_at)
-			VALUES (?, ?, 'PUBLISHED', ?, '답변 본문', ?, 45, 'NEAR', 5000, 'PASSED', ?, ?)
-			RETURNING id
-			""", Long.class, postRecipientId, authorId, key, REGION, Timestamp.from(NOW), Timestamp.from(publishedAt));
+				INSERT INTO answer
+					(post_recipient_id, author_id, status, idempotency_key, body_text, coarse_region_code,
+					 bearing_from_sender_deg, distance_band, distance_m, moderation_status, submitted_at, published_at)
+				VALUES (?, ?, 'PUBLISHED', ?, '답변 본문', ?, 45, 'NEAR', 5000, 'PASSED', ?, ?)
+				RETURNING id
+				""", Long.class, postRecipientId, authorId, key, REGION, Timestamp.from(NOW),
+				Timestamp.from(publishedAt));
 	}
 
-	/** 방향 필터 없이 목록만 확인하는 기존 시나리오를 위한 편의 메서드. 칩은 InboxDirectionChipIntegrationTest가 다룬다. */
+	/**
+	 * 방향 필터 없이 목록만 확인하는 기존 시나리오를 위한 편의 메서드. 칩은 InboxDirectionChipIntegrationTest가
+	 * 다룬다.
+	 */
 	private List<InboxCard> cards(InboxCategory category, Instant at) {
 		return inboxQueryService.list(recipientId, category, null, at).cards();
 	}
@@ -201,7 +210,7 @@ class InboxQueryIntegrationTest extends PostgisContainerIntegrationTestSupport {
 		recipient(shortLived, "ANSWERED", NOW);
 
 		assertThat(cards(InboxCategory.ANSWERED, NOW.plusSeconds(29)))
-			.extracting(InboxCard::postId).containsExactly(shortLived);
+				.extracting(InboxCard::postId).containsExactly(shortLived);
 		assertThat(cards(InboxCategory.UNANSWERED, NOW.plusSeconds(29))).isEmpty();
 
 		assertThat(cards(InboxCategory.ANSWERED, NOW.plusSeconds(31))).isEmpty();
@@ -245,13 +254,14 @@ class InboxQueryIntegrationTest extends PostgisContainerIntegrationTestSupport {
 		long ownRowId = recipient(postId, "OPENED", NOW);
 		long otherRecipientId = account("iq-other-recipient");
 		long otherRowId = jdbc.queryForObject("""
-			INSERT INTO post_recipient
-				(post_id, recipient_id, status, distance_band, matched_bearing_deg, matched_region_code,
-				 matched_at, discovered_at, opened_at, inbound_bearing_deg, distance_m)
-			VALUES (?, ?, 'OPENED', 'NEAR', 45, ?, ?, ?, ?, 225, ?)
-			RETURNING id
-			""", Long.class, postId, otherRecipientId, REGION, Timestamp.from(NOW), Timestamp.from(NOW), Timestamp.from(NOW),
-			DEFAULT_DISTANCE_M);
+				INSERT INTO post_recipient
+					(post_id, recipient_id, status, distance_band, matched_bearing_deg, matched_region_code,
+					 matched_at, discovered_at, opened_at, inbound_bearing_deg, distance_m)
+				VALUES (?, ?, 'OPENED', 'NEAR', 45, ?, ?, ?, ?, 225, ?)
+				RETURNING id
+				""", Long.class, postId, otherRecipientId, REGION, Timestamp.from(NOW), Timestamp.from(NOW),
+				Timestamp.from(NOW),
+				DEFAULT_DISTANCE_M);
 		answer(ownRowId, recipientId, "a-self", NOW.plusSeconds(60));
 		answer(otherRowId, otherRecipientId, "a-other", NOW.plusSeconds(90));
 		jdbc.update("INSERT INTO user_block (blocker_id, blocked_id) VALUES (?, ?)", recipientId, otherRecipientId);
@@ -309,13 +319,14 @@ class InboxQueryIntegrationTest extends PostgisContainerIntegrationTestSupport {
 		long ownRowId = recipient(postId, "ANSWERED", NOW);
 		long otherRecipientId = account("iq-unread-other");
 		long otherRowId = jdbc.queryForObject("""
-			INSERT INTO post_recipient
-				(post_id, recipient_id, status, distance_band, matched_bearing_deg, matched_region_code,
-				 matched_at, discovered_at, opened_at, inbound_bearing_deg, distance_m)
-			VALUES (?, ?, 'OPENED', 'NEAR', 45, ?, ?, ?, ?, 225, ?)
-			RETURNING id
-			""", Long.class, postId, otherRecipientId, REGION, Timestamp.from(NOW), Timestamp.from(NOW), Timestamp.from(NOW),
-			DEFAULT_DISTANCE_M);
+				INSERT INTO post_recipient
+					(post_id, recipient_id, status, distance_band, matched_bearing_deg, matched_region_code,
+					 matched_at, discovered_at, opened_at, inbound_bearing_deg, distance_m)
+				VALUES (?, ?, 'OPENED', 'NEAR', 45, ?, ?, ?, ?, 225, ?)
+				RETURNING id
+				""", Long.class, postId, otherRecipientId, REGION, Timestamp.from(NOW), Timestamp.from(NOW),
+				Timestamp.from(NOW),
+				DEFAULT_DISTANCE_M);
 		answer(ownRowId, recipientId, "a-self", NOW.plusSeconds(60));
 		answer(otherRowId, otherRecipientId, "a-other", NOW.plusSeconds(90));
 

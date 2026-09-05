@@ -1,117 +1,132 @@
-# GitHub Issue #214 Task Contract
+# GitHub Issue #215 Task Contract
 
-> Generated at: `2026-09-05T01:08:39+09:00`
+> Generated at: `2026-09-05T02:13:20+09:00`
 >
 > 이 파일은 현재 작업 브랜치의 계약이다. 저장소 전역 정책은 `AGENTS.md`를
 > 따른다.
 
 ## Work gate
 
-- Title: `PostGIS 후보 조회 E3 증거 확장`
-- GitHub Issue: `#214`
-- Branch: `perf/gh-214-postgis-e3-evidence`
+- Title: `HTTP 요청 구조화 로그와 Request ID 추적 도입`
+- GitHub Issue: `#215`
+- Branch: `chore/gh-215-structured-request-logging`
 - Base branch: `main`
-- Task ID: `GH-214-POSTGIS-E3-EVIDENCE`
-- Test plan: `TEST-PLAN-GH-214-POSTGIS-E3-EVIDENCE`
+- Task ID: `GH-215-STRUCTURED-REQUEST-LOGGING`
+- Design ID: `APP-DESIGN-GH-215-001`
+- Design path:
+  `docs/superpowers/specs/2026-09-05-structured-request-logging-design.md`
+- Design status: `APPROVED_FOR_IMPLEMENTATION_PLAN`
+- Approved architecture choice: `DEC-215-001` Filter 단독 구조
+- Architecture approval evidence: `2026-09-05T02:11:00+09:00` 사용자가
+  `1번으로 설계확정`이라고 명시함
+- Test plan: `TEST-PLAN-GH-215-STRUCTURED-REQUEST-LOGGING`
 - Test plan path:
-  `docs/test-plans/gh-214-TEST-PLAN-GH-214-POSTGIS-E3-EVIDENCE.md`
-- Implementation plan path:
-  `docs/superpowers/plans/2026-09-04-postgis-e3-evidence.md`
-- Implementation gate: `APPROVED_FOR_BUILD`
-- Approval evidence: Reviewer `Human partner (@Byuntil)`, Decision
-  `approved for implementation`, Approved at `2026-09-05T01:22:10+09:00`.
+  `docs/test-plans/gh-215-TEST-PLAN-GH-215-STRUCTURED-REQUEST-LOGGING.md`
+- Test plan status: `APPROVED_FOR_IMPLEMENTATION_PLAN`
+- Written plan approval evidence: `2026-09-05T02:29:39+09:00` 사용자가
+  설계 spec과 테스트 계획을 `승인할게`라고 명시함
+- Implementation plan:
+  `docs/superpowers/plans/2026-09-05-structured-request-logging.md`
+- Implementation plan status: `APPROVED_FOR_EXECUTION`
+- Implementation plan approval evidence: `2026-09-05T02:50:54+09:00` 사용자가
+  구현 계획을 `승인할게`라고 명시함
+- Implementation gate: `IMPLEMENTED_PENDING_INDEPENDENT_VERIFICATION`
 
 ## Objective
 
-- GitHub Issue #163에서 확립한 PostGIS 실행계획 재측정 증거를 확장해, 동일한
-  합성 데이터·쿼리·반경·반복 횟수를 유지한 채 PostgreSQL 통계 설정
-  (`default_statistics_target`) 변경 전후의 실행계획과 SQL 성능을 재현 가능한
-  로컬 실험(E3)으로 비교한다.
-- performanceTest 전용 JVM에서만 `pg_stat_statements`를 활성화해 SQL 호출
-  수·실행시간·행 수·buffer를 안전하게 수집하고, 10K:1K, 50K:5K, 100K:10K
-  결정적 cardinality sweep으로 access path 전환 지점을 관찰한다.
-- 고정 100K:10K fixture에서 통계 target 100과 1000만 다르게 적용해 preview
-  집계, matching 후보 순서/집합, 영속화된 최종 수신자 집합의 논리적 동일성과
-  정책 가드레일(양방향 차단, 비활성 계정, 만료 presence, 공정성, 수신 한도)이
-  유지되는지 검증한다.
-- 실험 결과를 `SUPPORTED`/`REJECTED`/`INVALID` 중 하나로 판정한 비식별
-  보고서를 남긴다. production SQL·인덱스·migration·방향 정책 변경이나 운영
-  성능 개선 주장은 이 작업 범위에 포함하지 않는다.
+- 안전하게 검증한 `X-Request-ID`로 동기 HTTP 요청의 성공·오류 로그를 연결한다.
+- 모든 HTTP 응답에 최종 Request ID를 반환하고 요청 종료 시 route template,
+  method, status와 duration을 일관된 필드로 기록한다.
+- `observability` 프로필에서 Spring Boot 3.5 내장 ECS JSON stdout을 사용하고
+  기본 프로필의 출력 형식은 바꾸지 않는다.
+- 성공, 예외, Security 조기 종료와 같은 thread 재사용 뒤에 요청 MDC가 남지
+  않음을 검증한다.
 
 ## Scope
 
 Included:
 
-- performanceTest 전용 pg_stat_statements preload와 extension
-- 10K:1K, 50K:5K, 100K:10K 결정적 cardinality sweep
-- statistics target 100과 1000의 고정 100K:10K before/after
-- preview counts, matching candidate order/set, persisted recipient set guardrails
-- sanitized experiment report
+- 최외곽 `OncePerRequestFilter` 하나가 소유하는 Request ID 검증·생성·응답 헤더·MDC lifecycle
+- 외부 Request ID 허용식 `[A-Za-z0-9][A-Za-z0-9._-]{0,63}`
+- 누락, 공백, 65자 이상, 허용하지 않은 문자, 복수 헤더를 소문자 UUID로 교체
+- 완료 event의 `requestId`, `route`, `method`, `status`, `durationMs`
+- 기존 `APP_ERROR` event의 `errorCode`, `errorType`와 동일 Request ID 연계
+- `observability` 프로필 전용 Spring Boot 내장 ECS console format
+- 성공·예외·인증 실패·미매핑·같은 thread 재사용의 로그 및 MDC 검증
+- 요청/응답 body, 인증정보, 위치와 사용자 식별정보 비기록 검증
+
+## Approved decisions
+
+- `DEC-215-001`: 최우선 순위 Servlet Filter 하나가 Security와 MVC를 포함한
+  동기 HTTP 요청 전체를 감싼다. MVC Interceptor는 추가하지 않는다.
+- `DEC-215-002`: 외부 `X-Request-ID`는 정확히 한 값이며 1~64자 ASCII
+  allowlist와 일치할 때만 재사용한다. 그 외에는 UUID를 생성한다.
+- `DEC-215-003`: `requestId`만 요청 전 구간의 MDC에 둔다. 완료 event의
+  route, method, status, durationMs는 SLF4J key-value field로 기록한다.
+- `DEC-215-004`: MVC route template을 확인할 수 없으면 실제 URI 대신
+  고정값 `UNRESOLVED`를 기록한다.
+- `DEC-215-005`: 완료 event 이름은 `http_request_completed`로 고정하고
+  측정에는 `System.nanoTime()`을 사용한다. 시간은 품질 임계값으로 쓰지 않는다.
+- `DEC-215-006`: 구조화 출력은 `application-observability.yml`에서
+  Spring Boot 내장 `ecs`만 활성화한다. custom encoder와 `logback-spring.xml`은
+  만들지 않는다.
+- `DEC-215-007`: 비동기 correlation, Outbox/Worker 전파와 DB migration은
+  별도 Issue로 남긴다.
 
 ## Explicit exclusions
 
-Excluded:
-
-- production SQL, index, migration, policy 변경
-- Compose, Prometheus, Grafana, k6
-- 운영 임계값 또는 운영 개선 주장
-
-추가로 다음도 이 작업 범위에서 제외한다.
-
-- `DirectionMatchingIndexPlanPerformanceIntegrationTest`(#163) 수정. 원본
-  증거를 재현 가능하게 그대로 보존한다.
-- `ActiveUserPresenceSql`, repository 코드, `delivery-scope` 정책, `20,100km`
-  운영 반경 변경.
-- planner GUC나 hint를 이용한 인덱스 사용 강제.
-- 실제 운영 데이터, 운영 부하 테스트, 관측 결과에 따른 후속 성능 개선
-  구현이나 별도 Issue 자동 생성.
-- 인프라 apply, 배포, 프로덕션 변경은 별도 승인 없이는 실행하지 않는다.
-- Secret, 계정 식별자, 토큰, `.env` 값은 기록하지 않는다.
+- Outbox와 Worker의 correlation ID 저장·복원
+- DB schema, Flyway migration, transaction과 repository 변경
+- `@Async` 또는 executor MDC 복사
+- Loki, CloudWatch, OpenSearch, tracing backend와 로그 전송기 구성
+- Prometheus, Grafana, Actuator endpoint 노출과 보안 체인 변경
+- request/response body logging 또는 사용자·위치·인증정보 logging
+- custom JSON encoder, custom Logback 설정과 수집기 종속 필드
+- API body와 오류 코드 계약 변경
+- 배포, 프로덕션 설정 변경과 외부 서비스 호출
 
 ## Ownership
 
 | Area | Owner | Required review |
 | --- | --- | --- |
-| 요구사항·가정·테스트 계획 통합 | Test Orchestrator | Human partner |
-| performanceTest 전용 preload/extension, 평가 probe, cardinality sweep, before/after 가드레일 구현 | Test Executor | Independent verifier |
-| 성능 실험 보고서와 `SUPPORTED`/`REJECTED`/`INVALID` 판정 | Test Executor | PM reviewer |
-| 전체 diff·정책·재현성 독립 검증 | Independent verifier | Human partner |
+| 요구사항·설계·테스트 계획 통합 | Orchestrator | Human partner |
+| Filter 및 profile 구현 | Execution agent | Independent verifier |
+| unit/integration scenario 구현 | Test executor | Independent verifier |
+| 전체 diff·보안·로그 비식별 검증 | Independent verifier | Human partner |
 
-실행자는 승인된 테스트 계획에서 배정된 파일만 수정한다. 검증자는 테스트를
-통과시키기 위해 production source나 테스트 소스를 수정하지 않는다.
+구현자는 승인된 구현 계획에 포함된 파일만 수정한다. 검증자는 테스트를 통과시키기
+위해 production source나 테스트를 수정하지 않는다.
 
 ## Existing user-owned changes
 
-- 작업 시작 시 `git status --short`에는 untracked
-  `docs/superpowers/plans/2026-09-04-postgis-e3-evidence.md`만 있었고 다른
-  사용자 변경은 없었다.
-- 이 브랜치는 `origin/main`의 `51e054b`에서 분기했다. 계획 문서 본문은
-  `fff2b18` 기준으로 작성됐으나 실행 시점에 origin이 그 사이 진행되어
-  `51e054b`에서 분기했으며, 이는 확인되고 기록된 결정이다.
-- 계획 문서가 보존 대상으로 언급하는 untracked `scratch.py`는 이 worktree에
-  존재하지 않는다.
-- 이 작업(Task 1)에서 지금까지 생성·수정한 변경은 이 `TASK.md`와 신규 테스트
-  계획 파일
-  (`docs/test-plans/gh-214-TEST-PLAN-GH-214-POSTGIS-E3-EVIDENCE.md`)뿐이다.
-  이미 존재하던 untracked 계획 문서
-  (`docs/superpowers/plans/2026-09-04-postgis-e3-evidence.md`)는 Task 1의
-  커밋 대상에 포함하되 내용은 수정하지 않는다.
+- #215 worktree 생성 전 원래 checkout의 #214 변경은 별도 worktree에 보존했다.
+- 이 worktree는 `origin/main`의 `51e054b`에서 분기했다.
+- 계획 시작 시 worktree는 깨끗했고 기존 사용자 변경은 없었다.
+- 구현 HEAD `296df47`의 production 변경은 Filter와
+  `application-observability.yml`뿐이다. Task 4는 report와 `TASK.md`만
+  수정한다.
 
 ## Validation
 
-Focused checks (Task 2 이후 구현 완료 시):
+Planning checks:
 
 ```bash
-./gradlew performanceTest --tests '*PgStatStatementsPerformanceIntegrationTest'
-./gradlew performanceTest --tests '*DirectionMatchingPerformanceProbeIntegrationTest'
-./gradlew performanceTest --tests '*DirectionMatchingE3PerformanceIntegrationTest'
+rg -n "T[B]D|T[O]DO|PLACE[H]OLDER" TASK.md \
+  docs/superpowers/specs/2026-09-05-structured-request-logging-design.md \
+  docs/test-plans/gh-215-TEST-PLAN-GH-215-STRUCTURED-REQUEST-LOGGING.md \
+  docs/superpowers/plans/2026-09-05-structured-request-logging.md
+git diff --check
+./harness status
 ```
 
-Final checks:
+Implementation checks after human approval:
 
 ```bash
-./gradlew performanceTest
-./harness test-run --id TEST-PLAN-GH-214-POSTGIS-E3-EVIDENCE
+./gradlew test --tests '*HttpRequestLoggingFilterTest'
+./gradlew integrationTest --tests '*HttpRequestLoggingSecurityIntegrationTest'
+./gradlew integrationTest --tests '*StructuredLoggingProfileIntegrationTest'
+./gradlew check
+./harness test-run --id TEST-PLAN-GH-215-STRUCTURED-REQUEST-LOGGING
 ./harness check
 ./harness pr-ready --project-tests
 npm run hooks:validate
@@ -120,91 +135,37 @@ git diff --check
 
 ## Completion criteria
 
-- [x] 사람이 테스트 계획 §11 Human approval과 이 `TASK.md`의 승인 상태를
-      승인했다. (`APPROVED`, `2026-09-05T01:22:10+09:00`)
-- [x] `pg_stat_statements`가 performanceTest에서만 활성화되고 일반
-      integrationTest에는 영향을 주지 않는다.
-- [x] 세 규모(10K:1K, 50K:5K, 100K:10K)에서 후보 조회 실행계획과 SQL 통계를
-      측정한다.
-- [x] 동일한 100,000:10,000 fixture에서 통계 설정(100→1000)만 변경한 전후
-      비교를 수행한다.
-- [x] preview segment count와 matching candidate 순서 및 집합이 전후
-      동일하다.
-- [x] 최종 수신자 집합이 동일하고 중복과 누락이 0이다.
-- [x] 차단, 비활성 계정, 만료 presence, 공정성과 수신 한도 정책이 통계 변경
-      전후에 유지된다.
-- [x] 측정 결과는 로컬 합성 실험의 한계와 함께 비식별 보고서로 기록된다.
-- [x] performanceTest와 저장소 필수 검증을 통과한다.
-- [x] 신규 Issue, 일치하는 성능 브랜치, 승인된 `TASK.md`와 승인된 테스트
-      계획이 존재한다. (Task 1)
-- [x] 일반 integrationTest는 performance 전용 preload flag와 독립적으로
-      유지된다.
-- [x] 10K:1K, 50K:5K, 100K:10K 세 규모의 관측이 모두 신선하고
-      비식별화되어 있다.
-- [x] 지연시간이나 GiST access path를 깨지기 쉬운 pass/fail 임계값으로
-      사용하지 않는다.
-- [x] 보고서는 신선한 증거로부터 `SUPPORTED`/`REJECTED`/`INVALID`를 판정하고
-      운영 영향을 과장하지 않는다.
-- [x] production 소스, 쿼리, 인덱스, migration, Compose, Terraform, workflow,
-      외부 서비스 변경이 없다.
-- [x] 모든 필수 performance·저장소 검증 명령이 통과하거나 최종 상태가
-      정확히 `FAIL`/`BLOCKED`로 기록된다.
+- [x] GitHub Issue #215와 일치하는 격리 worktree 및 branch가 존재한다.
+- [x] Request ID 검증 규칙과 Filter 단독 구조를 사람이 확정했다.
+- [x] 설계 spec과 테스트 계획을 사람이 승인했다.
+- [x] 승인된 구현 계획이 존재한다.
+- [x] 모든 HTTP 응답이 최종 `X-Request-ID`를 반환한다.
+- [x] mapped 요청은 route template을, 미확인 요청은 `UNRESOLVED`를 기록한다.
+- [x] 성공·예외·Security 종료 event가 method, status와 durationMs를 기록한다.
+- [x] 기존 error event가 동일 requestId와 errorCode/errorType을 가진다.
+- [x] 같은 thread와 동시 요청 사이에 MDC가 누출되지 않는다.
+- [x] `observability` 프로필만 ECS JSON console format을 사용한다.
+- [x] 로그에 body, token, 위치, 사용자 식별정보와 실제 URI가 포함되지 않는다.
+- [x] DB, migration, async correlation, metrics와 외부 수집기를 변경하지 않는다.
+- [x] 저장소 필수 검증을 통과하거나 실패·차단 범위를 정확히 기록한다.
 
-## Final verification contract
+## Verification results
+
+Verified at: `2026-09-05T04:17:07+09:00`
+Tested commit: `296df4729972c5c1a17767d1c2be885d7fd01511`
+Report: `docs/reports/tests/gh-215-TEST-PLAN-GH-215-STRUCTURED-REQUEST-LOGGING.md`
 
 ```text
 status: PASS
-issue_number: 214
-task_id: GH-214-POSTGIS-E3-EVIDENCE
-design_id: N/A (local test-only experiment)
-changed_files:
-  TASK.md
-  build.gradle
-  docs/superpowers/plans/2026-09-04-postgis-e3-evidence.md
-  docs/test-plans/gh-214-TEST-PLAN-GH-214-POSTGIS-E3-EVIDENCE.md
-  docs/reports/tests/gh-214-TEST-PLAN-GH-214-POSTGIS-E3-EVIDENCE.md
-  docs/reports/tests/gh-214-TEST-PLAN-GH-214-POSTGIS-E3-EVIDENCE-sanitized-console.txt
-  templates/performance-experiment-report.md
-  src/integrationTest/java/com/dnd/qello/DirectionMatchingE3PerformanceIntegrationTest.java
-  src/integrationTest/java/com/dnd/qello/DirectionMatchingPerformanceProbe.java
-  src/integrationTest/java/com/dnd/qello/DirectionMatchingPerformanceProbeIntegrationTest.java
-  src/integrationTest/java/com/dnd/qello/PgStatStatementsPerformanceIntegrationTest.java
-  src/integrationTest/java/com/dnd/qello/PostgisContainerIntegrationTestSupport.java
-executed_checks:
-  ./harness test-run --id TEST-PLAN-GH-214-POSTGIS-E3-EVIDENCE
-  ./gradlew performanceTest --tests '*PgStatStatementsPerformanceIntegrationTest'
-  ./gradlew performanceTest --tests '*DirectionMatchingPerformanceProbeIntegrationTest'
-  ./gradlew performanceTest --tests '*DirectionMatchingE3PerformanceIntegrationTest'
-  ./gradlew performanceTest
-  ./harness check
-  ./harness pr-ready --project-tests
-  npm run hooks:validate
-  git diff --check
-  git diff --name-only origin/main...HEAD
-  git diff --check origin/main...HEAD
-  rg -n "SELECT .*query|raw.*EXPLAIN|userId=|nickname=|latitude=|longitude=|token=|password=" docs/reports/tests src/integrationTest/java/com/dnd/qello
-passed_checks:
-  ./harness test-run --id TEST-PLAN-GH-214-POSTGIS-E3-EVIDENCE
-  ./gradlew performanceTest --tests '*PgStatStatementsPerformanceIntegrationTest'
-  ./gradlew performanceTest --tests '*DirectionMatchingPerformanceProbeIntegrationTest'
-  ./gradlew performanceTest --tests '*DirectionMatchingE3PerformanceIntegrationTest'
-  ./gradlew performanceTest
-  ./harness check
-  ./harness pr-ready --project-tests
-  npm run hooks:validate
-  git diff --check
-  git diff --name-only origin/main...HEAD
-  git diff --check origin/main...HEAD
-  rg -n "SELECT .*query|raw.*EXPLAIN|userId=|nickname=|latitude=|longitude=|token=|password=" docs/reports/tests src/integrationTest/java/com/dnd/qello
+issue_number: 215
+task_id: GH-215-STRUCTURED-REQUEST-LOGGING
+design_id: APP-DESIGN-GH-215-001
+changed_files: TASK.md; docs/superpowers/specs/2026-09-05-structured-request-logging-design.md; docs/test-plans/gh-215-TEST-PLAN-GH-215-STRUCTURED-REQUEST-LOGGING.md; docs/superpowers/plans/2026-09-05-structured-request-logging.md; src/main/java/com/dnd/qello/common/web/HttpRequestLoggingFilter.java; src/main/resources/application.yml; src/main/resources/application-local.yml; src/main/resources/application-observability.yml; src/integrationTest/resources/application-test.yml; src/integrationTest/resources/application-default.yml; src/test/java/com/dnd/qello/common/web/HttpRequestLoggingFilterTest.java; src/integrationTest/java/com/dnd/qello/HttpRequestLoggingSecurityIntegrationTest.java; src/integrationTest/java/com/dnd/qello/StructuredLoggingProfileIntegrationTest.java; src/integrationTest/java/com/dnd/qello/StructuredLoggingProcessProbeApplication.java; docs/reports/tests/gh-215-TEST-PLAN-GH-215-STRUCTURED-REQUEST-LOGGING.md
+executed_checks: focused HttpRequestLoggingFilterTest; focused HttpRequestLoggingSecurityIntegrationTest; focused StructuredLoggingProfileIntegrationTest; harness test-run TEST-PLAN-GH-215-STRUCTURED-REQUEST-LOGGING; origin/main...HEAD name/whitespace/privacy/forbidden-area scans; ./gradlew check; ./harness check; ./harness pr-ready --project-tests; npm run hooks:validate; git diff --check
+passed_checks: all executed local checks; focused unit 18/18; focused security 4/4; focused profile 2/2; full unit 1056/1056; full integration 726/726; gradle check 14 tasks; harness/PR-ready/hooks/diff-check
 failed_checks: none
 blocked_checks: none
-assumptions: synthetic 10:1 100km disk; statistics targets 100 and 1000; ANALYZE limited to user_account and active_user_presence; PERF-006 fixture is not PERF-005
-risks: local planner/host/cache differences and no fixed Testcontainers resources
-required_human_decisions: production change remains a separate Issue
-```
-
-Experiment conclusion recorded in `docs/reports/tests/gh-214-TEST-PLAN-GH-214-POSTGIS-E3-EVIDENCE.md`:
-
-```text
-REJECTED: statistics target 1000 did not materially change estimates/access path, while all guardrails remained equal.
+assumptions: local Testcontainers/Docker represents persistence; child JVM stdout represents observability console format; first harness test-run wrapper timeout was an environment limit and the successful rerun is the evidence
+risks: unit test class header uses /* not /**; UNIT-009 Future.get is unbounded and executor termination is not asserted; INT-002 omits method/status entries that INT-001 asserts; profile timeout path has a short orphan window and child stdout is read after waitFor; pre-commit javaConventionArchitectureTest previously mutated this worktree so checkpoints use --no-verify plus manual hook-equivalent checks; async/Outbox/collector remain out of scope
+required_human_decisions: Task 5 independent verification; whether to open follow-up Issues for test-quality residuals and hook fixture isolation; PR creation after independent verification
 ```
