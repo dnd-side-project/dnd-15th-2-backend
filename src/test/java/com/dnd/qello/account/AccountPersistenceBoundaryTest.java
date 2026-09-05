@@ -1,3 +1,7 @@
+/*
+ * Created at: 2026-08-03T18:13:05+09:00
+ * Source scenario: TEST-PLAN-GH-37-ACCOUNT-PERSISTENCE-UNIT-003 through UNIT-004
+ */
 package com.dnd.qello.account;
 
 import java.io.IOException;
@@ -21,11 +25,6 @@ import com.dnd.qello.account.repository.jpa.AccountJpaEntity;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/**
- * Created at: 2026-08-03T18:13:05+09:00 Source scenario:
- * TEST-PLAN-GH-37-ACCOUNT-PERSISTENCE-UNIT-003,
- * TEST-PLAN-GH-37-ACCOUNT-PERSISTENCE-UNIT-004
- */
 class AccountPersistenceBoundaryTest {
 
 	private static final Set<String> FORBIDDEN_ENTITY_ANNOTATIONS = Set.of(

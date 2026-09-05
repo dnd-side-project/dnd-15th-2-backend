@@ -1,3 +1,7 @@
+/*
+ * Created at: 2026-08-03T17:45:39+09:00
+ * Source scenario: TEST-PLAN-GH-36-FLYWAY-BASELINE-UNIT-001 through UNIT-002, TEST-PLAN-GH-78-SCHEMA-REVISION-V7-UNIT-001, TEST-PLAN-GH-88-COUNTRY-ONBOARDING-UNIT-004, TEST-PLAN-GH-115-DIRECTION-MATCHING-CONTRACT-INT-001
+ */
 package com.dnd.qello;
 
 import java.io.IOException;
@@ -18,14 +22,6 @@ import org.springframework.core.io.support.PropertiesLoaderUtils;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/**
- * Created at: 2026-08-03T17:45:39+09:00 Source scenario:
- * TEST-PLAN-GH-36-FLYWAY-BASELINE-UNIT-001,
- * TEST-PLAN-GH-36-FLYWAY-BASELINE-UNIT-002,
- * TEST-PLAN-GH-78-SCHEMA-REVISION-V7-UNIT-001,
- * TEST-PLAN-GH-88-COUNTRY-ONBOARDING-UNIT-004,
- * TEST-PLAN-GH-115-DIRECTION-MATCHING-CONTRACT-INT-001
- */
 class FlywayMigrationContractTest {
 
 	private static final String ACCEPTED_DDL_SHA_256 = "cc93ba87aa5999bdd48589b63fa4da4e383270626fb36ecb7adac482ed3d95a7";
