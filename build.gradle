@@ -243,10 +243,12 @@ tasks.register('integrationTest', Test) {
 }
 
 tasks.register('performanceTest', Test) {
-	description = 'Runs @Tag("performance") integration tests (10k synthetic scale, EXPLAIN ANALYZE). check에 포함되지 않으며 수동으로만 실행한다.'
+	// 대규모 합성 데이터 적재와 EXPLAIN ANALYZE는 별도 performanceTest에서만 실행한다.
+	description = 'Runs @Tag("performance") integration tests, including controlled synthetic scale and EXPLAIN ANALYZE evidence. check에 포함되지 않으며 수동으로만 실행한다.'
 	group = 'verification'
 	testClassesDirs = sourceSets.integrationTest.output.classesDirs
 	classpath = sourceSets.integrationTest.runtimeClasspath
+	systemProperty 'qello.test.postgres.pg-stat-statements-enabled', 'true'
 	useJUnitPlatform {
 		includeTags 'performance'
 	}
