@@ -56,7 +56,7 @@ npm ci
 ```
 
 `local` profile 애플리케이션은 다음처럼 실행합니다. `.env`는
-`application-local.properties`가 선택적으로 읽으며 Git에는 포함되지 않습니다.
+`application-local.yml`이 선택적으로 읽으며 Git에는 포함되지 않습니다.
 
 ```bash
 ./gradlew bootRun --args='--spring.profiles.active=local'

@@ -67,7 +67,7 @@ Included:
   고정값 `UNRESOLVED`를 기록한다.
 - `DEC-215-005`: 완료 event 이름은 `http_request_completed`로 고정하고
   측정에는 `System.nanoTime()`을 사용한다. 시간은 품질 임계값으로 쓰지 않는다.
-- `DEC-215-006`: 구조화 출력은 `application-observability.properties`에서
+- `DEC-215-006`: 구조화 출력은 `application-observability.yml`에서
   Spring Boot 내장 `ecs`만 활성화한다. custom encoder와 `logback-spring.xml`은
   만들지 않는다.
 - `DEC-215-007`: 비동기 correlation, Outbox/Worker 전파와 DB migration은
@@ -103,7 +103,7 @@ Included:
 - 이 worktree는 `origin/main`의 `51e054b`에서 분기했다.
 - 계획 시작 시 worktree는 깨끗했고 기존 사용자 변경은 없었다.
 - 구현 HEAD `296df47`의 production 변경은 Filter와
-  `application-observability.properties`뿐이다. Task 4는 report와 `TASK.md`만
+  `application-observability.yml`뿐이다. Task 4는 report와 `TASK.md`만
   수정한다.
 
 ## Validation
@@ -160,7 +160,7 @@ status: PASS
 issue_number: 215
 task_id: GH-215-STRUCTURED-REQUEST-LOGGING
 design_id: APP-DESIGN-GH-215-001
-changed_files: TASK.md; docs/superpowers/specs/2026-09-05-structured-request-logging-design.md; docs/test-plans/gh-215-TEST-PLAN-GH-215-STRUCTURED-REQUEST-LOGGING.md; docs/superpowers/plans/2026-09-05-structured-request-logging.md; src/main/java/com/dnd/qello/common/web/HttpRequestLoggingFilter.java; src/main/resources/application-observability.properties; src/test/java/com/dnd/qello/common/web/HttpRequestLoggingFilterTest.java; src/integrationTest/java/com/dnd/qello/HttpRequestLoggingSecurityIntegrationTest.java; src/integrationTest/java/com/dnd/qello/StructuredLoggingProfileIntegrationTest.java; src/integrationTest/java/com/dnd/qello/StructuredLoggingProcessProbeApplication.java; docs/reports/tests/gh-215-TEST-PLAN-GH-215-STRUCTURED-REQUEST-LOGGING.md
+changed_files: TASK.md; docs/superpowers/specs/2026-09-05-structured-request-logging-design.md; docs/test-plans/gh-215-TEST-PLAN-GH-215-STRUCTURED-REQUEST-LOGGING.md; docs/superpowers/plans/2026-09-05-structured-request-logging.md; src/main/java/com/dnd/qello/common/web/HttpRequestLoggingFilter.java; src/main/resources/application.yml; src/main/resources/application-local.yml; src/main/resources/application-observability.yml; src/integrationTest/resources/application-test.yml; src/integrationTest/resources/application-default.yml; src/test/java/com/dnd/qello/common/web/HttpRequestLoggingFilterTest.java; src/integrationTest/java/com/dnd/qello/HttpRequestLoggingSecurityIntegrationTest.java; src/integrationTest/java/com/dnd/qello/StructuredLoggingProfileIntegrationTest.java; src/integrationTest/java/com/dnd/qello/StructuredLoggingProcessProbeApplication.java; docs/reports/tests/gh-215-TEST-PLAN-GH-215-STRUCTURED-REQUEST-LOGGING.md
 executed_checks: focused HttpRequestLoggingFilterTest; focused HttpRequestLoggingSecurityIntegrationTest; focused StructuredLoggingProfileIntegrationTest; harness test-run TEST-PLAN-GH-215-STRUCTURED-REQUEST-LOGGING; origin/main...HEAD name/whitespace/privacy/forbidden-area scans; ./gradlew check; ./harness check; ./harness pr-ready --project-tests; npm run hooks:validate; git diff --check
 passed_checks: all executed local checks; focused unit 18/18; focused security 4/4; focused profile 2/2; full unit 1056/1056; full integration 726/726; gradle check 14 tasks; harness/PR-ready/hooks/diff-check
 failed_checks: none

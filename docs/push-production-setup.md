@@ -141,7 +141,7 @@ SSM SecureString에 사전 등록한다. 논리 prefix는
 | `QELLO_NOTIFICATION_PUSH_TOKEN_PREVIOUS_ENCRYPTION_KEY_BASE64` | 단계 4 | 회전 중에만 |
 
 FCM credential, AES key ring, HMAC key는 서로 다른 파라미터로 분리한다.
-timeout(`connect-timeout`, `read-timeout`)은 secret이 아니며 `application.properties`에
+timeout(`connect-timeout`, `read-timeout`)은 secret이 아니며 `application.yml`에
 이미 고정돼 있다.
 
 ## 8. 단계 6 — runtime 주입 인프라

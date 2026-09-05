@@ -5,9 +5,6 @@ package com.dnd.qello;
  * Source scenario: TEST-PLAN-GH-94-RECEIVE-STATE-INIT-RACE-INT-001 through INT-012
  */
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-
 import java.math.BigDecimal;
 import java.sql.Timestamp;
 import java.time.Instant;
@@ -41,16 +38,17 @@ import com.dnd.qello.direction.repository.DirectionSchemeRepository;
 import com.dnd.qello.direction.repository.RecipientReceiveStateRepository;
 import com.dnd.qello.direction.service.DirectionPostService;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
 /**
  * `recipient_receive_state` 초기 행 생성 경쟁(#94)을 고정한다.
  *
- * 이 결함은 Java 로직이 아니라 두 SQL 문 사이의 원자성 부재에 있어 stub 기반
- * 단위 테스트로는 관측되지 않는다. 따라서 P0 증거는 전부 실제 PostgreSQL
- * 컨테이너를 쓰는 이 클래스의 시나리오다.
+ * 이 결함은 Java 로직이 아니라 두 SQL 문 사이의 원자성 부재에 있어 stub 기반 단위 테스트로는 관측되지 않는다. 따라서 P0
+ * 증거는 전부 실제 PostgreSQL 컨테이너를 쓰는 이 클래스의 시나리오다.
  *
- * 동시 스레드는 2개까지만 쓴다 — `application-test.properties`의
- * `hikari.maximum-pool-size=4`이고 각 스레드가 트랜잭션마다 커넥션을 잡으므로
- * 3개 이상은 pool 고갈로 거짓 실패를 만든다.
+ * 동시 스레드는 2개까지만 쓴다 — `application-test.yml`의 `hikari.maximum-pool-size=4`이고 각
+ * 스레드가 트랜잭션마다 커넥션을 잡으므로 3개 이상은 pool 고갈로 거짓 실패를 만든다.
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -91,8 +89,11 @@ class ReceiveStateReservationIntegrationTest extends PostgisContainerIntegration
 		jdbc.update("DELETE FROM approved_question");
 		jdbc.update("DELETE FROM user_account WHERE coarse_region_code = ?", REGION);
 		jdbc.update("DELETE FROM region_code WHERE code = ?", REGION);
-		jdbc.update("INSERT INTO region_code (code, parent_code, display_name, level) VALUES ('KR', NULL, 'Korea', 'COUNTRY') ON CONFLICT (code, level) DO NOTHING");
-		jdbc.update("INSERT INTO region_code (code, parent_code, display_name, level) VALUES (?, 'KR', 'Receive State Test Region', 'REGION')", REGION);
+		jdbc.update(
+				"INSERT INTO region_code (code, parent_code, display_name, level) VALUES ('KR', NULL, 'Korea', 'COUNTRY') ON CONFLICT (code, level) DO NOTHING");
+		jdbc.update(
+				"INSERT INTO region_code (code, parent_code, display_name, level) VALUES (?, 'KR', 'Receive State Test Region', 'REGION')",
+				REGION);
 	}
 
 	// ---------------------------------------------------------------------
@@ -104,15 +105,17 @@ class ReceiveStateReservationIntegrationTest extends PostgisContainerIntegration
 	void concurrentSendsToNewRecipientKeepCounterEqualToDeliveredRows() throws Exception {
 		Fixture fixture = twoSendersTargetingOneRecipient();
 		assertThat(jdbc.queryForObject("SELECT count(*) FROM recipient_receive_state WHERE user_id = ?",
-			Integer.class, fixture.recipientId())).isZero();
+				Integer.class, fixture.recipientId())).isZero();
 
 		ExecutorService executor = Executors.newFixedThreadPool(2);
 		CountDownLatch ready = new CountDownLatch(2);
 		CountDownLatch start = new CountDownLatch(1);
 		try {
 			List<Future<DirectionPostService.SendResult>> results = List.of(
-				executor.submit(() -> sendAfterSignal(fixture.sendCommand(fixture.senderOneId(), "S0", "gh94-concurrent-1"), ready, start)),
-				executor.submit(() -> sendAfterSignal(fixture.sendCommand(fixture.senderTwoId(), "S7", "gh94-concurrent-2"), ready, start)));
+					executor.submit(() -> sendAfterSignal(
+							fixture.sendCommand(fixture.senderOneId(), "S0", "gh94-concurrent-1"), ready, start)),
+					executor.submit(() -> sendAfterSignal(
+							fixture.sendCommand(fixture.senderTwoId(), "S7", "gh94-concurrent-2"), ready, start)));
 			assertThat(ready.await(5, TimeUnit.SECONDS)).isTrue();
 			start.countDown();
 			results.get(0).get(20, TimeUnit.SECONDS);
@@ -122,9 +125,9 @@ class ReceiveStateReservationIntegrationTest extends PostgisContainerIntegration
 		}
 
 		assertThat(jdbc.queryForObject("SELECT count(*) FROM post_recipient WHERE recipient_id = ?",
-			Integer.class, fixture.recipientId())).isZero();
+				Integer.class, fixture.recipientId())).isZero();
 		assertThat(jdbc.queryForObject("SELECT count(*) FROM recipient_receive_state WHERE user_id = ?",
-			Integer.class, fixture.recipientId())).isZero();
+				Integer.class, fixture.recipientId())).isZero();
 	}
 
 	@Test
@@ -138,8 +141,8 @@ class ReceiveStateReservationIntegrationTest extends PostgisContainerIntegration
 		CountDownLatch start = new CountDownLatch(1);
 		try {
 			List<Future<Boolean>> results = List.of(
-				executor.submit(() -> reserveAfterSignal(transaction, recipientId, AT, ready, start)),
-				executor.submit(() -> reserveAfterSignal(transaction, recipientId, AT, ready, start)));
+					executor.submit(() -> reserveAfterSignal(transaction, recipientId, AT, ready, start)),
+					executor.submit(() -> reserveAfterSignal(transaction, recipientId, AT, ready, start)));
 			assertThat(ready.await(5, TimeUnit.SECONDS)).isTrue();
 			start.countDown();
 			assertThat(results.get(0).get(20, TimeUnit.SECONDS)).isTrue();
@@ -163,7 +166,8 @@ class ReceiveStateReservationIntegrationTest extends PostgisContainerIntegration
 		long recipientId = createUser("gh94-int003-recipient");
 		Instant windowStartedAt = AT.minusSeconds(3600);
 		Instant lastReceivedAt = AT.minusSeconds(600);
-		receiveStateRepository.save(RecipientReceiveState.restore(recipientId, 2, 7, windowStartedAt, lastReceivedAt, lastReceivedAt));
+		receiveStateRepository.save(
+				RecipientReceiveState.restore(recipientId, 2, 7, windowStartedAt, lastReceivedAt, lastReceivedAt));
 
 		assertThat(receiveStateRepository.reserve(recipientId, AT, CAPACITY)).isTrue();
 
@@ -187,7 +191,8 @@ class ReceiveStateReservationIntegrationTest extends PostgisContainerIntegration
 		assertThat(state.getActiveUnhandledCount()).isEqualTo(1);
 		assertThat(state.getRecentReceivedCount()).isEqualTo(1);
 		assertThat(state.getLastReceivedAt()).isEqualTo(AT);
-		// ck_recipient_receive_state_last_received: last_received_at >= recent_window_started_at.
+		// ck_recipient_receive_state_last_received: last_received_at >=
+		// recent_window_started_at.
 		// 신규 행이 이 제약을 어기면 첫 예약부터 커밋이 거부된다.
 		assertThat(state.getRecentWindowStartedAt()).isBeforeOrEqualTo(AT);
 	}
@@ -198,7 +203,8 @@ class ReceiveStateReservationIntegrationTest extends PostgisContainerIntegration
 		long recipientId = createUser("gh94-int005-recipient");
 		Instant windowStartedAt = AT.minusSeconds(3600);
 		Instant lastReceivedAt = AT.minusSeconds(600);
-		receiveStateRepository.save(RecipientReceiveState.restore(recipientId, CAPACITY, CAPACITY, windowStartedAt, lastReceivedAt, lastReceivedAt));
+		receiveStateRepository.save(RecipientReceiveState.restore(recipientId, CAPACITY, CAPACITY, windowStartedAt,
+				lastReceivedAt, lastReceivedAt));
 
 		assertThat(receiveStateRepository.reserve(recipientId, AT, CAPACITY)).isFalse();
 
@@ -238,8 +244,9 @@ class ReceiveStateReservationIntegrationTest extends PostgisContainerIntegration
 		CountDownLatch start = new CountDownLatch(1);
 		try {
 			List<Future<Boolean>> results = List.of(
-				executor.submit(() -> reserveAfterSignal(transaction, recipientId, AT, ready, start)),
-				executor.submit(() -> reserveAfterSignal(requiresNewTransaction(), recipientId, AT, ready, start, true)));
+					executor.submit(() -> reserveAfterSignal(transaction, recipientId, AT, ready, start)),
+					executor.submit(
+							() -> reserveAfterSignal(requiresNewTransaction(), recipientId, AT, ready, start, true)));
 			assertThat(ready.await(5, TimeUnit.SECONDS)).isTrue();
 			start.countDown();
 			results.get(0).get(20, TimeUnit.SECONDS);
@@ -264,15 +271,16 @@ class ReceiveStateReservationIntegrationTest extends PostgisContainerIntegration
 		Fixture fixture = twoSendersTargetingOneRecipient();
 
 		List<Integer> submitted = IntStream.range(0, CAPACITY + 1)
-			.mapToObj(index -> postService.send(fixture.sendCommand(fixture.senderOneId(), "S0", "gh94-capacity-" + index)))
-			.map(result -> result.recipients().size())
-			.toList();
+				.mapToObj(index -> postService
+						.send(fixture.sendCommand(fixture.senderOneId(), "S0", "gh94-capacity-" + index)))
+				.map(result -> result.recipients().size())
+				.toList();
 
 		assertThat(submitted).containsExactly(0, 0, 0, 0, 0, 0);
 		assertThat(jdbc.queryForObject("SELECT count(*) FROM post_recipient WHERE recipient_id = ?",
-			Integer.class, fixture.recipientId())).isZero();
+				Integer.class, fixture.recipientId())).isZero();
 		assertThat(jdbc.queryForObject("SELECT count(*) FROM recipient_receive_state WHERE user_id = ?",
-			Integer.class, fixture.recipientId())).isZero();
+				Integer.class, fixture.recipientId())).isZero();
 	}
 
 	@Test
@@ -280,7 +288,7 @@ class ReceiveStateReservationIntegrationTest extends PostgisContainerIntegration
 	void concurrentSubmissionsDoNotReserveSingleRemainingSlot() throws Exception {
 		Fixture fixture = twoSendersTargetingOneRecipient();
 		receiveStateRepository.save(RecipientReceiveState.restore(fixture.recipientId(), CAPACITY - 1, CAPACITY - 1,
-			AT.minusSeconds(3600), AT.minusSeconds(600), AT.minusSeconds(600)));
+				AT.minusSeconds(3600), AT.minusSeconds(600), AT.minusSeconds(600)));
 
 		ExecutorService executor = Executors.newFixedThreadPool(2);
 		CountDownLatch ready = new CountDownLatch(2);
@@ -288,21 +296,23 @@ class ReceiveStateReservationIntegrationTest extends PostgisContainerIntegration
 		int totalDelivered;
 		try {
 			List<Future<DirectionPostService.SendResult>> results = List.of(
-				executor.submit(() -> sendAfterSignal(fixture.sendCommand(fixture.senderOneId(), "S0", "gh94-lastslot-1"), ready, start)),
-				executor.submit(() -> sendAfterSignal(fixture.sendCommand(fixture.senderTwoId(), "S7", "gh94-lastslot-2"), ready, start)));
+					executor.submit(() -> sendAfterSignal(
+							fixture.sendCommand(fixture.senderOneId(), "S0", "gh94-lastslot-1"), ready, start)),
+					executor.submit(() -> sendAfterSignal(
+							fixture.sendCommand(fixture.senderTwoId(), "S7", "gh94-lastslot-2"), ready, start)));
 			assertThat(ready.await(5, TimeUnit.SECONDS)).isTrue();
 			start.countDown();
 			totalDelivered = results.get(0).get(20, TimeUnit.SECONDS).recipients().size()
-				+ results.get(1).get(20, TimeUnit.SECONDS).recipients().size();
+					+ results.get(1).get(20, TimeUnit.SECONDS).recipients().size();
 		} finally {
 			executor.shutdownNow();
 		}
 
 		assertThat(totalDelivered).isEqualTo(0);
 		assertThat(jdbc.queryForObject("SELECT count(*) FROM post_recipient WHERE recipient_id = ?",
-			Integer.class, fixture.recipientId())).isZero();
+				Integer.class, fixture.recipientId())).isZero();
 		assertThat(jdbc.queryForObject("SELECT active_unhandled_count FROM recipient_receive_state WHERE user_id = ?",
-			Integer.class, fixture.recipientId())).isEqualTo(CAPACITY - 1);
+				Integer.class, fixture.recipientId())).isEqualTo(CAPACITY - 1);
 	}
 
 	// ---------------------------------------------------------------------
@@ -313,11 +323,13 @@ class ReceiveStateReservationIntegrationTest extends PostgisContainerIntegration
 	@DisplayName("INT-010: save는 기존 수신 상태를 인자 값으로 덮어쓴다")
 	void saveOverwritesExistingState() {
 		long recipientId = createUser("gh94-int010-recipient");
-		receiveStateRepository.save(RecipientReceiveState.restore(recipientId, 3, 9, AT.minusSeconds(7200), AT.minusSeconds(60), AT.minusSeconds(60)));
+		receiveStateRepository.save(RecipientReceiveState.restore(recipientId, 3, 9, AT.minusSeconds(7200),
+				AT.minusSeconds(60), AT.minusSeconds(60)));
 
 		Instant windowStartedAt = AT.minusSeconds(3600);
 		Instant lastReceivedAt = AT.minusSeconds(600);
-		receiveStateRepository.save(RecipientReceiveState.restore(recipientId, 1, 1, windowStartedAt, lastReceivedAt, lastReceivedAt));
+		receiveStateRepository.save(
+				RecipientReceiveState.restore(recipientId, 1, 1, windowStartedAt, lastReceivedAt, lastReceivedAt));
 
 		// save()는 통합 테스트 7개 지점에서 카운터를 정확한 값으로 세팅하는 시더다.
 		// 이 덮어쓰기 계약이 깨지면 그 시나리오들이 조용히 무력화된다.
@@ -332,7 +344,8 @@ class ReceiveStateReservationIntegrationTest extends PostgisContainerIntegration
 	@DisplayName("INT-011: release는 슬롯을 하나 반환하고 0에서는 음수로 내려가지 않는다")
 	void releaseDecrementsOnceAndNeverGoesNegative() {
 		long recipientId = createUser("gh94-int011-recipient");
-		receiveStateRepository.save(RecipientReceiveState.restore(recipientId, 2, 2, AT.minusSeconds(3600), AT.minusSeconds(600), AT.minusSeconds(600)));
+		receiveStateRepository.save(RecipientReceiveState.restore(recipientId, 2, 2, AT.minusSeconds(3600),
+				AT.minusSeconds(600), AT.minusSeconds(600)));
 
 		assertThat(receiveStateRepository.release(recipientId, AT)).isTrue();
 		RecipientReceiveState afterRelease = receiveStateRepository.findByUserId(recipientId).orElseThrow();
@@ -340,10 +353,12 @@ class ReceiveStateReservationIntegrationTest extends PostgisContainerIntegration
 		assertThat(afterRelease.getUpdatedAt()).isEqualTo(AT);
 
 		long emptyRecipientId = createUser("gh94-int011-empty");
-		receiveStateRepository.save(RecipientReceiveState.restore(emptyRecipientId, 0, 0, AT.minusSeconds(3600), null, AT.minusSeconds(3600)));
+		receiveStateRepository.save(RecipientReceiveState.restore(emptyRecipientId, 0, 0, AT.minusSeconds(3600), null,
+				AT.minusSeconds(3600)));
 
 		assertThat(receiveStateRepository.release(emptyRecipientId, AT)).isFalse();
-		assertThat(receiveStateRepository.findByUserId(emptyRecipientId).orElseThrow().getActiveUnhandledCount()).isZero();
+		assertThat(receiveStateRepository.findByUserId(emptyRecipientId).orElseThrow().getActiveUnhandledCount())
+				.isZero();
 	}
 
 	@Test
@@ -352,7 +367,7 @@ class ReceiveStateReservationIntegrationTest extends PostgisContainerIntegration
 		long unknownUserId = jdbc.queryForObject("SELECT COALESCE(max(id), 0) + 1000 FROM user_account", Long.class);
 
 		assertThatThrownBy(() -> receiveStateRepository.reserve(unknownUserId, AT, CAPACITY))
-			.isInstanceOf(DataAccessException.class);
+				.isInstanceOf(DataAccessException.class);
 	}
 
 	// ---------------------------------------------------------------------
@@ -360,10 +375,9 @@ class ReceiveStateReservationIntegrationTest extends PostgisContainerIntegration
 	// ---------------------------------------------------------------------
 
 	/**
-	 * sender1은 수신자의 정남쪽, sender2는 수신자의 정남동쪽에 둔다. 수신자는
-	 * sender1 기준 방위 0도(segment S0 = [0, 45)), sender2 기준 방위 약 322도
-	 * (segment S7 = [315, 360))에 놓여 두 발송의 유일한 공통 후보가 된다.
-	 * 두 sender는 서로의 segment 밖에 있어 후보로 잡히지 않는다.
+	 * sender1은 수신자의 정남쪽, sender2는 수신자의 정남동쪽에 둔다. 수신자는 sender1 기준 방위 0도(segment S0 =
+	 * [0, 45)), sender2 기준 방위 약 322도 (segment S7 = [315, 360))에 놓여 두 발송의 유일한 공통 후보가
+	 * 된다. 두 sender는 서로의 segment 밖에 있어 후보로 잡히지 않는다.
 	 */
 	private Fixture twoSendersTargetingOneRecipient() {
 		long senderOneId = createUser("gh94-sender-1");
@@ -382,13 +396,13 @@ class ReceiveStateReservationIntegrationTest extends PostgisContainerIntegration
 	private record Fixture(long senderOneId, long senderTwoId, long recipientId, long questionId, long schemeId) {
 		DirectionPostService.SendCommand sendCommand(long senderId, String segmentKey, String idempotencyKey) {
 			return new DirectionPostService.SendCommand(senderId, questionId, schemeId, segmentKey,
-				0, 500, REGION, idempotencyKey, "테스트 방향 글", AT, AT.plusSeconds(3600));
+					0, 500, REGION, idempotencyKey, "테스트 방향 글", AT, AT.plusSeconds(3600));
 		}
 	}
 
 	private void savePresence(long userId, String latitude, String longitude) {
 		presenceRepository.save(ActiveUserPresence.create(userId, new BigDecimal(latitude), new BigDecimal(longitude),
-			null, REGION, BigDecimal.ONE, true, AT.minusSeconds(10), AT.plusSeconds(3600)));
+				null, REGION, BigDecimal.ONE, true, AT.minusSeconds(10), AT.plusSeconds(3600)));
 	}
 
 	private TransactionTemplate requiresNewTransaction() {
@@ -398,19 +412,19 @@ class ReceiveStateReservationIntegrationTest extends PostgisContainerIntegration
 	}
 
 	private DirectionPostService.SendResult sendAfterSignal(DirectionPostService.SendCommand command,
-		CountDownLatch ready, CountDownLatch start) throws Exception {
+			CountDownLatch ready, CountDownLatch start) throws Exception {
 		ready.countDown();
 		start.await(5, TimeUnit.SECONDS);
 		return postService.send(command);
 	}
 
 	private Boolean reserveAfterSignal(TransactionTemplate transaction, long userId, Instant at,
-		CountDownLatch ready, CountDownLatch start) throws Exception {
+			CountDownLatch ready, CountDownLatch start) throws Exception {
 		return reserveAfterSignal(transaction, userId, at, ready, start, false);
 	}
 
 	private Boolean reserveAfterSignal(TransactionTemplate transaction, long userId, Instant at,
-		CountDownLatch ready, CountDownLatch start, boolean rollback) throws Exception {
+			CountDownLatch ready, CountDownLatch start, boolean rollback) throws Exception {
 		ready.countDown();
 		start.await(5, TimeUnit.SECONDS);
 		return transaction.execute(status -> {
@@ -424,24 +438,25 @@ class ReceiveStateReservationIntegrationTest extends PostgisContainerIntegration
 
 	private long createUser(String nickname) {
 		return jdbc.queryForObject("""
-			INSERT INTO user_account (country_code, coarse_region_code, locale, timezone, nickname)
-			VALUES ('KR', ?, 'ko-KR', 'Asia/Seoul', ?) RETURNING id
-			""", Long.class, REGION, nickname);
+				INSERT INTO user_account (country_code, coarse_region_code, locale, timezone, nickname)
+				VALUES ('KR', ?, 'ko-KR', 'Asia/Seoul', ?) RETURNING id
+				""", Long.class, REGION, nickname);
 	}
 
 	private long createActiveQuestion(long approverId) {
 		return jdbc.queryForObject("""
-			INSERT INTO approved_question
-			(source_type, status, question_text, answer_format, active_from, active_until, approved_at, approved_by)
-			VALUES ('OPERATOR', 'ACTIVE', '방향 질문', 'TEXT', ?, ?, ?, ?) RETURNING id
-			""", Long.class, Timestamp.from(AT.minusSeconds(1)), Timestamp.from(AT.plusSeconds(7200)),
-			Timestamp.from(AT.minusSeconds(1)), approverId);
+				INSERT INTO approved_question
+				(source_type, status, question_text, answer_format, active_from, active_until, approved_at, approved_by)
+				VALUES ('OPERATOR', 'ACTIVE', '방향 질문', 'TEXT', ?, ?, ?, ?) RETURNING id
+				""", Long.class, Timestamp.from(AT.minusSeconds(1)), Timestamp.from(AT.plusSeconds(7200)),
+				Timestamp.from(AT.minusSeconds(1)), approverId);
 	}
 
 	private long createEightSegmentScheme() {
 		DirectionScheme scheme = schemeRepository.save(DirectionScheme.createEqual("TEST-94", 1, 8, BigDecimal.ZERO));
-		IntStream.range(0, 8).forEach(index -> schemeRepository.saveSegment(DirectionSegment.create(scheme.getId(), "S" + index,
-			"segment-" + index, BigDecimal.valueOf(index * 45L + 22.5), BigDecimal.valueOf(45), index)));
+		IntStream.range(0, 8)
+				.forEach(index -> schemeRepository.saveSegment(DirectionSegment.create(scheme.getId(), "S" + index,
+						"segment-" + index, BigDecimal.valueOf(index * 45L + 22.5), BigDecimal.valueOf(45), index)));
 		return scheme.getId();
 	}
 }

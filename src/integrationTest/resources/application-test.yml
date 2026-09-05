@@ -1,0 +1,43 @@
+# Datasource connection details are supplied only by Testcontainers.
+spring:
+  datasource:
+    hikari:
+      maximum-pool-size: 4
+      minimum-idle: 1
+
+springdoc:
+  # OpenApiSpecificationIntegrationTest가 /v3/api-docs를 호출해 스펙을 뽑는다.
+  api-docs:
+    enabled: true
+
+qello:
+  media:
+    # LocalStack이 wiring되지 않은 컨텍스트 로드 테스트를 위한 자리표시자 값이다.
+    # 실제 S3 상호작용이 필요한 테스트는 LocalStack 지원 클래스가
+    # @DynamicPropertySource로 이 값들을 덮어쓴다.
+    bucket: qello-test-placeholder
+    s3:
+      region: us-east-1
+  auth:
+    access-token:
+      # HS256 서명에 필요한 32바이트 이상 키. 운영 환경에서는 환경변수로만 주입하고
+      # 이 값은 테스트 컨텍스트 기동 전용이다.
+      secret: test-only-access-token-signing-key-do-not-use-in-production
+  notification:
+    push:
+      fcm:
+        # test profile은 fake PushProvider로 기동한다. 실제 FCM credential 주입은 허용하지 않는다.
+        connect-timeout: PT1S
+        read-timeout: PT1S
+      token-protection:
+        # Obvious fixed test-only keys. Production key material must never use these values.
+        current-key-id: integration-test-current
+        current-encryption-key-base64: YWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWE=
+        fingerprint-key-base64: cXFxcXFxcXFxcXFxcXFxcXFxcXFxcXFxcXFxcXFxcXE=
+      policy:
+        # Test-only policy fixtures. These are not production recommendations.
+        bundle-window: PT10M
+        max-delay: PT8H
+        daily-limit: 5
+        direction-reserved: 2
+        recommendation-min-interval: PT24H

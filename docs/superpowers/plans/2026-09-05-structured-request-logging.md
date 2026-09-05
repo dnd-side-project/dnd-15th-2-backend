@@ -29,7 +29,7 @@
   이미 설정된 4xx/5xx는 유지하며 원래 throwable을 그대로 다시 던진다.
 - duration은 `System.nanoTime()`의 차이를 millisecond로 내림한 0 이상 `long`이다. 상한을
   테스트하지 않는다.
-- ECS 설정은 `application-observability.properties`에만 두고 Spring Boot 내장 `ecs`를
+- ECS 설정은 `application-observability.yml`에만 두고 Spring Boot 내장 `ecs`를
   사용한다. 기본 profile, `logback-spring.xml`과 기존 logger level은 바꾸지 않는다.
 - request/response body, Authorization, Cookie, principal, account/session ID, 위치,
   remote address, 실제 URI와 query string을 읽거나 신규 event에 기록하지 않는다.
@@ -474,7 +474,7 @@ controller 격리, appender cleanup, Security 정책 무변경과 event 선택�
 
 - Create: `src/integrationTest/java/com/dnd/qello/StructuredLoggingProfileIntegrationTest.java`
 - Create: `src/integrationTest/java/com/dnd/qello/StructuredLoggingProcessProbeApplication.java`
-- Create: `src/main/resources/application-observability.properties`
+- Create: `src/main/resources/application-observability.yml`
 
 **Scenarios:** `INT-004`, `INT-005`
 
@@ -588,15 +588,20 @@ probe line JSON parsing 또는 JSON assertion에서 실패한다. child main cla
 
 - [ ] **Step 5: Spring Boot 내장 ECS profile property만 추가한다.**
 
-`src/main/resources/application-observability.properties`의 전체 내용은 다음 세 줄이다.
+`src/main/resources/application-observability.yml`의 전체 내용은 다음이다.
 
-```properties
-logging.structured.format.console=ecs
-logging.structured.ecs.service.name=${spring.application.name}
-logging.structured.ecs.service.version=${QELLO_APP_VERSION:unknown}
+```yaml
+logging:
+  structured:
+    format:
+      console: ecs
+    ecs:
+      service:
+        name: ${spring.application.name}
+        version: ${QELLO_APP_VERSION:unknown}
 ```
 
-`application.properties`, Logback XML, dependency와 production Java는 변경하지 않는다.
+`application.yml`의 기본 profile, Logback XML, dependency와 production Java는 변경하지 않는다.
 
 - [ ] **Step 6: profile A/B test를 GREEN으로 만든다.**
 
@@ -616,7 +621,7 @@ plain console format이다.
 Run:
 
 ```bash
-git add src/main/resources/application-observability.properties \
+git add src/main/resources/application-observability.yml \
   src/integrationTest/java/com/dnd/qello/StructuredLoggingProfileIntegrationTest.java \
   src/integrationTest/java/com/dnd/qello/StructuredLoggingProcessProbeApplication.java
 git commit -m "chore(observability): enable ECS logging profile"

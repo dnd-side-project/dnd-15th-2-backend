@@ -136,12 +136,17 @@ message나 stack trace를 추가로 기록하지 않고 원래 예외를 다시 
 
 ### DEC-215-007: ECS는 observability profile에서만 활성화한다
 
-`application-observability.properties`는 다음 contract만 소유한다.
+`application-observability.yml`는 다음 contract만 소유한다.
 
-```properties
-logging.structured.format.console=ecs
-logging.structured.ecs.service.name=${spring.application.name}
-logging.structured.ecs.service.version=${QELLO_APP_VERSION:unknown}
+```yaml
+logging:
+  structured:
+    format:
+      console: ecs
+    ecs:
+      service:
+        name: ${spring.application.name}
+        version: ${QELLO_APP_VERSION:unknown}
 ```
 
 기본 profile에는 structured format property를 추가하지 않는다. ECS JSON은 Boot 내장
@@ -175,7 +180,7 @@ Servlet request
 
 ```text
 src/main/java/com/dnd/qello/common/web/HttpRequestLoggingFilter.java
-src/main/resources/application-observability.properties
+src/main/resources/application-observability.yml
 src/test/java/com/dnd/qello/common/web/HttpRequestLoggingFilterTest.java
 src/integrationTest/java/com/dnd/qello/HttpRequestLoggingSecurityIntegrationTest.java
 src/integrationTest/java/com/dnd/qello/StructuredLoggingProfileIntegrationTest.java
