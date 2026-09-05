@@ -16,10 +16,13 @@
 - Design path:
   `docs/superpowers/specs/2026-09-05-observability-metrics-exposure-design.md`
 - Design status: `APPROVED_FOR_IMPLEMENTATION`
-- Design approval evidence: 현재 사용자 요청이 설계와 구현 계획의 실행을 승인함
+- Design approval evidence: `2026-09-05T17:46:09+09:00` 사용자가 설계 섹션
+  §1~§6에 `승인할게`라고 명시함
 - Implementation plan path:
   `docs/superpowers/plans/2026-09-05-observability-metrics-exposure.md`
 - Implementation plan status: `APPROVED_FOR_IMPLEMENTATION`
+- Implementation approval evidence: 사용자가 `Subagent-Driven 으로 구현 시작해줘`라고
+  명시함
 
 ## Objective
 
@@ -100,6 +103,8 @@ Included:
   요구해 파일을 임시로 옮겼다가 브랜치 생성 후 그대로 복원했다.
 - Task 1까지 생성·수정한 변경은 이 `TASK.md`, 위 설계 문서와 구현 계획 문서
   뿐이다.
+- predecessor #215의 승인·검증 이력은 immutable reference
+  `e8383cbfe64e9aa7fcc24fb988d811cb87ce523b:TASK.md`에 보존되어 있다.
 
 ## Validation
 
@@ -124,7 +129,7 @@ git diff --check
 
 ## Completion criteria
 
-- [ ] 사람이 설계 문서와 이 구현 계획을 승인했다.
+- [x] 사람이 설계 문서와 이 구현 계획을 승인했다.
 - [ ] `observability` 프로필에서 management port `/actuator/health`가 200을
       반환한다.
 - [ ] management port `/actuator/prometheus`가 200과 Prometheus content type을

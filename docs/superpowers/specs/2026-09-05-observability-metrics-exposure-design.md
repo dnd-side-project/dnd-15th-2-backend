@@ -5,7 +5,10 @@
 > Task ID: `GH-218-OBSERVABILITY-METRICS-EXPOSURE`
 > Base branch: `chore/gh-215-structured-request-logging` (PR #217)
 > Status: `APPROVED_FOR_IMPLEMENTATION`
-> Approved by: current user implementation approval
+> Design approval evidence: `2026-09-05T17:46:09+09:00` 사용자가 설계 섹션
+> §1~§6에 `승인할게`라고 명시함
+> Implementation approval evidence: 사용자가 `Subagent-Driven 으로 구현 시작해줘`라고
+> 명시함
 > Baseline commit: `1ad4c76`
 
 ## 1. 목적
