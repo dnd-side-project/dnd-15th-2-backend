@@ -1,6 +1,6 @@
 /**
  * Created at: 2026-09-05T18:15:58+09:00
- * Source scenario: TEST-PLAN-GH-218-OBSERVABILITY-METRICS-EXPOSURE-INT-001 through INT-002
+ * Source scenario: TEST-PLAN-GH-218-OBSERVABILITY-METRICS-EXPOSURE-INT-001 through INT-004, INT-009
  */
 package com.dnd.qello;
 
@@ -53,6 +53,39 @@ class ObservabilityEndpointExposureIntegrationTest extends PostgisContainerInteg
 		assertThat(response.getHeaders().getContentType()).isNotNull();
 		assertThat(response.getHeaders().getContentType().toString()).contains("text/plain");
 		assertThat(response.getBody()).contains("jvm_memory_used_bytes");
+	}
+
+	@Test
+	@DisplayName("INT-003: management port에서 노출 목록 밖 endpoint와 API 경로는 열리지 않는다")
+	void blocksNonExposedPathsOnManagementPort() {
+		int envStatus = get(managementPort, "/actuator/env").getStatusCode().value();
+		int apiStatus = get(managementPort, "/api/v1/direction/inbox").getStatusCode().value();
+
+		// 보안 불변식은 "200이 아니다"이고, 정확한 코드는 실측해 고정한 계약이다.
+		assertThat(envStatus).isNotEqualTo(200).isEqualTo(401);
+		assertThat(apiStatus).isNotEqualTo(200).isEqualTo(401);
+	}
+
+	@Test
+	@DisplayName("INT-004: app port에서는 관리 endpoint가 열리지 않는다")
+	void keepsManagementEndpointsClosedOnAppPort() {
+		int healthStatus = get(appPort, "/actuator/health").getStatusCode().value();
+		int prometheusStatus = get(appPort, "/actuator/prometheus").getStatusCode().value();
+
+		assertThat(healthStatus).isNotEqualTo(200).isEqualTo(401);
+		assertThat(prometheusStatus).isNotEqualTo(200).isEqualTo(401);
+	}
+
+	// @Order(-1) 관측 체인이 EndpointRequest matcher를 넘어 /api/**까지 삼키면
+	// 인증 없이 도메인 API가 열린다. 기존 인증 계약이 그대로인지 확인한다.
+	@Test
+	@DisplayName("INT-009: 관측 체인 추가 후에도 app port의 도메인 API 인증 계약이 유지된다")
+	void keepsAppApiAuthenticationContractUnchanged() {
+		int status = get(appPort, "/api/v1/direction/inbox").getStatusCode().value();
+
+		assertThat(status)
+				.as("토큰 없는 인증 필요 endpoint")
+				.isEqualTo(401);
 	}
 
 	private ResponseEntity<String> get(int port, String path) {
