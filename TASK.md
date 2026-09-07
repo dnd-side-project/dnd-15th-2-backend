@@ -1,80 +1,50 @@
-# GitHub Issue #218 Task Contract
+# GitHub Issue #204 Task Contract
 
-> Generated at: `2026-09-05T17:57:49+09:00`
+> Generated at: `2026-09-07T09:32:32+09:00`
 >
 > 이 파일은 현재 작업 브랜치의 계약이다. 저장소 전역 정책은 `AGENTS.md`를
 > 따른다.
 
 ## Work gate
 
-- Title: `Prometheus 지표 노출 경계와 management port 분리`
-- GitHub Issue: `#218`
-- Branch: `chore/gh-218-observability-metrics-exposure`
-- Base branch: `chore/gh-215-structured-request-logging`
-- Task ID: `GH-218-OBSERVABILITY-METRICS-EXPOSURE`
-- Design ID: `APP-DESIGN-GH-218-001`
-- Design path:
-  `docs/superpowers/specs/2026-09-05-observability-metrics-exposure-design.md`
-- Design status: `APPROVED_FOR_IMPLEMENTATION`
-- Design approval evidence: `2026-09-05T17:46:09+09:00` 사용자가 설계 섹션
-  §1~§6에 `승인할게`라고 명시함
-- Implementation plan path:
-  `docs/superpowers/plans/2026-09-05-observability-metrics-exposure.md`
-- Implementation plan status: `APPROVED_FOR_IMPLEMENTATION`
-- Implementation approval evidence: 사용자가 `Subagent-Driven 으로 구현 시작해줘`라고
-  명시함
+- Title: `[W2] Answer moderation production wiring과 주기 실행`
+- GitHub Issue: `#204`
+- Branch: `feat/gh-204-answer-moderation-wiring`
+- Base branch: `main`
+- Test plan path: `docs/test-plans/gh-204-TEST-PLAN-GH-204-ANSWER-MODERATION-PRODUCTION-WIRING.md`
+- Test plan status: `Approved` (2026-09-07, "작업 진행" 지시로 승인)
 
 ## Objective
 
-- Micrometer가 프로세스 안에만 보관하는 지표를 Prometheus가 읽을 수 있는
-  출구로 연결하되, 노출 대상을 `health`와 `prometheus` 두 endpoint로 한정한다.
-- 비즈니스 API listener와 관리 listener를 별도 포트로 분리해, 노출 차단이
-  애플리케이션 설정 한 줄이 아니라 network 경계로도 보장되게 한다.
-- 실행 중인 두 포트를 실제로 띄우는 통합 테스트로 노출 경계를 계약으로
-  고정하고, 기본 프로필에서는 관리 endpoint가 계속 닫혀 있음을 검증한다.
-- 이 작업은 노출 경계까지만 다룬다. Prometheus 서버, Grafana와 부하 실험은
-  후속 Issue로 분리한다.
+- Answer moderation intake 이후 실행 worker가 Spring bean으로 배선되지 않아
+  실제 판정 pipeline이 동작하지 않는다. `#182` Core worker scheduling의 공통
+  scheduling·identity·metrics 기반을 사용해 execution·deadline·verdict 전체
+  흐름을 production gate 뒤에서 원자적으로 활성화한다.
 
 ## Scope
 
 Included:
 
-- `build.gradle`에 `micrometer-registry-prometheus`를 `runtimeOnly`로 추가
-- `application-observability.yml`의 `management.server.port`, endpoint
-  활성화·노출과 `show-details: never`
-- 실존 Timer 4종의 histogram 활성화
-- `ObservabilitySecurityConfiguration`의 Actuator 전용 `SecurityFilterChain`
-- app port와 management port를 각각 띄우는 노출 경계 통합 테스트
-- 기본 프로필 차단 회귀 테스트
-- 노출된 지표의 tag cardinality 검증
-
-## Approved decisions
-
-- `DEC-B1-001`: management port를 8081로 분리한다. host 비공개는 bind address가
-  아니라 Compose의 port 경계가 보장한다.
-- `DEC-B1-002`: management child context는 부모의 `springSecurityFilterChain`을
-  재사용한다. 따라서 child context 전용 보안 구성이 아니라 부모 context의
-  Actuator 전용 체인 하나를 추가한다.
-- `DEC-B1-003`: matcher를 `EndpointRequest.to("health", "prometheus")`로
-  한정하고 `toAnyEndpoint()`를 쓰지 않는다.
-- `DEC-B1-004`: registry는 `runtimeOnly`로 넣는다. matcher를 endpoint ID
-  문자열로 써서 production source가 Prometheus 클래스를 참조하지 않는다.
-- `DEC-B1-005`: 실존 Timer만 histogram을 켠다. 없는 Meter 이름을 설정에 미리
-  적지 않는다.
-- `DEC-B1-006`: 운영 bucket 경계와 `service-level-objectives`를 정하지 않는다.
-- `DEC-B1-007`: 기본 프로필의 차단은 endpoint 비활성과 fallback `denyAll`로
-  이중 유지한다.
-- `DEC-B1-008`: #215 위에 stacked로 작업하고 PR은 #217 머지 후에 올린다.
+- answer 전용 `ModerationPipelineService` 구성
+- answer 전용 provider client와 executor 구성
+- `AnswerModerationExecutionWorker` Spring bean 등록
+- retry gate, pipeline timeout, backoff와 batch·lease 설정
+- 다음 worker의 scheduler adapter 등록
+  - `AnswerModerationExecutionWorker`
+  - `AnswerModerationDeadlineWorker`
+  - `AnswerModerationVerdictWorker`
+- `qello.filtering.production.enabled`와 기존 production gate 연동
+- `#182`의 instance identity와 worker metrics 재사용
+- worker 실행 실패·retry·deadline·verdict 결과 지표 기록
 
 ## Explicit exclusions
 
-- Compose overlay, Prometheus 서버와 Grafana provisioning
-- k6 부하 scenario와 Hikari before/after 실험
-- `qello.worker.batch.duration`과 `qello.provider.request.duration` 신규 Timer
-- 운영 SLO, alert threshold와 histogram bucket 경계
-- dev·stage·prod 주소와 인증 방식
-- 기존 API, domain, DB schema, migration과 기존 보안 체인의 matcher 변경
-- `HttpRequestLoggingFilter`와 #215가 만든 파일의 동작 변경
+- `SlackNotifier` 구현과 Slack dispatch (`#205` 범위)
+- nickname moderation 동작 변경
+- moderation 알고리즘과 category threshold 재설계
+- 실제 credential 생성·저장, 인프라 apply와 배포
+- production 실제 활성화(gate on)는 DPA, data residency, retention,
+  content-safety와 secret-handling 승인 이후로 별도 분리한다.
 - 인프라 apply, 배포, 프로덕션 변경은 별도 승인 없이는 실행하지 않는다.
 - Secret, 계정 식별자, 토큰, `.env` 값은 기록하지 않는다.
 
@@ -83,214 +53,97 @@ Included:
 | Area | Owner | Required review |
 | --- | --- | --- |
 | 요구사항·설계·구현 계획 통합 | Orchestrator | Human partner |
-| 의존성·설정·보안 체인 구현 | Execution agent | Independent verifier |
-| 노출 경계·Meter 계약 시나리오 구현 | Test executor | Independent verifier |
-| 전체 diff·보안 경계·tag 비식별 검증 | Independent verifier | Human partner |
+| moderation pipeline·provider client·worker bean 배선 구현 | Execution agent | Independent verifier |
+| gate·fail-closed·lease 계약 시나리오 구현 | Test executor | Independent verifier |
+| 전체 diff·production gate·secret 비노출 검증 | Independent verifier | Human partner |
 
 구현자는 승인된 구현 계획에 포함된 파일만 수정한다. 검증자는 테스트를
 통과시키기 위해 production source나 테스트를 수정하지 않는다.
 
 ## Existing user-owned changes
 
-- 이 브랜치는 `origin/chore/gh-215-structured-request-logging`에서 분기했다.
-  로컬 `chore/gh-215-structured-request-logging`이 별도 worktree
-  (`.worktrees/chore-gh-215-structured-request-logging`)에 checkout돼 있어
-  `./harness start`의 로컬 fast-forward는 건너뛰었고, 원격 ref를 base로 썼다.
-- `./harness start` 실행 시점의 `git status --short`에는 이 세션에서 생성한
-  untracked 설계 문서
-  (`docs/superpowers/specs/2026-09-05-observability-metrics-exposure-design.md`)
-  하나만 있었고 다른 사용자 변경은 없었다. harness가 clean worktree를
-  요구해 파일을 임시로 옮겼다가 브랜치 생성 후 그대로 복원했다.
-- Task 1까지 생성·수정한 변경은 이 `TASK.md`, 위 설계 문서와 구현 계획 문서
-  뿐이다.
-- predecessor #215의 승인·검증 이력은 immutable reference
-  `e8383cbfe64e9aa7fcc24fb988d811cb87ce523b:TASK.md`에 보존되어 있다.
+- `./harness start` 실행 시점(브랜치 생성 직전)의 `git status --short`는
+  clean이었다. 이 브랜치에서 생성·수정한 변경은 이 `TASK.md`뿐이다.
+- 선행 관계 `#182` Core worker scheduling은 `main`에 머지되어 있다
+  (`ae3d371` 등 `#182` 커밋이 `main`의 ancestor임을 확인함).
 
 ## Validation
 
-Focused checks (Task 2 이후):
-
 ```bash
-./gradlew integrationTest --tests '*ObservabilityEndpointExposureIntegrationTest'
-./gradlew integrationTest --tests '*ObservabilityDisabledByDefaultIntegrationTest'
-./gradlew integrationTest --tests '*ObservabilityMeterContractIntegrationTest'
-```
-
-Final checks:
-
-```bash
-./gradlew integrationTest --tests '*Observability*'
-./gradlew check
-./harness check
-./harness pr-ready --project-tests
-npm run hooks:validate
+./gradlew test
+./gradlew spotlessCheck
+python ./scripts/harness.py check
+python ./scripts/harness.py pr-ready --project-tests
 git diff --check
+./gradlew integrationTest --tests '*AnswerModeration*' --tests '*CoreWorkerScheduling*'
 ```
+
+이 환경의 `python3`가 Windows Store 앱 실행 별칭으로 깨져 있어(`python`은
+정상) `./harness`·`./gradlew checkstyleMain`을 직접 호출하면 실패한다.
+`python ./scripts/harness.py ...`로 우회했고, 세션 로컬 PATH에 실제
+`python.exe`를 가리키는 `python3` shim을 앞에 추가해 `python ./scripts/harness.py check`까지는 통과시켰다. 다만 Gradle 데몬이 여는 하위 프로세스는 이
+shim을 인식하지 못해 `./gradlew checkstyleMain`(→ `validateJavaConventionBaseline`)은
+여전히 실패한다 — 저장소 코드가 아니라 이 Windows 세션의 App 실행 별칭 문제이며,
+`origin/main`에서도 동일하게 재현됨을 확인했다(코드 변경과 무관).
+
+`build.gradle`의 `spotless { ratchetFrom 'origin/main' }` 설정 때문에, 이번에
+건드린 6개 기존 파일은 `origin/main`과 한 글자라도 달라지는 순간 파일 전체가
+Eclipse formatter(`config/spotless/eclipse-java-formatter.xml`) 기준으로 다시
+포맷된다. `WorkerSchedulingConfigurationTest.java` 등의 diff가 실제 논리
+변경보다 훨씬 커 보이는 이유이며, `./gradlew spotlessApply`가 만든 결과를
+그대로 받아들였다(수동으로 되돌리지 않음) — 프로젝트가 의도한 ratchet 방식의
+정상 동작이다.
 
 ## Completion criteria
 
-- [x] 사람이 설계 문서와 이 구현 계획을 승인했다.
-- [x] `observability` 프로필에서 management port `/actuator/health`가 200을
-      반환한다.
-- [x] management port `/actuator/prometheus`가 200과 Prometheus content type을
-      반환한다.
-- [x] management port `/actuator/env`와 `/api/**`의 응답 코드를 실측해 계약으로
-      고정했다.
-- [x] app port `/actuator/health`와 `/actuator/prometheus`의 응답 코드를 실측해
-      계약으로 고정했다. 둘 중 하나라도 200이면 `DEC-B1-002` 전제가 깨진
-      것으로 보고 child context 전용 보안 구성을 재검토한다.
-- [x] app port 기존 API의 인증 계약이 바뀌지 않는다.
-- [x] 기본 프로필에서 관리 endpoint가 닫혀 있다.
-- [x] scrape 본문에 `http.server.requests`,
-      `qello.filtering.pipeline.latency`, `hikaricp.connections.acquire`,
-      `hikaricp.connections.usage`의 `_bucket`, `_count`, `_sum`이 존재한다.
-- [x] 노출된 지표의 tag key에 사용자 식별자, request ID, correlation ID,
-      event ID와 예외 메시지가 없다.
-- [x] `qello.worker.batch.duration`과 `qello.provider.request.duration`을
-      이 작업의 완료 증거에 포함하지 않는다.
-- [x] production API, domain, DB schema, migration과 기존 보안 체인의 matcher를
-      변경하지 않는다.
-- [x] 저장소 필수 검증이 통과하거나 최종 상태를 정확히 `FAIL`/`BLOCKED`로
-      기록한다.
+- [x] filtering production gate가 꺼져 있으면 moderation scheduled task와
+      외부 provider 호출이 실행되지 않는다. (`AnswerModerationExecutionConfigTest`
+      UNIT-001, `WorkerSchedulingConfigurationTest` UNIT-008로 unit 레벨 검증;
+      실제 DB로 실행되지 않음까지 보는 end-to-end 확인은 Docker 미가동으로 BLOCKED)
+- [x] gate가 켜졌지만 승인 근거나 필수 credential이 누락되면 fail-closed로
+      기동에 실패한다. (`AnswerModerationExecutionConfigTest` UNIT-003, UNIT-004)
+- [ ] execution → verdict와 deadline → verdict 흐름이 설정된 주기로
+      동작한다. BLOCKED — Docker 데몬이 이 세션에서 실행되지 않아 Testcontainers
+      기반 통합 테스트(`AnswerModeration*IntegrationTest`,
+      `CoreWorkerSchedulingIntegrationTest`)를 실행하지 못했다. worker 내부
+      전이 로직 자체는 기존 `AnswerModerationExecutionWorkerTest` 등 단위
+      테스트가 이미 덮는다.
+- [ ] 두 instance가 같은 outbox 행을 동시에 처리하지 않고 stale lease가
+      차단된다. 신규 동시성 로직을 추가하지 않았고 `#182`가 검증한
+      `claimDue` 원자성을 그대로 재사용한다 — 이 이슈에서 별도 재검증은
+      수행하지 않았다(테스트 계획 §7 명시).
+- [x] 외부 provider timeout·rate limit·오류가 기존 retry 정책대로
+      처리된다. (배선만 추가했고 `AnswerModerationRetryPolicy`/worker 내부
+      로직은 변경하지 않음 — 기존 단위 테스트가 계속 통과함으로 회귀 없음 확인)
+- [x] deadline과 verdict만 부분적으로 활성화되는 구성이 허용되지 않는다.
+      (`WorkerSchedulingProperties.AnswerModerationSettings`이 execution·
+      deadline·verdict 세 worker를 개별 enabled 없이 하나의 flag로만 묶어
+      부분 활성화를 설정 자체로 표현할 수 없게 했다. `WorkerSchedulingPropertiesTest`
+      UNIT-006, `WorkerSchedulingConfigurationTest` INT-005로 검증)
+- [x] 원문·사용자 식별자·credential이 metric tag, 로그와 오류에 포함되지
+      않는다. (신규 `WorkerName` 3종은 기존 `WorkerMetrics.recordOutcome`을
+      그대로 재사용해 `worker`/`outcome` enum tag만 남긴다 — `WorkerMetricsTest`
+      UNIT-014의 일반 계약이 그대로 적용됨. fail-closed 예외 메시지에도 실제
+      credential 값을 넣지 않음)
+- [x] `SlackNotifier`, nickname moderation, moderation 알고리즘/threshold를
+      변경하지 않는다. (`git diff --name-only`로 확인 — 변경 파일 목록 참고)
+- [ ] 저장소 필수 검증이 통과하거나 최종 상태를 정확히 `FAIL`/`BLOCKED`로
+      기록한다. → 아래 최종 검증 계약 참고. 상태: 부분 `BLOCKED`
+      (Docker 미가동, Windows python3 별칭 문제 — 둘 다 코드 결함이 아님).
 
-## Final verification contract
+## Final verification contract (2026-09-07 세션)
 
-status: PASS
-issue_number: 218
-task_id: GH-218-OBSERVABILITY-METRICS-EXPOSURE
-design_id: APP-DESIGN-GH-218-001
-changed_files: TASK.md; build.gradle; docs/superpowers/plans/2026-09-05-observability-metrics-exposure.md; docs/superpowers/specs/2026-09-05-observability-metrics-exposure-design.md; src/integrationTest/java/com/dnd/qello/ObservabilityDisabledByDefaultIntegrationTest.java; src/integrationTest/java/com/dnd/qello/ObservabilityEndpointExposureIntegrationTest.java; src/integrationTest/java/com/dnd/qello/ObservabilityMeterContractIntegrationTest.java; src/main/java/com/dnd/qello/auth/config/ObservabilitySecurityConfiguration.java; src/main/resources/application-observability.yml
-executed_checks: ./gradlew integrationTest --tests '*Observability*'; ./gradlew check; ./harness check; ./harness pr-ready --project-tests; npm run hooks:validate; git diff --check; git diff --name-only origin/chore/gh-215-structured-request-logging...HEAD; rg identifier/secret assignment patterns on observability source and test files
-passed_checks: ./gradlew integrationTest --tests '*Observability*'; ./gradlew check; ./harness check; ./harness pr-ready --project-tests; npm run hooks:validate; git diff --check; git diff --name-only origin/chore/gh-215-structured-request-logging...HEAD; rg identifier/secret assignment patterns (0 matches)
-failed_checks: none
-blocked_checks: none
-assumptions: 로컬 Testcontainers PostgreSQL이 persistence를 대표한다; management port는 테스트에서 0으로 덮어 임의 포트를 쓴다
-risks: management child context의 보안 체인 재사용 동작은 Spring Boot 3.5.16 기준 실측값이며 버전 상향 시 재확인이 필요하다
-required_human_decisions: PR은 #217 머지 후에 올린다
-
-# Test Report: TEST-PLAN-GH-218-OBSERVABILITY-METRICS-EXPOSURE
-
-> Created at: `2026-09-05T19:01:24+09:00`
-> GitHub Issue: `#218`
-> Branch: `chore/gh-218-observability-metrics-exposure`
-> Commit: `3ea9486` (implementation HEAD verified by this run; this report is recorded in the following TASK.md commit)
-
-## 1. Executive summary
-
-- Result: `PASS`
-- Tested scope: observability 프로필의 management-port 노출 경계, 기본 프로필 차단, 실존 Timer 4종의 histogram series와 금지 tag 키, 저장소 필수 검증(Gradle check, harness, hooks, whitespace, 변경 파일 범위, 민감정보 패턴)
-- Unverified scope: Compose overlay, Prometheus 서버, Grafana, k6 부하, 운영 bind/인증, Worker/provider Timer 신규 계측, `performanceTest` 소스셋, PR 생성과 `origin/main` rebase
-- Release recommendation: #218 노출 경계의 로컬 검증은 완료됐다. PR은 #217 머지 후에 올린다. 인프라 apply와 배포는 이 작업 범위가 아니다.
-
-## 2. Environment
-
-런타임과 도구 버전만 기록한다. `.env` 값, 토큰, 서버 주소, 계정/IAM 식별자는
-기록하지 않는다.
-
-| Item | Version / safe description |
-| --- | --- |
-| Java | toolchain 21 (Eclipse Temurin 21.0.12.1+1-LTS); host JVM 24.0.2 was not the test toolchain |
-| Spring Boot | 3.5.16 |
-| Database | Testcontainers PostGIS 16-3.5 local/test-container |
-| Test runner | JUnit 5 via Gradle 8.14.3 |
-
-## 3. Execution results
-
-| Command / suite | Result | Tests | Duration | Evidence |
-| --- | --- | --- | --- | --- |
-| `./gradlew integrationTest --tests '*Observability*'` | PASS | 9 tests, 0 failed, 0 error, 0 skipped (노출 5 + 기본 2 + Meter 2) | 17s | BUILD SUCCESSFUL, exit 0 |
-| `./gradlew check` | PASS | unit 1056; integration 735; architecture 23; source convention 3; all 0 failed/error/skipped | successful run 6m 11s | BUILD SUCCESSFUL, exit 0; Spotless/Checkstyle main passed; checkstyleTest and checkstyleIntegrationTest skipped by project config |
-| `./harness check` | PASS | n/a | ~1s | Secret preflight 1337 text files; JUnit policy 285 files; convention, commit-msg formatter, workflow (5 files), label, Husky, Java convention self-test passed |
-| `./harness pr-ready --project-tests` | PASS | Gradle `check` UP-TO-DATE (14 tasks) | ~3s | Local PR readiness checks passed, exit 0 |
-| `npm run hooks:validate` | PASS | n/a | <1s | Husky validation passed, exit 0 |
-| `git diff --check` | PASS | n/a | <1s | empty output, exit 0 |
-| Unit | PASS | 1056 / 0 / 0 / 0 | included in `check` | JUnit XML |
-| Integration | PASS | 735 / 0 / 0 / 0 | included in `check` | JUnit XML |
-
-## 4. Scenario results
-
-| Scenario ID | Result | Test class / method | Notes |
-| --- | --- | --- | --- |
-| INT-001 | PASS | ObservabilityEndpointExposureIntegrationTest#exposesHealthOnManagementPort | management `/actuator/health` = 200 |
-| INT-002 | PASS | ObservabilityEndpointExposureIntegrationTest#exposesPrometheusOnManagementPort | management `/actuator/prometheus` = 200 and `text/plain` |
-| INT-003 | PASS | ObservabilityEndpointExposureIntegrationTest#blocksNonExposedPathsOnManagementPort | management `/actuator/env` and `/api/**` contracted to 401; not 200 |
-| INT-004 | PASS | ObservabilityEndpointExposureIntegrationTest#keepsManagementEndpointsClosedOnAppPort | app `/actuator/health` and `/actuator/prometheus` contracted to 401; not 200, so DEC-B1-002 stop condition did not fire |
-| INT-005 | PASS | ObservabilityDisabledByDefaultIntegrationTest#keepsManagementEndpointsClosedWithoutObservabilityProfile | default profile management endpoints are not 200 |
-| INT-006 | PASS | ObservabilityDisabledByDefaultIntegrationTest#doesNotRegisterObservabilitySecurityChainWithoutProfile | observability security chain bean is absent without the profile |
-| INT-007 | PASS | ObservabilityMeterContractIntegrationTest#exposesHistogramSeriesForConfiguredTimers | four existing Timers expose `_bucket`, `_count`, `_sum` |
-| INT-008 | PASS | ObservabilityMeterContractIntegrationTest#keepsExposedTagsBounded | forbidden identifier tag keys are absent |
-| INT-009 | PASS | ObservabilityEndpointExposureIntegrationTest#keepsAppApiAuthenticationContractUnchanged | unauthenticated domain API remains 401 |
-
-## 5. Failures and diagnostics
-
-필수 검증 실패는 없다.
-
-첫 `./gradlew check` 호출은 `:test` 완료 후 `:integrationTest` 진행 중 도구
-wrapper 제한으로 중단됐다. 같은 세션에서 재실행해 BUILD SUCCESSFUL을 얻었고,
-재실행은 이미 통과한 `:test`를 UP-TO-DATE로 재사용했다.
-
-`./harness pr-ready --project-tests`는 종료 코드 0으로 통과했다. 로컬 stacked base
-브랜치 fast-forward는 해당 브랜치가 다른 worktree에 checkout되어 있어 건너뛰었고,
-`origin/chore/gh-215-structured-request-logging` ancestor 검사는 통과했다. 이
-경고는 코드 결함이 아니며 `./harness sync`는 실행하지 않았다.
-
-## 6. Potential issues
-
-### Application code
-
-- Actuator 전용 체인은 `EndpointRequest.to("health", "prometheus")`와
-  `@Order(-1)`에 의존한다. 이후 endpoint를 추가하면 matcher를 같이 바꾸지 않으면
-  fallback `denyAll`에 막히거나, 반대로 matcher를 넓히면 노출 범위가 커진다.
-
-### Infrastructure and resource limits
-
-- host 비공개는 bind address가 아니라 Compose port 경계가 보장한다(DEC-B1-001).
-  Compose overlay는 이 Issue 범위가 아니다.
-
-### Database and migrations
-
-- DB schema와 migration 파일은 이 브랜치에서 변경되지 않았다. persistence 검증은
-  Testcontainers PostGIS에 한정된다.
-
-### Concurrency and idempotency
-
-- scrape와 노출 경계 테스트는 단일 요청이다. 동시 scrape 부하와 cardinality 폭증은
-  검증하지 않았다.
-
-### Transactions and event ordering
-
-- 트랜잭션, outbox, 도메인 이벤트 경로는 변경하지 않았다.
-
-### External APIs
-
-- Prometheus 서버 scrape, Grafana, 외부 인증은 이 작업에서 실행하지 않았다.
-
-### Failure recovery and reconciliation
-
-- management child context가 부모 `springSecurityFilterChain`을 재사용하는 동작은
-  Spring Boot 3.5.16 실측값이다. 버전 상향 시 app port에서 Actuator가 200을
-  반환하면 DEC-B1-002 전제를 재검토해야 한다.
-
-## 7. Regression and residual risk
-
-- 변경 파일은 stacked base 대비 허용 목록 9개뿐이다. 기존
-  `SecurityConfiguration`, `HttpRequestLoggingFilter`, domain API, DB schema는
-  diff에 없다.
-- 이 완료 증거는 네 실존 Timer의 histogram series와 노출 경계만 포함한다.
-  Worker/provider Timer 이름은 완료 증거로 사용하지 않는다.
-- PR, `origin/main` rebase, 경로 B2/B3, 운영 인증은 후속 작업이다.
-
-## 8. Artifacts
-
-- Test plan: `docs/superpowers/plans/2026-09-05-observability-metrics-exposure.md`
-- CI run: 로컬 실행만. GitHub Actions run은 이 작업에서 만들지 않았다.
-- Related ADR: `docs/superpowers/specs/2026-09-05-observability-metrics-exposure-design.md` (`APP-DESIGN-GH-218-001`)
-- PR: not created; required after #217 merge
-- Predecessor #215 audit: immutable git object `e8383cbfe64e9aa7fcc24fb988d811cb87ce523b:TASK.md`
-
-## 9. Reviewer checklist
-
-- [x] 보고서에 `.env` 값이나 비밀정보가 없음
-- [x] 미실행 테스트가 명시됨
-- [ ] 잠재 문제에 후속 GitHub Issue가 연결됨 (B2/B3와 Worker Timer는 별도 Issue로 예정이며 이 작업에서 번호를 만들지 않음; PR 게이트는 #217)
-- [ ] 실행 결과와 PR 설명이 일치함 (PR not created)
+```text
+status: BLOCKED (unit 레벨은 PASS, 통합 레벨 일부 미실행)
+issue_number: 204
+task_id: (TASK.md 상단 Work gate 참고, 별도 Task ID 미부여)
+design_id: 없음 (인프라 설계 게이트 대상 아님, 기능 구현)
+changed_files: TASK.md; docs/test-plans/gh-204-TEST-PLAN-GH-204-ANSWER-MODERATION-PRODUCTION-WIRING.md; src/main/java/com/dnd/qello/filtering/config/AnswerModerationExecutionConfig.java; src/main/java/com/dnd/qello/scheduling/adapter/AnswerModerationExecutionScheduledAdapter.java; src/main/java/com/dnd/qello/scheduling/adapter/AnswerModerationDeadlineScheduledAdapter.java; src/main/java/com/dnd/qello/scheduling/adapter/AnswerModerationVerdictScheduledAdapter.java; src/main/java/com/dnd/qello/scheduling/config/WorkerSchedulingProperties.java; src/main/java/com/dnd/qello/scheduling/observability/WorkerMetrics.java; src/test/java/com/dnd/qello/filtering/config/AnswerModerationExecutionConfigTest.java; src/test/java/com/dnd/qello/scheduling/WorkerSchedulingConfigurationTest.java; src/test/java/com/dnd/qello/scheduling/config/WorkerSchedulingPropertiesTest.java; src/test/java/com/dnd/qello/scheduling/adapter/CoreWorkerScheduledAdapterTest.java; src/test/java/com/dnd/qello/scheduling/adapter/PushDeliveryDispatchScheduledAdapterTest.java
+executed_checks: ./gradlew compileJava; ./gradlew compileTestJava; ./gradlew compileIntegrationTestJava; ./gradlew test (전체); ./gradlew spotlessCheck; python ./scripts/harness.py check; python ./scripts/harness.py pr-ready --project-tests (harness 부분만 통과, gradle check 하위 task 실패); git stash를 이용한 clean main 대비 실패 목록 비교
+passed_checks: 위 executed_checks 중 ./gradlew test(1064개, 신규 8개 전부 PASS, 기존과 동일한 17개 사전 존재 실패 제외), ./gradlew spotlessCheck, python ./scripts/harness.py check, compile 3종
+failed_checks: 없음 (신규 코드로 인한 실패 없음)
+blocked_checks: ./gradlew integrationTest (Docker 데몬 미가동, Testcontainers 시작 불가); ./gradlew checkstyleMain 및 ./gradlew check 전체, ./harness 직접 호출 (이 Windows 세션의 python3 App 실행 별칭 문제 — origin/main에서도 동일 재현 확인, 코드와 무관)
+assumptions: RetryGateConfig·AnswerModerationRetryPolicy·ManualReviewPriorityPolicy의 운영 수치는 #108/#110에서 "미결정"으로 명시된 값이라 기본값을 두지 않고 필수 property로 만들었다 — 실제 값은 이 이슈 범위 밖의 책임자 승인 후 배포 환경에서 주입한다.
+risks: Docker 없이 세션을 마쳐 execution→verdict end-to-end 흐름과 두 instance 동시 클레임 회귀를 이 세션에서 직접 실행 확인하지 못했다. Docker Desktop을 켜고 `./gradlew integrationTest --tests '*AnswerModeration*'`을 재실행해 확인하는 것을 권장한다.
+required_human_decisions: (1) Docker 가동 후 통합 테스트 재실행 여부, (2) retry-gate·retry-policy·manual-review-priority 운영 수치 확정과 배포 주입 방법, (3) PR 생성 시점(다른 병합 대기 이슈 없음 확인됨)
+```
