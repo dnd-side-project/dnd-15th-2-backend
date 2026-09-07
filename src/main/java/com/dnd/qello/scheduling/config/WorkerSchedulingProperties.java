@@ -10,16 +10,16 @@ import com.dnd.qello.notification.push.PushDeliveryRetryPolicy;
 
 @ConfigurationProperties(prefix = "qello.worker.scheduling")
 public record WorkerSchedulingProperties(
-	boolean enabled,
-	int poolSize,
-	OutboxSettings directionMatching,
-	OutboxSettings recipientNotificationFanOut,
-	OutboxSettings notificationFanOut,
-	OutboxSettings reportResolutionFanOut,
-	SweepSettings recipientExpirationSweep,
-	SweepSettings skipConfirmationSweep,
-	PushSettings pushDeliveryDispatch
-) {
+		boolean enabled,
+		int poolSize,
+		OutboxSettings directionMatching,
+		OutboxSettings recipientNotificationFanOut,
+		OutboxSettings notificationFanOut,
+		OutboxSettings reportResolutionFanOut,
+		SweepSettings recipientExpirationSweep,
+		SweepSettings skipConfirmationSweep,
+		PushSettings pushDeliveryDispatch,
+		AnswerModerationSettings answerModeration) {
 	public WorkerSchedulingProperties {
 		if (enabled && poolSize <= 0) {
 			throw invalid("poolSize", "양수여야 합니다");
@@ -31,17 +31,36 @@ public record WorkerSchedulingProperties(
 		validateSweep(recipientExpirationSweep, "recipientExpirationSweep");
 		validateSweep(skipConfirmationSweep, "skipConfirmationSweep");
 		validatePush(pushDeliveryDispatch, "pushDeliveryDispatch");
+		validateAnswerModeration(answerModeration);
 	}
 
 	public record OutboxSettings(boolean enabled, Duration fixedDelay, int batchSize, Duration leaseDuration,
-		OutboxRetrySettings retry) {
+			OutboxRetrySettings retry) {
 	}
 
 	public record SweepSettings(boolean enabled, Duration fixedDelay, int batchSize) {
 	}
 
+	// execution/deadline/verdict 셋을 개별 enabled로 나누지 않고 이 record 하나의
+	// enabled로만 묶는다(GitHub #204 완료 조건: 부분 활성화 금지). 세 worker가
+	// 갈라질 수 있는 flag 자체를 없애 "일부만 켜지는 구성"을 설정만으로는 표현할
+	// 수 없게 한다.
+	public record AnswerModerationSettings(
+			boolean enabled, ClaimSettings execution, ScanSettings deadline, ClaimSettings verdict) {
+	}
+
+	// claimDue 기반(execution·verdict) 주기 실행 설정. 재시도 정책은 outbox 레벨이
+	// 아니라 worker가 직접 들고 있는 AnswerModerationRetryPolicy가 담당하므로
+	// OutboxSettings의 retry 하위 블록을 그대로 쓰지 않는다.
+	public record ClaimSettings(Duration fixedDelay, int batchSize, Duration leaseDuration) {
+	}
+
+	// 스캔만 하고 claim/lease가 없는 deadline 신호 발행 설정.
+	public record ScanSettings(Duration fixedDelay, int batchSize) {
+	}
+
 	public record PushSettings(boolean enabled, Duration fixedDelay, int batchSize, Duration leaseDuration,
-		PushRetrySettings retry) {
+			PushRetrySettings retry) {
 	}
 
 	public record OutboxRetrySettings(int maxAttempts, Duration baseDelay, Duration maxDelay) {
@@ -49,7 +68,7 @@ public record WorkerSchedulingProperties(
 		// 네 Outbox adapter가 같은 설정에서 같은 정책을 만들도록 생성 지점을 한 곳에 둔다.
 		public OutboxRetryPolicy toPolicy() {
 			return new OutboxRetryPolicy(maxAttempts,
-				ExponentialJitterBackoffStrategy.withRandomJitter(baseDelay, maxDelay));
+					ExponentialJitterBackoffStrategy.withRandomJitter(baseDelay, maxDelay));
 		}
 	}
 
@@ -104,6 +123,32 @@ public record WorkerSchedulingProperties(
 		if (retry.backoffCap().compareTo(retry.baseBackoff()) < 0) {
 			throw invalid(block + ".retry.backoffCap", "baseBackoff 이상이어야 합니다");
 		}
+	}
+
+	private static void validateAnswerModeration(AnswerModerationSettings settings) {
+		if (settings == null || !settings.enabled()) {
+			return;
+		}
+		validateClaim(settings.execution(), "answerModeration.execution");
+		validateScan(settings.deadline(), "answerModeration.deadline");
+		validateClaim(settings.verdict(), "answerModeration.verdict");
+	}
+
+	private static void validateClaim(ClaimSettings settings, String block) {
+		if (settings == null) {
+			throw invalid(block, "필수입니다");
+		}
+		validateDuration(settings.fixedDelay(), block + ".fixedDelay");
+		validatePositive(settings.batchSize(), block + ".batchSize");
+		validateDuration(settings.leaseDuration(), block + ".leaseDuration");
+	}
+
+	private static void validateScan(ScanSettings settings, String block) {
+		if (settings == null) {
+			throw invalid(block, "필수입니다");
+		}
+		validateDuration(settings.fixedDelay(), block + ".fixedDelay");
+		validatePositive(settings.batchSize(), block + ".batchSize");
 	}
 
 	private static void validatePositive(int value, String field) {

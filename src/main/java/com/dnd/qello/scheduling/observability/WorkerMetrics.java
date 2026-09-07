@@ -44,13 +44,16 @@ public class WorkerMetrics {
 	}
 
 	public enum WorkerName {
-		DIRECTION_MATCHING("direction_matching"),
-		RECIPIENT_NOTIFICATION_FAN_OUT("recipient_notification_fan_out"),
-		NOTIFICATION_FAN_OUT("notification_fan_out"),
-		REPORT_RESOLUTION_FAN_OUT("report_resolution_fan_out"),
-		RECIPIENT_EXPIRATION_SWEEP("recipient_expiration_sweep"),
-		SKIP_CONFIRMATION_SWEEP("skip_confirmation_sweep"),
-		PUSH_DELIVERY_DISPATCH("push_delivery_dispatch");
+		DIRECTION_MATCHING("direction_matching"), RECIPIENT_NOTIFICATION_FAN_OUT(
+				"recipient_notification_fan_out"), NOTIFICATION_FAN_OUT(
+						"notification_fan_out"), REPORT_RESOLUTION_FAN_OUT(
+								"report_resolution_fan_out"), RECIPIENT_EXPIRATION_SWEEP(
+										"recipient_expiration_sweep"), SKIP_CONFIRMATION_SWEEP(
+												"skip_confirmation_sweep"), PUSH_DELIVERY_DISPATCH(
+														"push_delivery_dispatch"), ANSWER_MODERATION_EXECUTION(
+																"answer_moderation_execution"), ANSWER_MODERATION_DEADLINE(
+																		"answer_moderation_deadline"), ANSWER_MODERATION_VERDICT(
+																				"answer_moderation_verdict");
 
 		private final String tag;
 
@@ -60,8 +63,6 @@ public class WorkerMetrics {
 	}
 
 	public enum Outcome {
-		PROCESSED, RETRYABLE, RETRY_SCHEDULED, DEAD, STALE_LEASE, STALE_CLAIM,
-		FAILURE_RECORDING_FAILED, RELEASED, INELIGIBLE, FAILED, SENT, CANCELLED,
-		BATCH_FAILED
+		PROCESSED, RETRYABLE, RETRY_SCHEDULED, DEAD, STALE_LEASE, STALE_CLAIM, FAILURE_RECORDING_FAILED, RELEASED, INELIGIBLE, FAILED, SENT, CANCELLED, BATCH_FAILED
 	}
 }
