@@ -1,5 +1,14 @@
-variant,scenario,run,model,reasoning_effort,codex_version,branch,commit_sha,agents_bytes,agents_lines,agents_estimated_tokens,first_input_tokens,first_cached_input_tokens,total_input_tokens,total_output_tokens,tool_calls,elapsed_seconds,hard_gate_pass,correct_skill_routing,false_block,valid_run,notes
-a0,static,1,,,,chore/gh-221-agents-a0-control,fdc088b40fabb70b04ec80cf33ee859cdec70eea,25233,879,6443,,,,,,,,,,,
-a1,static,1,,,,chore/gh-221-agents-a1-compact,198a84d111a5ada88dbc50d6fd5a942d56e84195,15443,219,3825,,,,,,,,,,,
-a2,static,1,,,,chore/gh-221-agents-a2-outcome,b0e1ecaf1d44620e4c4badf12346bb48b45df1da,9158,153,2297,,,,,,,,,,,
-a3,static,1,,,,chore/gh-221-agents-a3-routing,5b2af27706c7a3f9d6d1593ea35788c074566362,3595,59,927,,,,,,,,,,,
+variant,scenario,run,model,reasoning_effort,codex_version,started_at,branch,commit_sha,agents_bytes,agents_lines,agents_estimated_tokens,first_input_tokens,first_cached_input_tokens,total_input_tokens,total_output_tokens,tool_calls,elapsed_seconds,hard_gate_pass,correct_skill_routing,false_block,valid_run,notes
+a0,static,1,,,,,chore/gh-221-agents-a0-control,fdc088b40fabb70b04ec80cf33ee859cdec70eea,25233,879,6443,,,,,,,,,,,
+a1,static,1,,,,,chore/gh-221-agents-a1-compact,198a84d111a5ada88dbc50d6fd5a942d56e84195,15443,219,3825,,,,,,,,,,,
+a2,static,1,,,,,chore/gh-221-agents-a2-outcome,b0e1ecaf1d44620e4c4badf12346bb48b45df1da,9158,153,2297,,,,,,,,,,,
+a3,static,1,,,,,chore/gh-221-agents-a3-routing,5b2af27706c7a3f9d6d1593ea35788c074566362,3595,59,927,,,,,,,,,,,
+a0,s1,1,gpt-5.6-sol,high,codex-cli 0.153.4,2026-09-10T06:15:36.197Z,chore/gh-221-agents-a0-control,fdc088b40fabb70b04ec80cf33ee859cdec70eea,25233,879,6443,23175,6528,275727,3813,7,,false,true,,false,stdin_instrumentation_hang; elapsed unavailable
+a0,s1,2,gpt-5.6-sol,high,codex-cli 0.153.4,2026-09-10T09:28:50.800Z,chore/gh-221-agents-a0-control,fdc088b40fabb70b04ec80cf33ee859cdec70eea,25233,879,6443,23175,6528,119335,2867,3,104,true,true,,true,elapsed_recovered=json_birth_to_mtime
+a1,s1,1,gpt-5.6-sol,high,codex-cli 0.153.4,2026-09-10T09:30:36.174Z,chore/gh-221-agents-a1-compact,198a84d111a5ada88dbc50d6fd5a942d56e84195,15443,219,3825,20557,6528,255434,4476,7,164,true,true,,true,elapsed_recovered=json_birth_to_mtime
+a2,s1,1,gpt-5.6-sol,high,codex-cli 0.153.4,2026-09-10T09:33:22.485Z,chore/gh-221-agents-a2-outcome,b0e1ecaf1d44620e4c4badf12346bb48b45df1da,9158,153,2297,19029,6528,64202,2826,2,97,true,true,,true,elapsed_recovered=json_birth_to_mtime
+a3,s1,1,gpt-5.6-sol,high,codex-cli 0.153.4,2026-09-10T09:35:01.389Z,chore/gh-221-agents-a3-routing,5b2af27706c7a3f9d6d1593ea35788c074566362,3595,59,927,17659,6528,106463,3586,4,126,true,true,,true,elapsed_recovered=json_birth_to_mtime
+a0,s2,1,gpt-5.6-sol,high,codex-cli 0.153.4,2026-09-10T09:37:09.796Z,chore/gh-221-agents-a0-control,fdc088b40fabb70b04ec80cf33ee859cdec70eea,25233,879,6443,23192,0,265051,6123,6,213,true,true,false,true,elapsed_recovered=json_birth_to_mtime
+a1,s2,1,gpt-5.6-sol,high,codex-cli 0.153.4,2026-09-10T09:40:44.041Z,chore/gh-221-agents-a1-compact,198a84d111a5ada88dbc50d6fd5a942d56e84195,15443,219,3825,20574,6528,302903,5300,7,186,true,true,false,true,elapsed_recovered=json_birth_to_mtime
+a2,s2,1,gpt-5.6-sol,high,codex-cli 0.153.4,2026-09-10T09:43:51.291Z,chore/gh-221-agents-a2-outcome,b0e1ecaf1d44620e4c4badf12346bb48b45df1da,9158,153,2297,19046,12544,216428,5685,6,195,true,true,false,true,elapsed_recovered=json_birth_to_mtime
+a3,s2,1,gpt-5.6-sol,high,codex-cli 0.153.4,2026-09-10T09:47:08.053Z,chore/gh-221-agents-a3-routing,5b2af27706c7a3f9d6d1593ea35788c074566362,3595,59,927,17676,6528,250433,6800,7,243,true,true,false,true,elapsed_recovered=json_birth_to_mtime
