@@ -9,8 +9,17 @@
 
 - Title: `Codex AGENTS.md 토큰 최적화 실험`
 - GitHub Issue: `#221`
-- Branch: `chore/gh-221-agents-token-experiment`
+- Coordinator branch: `chore/gh-221-agents-token-experiment`
+- Branch family: `chore/gh-221-agents-*`
 - Base branch: `main`
+- Candidate branches:
+  - `chore/gh-221-agents-a0-control`
+  - `chore/gh-221-agents-a1-compact`
+  - `chore/gh-221-agents-a2-outcome`
+  - `chore/gh-221-agents-a3-routing`
+
+이 계약은 기준 브랜치와 위 네 후보 브랜치에 공통으로 적용된다. 모든 브랜치는
+Issue `#221`과 type `chore`를 공유한다.
 
 ## Objective
 
