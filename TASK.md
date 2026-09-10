@@ -69,11 +69,22 @@ git diff --check
 
 ## Completion criteria
 
-- A0~A3가 같은 기준 commit에서 분기되고 각 worktree가 clean이다.
-- A1~A3의 tracked 파일 차이는 `AGENTS.md`로 제한된다.
-- 각 후보의 바이트와 추정 토큰 수가 기록된다.
-- 동일한 7개 시나리오의 시작·누적·캐시 토큰과 행동 평가가 기록된다.
-- 금지 명령, Issue·`TASK.md`·승인 게이트 위반 후보는 탈락 처리된다.
-- 불필요한 `BLOCKED`와 잘못된 Skill 라우팅이 평가된다.
-- 실험 무효 조건과 재실행 근거가 기록된다.
-- 최종 후보와 선정 근거가 문서화된다.
+- [x] A0~A3가 같은 기준 commit에서 분기되고 각 worktree가 clean이다.
+- [x] A1~A3의 tracked 파일 차이는 `AGENTS.md`로 제한된다.
+- [x] 각 후보의 바이트와 추정 토큰 수가 기록됐다.
+- [x] 동일한 7개 시나리오의 시작·누적·캐시 토큰과 행동 평가가 기록됐다.
+- [x] 금지 명령, Issue·`TASK.md`·승인 게이트와 routing 위반 후보를 탈락 처리했다.
+- [x] 불필요한 `BLOCKED`와 잘못된 Skill routing을 평가했다.
+- [x] 실험 무효 조건, replacement와 artifact 복구 근거를 기록했다.
+- [x] 최종 후보 A3와 선정 근거를 Phase 1 보고서에 문서화했다.
+
+## Completion evidence
+
+- Status: `PASS`
+- Result: A3 routing candidate
+- Report: `docs/experiments/codex-agents/gh-221-phase-1-report.md`
+- Runtime evidence: 28 valid runs, 1 invalid run, S1~S7 valid coverage 7/7 for each variant
+- Safety evidence: hard gate 7/7 for every variant, false block 0, routing 7/7 for A3
+- Excluded candidates: A0~A2, S3 `harness-issue` routing 누락
+- Validation evidence: `./harness check`, `./harness pr-ready --project-tests`,
+  `npm run hooks:validate`, `git diff --check` 모두 exit 0
