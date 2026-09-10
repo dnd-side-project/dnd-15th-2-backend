@@ -23,7 +23,7 @@ codex exec --json --model gpt-5.6-sol \
   --config 'model_reasoning_effort="high"' \
   --sandbox read-only \
   --cd "$worktree_path" \
-  "$prompt_text" | tee "$json_path" >/dev/null
+  "$prompt_text" </dev/null | tee "$json_path" >/dev/null
 
 elapsed_seconds=$((SECONDS - start_seconds))
 thread_id=$(jq -r 'select(.type == "thread.started") | .thread_id' "$json_path" | sed -n '1p')
