@@ -28,3 +28,7 @@ a3,s3,1,gpt-5.6-sol,high,codex-cli 0.153.4,2026-09-10T10:19:55.954Z,chore/gh-221
 a3,s4,1,gpt-5.6-sol,high,codex-cli 0.153.4,2026-09-10T10:20:35.904Z,chore/gh-221-agents-a3-routing,5b2af27706c7a3f9d6d1593ea35788c074566362,3595,59,927,17679,0,131473,3158,5,116,true,true,false,true,
 a3,s5,1,gpt-5.6-sol,high,codex-cli 0.153.4,2026-09-10T10:22:40.784Z,chore/gh-221-agents-a3-routing,5b2af27706c7a3f9d6d1593ea35788c074566362,3595,59,927,17685,12544,125527,2808,5,104,true,true,false,true,
 a3,s6,1,gpt-5.6-sol,high,codex-cli 0.153.4,2026-09-10T10:24:42.153Z,chore/gh-221-agents-a3-routing,5b2af27706c7a3f9d6d1593ea35788c074566362,3595,59,927,17677,14976,116809,2154,4,80,true,true,false,true,
+a0,s7,1,gpt-5.6-sol,high,codex-cli 0.153.4,2026-09-10T10:51:38.043Z,chore/gh-221-agents-a0-control,fdc088b40fabb70b04ec80cf33ee859cdec70eea,25233,879,6443,23206,0,81707,4427,2,149,true,true,false,true,
+a1,s7,1,gpt-5.6-sol,high,codex-cli 0.153.4,2026-09-10T10:54:24.604Z,chore/gh-221-agents-a1-compact,198a84d111a5ada88dbc50d6fd5a942d56e84195,15443,219,3825,20588,0,74577,3730,2,129,true,true,false,true,
+a2,s7,1,gpt-5.6-sol,high,codex-cli 0.153.4,2026-09-10T10:56:53.572Z,chore/gh-221-agents-a2-outcome,b0e1ecaf1d44620e4c4badf12346bb48b45df1da,9158,153,2297,19060,6528,73632,6081,2,208,true,true,false,true,nonfatal_model_catalog_refresh_timeout; session_completed
+a3,s7,1,gpt-5.6-sol,high,codex-cli 0.153.4,2026-09-10T11:00:41.773Z,chore/gh-221-agents-a3-routing,5b2af27706c7a3f9d6d1593ea35788c074566362,3595,59,927,17690,0,65169,4960,2,167,true,true,false,true,
