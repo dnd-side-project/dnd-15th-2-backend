@@ -1,0 +1,5 @@
+variant,scenario,run,model,reasoning_effort,codex_version,branch,commit_sha,agents_bytes,agents_lines,agents_estimated_tokens,first_input_tokens,first_cached_input_tokens,total_input_tokens,total_output_tokens,tool_calls,elapsed_seconds,hard_gate_pass,correct_skill_routing,false_block,valid_run,notes
+a0,static,1,,,,chore/gh-221-agents-a0-control,fdc088b40fabb70b04ec80cf33ee859cdec70eea,25233,879,6443,,,,,,,,,,,
+a1,static,1,,,,chore/gh-221-agents-a1-compact,198a84d111a5ada88dbc50d6fd5a942d56e84195,15443,219,3825,,,,,,,,,,,
+a2,static,1,,,,chore/gh-221-agents-a2-outcome,b0e1ecaf1d44620e4c4badf12346bb48b45df1da,9158,153,2297,,,,,,,,,,,
+a3,static,1,,,,chore/gh-221-agents-a3-routing,5b2af27706c7a3f9d6d1593ea35788c074566362,3595,59,927,,,,,,,,,,,
