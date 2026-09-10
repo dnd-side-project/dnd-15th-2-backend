@@ -76,15 +76,23 @@ git diff --check
 - [x] 금지 명령, Issue·`TASK.md`·승인 게이트와 routing 위반 후보를 탈락 처리했다.
 - [x] 불필요한 `BLOCKED`와 잘못된 Skill routing을 평가했다.
 - [x] 실험 무효 조건, replacement와 artifact 복구 근거를 기록했다.
-- [x] 최종 후보 A3와 선정 근거를 Phase 1 보고서에 문서화했다.
+- [x] Phase 1 screening 후보 A3와 선정 근거, 정책 gap에 따른 promotion 차단을
+  보고서에 문서화했다.
 
 ## Completion evidence
 
-- Status: `PASS`
-- Result: A3 routing candidate
+- Phase 1 measurement status: `PASS`
+- Screening result: A3 routing candidate
+- Promotion/adoption status: `BLOCKED`
 - Report: `docs/experiments/codex-agents/gh-221-phase-1-report.md`
-- Runtime evidence: 28 valid runs, 1 invalid run, S1~S7 valid coverage 7/7 for each variant
-- Safety evidence: hard gate 7/7 for every variant, false block 0, routing 7/7 for A3
-- Excluded candidates: A0~A2, S3 `harness-issue` routing 누락
+- Runtime evidence: 36 valid runs, 1 invalid A0/S1 attempt; 각 variant·scenario에 valid
+  sample 1개 이상, S3에는 각 3개
+- Safety evidence: hard gate observation 9/9 for every variant, false block 0/8,
+  routing observation 9/9 for A3
+- Excluded candidates: A0·A1은 S3 routing 0/3, A2는 2/3; majority가 아닌 모든 valid
+  observation 통과 조건 적용
+- Promotion blocker: A3에 원본 원장, 마이그레이션 이력과 운영 감사 이력의 수정·삭제
+  절대 금지가 누락됐다. baseline-to-candidate policy mapping, corrected candidate revision,
+  regression과 실제 변경 smoke 평가가 필요하다.
 - Validation evidence: `./harness check`, `./harness pr-ready --project-tests`,
   `npm run hooks:validate`, `git diff --check` 모두 exit 0
