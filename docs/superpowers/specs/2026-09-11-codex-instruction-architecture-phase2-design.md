@@ -3,7 +3,7 @@
 - Issue: #223
 - Task: GH-223-INSTRUCTION-ARCHITECTURE-PHASE2
 - Design: HARNESS-DESIGN-GH-223-001
-- 상태: SECTIONS_APPROVED_AWAITING_SPEC_REVIEW
+- 상태: APPROVED_FOR_PLAN
 - 범위: instruction architecture 및 격리된 문서·JUnit smoke
 - 제외: Terraform 변경, 배포, 운영 변경, GPT-6 비교, 원시 로그 커밋, 별도 요청 없는 push/PR/merge
 
@@ -19,9 +19,9 @@
 | 구조 | 승인 | B1~B3 파일 배치 및 B2 TASK/지침 경로 검사 |
 | 평가 | 승인 | 204개 세션, 구조 점수, gate·smoke 품질 기준 |
 
-이 상태는 전체 문서 검토, 테스트 구현 또는 커밋 승인이 아니다.
-이 문서를 self-review하고 harness-commit 초안을 승인받아 커밋한 뒤 사용자에게 문서 검토를 요청한다.
-문서 검토 승인 후 writing-plans로 구현 계획을 작성한다. 실제 후보 변경은 구현 계획 승인 후 진행한다.
+전체 문서는 c42ce20 커밋 후 사용자가 `승인`으로 검토 완료했다. 구현 계획 작성을 허용하며 테스트 구현·후속 커밋 승인은 별도다.
+문서 self-review와 승인된 두 설계 커밋을 완료했고, 사용자가 전체 문서 검토를 승인했다.
+문서 검토 승인을 받아 writing-plans로 구현 계획을 작성한다. 실제 후보 변경은 구현 계획 승인 후 진행한다.
 
 이 문서가 설계의 진입점이다. 다음 보조 문서를 함께 버전 관리하며 아래 승인된 계약의 일부로 삼는다.
 
@@ -290,8 +290,8 @@ raw session/민감값/State/plan 원문을 커밋하지 않는다. 결과는 집
 
 ## 10. 문서 검토 및 다음 단계
 
-이 spec과 보조 문서는 동일한 설계 계약이다. 커밋 초안 승인→문서 커밋→사용자 spec 검토→
-writing-plans 구현 계획→사람 계획 승인 순서로 진행한다. 지금은 후보/검사 코드 구현을 승인한 상태가 아니다.
+이 spec과 보조 문서는 동일한 설계 계약이다. 설계 커밋과 사용자 spec 검토는 완료됐다.
+다음 단계는 writing-plans 구현 계획 작성→사람 계획 승인이다. 지금은 후보/검사 코드 구현을 승인한 상태가 아니다.
 실제 구현이 끝나도 push/PR/merge는 별도 요청 전 수행하지 않는다.
 
 ## 공식 근거
