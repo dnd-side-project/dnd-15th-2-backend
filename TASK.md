@@ -13,7 +13,7 @@
 - Base branch: `main`
 - Task ID: `GH-223-INSTRUCTION-ARCHITECTURE-PHASE2`
 - Design ID: `HARNESS-DESIGN-GH-223-001`
-- Status: `DESIGN_PENDING_APPROVAL`
+- Status: `IMPLEMENTATION_APPROVED`
 - Intake approval: 사용자가 전체 Issue 초안과 Project/branch/TASK 연결 제안에 `좋아`로 승인했다. 설계·구현·커밋 승인은 별도다.
 
 ## Objective
@@ -89,5 +89,5 @@ git diff --check
 ## Current evidence
 
 - Issue intake 및 Project 연결 완료: P2 / In Progress / Chore / Sprint 미지정.
-- 정책 보존 첫 섹션 기준은 사용자 `좋아`로 승인됨. 공통 fixture 충돌 정정 방식은 후속 `승인`으로 승인됨. B1~B3 파일 배치와 B2 검사 범위도 후속 `승인`으로 승인됨. 204개 세션의 평가 설계도 후속 `승인`으로 승인됨. 전체 spec 문서 검토/구현/커밋 승인은 아직 없음.
+- 정책 보존 첫 섹션 기준은 사용자 `좋아`로 승인됨. 공통 fixture 충돌 정정 방식은 후속 `승인`으로 승인됨. B1~B3 파일 배치와 B2 검사 범위도 후속 `승인`으로 승인됨. 204개 세션의 평가 설계도 후속 `승인`으로 승인됨. 설계 문서 두 커밋(85cec19, c42ce20) 및 전체 spec 문서 검토도 승인됨. 구현 계획·테스트 계획·실행 계약 문서 커밋도 승인됨. 후속 구현 커밋은 별도 승인 대상이다.
 - 정책 원문 색인 및 B0 복원 설계 작업 자료를 작성했다. 후보 파일과 평가 코드는 변경하지 않았다.
