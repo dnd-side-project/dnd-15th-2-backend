@@ -23,7 +23,9 @@
 - 남은 Task 8~12는 pilot 2회 + 대표 read-only 작업 3개 × B0~B3 × 2회, 총 26회 계약으로 대체한다.
 - 사용자 요청으로 기존 204회 평가와 실제 변경 smoke 계획은 PAUSED_BY_USER로 보존한다. 이 파일 아래의 기존 smoke·S1~S7 전체 평가·완료 조건은 과거 full 범위 기록이며 현재 lite 실행의 필수 조건이 아니다.
 - 현재 완료 조건은 active plan Task 8~12를 따른다. lite는 토큰 사용량과 답변 충족 여부만 비교하며 실제 구현 품질·안전성 전체 검증을 완료했다고 주장하지 않는다.
-- 이번 승인 범위의 계획 문서만 수정했다. 도구 profile 변경과 실제 모델 평가는 아직 미실행이다. 커밋은 초안 승인 후 수행한다.
+- Task 8 lite 도구·계약 및 Task 9 계측 검증을 완료했다. Task 9 증거 커밋은 `87cd509`이다.
+- Task 10 본 비교 24회를 승인된 순서로 완료했다(재시도 0회). 최초 실패 pilot 1회와 승인된 새 pilot 2회는 별도 보존했다.
+- Task 11 결과: [lite 비교 보고서](docs/experiments/codex-agents/gh-223-lite-report.md). Task 12 [독립 리뷰·최종 검증](docs/experiments/codex-agents/gh-223-lite-verification.md)은 PASS이며 사용자가 결과·검증 두 커밋 초안을 승인했다.
 
 ## Objective
 
