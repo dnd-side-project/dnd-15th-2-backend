@@ -72,6 +72,13 @@ RUNTIME_FINGERPRINT_KEYS = {
     "base_instructions_sha256", "tool_catalog_sha256", "plugin_catalog_sha256",
     "resolved_model", "resolved_reasoning_effort", "cli_version",
 }
+LITE_RUNTIME_FINGERPRINT_KEYS = {
+    "base_instructions_sha256", "dynamic_tools_sha256",
+    "dynamic_tool_namespace_projection_sha256", "dynamic_tools_source",
+    "dynamic_tools_serialization", "dynamic_tools_scope",
+    "full_tool_catalog_status", "plugin_catalog_status",
+    "resolved_model", "resolved_reasoning_effort", "cli_version",
+}
 
 
 def _repo_root():
@@ -411,12 +418,15 @@ def protect_profile_outputs(profile, environment_output, order_output, docs_root
         raise ValueError("lite profile must not overwrite full artifacts")
 
 
-def validate_runtime_fingerprint(evidence):
+def validate_runtime_fingerprint(evidence, profile=FULL_PROFILE):
     if not evidence:
         return ["RUNTIME_EVIDENCE_MISSING"]
     problems = []
-    for key in ("base_instructions_sha256", "tool_catalog_sha256",
-                "plugin_catalog_sha256"):
+    hash_keys = (["base_instructions_sha256", "tool_catalog_sha256",
+                  "plugin_catalog_sha256"] if profile == FULL_PROFILE else
+                 ["base_instructions_sha256", "dynamic_tools_sha256",
+                  "dynamic_tool_namespace_projection_sha256"])
+    for key in hash_keys:
         if not isinstance(evidence.get(key), str) or not HEX_SHA256.fullmatch(evidence[key]):
             problems.append("RUNTIME_HASH_INVALID:" + key)
     if evidence.get("resolved_model") != EXPECTED_MODEL:
@@ -426,6 +436,30 @@ def validate_runtime_fingerprint(evidence):
     cli_version = evidence.get("cli_version")
     if cli_version != EXPECTED_CLI_VERSION:
         problems.append("RUNTIME_CLI_MISMATCH")
+    if profile == LITE_PROFILE:
+        serialization = evidence.get("dynamic_tools_serialization")
+        if serialization == "malformed":
+            problems.append("RUNTIME_DYNAMIC_TOOLS_MALFORMED")
+        elif serialization == "unsupported_cli_serialization":
+            problems.append("RUNTIME_DYNAMIC_TOOLS_SERIALIZATION_UNSUPPORTED")
+        elif serialization not in {"empty_omitted_for_cli_0.153.4", "explicit_list"}:
+            problems.append("RUNTIME_DYNAMIC_TOOLS_SERIALIZATION_INVALID")
+        if evidence.get("dynamic_tools_source") != "session_meta.dynamic_tools":
+            problems.append("RUNTIME_DYNAMIC_TOOLS_SOURCE_MISMATCH")
+        if evidence.get("dynamic_tools_scope") != "dynamic_supplement_only":
+            problems.append("RUNTIME_DYNAMIC_TOOLS_SCOPE_MISMATCH")
+        if evidence.get("full_tool_catalog_status") != (
+                "unavailable_from_serialized_rollout"):
+            problems.append("RUNTIME_FULL_TOOL_CATALOG_STATUS_INVALID")
+        if evidence.get("plugin_catalog_status") != (
+                "unavailable_from_serialized_rollout"):
+            problems.append("RUNTIME_PLUGIN_CATALOG_STATUS_INVALID")
+        if serialization == "empty_omitted_for_cli_0.153.4":
+            empty_hash = _canonical_sha256([])
+            if evidence.get("dynamic_tools_sha256") != empty_hash:
+                problems.append("RUNTIME_DYNAMIC_TOOLS_EMPTY_HASH_MISMATCH")
+            if evidence.get("dynamic_tool_namespace_projection_sha256") != empty_hash:
+                problems.append("RUNTIME_DYNAMIC_TOOL_PROJECTION_EMPTY_HASH_MISMATCH")
     return problems
 
 
@@ -443,7 +477,8 @@ def validate_runtime_evidence(evidence, allow_capture, profile=FULL_PROFILE):
     if evidence.get("status") != "APPROVED_PILOT_PAIR":
         return ["RUNTIME_PROMOTION_REQUIRED"]
     problems = profile_manifest_problems(evidence, profile)
-    problems.extend(validate_runtime_fingerprint(evidence.get("parent_fingerprint")))
+    problems.extend(validate_runtime_fingerprint(
+        evidence.get("parent_fingerprint"), profile=profile))
     bindings = evidence.get("pilot_bindings")
     expected_pilots = _expected_pilots(profile)
     observed = set()
@@ -470,7 +505,8 @@ def validate_runtime_evidence(evidence, allow_capture, profile=FULL_PROFILE):
             if not isinstance(role, str) or not role:
                 problems.append("RUNTIME_CHILD_ROLE_INVALID")
             problems.extend("CHILD_ROLE_{}:{}".format(role, problem)
-                            for problem in validate_runtime_fingerprint(fingerprint))
+                            for problem in validate_runtime_fingerprint(
+                                fingerprint, profile=profile))
     review_hash_key = ("coordinator_review_sha256" if profile == LITE_PROFILE
                        else "independent_review_sha256")
     for key in (review_hash_key, "pilot_environment_manifest_sha256",
@@ -974,7 +1010,7 @@ def _promote_runtime_evidence(package, binding, profile=FULL_PROFILE):
                 or any(measurement_review.get(key) is not True
                        for key in required_review_matches)):
             raise ValueError("pilot direct measurement review is incomplete")
-        fingerprint_problems = validate_runtime_fingerprint(evidence)
+        fingerprint_problems = validate_runtime_fingerprint(evidence, profile=profile)
         if fingerprint_problems:
             raise ValueError("pilot runtime fingerprint invalid")
         if summary.get("instrumentation") != binding["instrumentation"]:
@@ -990,7 +1026,7 @@ def _promote_runtime_evidence(package, binding, profile=FULL_PROFILE):
             if not isinstance(child, dict) or not isinstance(child.get("role"), str):
                 raise ValueError("pilot child role evidence invalid")
             fingerprint = child.get("fingerprint")
-            if validate_runtime_fingerprint(fingerprint):
+            if validate_runtime_fingerprint(fingerprint, profile=profile):
                 raise ValueError("pilot child fingerprint invalid")
             prior = child_roles.get(child["role"])
             if prior is not None and prior != fingerprint:
@@ -1388,7 +1424,34 @@ def _find_rollout(thread_id, session_root):
     return matches[0]
 
 
-def runtime_evidence_from_events(events):
+def _dynamic_tool_projection(tools):
+    return [{key: tool.get(key) for key in ("type", "name", "description")}
+            for tool in tools]
+
+
+def _canonical_dynamic_tool_function(tool):
+    return (isinstance(tool, dict)
+            and tool.get("type") == "function"
+            and isinstance(tool.get("name"), str)
+            and isinstance(tool.get("description"), str)
+            and "inputSchema" in tool
+            and ("deferLoading" not in tool
+                 or isinstance(tool.get("deferLoading"), bool)))
+
+
+def _canonical_dynamic_tool(tool):
+    if _canonical_dynamic_tool_function(tool):
+        return True
+    return (isinstance(tool, dict)
+            and tool.get("type") == "namespace"
+            and isinstance(tool.get("name"), str)
+            and isinstance(tool.get("description"), str)
+            and isinstance(tool.get("tools"), list)
+            and all(_canonical_dynamic_tool_function(nested)
+                    for nested in tool["tools"]))
+
+
+def runtime_evidence_from_events(events, profile=FULL_PROFILE):
     metas = [event["payload"] for event in events
              if event.get("type") == "session_meta" and isinstance(event.get("payload"), dict)]
     contexts = [event["payload"] for event in events
@@ -1398,22 +1461,56 @@ def runtime_evidence_from_events(events):
     meta = metas[0]
     context = contexts[-1]
     base = meta.get("base_instructions")
+    cli_version = meta.get("cli_version")
+    if profile == FULL_PROFILE:
+        tools = meta.get("dynamic_tools")
+        if not isinstance(base, dict) or not isinstance(tools, list):
+            return {}
+        plugin_catalog = []
+        for tool_namespace in tools:
+            if not isinstance(tool_namespace, dict):
+                continue
+            plugin_catalog.append({key: tool_namespace.get(key)
+                                   for key in ("type", "name", "description")})
+        return {
+            "base_instructions_sha256": _canonical_sha256(base),
+            "tool_catalog_sha256": _canonical_sha256(tools),
+            "plugin_catalog_sha256": _canonical_sha256(plugin_catalog),
+            "resolved_model": context.get("model"),
+            "resolved_reasoning_effort": context.get("effort"),
+            "cli_version": cli_version,
+        }
+    if profile != LITE_PROFILE:
+        raise ValueError("unknown evaluation profile")
+
+    tools_present = "dynamic_tools" in meta
     tools = meta.get("dynamic_tools")
-    if not isinstance(base, dict) or not isinstance(tools, list):
-        return {}
-    plugin_catalog = []
-    for tool_namespace in tools:
-        if not isinstance(tool_namespace, dict):
-            continue
-        plugin_catalog.append({key: tool_namespace.get(key)
-                               for key in ("type", "name", "description")})
+    if not tools_present and cli_version == EXPECTED_CLI_VERSION:
+        tools = []
+        serialization = "empty_omitted_for_cli_0.153.4"
+    elif (isinstance(tools, list) and tools
+          and all(_canonical_dynamic_tool(tool) for tool in tools)):
+        serialization = "explicit_list"
+    else:
+        tools = None
+        serialization = ("unsupported_cli_serialization"
+                         if not tools_present else "malformed")
+    projection = _dynamic_tool_projection(tools) if tools is not None else None
     return {
-        "base_instructions_sha256": _canonical_sha256(base),
-        "tool_catalog_sha256": _canonical_sha256(tools),
-        "plugin_catalog_sha256": _canonical_sha256(plugin_catalog),
+        "base_instructions_sha256": (_canonical_sha256(base)
+                                     if isinstance(base, dict) else None),
+        "dynamic_tools_sha256": (_canonical_sha256(tools)
+                                 if tools is not None else None),
+        "dynamic_tool_namespace_projection_sha256": (
+            _canonical_sha256(projection) if projection is not None else None),
+        "dynamic_tools_source": "session_meta.dynamic_tools",
+        "dynamic_tools_serialization": serialization,
+        "dynamic_tools_scope": "dynamic_supplement_only",
+        "full_tool_catalog_status": "unavailable_from_serialized_rollout",
+        "plugin_catalog_status": "unavailable_from_serialized_rollout",
         "resolved_model": context.get("model"),
         "resolved_reasoning_effort": context.get("effort"),
-        "cli_version": meta.get("cli_version"),
+        "cli_version": cli_version,
     }
 
 
@@ -1513,22 +1610,25 @@ def _validate_candidate_snapshot(root, candidate, require_clean):
     return problems, snapshot, sources
 
 
-def _fingerprint_matches(expected, actual):
-    problems = validate_runtime_fingerprint(actual)
+def _fingerprint_matches(expected, actual, profile=FULL_PROFILE):
+    problems = validate_runtime_fingerprint(actual, profile=profile)
     if isinstance(expected, dict):
-        for key in RUNTIME_FINGERPRINT_KEYS:
+        keys = (RUNTIME_FINGERPRINT_KEYS if profile == FULL_PROFILE
+                else LITE_RUNTIME_FINGERPRINT_KEYS)
+        for key in keys:
             if key in expected and expected[key] != actual.get(key):
                 problems.append("RUNTIME_EVIDENCE_MISMATCH:" + key)
     return sorted(set(problems))
 
 
-def _runtime_matches(expected, actual, allow_capture):
+def _runtime_matches(expected, actual, allow_capture, profile=FULL_PROFILE):
     if not expected or expected.get("status") == "PENDING_APPROVED_PILOT_PAIR":
-        problems = validate_runtime_fingerprint(actual)
+        problems = validate_runtime_fingerprint(actual, profile=profile)
         if not allow_capture:
             problems.append("RUNTIME_EVIDENCE_MISSING")
         return sorted(set(problems))
-    return _fingerprint_matches(expected.get("parent_fingerprint"), actual)
+    return _fingerprint_matches(
+        expected.get("parent_fingerprint"), actual, profile=profile)
 
 
 def _call_text(payload):
@@ -1879,9 +1979,11 @@ def run_cell_command(args, pilot):
     thread_id = _thread_id(stdout_events)
     rollout_path = _find_rollout(thread_id, args.session_root)
     rollout_events = _load_jsonl(rollout_path)
-    actual_evidence = runtime_evidence_from_events(rollout_events)
+    actual_evidence = runtime_evidence_from_events(
+        rollout_events, profile=args.profile)
     runtime_problems = _runtime_matches(
-        manifest.get("runtime_evidence", {}), actual_evidence, allow_capture=pilot)
+        manifest.get("runtime_evidence", {}), actual_evidence,
+        allow_capture=pilot, profile=args.profile)
 
     metrics = _metrics_module()
     parent_usage = metrics.extract_usage(rollout_events + stdout_events)
@@ -1894,13 +1996,15 @@ def run_cell_command(args, pilot):
         "child_role_fingerprints", {})
     for child_id, parent_id, _, child_events in _descendant_rollouts(
             thread_id, args.session_root, started_epoch):
-        child_evidence = runtime_evidence_from_events(child_events)
+        child_evidence = runtime_evidence_from_events(
+            child_events, profile=args.profile)
         child_role = child_role_from_events(child_events)
         if child_role is None:
             child_evidence_problems.append("CHILD_ROLE_UNAVAILABLE")
         if pilot and manifest.get("runtime_evidence", {}).get(
                 "status") == "PENDING_APPROVED_PILOT_PAIR":
-            child_evidence_problems.extend(validate_runtime_fingerprint(child_evidence))
+            child_evidence_problems.extend(validate_runtime_fingerprint(
+                child_evidence, profile=args.profile))
         else:
             expected_child = expected_child_roles.get(child_role)
             if expected_child is None:
@@ -1908,7 +2012,8 @@ def run_cell_command(args, pilot):
             else:
                 child_evidence_problems.extend(
                     "CHILD_{}:{}".format(child_role, problem)
-                    for problem in _fingerprint_matches(expected_child, child_evidence))
+                    for problem in _fingerprint_matches(
+                        expected_child, child_evidence, profile=args.profile))
         child_runtime_evidence.append({"role": child_role, "fingerprint": child_evidence})
         children.append({
             "thread_id": child_id,
@@ -2557,6 +2662,135 @@ def run_self_test():
     }
     assert validate_runtime_evidence(promoted, allow_capture=False) == []
     assert _fingerprint_matches(evidence, dict(evidence, tool_catalog_sha256="0" * 64))
+
+    actual_lite_shape = [
+        {"type": "session_meta", "payload": {
+            "base_instructions": {"text": "base", "provenance": {
+                "type": "model", "model": EXPECTED_MODEL}},
+            "cli_version": EXPECTED_CLI_VERSION,
+        }},
+        {"type": "turn_context", "payload": {
+            "model": EXPECTED_MODEL, "effort": EXPECTED_EFFORT,
+        }},
+    ]
+    lite_fingerprint = runtime_evidence_from_events(
+        actual_lite_shape, profile=LITE_PROFILE)
+    assert lite_fingerprint == {
+        "base_instructions_sha256": _canonical_sha256(
+            actual_lite_shape[0]["payload"]["base_instructions"]),
+        "dynamic_tools_sha256": _canonical_sha256([]),
+        "dynamic_tool_namespace_projection_sha256": _canonical_sha256([]),
+        "dynamic_tools_source": "session_meta.dynamic_tools",
+        "dynamic_tools_serialization": "empty_omitted_for_cli_0.153.4",
+        "dynamic_tools_scope": "dynamic_supplement_only",
+        "full_tool_catalog_status": "unavailable_from_serialized_rollout",
+        "plugin_catalog_status": "unavailable_from_serialized_rollout",
+        "resolved_model": EXPECTED_MODEL,
+        "resolved_reasoning_effort": EXPECTED_EFFORT,
+        "cli_version": EXPECTED_CLI_VERSION,
+    }
+    assert validate_runtime_fingerprint(lite_fingerprint, profile=LITE_PROFILE) == []
+    assert runtime_evidence_from_events(actual_lite_shape, profile=FULL_PROFILE) == {}
+
+    nonempty_tools = [
+        {"type": "function", "name": "direct", "description": "synthetic",
+         "inputSchema": {"type": "object"}, "deferLoading": True},
+        {"type": "namespace", "name": "bounded", "description": "synthetic",
+         "tools": [
+             {"type": "function", "name": "nested",
+              "description": "synthetic", "inputSchema": None},
+         ]},
+    ]
+    nonempty_events = json.loads(json.dumps(actual_lite_shape))
+    nonempty_events[0]["payload"]["dynamic_tools"] = nonempty_tools
+    nonempty_fingerprint = runtime_evidence_from_events(
+        nonempty_events, profile=LITE_PROFILE)
+    assert nonempty_fingerprint["dynamic_tools_sha256"] == _canonical_sha256(
+        nonempty_tools)
+    assert nonempty_fingerprint["dynamic_tools_serialization"] == "explicit_list"
+    assert runtime_evidence_from_events(nonempty_events, profile=FULL_PROFILE) == {
+        "base_instructions_sha256": _canonical_sha256(
+            nonempty_events[0]["payload"]["base_instructions"]),
+        "tool_catalog_sha256": _canonical_sha256(nonempty_tools),
+        "plugin_catalog_sha256": _canonical_sha256(
+            _dynamic_tool_projection(nonempty_tools)),
+        "resolved_model": EXPECTED_MODEL,
+        "resolved_reasoning_effort": EXPECTED_EFFORT,
+        "cli_version": EXPECTED_CLI_VERSION,
+    }
+
+    malformed_events = json.loads(json.dumps(actual_lite_shape))
+    malformed_events[0]["payload"]["dynamic_tools"] = None
+    malformed_fingerprint = runtime_evidence_from_events(
+        malformed_events, profile=LITE_PROFILE)
+    assert "RUNTIME_DYNAMIC_TOOLS_MALFORMED" in validate_runtime_fingerprint(
+        malformed_fingerprint, profile=LITE_PROFILE)
+    explicit_empty_events = json.loads(json.dumps(actual_lite_shape))
+    explicit_empty_events[0]["payload"]["dynamic_tools"] = []
+    explicit_empty_fingerprint = runtime_evidence_from_events(
+        explicit_empty_events, profile=LITE_PROFILE)
+    assert "RUNTIME_DYNAMIC_TOOLS_MALFORMED" in validate_runtime_fingerprint(
+        explicit_empty_fingerprint, profile=LITE_PROFILE)
+    for invalid_tools in (
+            [{"type": "function"}],
+            [{"type": "namespace", "name": 7, "description": None,
+              "tools": "bad"}],
+            [{"type": "namespace", "name": "bounded",
+              "description": "synthetic",
+              "tools": [{"type": "namespace", "name": "nested",
+                         "description": "invalid", "tools": []}]}],
+            [{"type": "function", "name": "direct",
+              "description": "synthetic", "inputSchema": {},
+              "deferLoading": "yes"}],
+    ):
+        invalid_events = json.loads(json.dumps(actual_lite_shape))
+        invalid_events[0]["payload"]["dynamic_tools"] = invalid_tools
+        invalid_fingerprint = runtime_evidence_from_events(
+            invalid_events, profile=LITE_PROFILE)
+        assert "RUNTIME_DYNAMIC_TOOLS_MALFORMED" in validate_runtime_fingerprint(
+            invalid_fingerprint, profile=LITE_PROFILE)
+    unknown_version_events = json.loads(json.dumps(actual_lite_shape))
+    unknown_version_events[0]["payload"]["cli_version"] = "unknown"
+    unknown_fingerprint = runtime_evidence_from_events(
+        unknown_version_events, profile=LITE_PROFILE)
+    assert "RUNTIME_DYNAMIC_TOOLS_SERIALIZATION_UNSUPPORTED" in (
+        validate_runtime_fingerprint(unknown_fingerprint, profile=LITE_PROFILE))
+    for missing_key, problem in (
+            ("base_instructions_sha256", "RUNTIME_HASH_INVALID:base_instructions_sha256"),
+            ("resolved_model", "RUNTIME_MODEL_MISMATCH"),
+            ("resolved_reasoning_effort", "RUNTIME_EFFORT_MISMATCH"),
+            ("cli_version", "RUNTIME_CLI_MISMATCH")):
+        incomplete = dict(lite_fingerprint)
+        incomplete.pop(missing_key)
+        assert problem in validate_runtime_fingerprint(incomplete, profile=LITE_PROFILE)
+
+    scope_mismatch = dict(lite_fingerprint, dynamic_tools_scope="complete_catalog")
+    assert "RUNTIME_DYNAMIC_TOOLS_SCOPE_MISMATCH" in validate_runtime_fingerprint(
+        scope_mismatch, profile=LITE_PROFILE)
+    assert _fingerprint_matches(
+        lite_fingerprint, scope_mismatch, profile=LITE_PROFILE)
+
+    lite_promoted = {
+        "profile": LITE_PROFILE,
+        "status": "APPROVED_PILOT_PAIR",
+        "parent_fingerprint": lite_fingerprint,
+        "child_role_fingerprints": {"worker": lite_fingerprint},
+        "pilot_bindings": [
+            {"candidate": "B0", "cell": "L1", "run_id": "pilot-lite-b0-l1",
+             "summary_sha256": "1" * 64, "raw_evidence_sha256": "2" * 64,
+             "measurement_review_sha256": "a" * 64},
+            {"candidate": "B3", "cell": "L2", "run_id": "pilot-lite-b3-l2",
+             "summary_sha256": "3" * 64, "raw_evidence_sha256": "4" * 64,
+             "measurement_review_sha256": "b" * 64},
+        ],
+        "coordinator_review_sha256": "5" * 64,
+        "pilot_environment_manifest_sha256": "6" * 64,
+        "comparison_environment_core_sha256": "7" * 64,
+        "instrumentation": {"runner_sha256": "8" * 64, "metrics_sha256": "9" * 64},
+        "source_documents": {"lite_plan_sha256": "a" * 64},
+    }
+    assert validate_runtime_evidence(
+        lite_promoted, allow_capture=False, profile=LITE_PROFILE) == []
 
     child_events = [{"type": "session_meta", "payload": {
         "source": {"subagent": {"thread_spawn": {"agent_type": "worker"}}}}}]
