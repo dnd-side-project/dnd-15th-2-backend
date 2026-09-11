@@ -1,5 +1,8 @@
 # Codex instruction architecture Phase 2 설계
 
+> **현재 범위 변경:** 후보 설계·정책 보존 계약은 유지한다. 아래 204회 실행·smoke 계약은 보류하며, 남은 실행에는 [승인된 lite 변경 계약](../plans/2026-09-11-codex-instruction-token-comparison-lite.md)을 적용한다. 원문은 추후 재개를 위해 보존한다.
+
+
 - Issue: #223
 - Task: GH-223-INSTRUCTION-ARCHITECTURE-PHASE2
 - Design: HARNESS-DESIGN-GH-223-001

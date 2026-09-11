@@ -1,5 +1,8 @@
 # GH-223 평가·측정·품질 설계
 
+> **Status: PAUSED_BY_USER — 기존 204회 평가 계약 보류.** 현재 실행 계약은 [26회 lite 계획](../../superpowers/plans/2026-09-11-codex-instruction-token-comparison-lite.md)이다. 이 문서의 원래 본문과 승인 이력은 보존하며, 명시적 재개 요청 및 환경 재확인 전에는 실행하지 않는다. 완료된 Task 1~7과 후보는 유지한다.
+
+
 Issue #223 / Task GH-223-INSTRUCTION-ARCHITECTURE-PHASE2 / Design HARNESS-DESIGN-GH-223-001
 
 상태: APPROVED_SECTION_4. 표본 수, 산식, smoke와 판정 기준을 사용자가 `승인`했다. 전체 spec 문서 검토·테스트 계획·구현 계획 승인은 별도다.

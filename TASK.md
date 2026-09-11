@@ -16,6 +16,15 @@
 - Status: `IMPLEMENTATION_APPROVED`
 - Intake approval: 사용자가 전체 Issue 초안과 Project/branch/TASK 연결 제안에 `좋아`로 승인했다. 설계·구현·커밋 승인은 별도다.
 
+## Active execution plan
+
+- Active plan: [GH-223-TOKEN-COMPARISON-LITE-001](docs/superpowers/plans/2026-09-11-codex-instruction-token-comparison-lite.md), ACTIVE_APPROVED_PLAN.
+- 기존 Task 1~7은 완료했다. Task 7 커밋: 1edeb3e, 3a8f8f7.
+- 남은 Task 8~12는 pilot 2회 + 대표 read-only 작업 3개 × B0~B3 × 2회, 총 26회 계약으로 대체한다.
+- 사용자 요청으로 기존 204회 평가와 실제 변경 smoke 계획은 PAUSED_BY_USER로 보존한다. 이 파일 아래의 기존 smoke·S1~S7 전체 평가·완료 조건은 과거 full 범위 기록이며 현재 lite 실행의 필수 조건이 아니다.
+- 현재 완료 조건은 active plan Task 8~12를 따른다. lite는 토큰 사용량과 답변 충족 여부만 비교하며 실제 구현 품질·안전성 전체 검증을 완료했다고 주장하지 않는다.
+- 이번 승인 범위의 계획 문서만 수정했다. 도구 profile 변경과 실제 모델 평가는 아직 미실행이다. 커밋은 초안 승인 후 수행한다.
+
 ## Objective
 
 - 모든 baseline 정책을 보존하며 instruction 시작 고정비와 필요 시 추가 로딩 비용을 줄인다.

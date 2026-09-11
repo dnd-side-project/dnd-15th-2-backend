@@ -1,5 +1,8 @@
 # Test Plan: TEST-PLAN-GH-223-INSTRUCTION-SMOKE
 
+> **Status: PAUSED_BY_USER — 기존 실제 변경 smoke 테스트 계획 보류.** 현재 실행 계약은 [26회 lite 계획](../superpowers/plans/2026-09-11-codex-instruction-token-comparison-lite.md)이다. 이 문서의 원래 본문과 승인 이력은 보존하며, 명시적 재개 요청 및 환경 재확인 전에는 실행하지 않는다. 완료된 Task 1~7과 후보는 유지한다.
+
+
 > Created at: `2026-09-11T00:39:25+09:00`
 > GitHub Issue: `#223`
 > Status: APPROVED_FOR_EXECUTION
