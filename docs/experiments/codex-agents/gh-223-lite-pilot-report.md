@@ -70,3 +70,58 @@ Raw stdout, stderr, rollout-derived evidence, and the summary remain outside rep
 - No B0~B3 token or answer comparison, cost winner, safety conclusion, or full-environment validation is available.
 - Candidate, evaluator, application, test, Terraform, AWS, and DB source/state were not changed by the pilot. This report is the only repository artifact added by Task 9 execution.
 - Resuming requires a reviewed evaluator change that supports the observed rollout schema and explicit authorization for a new pilot attempt. Automatic retry and sample expansion remain prohibited.
+
+## Approved retry 1 — Task 9 measurement result
+
+This section records the subsequent explicitly approved two-attempt retry. The original BLOCKED attempt above remains historical failure evidence and is excluded from promotion and comparison.
+
+- status: `PASS` for the Task 9 lite measurement gate; Task 10 has not started
+- issue_number: `223`; task_id: `GH-223-INSTRUCTION-ARCHITECTURE-PHASE2`; design_id: `HARNESS-DESIGN-GH-223-001`
+- approved commits: `2deae42` (failure report), `719db51` (reviewed adapter), `3c6e67b` (instrumentation fingerprint)
+- runtime: `gpt-5.6-sol/high`, Codex CLI `0.153.4`, read-only
+- new attempts: `2`; valid: `2`; children: `0`; automatic retries: `0`
+- actual parent attempts to date: `3` (one historical invalid attempt and two valid new attempts)
+
+| Measurement | B0 / L1 | B3 / L2 |
+| --- | ---: | ---: |
+| Elapsed seconds | 146.001 | 142.420 |
+| First input tokens | 23,555 | 20,973 |
+| First cached input tokens | 6,528 | 0 |
+| Final input tokens | 274,092 | 253,725 |
+| Final cached input tokens | 225,536 | 184,192 |
+| Final output tokens | 5,831 | 5,899 |
+| Tool calls, physical and logical | 6 | 8 |
+| Child calls | 0 | 0 |
+
+The pair took 288.421 seconds (4 minutes 48 seconds), with 527,817 input tokens including 409,728 cached tokens, and 11,730 output tokens. Uncached input was 118,089 tokens. The prompts differ, so these two observations do not establish a candidate cost ranking or equal answer quality.
+
+### Direct review and evidence binding
+
+The coordinator independently compared first and final usage with raw token-count events, checked tool-call counts and absence of descendants, and confirmed that child-inclusive usage equals parent usage. Process elapsed values contain the rollout timestamp envelopes (144.672 and 140.229 seconds); startup and shutdown overhead is retained. Both runtime fingerprints match. Usage validation returned no problems for either run.
+
+- B0 summary SHA-256: `ff387d5b0afbfc68aca2a1b001fbb826d99172d9e8fe2d9153a512cc0c77f61b`
+- B3 summary SHA-256: `ef1b8964e711db7e865765931a08b03b8d0b0e83bf17c0b948420dc8d24df137`
+- runtime evidence SHA-256, identical for both: `3354fefb0faca771354adaf53de524235f0800e2e72a19e6c782db3f1b7047bb`
+- coordinator review SHA-256: `cee6e3c64a471fe46f8bc322152ccfdf9d311bcfc5b8bee83539499c87622ff5`
+- promoted lite environment file SHA-256: `c37190afd3ea0503e7ad2fc2afb7440412d4daab2748da622b8f655965b0e0c9`
+- comparison environment SHA-256: `cb454bb5be85b2172aea07136b3692b5bb5d86952681a1a461d3426baddd70f6`
+- execution order SHA-256, unchanged: `2c0050d7f0247c7e010c89b99b4a05b5ed3d7611fffc2e5167828e2bc3f11308`
+
+Original raw files remain outside repositories with restricted permissions. The separate coordinator review and promotion package bind the unchanged summaries to the lite manifest. `APPROVED_PILOT_PAIR` records the measurement review specified in Task 9; it does not replace the human commit gate.
+
+### Estimate for the remaining 24 comparisons
+
+Multiplying the two observed parent durations by 24 gives approximately 57–58 minutes of model runtime. Multiplying the observed input range gives 6.09–6.58 million input tokens. At the pair average, the projection is 6,333,804 input tokens, including 4,916,736 cached tokens, plus 140,760 output tokens. Cached tokens must not be added a second time.
+
+These are rough extrapolations, not confidence intervals or budget guarantees: only two different prompts were observed, L3 is unobserved, cache behavior can vary, and neither pilot spawned children. Allow roughly 1–2 hours for planning; final review and repository checks add time. Future children can increase usage and elapsed time. No monetary estimate or additional sample authorization is inferred.
+
+### Checks, limits, and next gate
+
+- executed_checks / passed_checks: direct raw usage and tool attribution review for both pilots; lite runtime promotion; strict `python3 scripts/experiments/codex-instruction-phase2.py verify --profile lite` (`PASS`, no problems)
+- failed_checks: none for this retry; the historical invalid attempt remains recorded above
+- blocked_checks: no required Task 9 measurement checks; auxiliary instruction-token attribution and complete tool/plugin catalogs remain `UNAVAILABLE`
+- assumptions: the forecast extrapolates two observed parent sessions; it does not predict L3 or child behavior
+- risks: only the serialized dynamic supplement is fingerprinted; builtin/MCP/plugin catalog completeness is not claimed. Child-role fingerprints are empty; an unobserved child role must follow the evaluator stop rule. Answer quality, safety, and candidate superiority are not established by the measurement pilot.
+- changed_files: this report and `gh-223-lite-environment.json`; full-plan artifacts and candidate worktrees are preserved
+- deferred_checks: Gradle and the full final validation bundle remain scheduled for Task 12 under the approved lite plan
+- required_human_decisions: approve the concrete pilot-evidence commit draft before the frozen 24-session comparison starts
