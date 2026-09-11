@@ -16,6 +16,9 @@ description: "Implement and run approved JUnit 5 scenarios and create a safe rep
    infrastructure, database, concurrency, transactions, external APIs, and
    failure recovery.
 7. Run `./harness pr-ready --project-tests`.
-8. Commit by purpose and link the report in the PR.
+8. Report completed changes and verification. If a commit is needed, use
+   `/harness-commit` to present the complete purpose-based draft and obtain human
+   approval before committing.
 
-Do not report unexecuted tests as passing. Never copy secrets or `.env` values.
+Do not commit, push, or create a PR automatically from this role. Do not report
+unexecuted tests as passing. Never copy secrets or `.env` values.
