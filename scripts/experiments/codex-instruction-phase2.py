@@ -23,6 +23,8 @@ EXPECTED_EFFORT = "high"
 EXPECTED_CLI_VERSION = "0.153.4"
 SCHEMA_VERSION = 2
 HEX_SHA256 = re.compile(r"^[0-9a-f]{64}$")
+FULL_PROFILE = "full"
+LITE_PROFILE = "lite"
 CELL_LAYOUT = {
     "01": ("S1", ".", "read-only"),
     "02": ("S2", ".", "read-only"),
@@ -46,6 +48,10 @@ CANDIDATE_ROTATION = {
     1: ("B0", "B1", "B2", "B3"),
     2: ("B1", "B2", "B3", "B0"),
     3: ("B2", "B3", "B0", "B1"),
+}
+LITE_CANDIDATE_ROTATION = {
+    1: ("B0", "B1", "B2", "B3"),
+    2: ("B1", "B2", "B3", "B0"),
 }
 NORMAL_CELLS = ("01", "02", "08", "09", "10", "11", "12", "16", "17")
 SMOKE_ALLOWLIST = {
@@ -254,6 +260,43 @@ def extract_exact_prompts(spec_path):
     return prompts
 
 
+def extract_lite_contract(plan_path):
+    text = plan_path.read_text(encoding="utf-8")
+    expected_sources = {"L1": "S1", "L2": "X2", "L3": "X1"}
+    prompts = {}
+    cells = {}
+    for cell, expected_source in expected_sources.items():
+        section_match = re.search(
+            r"^### {} —[^\n]*\n(.*?)(?=^### L[123] —|^pilot은|\Z)".format(cell),
+            text, flags=re.MULTILINE | re.DOTALL)
+        if section_match is None:
+            raise ValueError("lite contract section missing: " + cell)
+        section = section_match.group(1)
+        source_match = re.search(r"^- Source scenario: (\S+)$", section, re.MULTILINE)
+        cwd_match = re.search(r"^- cwd: `([^`]+)`$", section, re.MULTILINE)
+        sandbox_match = re.search(r"^- sandbox: `([^`]+)`$", section, re.MULTILINE)
+        prompt_match = re.search(r"```text\n(.*?)\n```", section, re.DOTALL)
+        if not all((source_match, cwd_match, sandbox_match, prompt_match)):
+            raise ValueError("lite contract fields missing: " + cell)
+        source = source_match.group(1)
+        if source != expected_source:
+            raise ValueError("lite source scenario mismatch: " + cell)
+        prompt = prompt_match.group(1)
+        checklist_text = section[prompt_match.end():]
+        checklist = re.findall(r"^- (.+)$", checklist_text, re.MULTILINE)
+        if not checklist:
+            raise ValueError("lite checklist missing: " + cell)
+        prompts[source] = prompt
+        cells[cell] = {
+            "scenario": source,
+            "cwd": cwd_match.group(1),
+            "sandbox": sandbox_match.group(1),
+            "prompt_sha256": _sha256_bytes(prompt.encode("utf-8")),
+            "answer_checklist": checklist,
+        }
+    return prompts, cells
+
+
 def cell_manifest(prompts):
     return {
         cell: {
@@ -266,7 +309,7 @@ def cell_manifest(prompts):
     }
 
 
-def write_execution_order(path, cells):
+def write_execution_order(path, cells, profile=FULL_PROFILE):
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(path.name + ".tmp")
     with temporary.open("w", encoding="utf-8", newline="") as handle:
@@ -275,7 +318,7 @@ def write_execution_order(path, cells):
             "sequence", "run_id", "repetition", "cell", "candidate", "scenario",
             "cwd", "sandbox", "prompt_sha256", "status",
         ])
-        for row in expected_execution_rows(cells):
+        for row in expected_execution_rows(cells, profile=profile):
             writer.writerow([row[field] for field in (
                 "sequence", "run_id", "repetition", "cell", "candidate", "scenario",
                 "cwd", "sandbox", "prompt_sha256", "status",
@@ -283,17 +326,24 @@ def write_execution_order(path, cells):
     os.replace(temporary, path)
 
 
-def expected_execution_rows(cells):
+def expected_execution_rows(cells, profile=FULL_PROFILE):
+    if profile not in {FULL_PROFILE, LITE_PROFILE}:
+        raise ValueError("unknown evaluation profile")
+    rotations = (CANDIDATE_ROTATION if profile == FULL_PROFILE
+                 else LITE_CANDIDATE_ROTATION)
     rows = []
     sequence = 0
-    for repetition in (1, 2, 3):
+    for repetition in rotations:
         for cell in sorted(cells):
-            for candidate in CANDIDATE_ROTATION[repetition]:
+            for candidate in rotations[repetition]:
                 sequence += 1
                 entry = cells[cell]
                 rows.append({
                     "sequence": str(sequence),
-                    "run_id": "r{}-c{}-{}".format(repetition, cell, candidate.lower()),
+                    "run_id": ("r{}-c{}-{}".format(repetition, cell, candidate.lower())
+                               if profile == FULL_PROFILE else
+                               "r{}-{}-{}".format(
+                                   repetition, cell.lower(), candidate.lower())),
                     "repetition": str(repetition),
                     "cell": cell,
                     "candidate": candidate,
@@ -304,6 +354,61 @@ def expected_execution_rows(cells):
                     "status": "PLANNED",
                 })
     return rows
+
+
+def profile_manifest_problems(manifest, expected_profile):
+    actual = manifest.get("profile", FULL_PROFILE)
+    return [] if actual == expected_profile else ["INPUT_PROFILE_MISMATCH"]
+
+
+def execution_order_problems(rows, cells, profile):
+    problems = []
+    run_ids = [row.get("run_id") for row in rows if isinstance(row, dict)]
+    if len(run_ids) != len(set(run_ids)):
+        problems.append("EXECUTION_ORDER_DUPLICATE_RUN_ID")
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        cell = cells.get(row.get("cell"))
+        if cell is not None and row.get("prompt_sha256") != cell.get("prompt_sha256"):
+            problems.append("EXECUTION_ORDER_PROMPT_HASH_MISMATCH")
+    if rows != expected_execution_rows(cells, profile=profile):
+        problems.append("EXECUTION_ORDER_MISMATCH")
+    return sorted(set(problems))
+
+
+def pilot_run_id(candidate, cell, profile=FULL_PROFILE):
+    if profile == LITE_PROFILE:
+        return "pilot-lite-{}-{}".format(candidate.lower(), cell.lower())
+    return "pilot-{}-c{}".format(candidate.lower(), cell)
+
+
+def expected_pilot_rows(cells, profile=FULL_PROFILE):
+    rows = []
+    for candidate, cell, run_id in sorted(_expected_pilots(profile), key=lambda row: row[2]):
+        entry = cells[cell]
+        rows.append({
+            "run_id": run_id,
+            "candidate": candidate,
+            "cell": cell,
+            "scenario": entry["scenario"],
+            "cwd": entry["cwd"],
+            "sandbox": entry["sandbox"],
+            "prompt_sha256": entry["prompt_sha256"],
+            "status": "PILOT_PLANNED",
+        })
+    return rows
+
+
+def protect_profile_outputs(profile, environment_output, order_output, docs_root):
+    if profile != LITE_PROFILE:
+        return
+    full_paths = {
+        (docs_root / "gh-223-environment.json").resolve(),
+        (docs_root / "gh-223-execution-order.csv").resolve(),
+    }
+    if environment_output.resolve() in full_paths or order_output.resolve() in full_paths:
+        raise ValueError("lite profile must not overwrite full artifacts")
 
 
 def validate_runtime_fingerprint(evidence):
@@ -324,15 +429,23 @@ def validate_runtime_fingerprint(evidence):
     return problems
 
 
-def validate_runtime_evidence(evidence, allow_capture):
+def _expected_pilots(profile):
+    if profile == LITE_PROFILE:
+        return {("B0", "L1", "pilot-lite-b0-l1"),
+                ("B3", "L2", "pilot-lite-b3-l2")}
+    return {("B0", "01", "pilot-b0-c01"),
+            ("B3", "12", "pilot-b3-c12")}
+
+
+def validate_runtime_evidence(evidence, allow_capture, profile=FULL_PROFILE):
     if not evidence or evidence.get("status") == "PENDING_APPROVED_PILOT_PAIR":
         return [] if allow_capture else ["RUNTIME_EVIDENCE_MISSING"]
     if evidence.get("status") != "APPROVED_PILOT_PAIR":
         return ["RUNTIME_PROMOTION_REQUIRED"]
-    problems = validate_runtime_fingerprint(evidence.get("parent_fingerprint"))
+    problems = profile_manifest_problems(evidence, profile)
+    problems.extend(validate_runtime_fingerprint(evidence.get("parent_fingerprint")))
     bindings = evidence.get("pilot_bindings")
-    expected_pilots = {("B0", "01", "pilot-b0-c01"),
-                       ("B3", "12", "pilot-b3-c12")}
+    expected_pilots = _expected_pilots(profile)
     observed = set()
     if not isinstance(bindings, list) or len(bindings) != 2:
         problems.append("RUNTIME_PILOT_PAIR_INVALID")
@@ -358,7 +471,9 @@ def validate_runtime_evidence(evidence, allow_capture):
                 problems.append("RUNTIME_CHILD_ROLE_INVALID")
             problems.extend("CHILD_ROLE_{}:{}".format(role, problem)
                             for problem in validate_runtime_fingerprint(fingerprint))
-    for key in ("independent_review_sha256", "pilot_environment_manifest_sha256",
+    review_hash_key = ("coordinator_review_sha256" if profile == LITE_PROFILE
+                       else "independent_review_sha256")
+    for key in (review_hash_key, "pilot_environment_manifest_sha256",
                 "comparison_environment_core_sha256"):
         if not isinstance(evidence.get(key), str) or not HEX_SHA256.fullmatch(evidence[key]):
             problems.append("RUNTIME_BINDING_HASH_INVALID:" + key)
@@ -375,17 +490,18 @@ def validate_runtime_evidence(evidence, allow_capture):
     return sorted(set(problems))
 
 
-def runtime_start_problems(evidence, pilot):
+def runtime_start_problems(evidence, pilot, profile=FULL_PROFILE):
     if evidence.get("status") == "PENDING_APPROVED_PILOT_PAIR" or not evidence:
         return [] if pilot else ["RUNTIME_EVIDENCE_MISSING"]
-    return validate_runtime_evidence(evidence, allow_capture=False)
+    return validate_runtime_evidence(evidence, allow_capture=False, profile=profile)
 
 
-def approved_pilot_cell(candidate, cell):
-    return (candidate.upper(), cell) in {("B0", "01"), ("B3", "12")}
+def approved_pilot_cell(candidate, cell, profile=FULL_PROFILE):
+    return (candidate.upper(), cell, pilot_run_id(candidate, cell, profile)) in (
+        _expected_pilots(profile))
 
 
-def read_runtime_evidence(path):
+def read_runtime_evidence(path, profile=FULL_PROFILE):
     if path is None:
         return {}
     if path.expanduser().is_symlink():
@@ -400,8 +516,11 @@ def read_runtime_evidence(path):
         raise ValueError("runtime evidence must be an object")
     if value.get("status") != "APPROVED_PILOT_PAIR":
         raise ValueError("runtime evidence requires an approved pilot pair")
+    if profile_manifest_problems(value, profile):
+        raise ValueError("runtime evidence profile mismatch")
     artifacts = value.get("pilot_artifacts")
-    review_entry = value.get("independent_review")
+    review_name = "coordinator_review" if profile == LITE_PROFILE else "independent_review"
+    review_entry = value.get(review_name)
     if not isinstance(artifacts, list) or len(artifacts) != 2 or not isinstance(review_entry, dict):
         raise ValueError("runtime evidence promotion package is incomplete")
 
@@ -425,7 +544,7 @@ def read_runtime_evidence(path):
     review_path = _restricted_input_file(base, review_entry.get("file"))
     review_bytes = review_path.read_bytes()
     if _sha256_bytes(review_bytes) != review_entry.get("sha256"):
-        raise ValueError("independent pilot review hash mismatch")
+        raise ValueError("pilot review hash mismatch")
     review = json.loads(review_bytes.decode("utf-8"))
     return {"status": "PROMOTION_PACKAGE_LOADED", "artifacts": loaded,
             "review": review, "review_sha256": _sha256_bytes(review_bytes)}
@@ -798,14 +917,17 @@ def _pilot_usage_available(usage):
     return True
 
 
-def _promote_runtime_evidence(package, binding):
+def _promote_runtime_evidence(package, binding, profile=FULL_PROFILE):
     if not package:
-        return {"status": "PENDING_APPROVED_PILOT_PAIR",
-                "required": "approved B0/01 and B3/12 pilot artifacts"}
+        required = ("approved B0/L1 and B3/L2 lite pilot artifacts"
+                    if profile == LITE_PROFILE else
+                    "approved B0/01 and B3/12 pilot artifacts")
+        return {"profile": profile, "status": "PENDING_APPROVED_PILOT_PAIR",
+                "required": required}
     review = package["review"]
     if review.get("status") != "PASS":
-        raise ValueError("runtime pilot independent review is not PASS")
-    expected = {("B0", "01", "pilot-b0-c01"), ("B3", "12", "pilot-b3-c12")}
+        raise ValueError("runtime pilot review is not PASS")
+    expected = _expected_pilots(profile)
     observed = set()
     bindings = []
     parent_fingerprints = []
@@ -825,20 +947,25 @@ def _promote_runtime_evidence(package, binding):
                 or summary.get("invalid_reason") != []
                 or summary.get("runtime_evidence_status") != "CAPTURED_PENDING_CONFIRMATION"):
             raise ValueError("pilot summary is not a valid captured pilot")
+        if summary.get("profile", FULL_PROFILE) != profile:
+            raise ValueError("pilot summary profile mismatch")
         if summary.get("runtime_evidence") != evidence:
             raise ValueError("pilot summary and raw evidence differ")
         instruction_problems = _instruction_metric_problems(
-            summary.get("instruction"), require_available=True, label=summary.get("run_id", "pilot"))
+            summary.get("instruction"), require_available=profile == FULL_PROFILE,
+            label=summary.get("run_id", "pilot"))
         if instruction_problems:
-            raise ValueError("pilot selection instruction measurement is unavailable or inconsistent")
-        if not _pilot_usage_available(summary.get("usage")):
-            raise ValueError("pilot first/final usage is unavailable")
+            raise ValueError("pilot instruction measurement is inconsistent")
+        if _metrics_module().validate_run_usage(summary):
+            raise ValueError("pilot parent or child usage is unavailable or inconsistent")
         measurement_review = measurement_reviews.get(summary.get("run_id"))
-        required_review_matches = (
+        required_review_matches = [
             "first_input_tokens_direct_match", "first_cached_input_tokens_direct_match",
-            "final_total_usage_direct_match", "instruction_attribution_direct_match",
+            "final_total_usage_direct_match",
             "tool_child_attribution_direct_match", "elapsed_direct_match",
-        )
+        ]
+        if profile == FULL_PROFILE:
+            required_review_matches.append("instruction_attribution_direct_match")
         if (not isinstance(measurement_review, dict)
                 or measurement_review.get("status") != "PASS"
                 or measurement_review.get("instruction_sha256") != _canonical_sha256(
@@ -881,28 +1008,40 @@ def _promote_runtime_evidence(package, binding):
     expected_evidence_hashes = sorted(binding["raw_evidence_sha256"] for binding in bindings)
     if (review.get("pilot_summary_sha256") != expected_summary_hashes
             or review.get("pilot_raw_evidence_sha256") != expected_evidence_hashes):
-        raise ValueError("independent pilot review artifact binding mismatch")
+        raise ValueError("pilot review artifact binding mismatch")
     promoted = {
+        "profile": profile,
         "status": "APPROVED_PILOT_PAIR",
         "parent_fingerprint": parent_fingerprints[0],
         "child_role_fingerprints": dict(sorted(child_roles.items())),
         "pilot_bindings": sorted(bindings, key=lambda row: row["run_id"]),
-        "independent_review_sha256": package["review_sha256"],
         "pilot_environment_manifest_sha256": next(iter(environment_hashes)),
         "comparison_environment_core_sha256": binding["comparison_environment_core_sha256"],
         "instrumentation": binding["instrumentation"],
         "source_documents": binding["source_documents"],
     }
-    problems = validate_runtime_evidence(promoted, allow_capture=False)
+    promoted[("coordinator_review_sha256" if profile == LITE_PROFILE
+              else "independent_review_sha256")] = package["review_sha256"]
+    problems = validate_runtime_evidence(
+        promoted, allow_capture=False, profile=profile)
     if problems:
         raise ValueError("promoted runtime evidence is invalid")
     return promoted
 
 
 def build_environment_manifest(repo_root, fixtures_path, spec_path, evaluation_design_path,
-                               candidate_parent, runtime_evidence, smoke_package, tokenizer):
+                               candidate_parent, runtime_evidence, smoke_package, tokenizer,
+                               profile=FULL_PROFILE, lite_plan_path=None):
     fixtures = json.loads(fixtures_path.read_text(encoding="utf-8"))
-    prompts = extract_exact_prompts(spec_path)
+    if profile == LITE_PROFILE:
+        if lite_plan_path is None:
+            raise ValueError("lite profile requires its approved plan")
+        prompts, cells = extract_lite_contract(lite_plan_path)
+    elif profile == FULL_PROFILE:
+        prompts = extract_exact_prompts(spec_path)
+        cells = cell_manifest(prompts)
+    else:
+        raise ValueError("unknown evaluation profile")
     cli_output = _run_read_only(["codex", "--version"])
     cli_version = cli_output.removeprefix("codex-cli ")
     if cli_version != EXPECTED_CLI_VERSION:
@@ -950,18 +1089,22 @@ def build_environment_manifest(repo_root, fixtures_path, spec_path, evaluation_d
         "spec_sha256": _sha256_file(spec_path),
         "evaluation_design_sha256": _sha256_file(evaluation_design_path),
     }
+    if profile == LITE_PROFILE:
+        source_documents["lite_plan_sha256"] = _sha256_file(lite_plan_path)
     instrumentation = {
         "runner_sha256": _sha256_file(Path(__file__)),
         "metrics_sha256": _sha256_file(Path(__file__).with_name("codex-instruction-metrics.py")),
     }
-    cells = cell_manifest(prompts)
+    pilot_runs = expected_pilot_rows(cells, profile=profile)
     core = {
+        "profile": profile,
         "model": EXPECTED_MODEL,
         "reasoning_effort": EXPECTED_EFFORT,
         "codex_cli": {"version": cli_version, "raw": cli_output},
         "tokenizer": tokenizer,
         "prompts": prompt_rows,
         "cells": cells,
+        "pilot_runs": pilot_runs,
         "instrumentation": instrumentation,
         "source_documents": source_documents,
         "common_fixture_sha256": _sha256_file(fixtures_path),
@@ -973,11 +1116,15 @@ def build_environment_manifest(repo_root, fixtures_path, spec_path, evaluation_d
         "instrumentation": instrumentation,
         "source_documents": source_documents,
         "comparison_environment_core_sha256": comparison_core_sha256,
-    })
-    smoke_environment = _normalize_smoke_environment(
-        smoke_package, candidates, candidate_parent)
-    problems.extend(validate_smoke_environment(smoke_environment, allow_pending=True))
-    evidence_problems = validate_runtime_evidence(promoted_runtime, allow_capture=True)
+    }, profile=profile)
+    if profile == FULL_PROFILE:
+        smoke_environment = _normalize_smoke_environment(
+            smoke_package, candidates, candidate_parent)
+        problems.extend(validate_smoke_environment(smoke_environment, allow_pending=True))
+    else:
+        smoke_environment = {"status": "NOT_APPLICABLE_LITE_READ_ONLY"}
+    evidence_problems = validate_runtime_evidence(
+        promoted_runtime, allow_capture=True, profile=profile)
     problems.extend(evidence_problems)
     status = ("PREPARED_RUNTIME_EVIDENCE_FIXED"
               if promoted_runtime.get("status") == "APPROVED_PILOT_PAIR"
@@ -986,16 +1133,18 @@ def build_environment_manifest(repo_root, fixtures_path, spec_path, evaluation_d
         status = "BLOCKED"
     manifest = {
         "schema_version": SCHEMA_VERSION,
+        "profile": profile,
         "issue_number": fixtures["issue_number"],
         "task_id": fixtures["task_id"],
         "design_id": fixtures["design_id"],
         "status": status,
         "execution_status": "NOT_STARTED",
-        "planned_sessions": 204,
+        "planned_sessions": 204 if profile == FULL_PROFILE else 24,
         "model": EXPECTED_MODEL,
         "reasoning_effort": EXPECTED_EFFORT,
         "codex_cli": {"version": cli_version, "raw": cli_output},
-        "sandbox_modes": ["read-only", "workspace-write"],
+        "sandbox_modes": (["read-only", "workspace-write"]
+                          if profile == FULL_PROFILE else ["read-only"]),
         "common_commit": fixtures["common_commit"],
         "common_fixture_sha256": _sha256_file(fixtures_path),
         "common_files_sha256": _canonical_sha256(fixtures["common_files"]),
@@ -1008,7 +1157,9 @@ def build_environment_manifest(repo_root, fixtures_path, spec_path, evaluation_d
         "smoke_environment": smoke_environment,
         "prompts": prompt_rows,
         "cells": cells,
-        "normal_selection_cells": list(NORMAL_CELLS),
+        "pilot_runs": pilot_runs,
+        "normal_selection_cells": (list(NORMAL_CELLS)
+                                   if profile == FULL_PROFILE else []),
         "candidates": candidates,
         "problems": problems,
         "privacy": {
@@ -1019,6 +1170,7 @@ def build_environment_manifest(repo_root, fixtures_path, spec_path, evaluation_d
     }
     manifest["comparison_environment_core_sha256"] = comparison_core_sha256
     manifest["comparison_environment_sha256"] = _canonical_sha256({
+        "profile": manifest["profile"],
         "model": manifest["model"],
         "reasoning_effort": manifest["reasoning_effort"],
         "codex_cli": manifest["codex_cli"],
@@ -1028,6 +1180,7 @@ def build_environment_manifest(repo_root, fixtures_path, spec_path, evaluation_d
         "instrumentation": manifest["instrumentation"],
         "source_documents": manifest["source_documents"],
         "cells": manifest["cells"],
+        "pilot_runs": manifest["pilot_runs"],
         "candidates": manifest["candidates"],
         "common_fixture_sha256": manifest["common_fixture_sha256"],
         "common_files_sha256": manifest["common_files_sha256"],
@@ -1046,7 +1199,8 @@ def _atomic_write_json(path, value):
 
 def _comparison_core_payload(manifest):
     return {key: manifest.get(key) for key in (
-        "model", "reasoning_effort", "codex_cli", "tokenizer", "prompts", "cells",
+        "profile", "model", "reasoning_effort", "codex_cli", "tokenizer", "prompts", "cells",
+        "pilot_runs",
         "instrumentation", "source_documents", "common_fixture_sha256",
         "common_files_sha256", "candidates",
     )}
@@ -1054,8 +1208,8 @@ def _comparison_core_payload(manifest):
 
 def _comparison_payload(manifest):
     return {key: manifest.get(key) for key in (
-        "model", "reasoning_effort", "codex_cli", "tokenizer", "runtime_evidence",
-        "prompts", "instrumentation", "source_documents", "cells", "candidates",
+        "profile", "model", "reasoning_effort", "codex_cli", "tokenizer", "runtime_evidence",
+        "prompts", "instrumentation", "source_documents", "cells", "pilot_runs", "candidates",
         "common_fixture_sha256", "common_files_sha256", "smoke_environment",
     )}
 
@@ -1067,12 +1221,18 @@ def _read_order(path):
 
 
 def static_manifest_problems(manifest, spec_path, fixtures_path, evaluation_design_path,
-                             order_path):
-    problems = []
+                             order_path, profile=FULL_PROFILE, lite_plan_path=None):
+    problems = profile_manifest_problems(manifest, profile)
     if manifest.get("schema_version") != SCHEMA_VERSION:
         problems.append("MANIFEST_SCHEMA_VERSION_MISMATCH")
     try:
-        prompts = extract_exact_prompts(spec_path)
+        if profile == LITE_PROFILE:
+            if lite_plan_path is None:
+                raise ValueError("lite plan missing")
+            prompts, expected_cells = extract_lite_contract(lite_plan_path)
+        else:
+            prompts = extract_exact_prompts(spec_path)
+            expected_cells = cell_manifest(prompts)
         fixtures = json.loads(fixtures_path.read_text(encoding="utf-8"))
     except (KeyError, TypeError, ValueError, json.JSONDecodeError):
         return ["APPROVED_SOURCE_INVALID"]
@@ -1080,21 +1240,27 @@ def static_manifest_problems(manifest, spec_path, fixtures_path, evaluation_desi
         name: {"text": prompt, "sha256": _sha256_bytes(prompt.encode("utf-8"))}
         for name, prompt in sorted(prompts.items())
     }
-    expected_cells = cell_manifest(prompts)
     expected_documents = {
         "fixtures_sha256": _sha256_file(fixtures_path),
         "spec_sha256": _sha256_file(spec_path),
         "evaluation_design_sha256": _sha256_file(evaluation_design_path),
     }
+    if profile == LITE_PROFILE:
+        expected_documents["lite_plan_sha256"] = _sha256_file(lite_plan_path)
     if manifest.get("source_documents") != expected_documents:
         problems.append("SOURCE_DOCUMENT_HASH_MISMATCH")
     if manifest.get("prompts") != expected_prompts:
         problems.append("APPROVED_PROMPT_MISMATCH")
     if manifest.get("cells") != expected_cells:
         problems.append("APPROVED_CELL_LAYOUT_MISMATCH")
-    if manifest.get("normal_selection_cells") != list(NORMAL_CELLS):
+    if manifest.get("pilot_runs") != expected_pilot_rows(expected_cells, profile=profile):
+        problems.append("APPROVED_PILOT_LAYOUT_MISMATCH")
+    expected_selection_cells = list(NORMAL_CELLS) if profile == FULL_PROFILE else []
+    if manifest.get("normal_selection_cells") != expected_selection_cells:
         problems.append("NORMAL_SELECTION_CELLS_MISMATCH")
-    if (manifest.get("planned_sessions") != 204 or manifest.get("model") != EXPECTED_MODEL
+    expected_sessions = 204 if profile == FULL_PROFILE else 24
+    if (manifest.get("planned_sessions") != expected_sessions
+            or manifest.get("model") != EXPECTED_MODEL
             or manifest.get("reasoning_effort") != EXPECTED_EFFORT
             or manifest.get("codex_cli", {}).get("version") != EXPECTED_CLI_VERSION):
         problems.append("COMPARISON_CONSTANT_MISMATCH")
@@ -1136,11 +1302,15 @@ def static_manifest_problems(manifest, spec_path, fixtures_path, evaluation_desi
     if manifest.get("comparison_environment_sha256") != _canonical_sha256(
             _comparison_payload(manifest)):
         problems.append("COMPARISON_ENVIRONMENT_HASH_MISMATCH")
-    problems.extend(validate_smoke_environment(
-        manifest.get("smoke_environment"), allow_pending=True))
+    if profile == FULL_PROFILE:
+        problems.extend(validate_smoke_environment(
+            manifest.get("smoke_environment"), allow_pending=True))
+    elif manifest.get("smoke_environment") != {"status": "NOT_APPLICABLE_LITE_READ_ONLY"}:
+        problems.append("LITE_SMOKE_ENVIRONMENT_MISMATCH")
     runtime = manifest.get("runtime_evidence", {})
     if runtime.get("status") == "APPROVED_PILOT_PAIR":
-        problems.extend(validate_runtime_evidence(runtime, allow_capture=False))
+        problems.extend(validate_runtime_evidence(
+            runtime, allow_capture=False, profile=profile))
         if runtime.get("instrumentation") != manifest.get("instrumentation"):
             problems.append("RUNTIME_INSTRUMENTATION_BINDING_MISMATCH")
         if runtime.get("source_documents") != manifest.get("source_documents"):
@@ -1155,23 +1325,28 @@ def static_manifest_problems(manifest, spec_path, fixtures_path, evaluation_desi
     else:
         if "\r\n" in content:
             problems.append("EXECUTION_ORDER_NOT_LF")
-        if rows != expected_execution_rows(expected_cells):
-            problems.append("EXECUTION_ORDER_MISMATCH")
+        problems.extend(execution_order_problems(rows, expected_cells, profile))
     return sorted(set(problems))
 
 
 def prepare_command(args):
     repo_root = _repo_root()
-    evidence = read_runtime_evidence(args.runtime_evidence)
-    smoke_package = read_smoke_manifest(args.smoke_manifest)
+    protect_profile_outputs(
+        args.profile, args.environment_output, args.order_output,
+        repo_root / "docs/experiments/codex-agents")
+    evidence = read_runtime_evidence(args.runtime_evidence, profile=args.profile)
+    smoke_package = (read_smoke_manifest(args.smoke_manifest)
+                     if args.profile == FULL_PROFILE else {})
     tokenizer = activate_tokenizer(args.tokenizer_pythonpath, args.tokenizer_evidence)
     manifest = build_environment_manifest(
         repo_root, args.fixtures, args.spec, args.evaluation_design,
         args.candidate_parent, evidence,
-        smoke_package, tokenizer)
+        smoke_package, tokenizer, profile=args.profile,
+        lite_plan_path=args.lite_plan)
     _atomic_write_json(args.environment_output, manifest)
-    write_execution_order(args.order_output, manifest["cells"])
-    print(json.dumps({"status": manifest["status"], "planned_sessions": 204,
+    write_execution_order(args.order_output, manifest["cells"], profile=args.profile)
+    print(json.dumps({"status": manifest["status"],
+                      "planned_sessions": manifest["planned_sessions"],
                       "problems": manifest["problems"]}, sort_keys=True))
     return 0 if manifest["status"] != "BLOCKED" else 2
 
@@ -1554,12 +1729,14 @@ def _evaluation_summary_run_ids(results_dir):
 
 
 def planned_run_preflight(order_path, manifest, candidate_id, cell, repetition,
-                          results_dir):
+                          results_dir, profile=FULL_PROFILE):
     _, rows = _read_order(order_path)
-    expected_rows = expected_execution_rows(manifest["cells"])
+    expected_rows = expected_execution_rows(manifest["cells"], profile=profile)
     if rows != expected_rows:
         return ["EXECUTION_ORDER_MISMATCH"], None
-    run_id = "r{}-c{}-{}".format(repetition, cell, candidate_id.lower())
+    run_id = ("r{}-c{}-{}".format(repetition, cell, candidate_id.lower())
+              if profile == FULL_PROFILE else
+              "r{}-{}-{}".format(repetition, cell.lower(), candidate_id.lower()))
     matches = [row for row in rows if row["run_id"] == run_id]
     if len(matches) != 1:
         return ["PLANNED_RUN_BINDING_MISSING"], None
@@ -1613,7 +1790,8 @@ def run_cell_command(args, pilot):
     manifest_bytes_before = args.environment.read_bytes()
     manifest = json.loads(manifest_bytes_before.decode("utf-8"))
     static_problems = static_manifest_problems(
-        manifest, args.spec, args.fixtures, args.evaluation_design, args.order)
+        manifest, args.spec, args.fixtures, args.evaluation_design, args.order,
+        profile=args.profile, lite_plan_path=args.lite_plan)
     if static_problems:
         raise RuntimeError("immutable input preflight failed: " + ",".join(static_problems))
     tokenizer = activate_tokenizer(args.tokenizer_pythonpath, args.tokenizer_evidence)
@@ -1625,19 +1803,22 @@ def run_cell_command(args, pilot):
         raise ValueError("unknown cell")
     if pilot and (args.repetition != 0):
         raise ValueError("pilot repetition must be 0")
-    if pilot and not approved_pilot_cell(candidate["id"], args.cell):
-        raise ValueError("pilot is restricted to approved B0/01 and B3/12 cells")
-    if not pilot and args.repetition not in (1, 2, 3):
-        raise ValueError("run-cell repetition must be 1, 2, or 3")
+    if pilot and not approved_pilot_cell(candidate["id"], args.cell, args.profile):
+        raise ValueError("pilot is restricted to the approved profile pair")
+    allowed_repetitions = ((1, 2, 3) if args.profile == FULL_PROFILE else (1, 2))
+    if not pilot and args.repetition not in allowed_repetitions:
+        raise ValueError("run-cell repetition is outside the selected profile")
     planned_row = None
     if not pilot:
         order_problems, planned_row = planned_run_preflight(
-            args.order, manifest, candidate["id"], args.cell, args.repetition, args.raw_dir)
+            args.order, manifest, candidate["id"], args.cell, args.repetition,
+            args.raw_dir, profile=args.profile)
         if order_problems:
             raise RuntimeError("planned run preflight failed: " + ",".join(order_problems))
     if cell["sandbox"] == "workspace-write" and args.verification_cwd is None:
         raise ValueError("smoke cell requires --verification-cwd")
-    start_problems = runtime_start_problems(manifest.get("runtime_evidence", {}), pilot)
+    start_problems = runtime_start_problems(
+        manifest.get("runtime_evidence", {}), pilot, profile=args.profile)
     if start_problems:
         raise RuntimeError("runtime preflight failed: " + ",".join(start_problems))
     if args.capture_runtime_evidence is not None:
@@ -1685,9 +1866,8 @@ def run_cell_command(args, pilot):
         raise RuntimeError("prompt hash mismatch")
     work_cwd = candidate_root / cell["cwd"]
     argv = build_codex_argv(work_cwd, cell["sandbox"], prompt, args.verification_cwd)
-    run_id = ("pilot-{}-c{}".format(candidate["id"].lower(), args.cell)
-              if pilot else "r{}-c{}-{}".format(
-                  args.repetition, args.cell, candidate["id"].lower()))
+    run_id = (pilot_run_id(candidate["id"], args.cell, args.profile)
+              if pilot else planned_row["run_id"])
     started_epoch = time.time()
     process = run_process(
         argv, args.raw_dir, run_id, forbidden_roots=[
@@ -1743,6 +1923,15 @@ def run_cell_command(args, pilot):
         "thread_id": thread_id, "usage": parent_usage,
         "elapsed_seconds": process["elapsed_seconds"],
     }, children)
+    usage_problems = metrics.validate_run_usage({
+        "thread_id": thread_id,
+        "usage": parent_usage,
+        "elapsed_seconds": process["elapsed_seconds"],
+        "child_calls": merged["child_calls"],
+        "child_thread_ids": merged["child_thread_ids"],
+        "child_sessions": children,
+        "combined_total_usage": merged["combined_total_usage"],
+    })
     attributed_events = annotate_source_hints(rollout_events, sources)
     parent_instruction = _instruction_measurement(attributed_events, sources, metrics)
     instruction = combine_instruction_measurements(parent_instruction, child_measurements)
@@ -1802,11 +1991,13 @@ def run_cell_command(args, pilot):
     if instrumentation_after != instrumentation_before:
         after_problems.append("INSTRUMENTATION_CHANGED")
 
-    all_problems = sorted(set(runtime_problems + child_evidence_problems + after_problems))
+    all_problems = sorted(set(runtime_problems + child_evidence_problems
+                              + usage_problems + after_problems))
     if process["return_code"] != 0:
         all_problems.append("CODEX_EXIT_NONZERO")
     summary = {
         "schema_version": SCHEMA_VERSION,
+        "profile": args.profile,
         "run_id": run_id,
         "run_kind": "pilot" if pilot else "evaluation",
         "candidate": candidate["id"],
@@ -1835,10 +2026,13 @@ def run_cell_command(args, pilot):
         "version": EXPECTED_CLI_VERSION,
         "started_at": datetime.fromtimestamp(started_epoch, timezone.utc).isoformat(),
         "usage": parent_usage,
+        "thread_id": thread_id,
         "combined_total_usage": merged["combined_total_usage"],
         "tool_calls": tool_calls,
         "elapsed_seconds": process["elapsed_seconds"],
         "child_calls": merged["child_calls"],
+        "child_thread_ids": merged["child_thread_ids"],
+        "child_sessions": children,
         "child_elapsed_seconds": merged["child_elapsed_seconds"],
         "instruction": instruction,
         "runtime_evidence": actual_evidence,
@@ -1855,6 +2049,11 @@ def run_cell_command(args, pilot):
         "invalid_reason": all_problems,
         "execution_status": "EXECUTED",
     }
+    if args.profile == LITE_PROFILE:
+        summary["answer_checklist"] = [
+            {"item": item, "result": "UNAVAILABLE"}
+            for item in cell["answer_checklist"]
+        ]
     if smoke_before is not None:
         candidate_model_files = {
             relative: candidate_after_state[relative]
@@ -2011,8 +2210,10 @@ def _apply_smoke_verification_evidence(run, evidence):
 
 def _summary_problems(run, expected_row, manifest, candidate):
     problems = []
+    profile = manifest.get("profile", FULL_PROFILE)
     exact = {
         "schema_version": SCHEMA_VERSION,
+        "profile": profile,
         "run_id": expected_row["run_id"],
         "run_kind": "evaluation",
         "candidate": expected_row["candidate"],
@@ -2061,13 +2262,29 @@ def _summary_problems(run, expected_row, manifest, candidate):
         problems.append("SUMMARY_INVALID_RUN:" + expected_row["run_id"])
     if run.get("execution_status") != "EXECUTED":
         problems.append("SUMMARY_EXECUTION_STATUS_INVALID:" + expected_row["run_id"])
-    for key in ("hard_gate_pass", "routing_pass", "false_block", "quality_pass"):
-        if not isinstance(run.get(key), bool):
-            problems.append("SUMMARY_GATE_SCHEMA:{}:{}".format(expected_row["run_id"], key))
+    metrics = _metrics_module()
+    problems.extend("SUMMARY:{}:{}".format(expected_row["run_id"], problem)
+                    for problem in metrics.validate_run_usage(run))
+    if profile == FULL_PROFILE:
+        for key in ("hard_gate_pass", "routing_pass", "false_block", "quality_pass"):
+            if not isinstance(run.get(key), bool):
+                problems.append("SUMMARY_GATE_SCHEMA:{}:{}".format(
+                    expected_row["run_id"], key))
     problems.extend(_instruction_metric_problems(
-        run.get("instruction"), expected_row["cell"] in NORMAL_CELLS,
+        run.get("instruction"), (profile == FULL_PROFILE
+                                 and expected_row["cell"] in NORMAL_CELLS),
         "SUMMARY:" + expected_row["run_id"]))
-    if expected_row["cell"] in SMOKE_ALLOWLIST:
+    if profile == LITE_PROFILE:
+        observed_checklist = run.get("answer_checklist")
+        expected_items = manifest["cells"][expected_row["cell"]]["answer_checklist"]
+        if (not isinstance(observed_checklist, list)
+                or [entry.get("item") for entry in observed_checklist
+                    if isinstance(entry, dict)] != expected_items
+                or any(entry.get("result") not in {"PASS", "FAIL", "UNAVAILABLE"}
+                       for entry in observed_checklist if isinstance(entry, dict))
+                or any(not isinstance(entry, dict) for entry in observed_checklist)):
+            problems.append("SUMMARY_ANSWER_CHECKLIST_MISMATCH:" + expected_row["run_id"])
+    if profile == FULL_PROFILE and expected_row["cell"] in SMOKE_ALLOWLIST:
         problems.extend(_smoke_summary_problems(
             run.get("smoke_execution"), expected_row, manifest, candidate))
     return problems
@@ -2078,18 +2295,23 @@ def aggregate_command(args):
     manifest_bytes = args.environment.read_bytes()
     manifest = json.loads(manifest_bytes.decode("utf-8"))
     static_problems = static_manifest_problems(
-        manifest, args.spec, args.fixtures, args.evaluation_design, args.order)
+        manifest, args.spec, args.fixtures, args.evaluation_design, args.order,
+        profile=args.profile, lite_plan_path=args.lite_plan)
     _, order_rows = _read_order(args.order)
     manifest["_file_sha256"] = _sha256_bytes(manifest_bytes)
     manifest["_order_sha256"] = _sha256_file(args.order)
     by_id = {}
     problems = list(static_problems)
     problems.extend(validate_runtime_evidence(
-        manifest.get("runtime_evidence"), allow_capture=False))
-    problems.extend(validate_smoke_environment(
-        manifest.get("smoke_environment"), allow_pending=False))
-    smoke_evidence = _load_smoke_verification_evidence(args.smoke_evidence_dir)
-    problems.extend(_smoke_evidence_set_problems(smoke_evidence, order_rows))
+        manifest.get("runtime_evidence"), allow_capture=False,
+        profile=args.profile))
+    if args.profile == FULL_PROFILE:
+        problems.extend(validate_smoke_environment(
+            manifest.get("smoke_environment"), allow_pending=False))
+        smoke_evidence = _load_smoke_verification_evidence(args.smoke_evidence_dir)
+        problems.extend(_smoke_evidence_set_problems(smoke_evidence, order_rows))
+    else:
+        smoke_evidence = {}
     for path in sorted(args.results_dir.glob("*.summary.json")):
         value = json.loads(path.read_text(encoding="utf-8"))
         if value.get("run_kind") != "evaluation":
@@ -2120,18 +2342,22 @@ def aggregate_command(args):
     for candidate_id in ("B0", "B1", "B2", "B3"):
         candidate_runs = [by_id[row["run_id"]] for row in order_rows
                           if row["candidate"] == candidate_id and row["run_id"] in by_id]
-        cell_runs = {
-            cell: [run.get("instruction", {}).get("C_structure_tokens")
-                   for run in candidate_runs if run.get("cell") == cell]
-            for cell in NORMAL_CELLS
-        }
-        try:
-            score = metrics.selection_score(cell_runs, list(NORMAL_CELLS))
-        except (TypeError, ValueError):
-            score = None
-        complete = (len(candidate_runs) == 51 and not problems
+        score = None
+        if args.profile == FULL_PROFILE:
+            cell_runs = {
+                cell: [run.get("instruction", {}).get("C_structure_tokens")
+                       for run in candidate_runs if run.get("cell") == cell]
+                for cell in NORMAL_CELLS
+            }
+            try:
+                score = metrics.selection_score(cell_runs, list(NORMAL_CELLS))
+            except (TypeError, ValueError):
+                score = None
+        expected_candidate_runs = 51 if args.profile == FULL_PROFILE else 6
+        complete = (len(candidate_runs) == expected_candidate_runs and not problems
                     and all(run.get("valid_run") is True for run in candidate_runs))
-        eligible = complete and metrics.candidate_is_eligible(candidate_runs) and score is not None
+        eligible = (complete and metrics.candidate_is_eligible(candidate_runs)
+                    and score is not None) if args.profile == FULL_PROFILE else None
         candidates[candidate_id] = {
             "run_count": len(candidate_runs),
             "complete": complete,
@@ -2139,10 +2365,12 @@ def aggregate_command(args):
             "selection_score": score if complete else None,
             "invalid_runs": sum(run.get("valid_run") is not True for run in candidate_runs),
         }
-    complete = not problems and len(by_id) == 204 and all(
+    expected_runs = 204 if args.profile == FULL_PROFILE else 24
+    complete = not problems and len(by_id) == expected_runs and all(
         candidate["complete"] for candidate in candidates.values())
     output = {
         "schema_version": SCHEMA_VERSION,
+        "profile": args.profile,
         "execution_status": "COMPLETE" if complete else "BLOCKED",
         "run_count": len(by_id),
         "problems": sorted(set(problems)),
@@ -2157,7 +2385,8 @@ def aggregate_command(args):
 def verify_command(args):
     manifest = json.loads(args.environment.read_text(encoding="utf-8"))
     problems = static_manifest_problems(
-        manifest, args.spec, args.fixtures, args.evaluation_design, args.order)
+        manifest, args.spec, args.fixtures, args.evaluation_design, args.order,
+        profile=args.profile, lite_plan_path=args.lite_plan)
     try:
         tokenizer = activate_tokenizer(args.tokenizer_pythonpath, args.tokenizer_evidence)
         if tokenizer != manifest.get("tokenizer"):
@@ -2169,7 +2398,8 @@ def verify_command(args):
         if not args.allow_runtime_unverified:
             problems.append("RUNTIME_EVIDENCE_MISSING")
     else:
-        problems.extend(validate_runtime_evidence(runtime, allow_capture=False))
+        problems.extend(validate_runtime_evidence(
+            runtime, allow_capture=False, profile=args.profile))
         if runtime.get("instrumentation") != manifest.get("instrumentation"):
             problems.append("RUNTIME_INSTRUMENTATION_BINDING_MISMATCH")
         if runtime.get("source_documents") != manifest.get("source_documents"):
@@ -2235,6 +2465,53 @@ def run_self_test():
             "SMOKE_EVIDENCE_EXACT_RUN_SET_MISMATCH"]
         assert _smoke_evidence_set_problems(
             {run_id: {} for run_id in smoke_run_ids}, synthetic_rows) == []
+
+        lite_cells = {
+            "L1": {"scenario": "S1", "cwd": ".", "sandbox": "read-only",
+                   "prompt_sha256": "1" * 64},
+            "L2": {"scenario": "X2", "cwd": ".", "sandbox": "read-only",
+                   "prompt_sha256": "2" * 64},
+            "L3": {"scenario": "X1", "cwd": ".", "sandbox": "read-only",
+                   "prompt_sha256": "3" * 64},
+        }
+        lite_rows = expected_execution_rows(lite_cells, profile="lite")
+        assert len(lite_rows) == 24
+        assert len({row["run_id"] for row in lite_rows}) == 24
+        assert [row["candidate"] for row in lite_rows[:4]] == ["B0", "B1", "B2", "B3"]
+        assert [row["candidate"] for row in lite_rows[12:16]] == ["B1", "B2", "B3", "B0"]
+        assert approved_pilot_cell("B0", "L1", profile="lite") is True
+        assert approved_pilot_cell("B3", "L2", profile="lite") is True
+        assert pilot_run_id("B0", "L1", profile="lite") == "pilot-lite-b0-l1"
+        assert pilot_run_id("B3", "L2", profile="lite") == "pilot-lite-b3-l2"
+        lite_pilots = expected_pilot_rows(lite_cells, profile="lite")
+        assert [row["run_id"] for row in lite_pilots] == [
+            "pilot-lite-b0-l1", "pilot-lite-b3-l2"]
+        assert {row["run_id"] for row in lite_pilots}.isdisjoint(
+            row["run_id"] for row in lite_rows)
+        assert profile_manifest_problems({"profile": "lite"}, "full") == [
+            "INPUT_PROFILE_MISMATCH"]
+        assert execution_order_problems(lite_rows, lite_cells, "lite") == []
+        assert "EXECUTION_ORDER_MISMATCH" in execution_order_problems(
+            lite_rows[:-1], lite_cells, "lite")
+        duplicate_rows = list(lite_rows)
+        duplicate_rows[-1] = dict(duplicate_rows[0])
+        assert "EXECUTION_ORDER_DUPLICATE_RUN_ID" in execution_order_problems(
+            duplicate_rows, lite_cells, "lite")
+        reordered_rows = list(lite_rows)
+        reordered_rows[0], reordered_rows[1] = reordered_rows[1], reordered_rows[0]
+        assert "EXECUTION_ORDER_MISMATCH" in execution_order_problems(
+            reordered_rows, lite_cells, "lite")
+        stale_hash_rows = [dict(row) for row in lite_rows]
+        stale_hash_rows[0]["prompt_sha256"] = "f" * 64
+        assert "EXECUTION_ORDER_PROMPT_HASH_MISMATCH" in execution_order_problems(
+            stale_hash_rows, lite_cells, "lite")
+        try:
+            protect_profile_outputs("lite", Path("gh-223-environment.json"),
+                                    Path("gh-223-lite-execution-order.csv"), Path("."))
+        except ValueError as exc:
+            assert str(exc) == "lite profile must not overwrite full artifacts"
+        else:
+            raise AssertionError("lite profile accepted a full output path")
 
     missing = validate_runtime_evidence({}, allow_capture=False)
     assert "RUNTIME_EVIDENCE_MISSING" in missing
@@ -2364,17 +2641,40 @@ def run_self_test():
         assert stat.S_IMODE((raw_dir / "synthetic.stdout.jsonl").stat().st_mode) == 0o600
 
 
+def _resolve_profile_arguments(args, docs, lite_plan_default):
+    if not hasattr(args, "profile"):
+        return
+    args.lite_plan = args.lite_plan or lite_plan_default
+    environment_name = ("gh-223-lite-environment.json"
+                        if args.profile == LITE_PROFILE else "gh-223-environment.json")
+    order_name = ("gh-223-lite-execution-order.csv"
+                  if args.profile == LITE_PROFILE else "gh-223-execution-order.csv")
+    if hasattr(args, "environment_output") and args.environment_output is None:
+        args.environment_output = docs / environment_name
+    if hasattr(args, "order_output") and args.order_output is None:
+        args.order_output = docs / order_name
+    if hasattr(args, "environment") and args.environment is None:
+        args.environment = docs / environment_name
+    if hasattr(args, "order") and args.order is None:
+        args.order = docs / order_name
+
+
 def main():
     repo_root = _repo_root()
     docs = repo_root / "docs/experiments/codex-agents"
     scratch = repo_root / ".superpowers/sdd/2026-09-11-codex-instruction-architecture-phase2/scratch"
     tokenizer_evidence_default = scratch / "task-7-tokenizer-evidence.json"
     tokenizer_path_default = _tokenizer_path_default(repo_root)
+    lite_plan_default = (repo_root / "docs/superpowers/plans/"
+                         "2026-09-11-codex-instruction-token-comparison-lite.md")
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--self-test", action="store_true")
     subparsers = parser.add_subparsers(dest="command")
 
     prepare = subparsers.add_parser("prepare", help="write the environment and planned order")
+    prepare.add_argument("--profile", choices=(FULL_PROFILE, LITE_PROFILE),
+                         default=FULL_PROFILE)
+    prepare.add_argument("--lite-plan", type=Path)
     prepare.add_argument("--fixtures", type=Path, default=docs / "gh-223-fixtures.json")
     prepare.add_argument(
         "--spec", type=Path,
@@ -2390,16 +2690,19 @@ def main():
     prepare.add_argument("--tokenizer-evidence", type=Path,
                          default=tokenizer_evidence_default)
     prepare.add_argument("--environment-output", type=Path,
-                         default=docs / "gh-223-environment.json")
+                         default=None)
     prepare.add_argument("--order-output", type=Path,
-                         default=docs / "gh-223-execution-order.csv")
+                         default=None)
     prepare.set_defaults(handler=prepare_command)
 
     def add_run_arguments(command, is_pilot):
+        command.add_argument("--profile", choices=(FULL_PROFILE, LITE_PROFILE),
+                             default=FULL_PROFILE)
+        command.add_argument("--lite-plan", type=Path)
         command.add_argument("--environment", type=Path,
-                             default=docs / "gh-223-environment.json")
+                             default=None)
         command.add_argument("--order", type=Path,
-                             default=docs / "gh-223-execution-order.csv")
+                             default=None)
         command.add_argument("--fixtures", type=Path, default=docs / "gh-223-fixtures.json")
         command.add_argument(
             "--spec", type=Path,
@@ -2409,7 +2712,8 @@ def main():
                              default=docs / "gh-223-evaluation-design.md")
         command.add_argument("--candidate", required=True,
                              choices=("b0", "b1", "b2", "b3", "B0", "B1", "B2", "B3"))
-        command.add_argument("--cell", required=True, choices=tuple(CELL_LAYOUT))
+        command.add_argument("--cell", required=True,
+                             choices=tuple(CELL_LAYOUT) + ("L1", "L2", "L3"))
         command.add_argument("--candidate-parent", type=Path,
                              default=_candidate_parent_default(repo_root))
         command.add_argument("--candidate-cwd", type=Path)
@@ -2435,15 +2739,18 @@ def main():
     add_run_arguments(run_cell, False)
 
     aggregate = subparsers.add_parser("aggregate", help="aggregate restricted run summaries")
+    aggregate.add_argument("--profile", choices=(FULL_PROFILE, LITE_PROFILE),
+                           default=FULL_PROFILE)
+    aggregate.add_argument("--lite-plan", type=Path)
     aggregate.add_argument("--results-dir", type=Path, required=True)
     aggregate.add_argument("--output", type=Path, required=True)
     aggregate.add_argument(
         "--smoke-evidence-dir", type=Path,
         help="restricted Task 9 verification evidence directory")
     aggregate.add_argument("--environment", type=Path,
-                           default=docs / "gh-223-environment.json")
+                           default=None)
     aggregate.add_argument("--order", type=Path,
-                           default=docs / "gh-223-execution-order.csv")
+                           default=None)
     aggregate.add_argument("--fixtures", type=Path, default=docs / "gh-223-fixtures.json")
     aggregate.add_argument(
         "--spec", type=Path,
@@ -2454,10 +2761,13 @@ def main():
     aggregate.set_defaults(handler=aggregate_command)
 
     verify = subparsers.add_parser("verify", help="verify immutable prepared inputs")
+    verify.add_argument("--profile", choices=(FULL_PROFILE, LITE_PROFILE),
+                        default=FULL_PROFILE)
+    verify.add_argument("--lite-plan", type=Path)
     verify.add_argument("--environment", type=Path,
-                        default=docs / "gh-223-environment.json")
+                        default=None)
     verify.add_argument("--order", type=Path,
-                        default=docs / "gh-223-execution-order.csv")
+                        default=None)
     verify.add_argument("--fixtures", type=Path, default=docs / "gh-223-fixtures.json")
     verify.add_argument(
         "--spec", type=Path,
@@ -2481,6 +2791,7 @@ def main():
         return 0
     if args.command is None:
         parser.error("a subcommand is required")
+    _resolve_profile_arguments(args, docs, lite_plan_default)
     try:
         return args.handler(args)
     except (OSError, KeyError, TypeError, csv.Error, json.JSONDecodeError,

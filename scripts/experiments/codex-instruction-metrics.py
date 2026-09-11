@@ -401,6 +401,107 @@ def merge_children(parent, children):
     }
 
 
+def _usage_phase_problems(value, label):
+    if not isinstance(value, dict) or value.get("status") != "available":
+        return [label + "_USAGE_UNAVAILABLE"]
+    problems = []
+    for field in USAGE_FIELDS:
+        metric = value.get(field)
+        if not isinstance(metric, int) or isinstance(metric, bool) or metric < 0:
+            problems.append(label + "_USAGE_INVALID:" + field)
+    if (not problems and value["cached_input_tokens"] > value["input_tokens"]):
+        problems.append(label + "_CACHE_EXCEEDS_INPUT")
+    return problems
+
+
+def _usage_pair_problems(usage, label):
+    if not isinstance(usage, dict):
+        usage = {}
+    first = usage.get("first")
+    total = usage.get("total")
+    problems = _usage_phase_problems(first, label + ":FIRST")
+    problems.extend(_usage_phase_problems(total, label + ":TOTAL"))
+    if not problems:
+        for field in USAGE_FIELDS:
+            if total[field] < first[field]:
+                problems.append(label + ":TOTAL_BELOW_FIRST:" + field)
+    return problems
+
+
+def validate_run_usage(run):
+    """Validate required parent/child usage and exactly-once descendant totals."""
+    if not isinstance(run, dict):
+        return ["RUN_USAGE_SCHEMA_INVALID"]
+    problems = []
+    usage = run.get("usage")
+    parent_usage_problems = _usage_pair_problems(usage, "PARENT")
+    problems.extend(parent_usage_problems)
+
+    parent_id = run.get("thread_id")
+    children = run.get("child_sessions")
+    if not isinstance(parent_id, str) or not parent_id:
+        problems.append("PARENT_THREAD_ID_INVALID")
+    if not isinstance(children, list):
+        return sorted(set(problems + ["CHILD_SESSIONS_SCHEMA_INVALID"]))
+    unique = {}
+    for child in children:
+        child_id = child.get("thread_id") if isinstance(child, dict) else None
+        if not isinstance(child_id, str) or not child_id or child_id == parent_id:
+            problems.append("CHILD_SESSION_IDENTITY_INVALID")
+            continue
+        prior = unique.get(child_id)
+        if prior is not None and prior != child:
+            problems.append("CHILD_SESSION_CONFLICT")
+            continue
+        unique[child_id] = child
+
+    reachable = set()
+    for child_id in unique:
+        cursor = child_id
+        chain = set()
+        while cursor != parent_id:
+            if cursor in chain:
+                problems.append("CHILD_SESSION_CYCLE")
+                break
+            chain.add(cursor)
+            node = unique.get(cursor)
+            if node is None:
+                problems.append("CHILD_SESSION_ORPHAN")
+                break
+            ancestor = node.get("parent_thread_id")
+            if not isinstance(ancestor, str) or not ancestor:
+                problems.append("CHILD_SESSION_ORPHAN")
+                break
+            cursor = ancestor
+        else:
+            reachable.update(chain)
+
+    child_usage_problems = []
+    for child_id, child in unique.items():
+        child_usage_problems.extend(_usage_pair_problems(
+            child.get("usage"), "CHILD:{}".format(child_id)))
+    problems.extend(child_usage_problems)
+    if run.get("child_calls") != len(reachable):
+        problems.append("CHILD_CALL_COUNT_MISMATCH")
+    if run.get("child_thread_ids") != sorted(reachable):
+        problems.append("CHILD_THREAD_SET_MISMATCH")
+    reachable_children = [unique[child_id] for child_id in sorted(reachable)]
+    reachable_usage_problems = [
+        problem for problem in child_usage_problems
+        if any(problem.startswith("CHILD:{}:".format(child_id))
+               for child_id in reachable)
+    ]
+    if not parent_usage_problems and not reachable_usage_problems:
+        expected = merge_children({
+            "thread_id": parent_id,
+            "usage": usage,
+            "elapsed_seconds": run.get("elapsed_seconds"),
+        }, reachable_children)["combined_total_usage"]
+        if run.get("combined_total_usage") != expected:
+            problems.append("COMBINED_USAGE_MISMATCH")
+    return sorted(set(problems))
+
+
 def count_tool_calls(events):
     physical = {}
     physical_by_name = {}
@@ -619,6 +720,86 @@ def run_self_test():
     child_without_elapsed["elapsed_seconds"] = None
     assert merge_children(parent, [child_without_elapsed])["child_elapsed_seconds"] is None
     assert merge_children(parent, [])["child_elapsed_seconds"] is None
+
+    run_usage = {
+        "thread_id": "parent",
+        "usage": session_usage,
+        "child_calls": 1,
+        "child_thread_ids": ["child-a"],
+        "child_sessions": [child, dict(child)],
+        "combined_total_usage": merged["combined_total_usage"],
+    }
+    assert validate_run_usage(run_usage) == []
+    missing_usage = dict(run_usage, usage={})
+    assert "PARENT:FIRST_USAGE_UNAVAILABLE" in validate_run_usage(missing_usage)
+    conflicting_child = dict(child)
+    conflicting_child["usage"] = {}
+    conflicting = dict(run_usage, child_sessions=[child, conflicting_child])
+    assert "CHILD_SESSION_CONFLICT" in validate_run_usage(conflicting)
+
+    grandchild = dict(child, thread_id="grandchild", parent_thread_id="child-a")
+    nested_merged = merge_children(parent, [child, grandchild])
+    nested_run = {
+        "thread_id": "parent",
+        "usage": session_usage,
+        "child_calls": 2,
+        "child_thread_ids": ["child-a", "grandchild"],
+        "child_sessions": [child, grandchild, dict(grandchild)],
+        "combined_total_usage": nested_merged["combined_total_usage"],
+    }
+    assert validate_run_usage(nested_run) == []
+    orphan = dict(child, thread_id="orphan", parent_thread_id="missing")
+    orphan_merged = merge_children(parent, [orphan])
+    orphan_run = dict(
+        run_usage, child_calls=1, child_thread_ids=["orphan"],
+        child_sessions=[orphan],
+        combined_total_usage=orphan_merged["combined_total_usage"])
+    assert "CHILD_SESSION_ORPHAN" in validate_run_usage(orphan_run)
+    cycle_a = dict(child, thread_id="cycle-a", parent_thread_id="cycle-b")
+    cycle_b = dict(child, thread_id="cycle-b", parent_thread_id="cycle-a")
+    cycle_merged = merge_children(parent, [cycle_a, cycle_b])
+    cycle_run = dict(
+        run_usage, child_calls=2, child_thread_ids=["cycle-a", "cycle-b"],
+        child_sessions=[cycle_a, cycle_b],
+        combined_total_usage=cycle_merged["combined_total_usage"])
+    assert "CHILD_SESSION_CYCLE" in validate_run_usage(cycle_run)
+
+    monotonic_usage = {
+        "first": {"status": "available", "input_tokens": 100,
+                  "cached_input_tokens": 10, "output_tokens": 20,
+                  "reasoning_output_tokens": 5},
+        "total": {"status": "available", "input_tokens": 120,
+                  "cached_input_tokens": 15, "output_tokens": 25,
+                  "reasoning_output_tokens": 8},
+    }
+    for field in USAGE_FIELDS:
+        decreasing = json.loads(json.dumps(monotonic_usage))
+        decreasing["total"][field] = decreasing["first"][field] - 1
+        decreasing_run = {
+            "thread_id": "parent", "usage": decreasing,
+            "child_calls": 0, "child_thread_ids": [], "child_sessions": [],
+            "combined_total_usage": merge_children({
+                "thread_id": "parent", "usage": decreasing}, [])[
+                    "combined_total_usage"],
+        }
+        assert "PARENT:TOTAL_BELOW_FIRST:" + field in validate_run_usage(
+            decreasing_run)
+
+        decreasing_child = dict(child, usage=decreasing)
+        child_merged = merge_children(parent, [decreasing_child])
+        decreasing_child_run = dict(
+            run_usage, child_sessions=[decreasing_child],
+            combined_total_usage=child_merged["combined_total_usage"])
+        assert "CHILD:child-a:TOTAL_BELOW_FIRST:" + field in validate_run_usage(
+            decreasing_child_run)
+
+    missing_parent_phase = dict(run_usage, usage={"total": session_usage["total"]})
+    assert "PARENT:FIRST_USAGE_UNAVAILABLE" in validate_run_usage(
+        missing_parent_phase)
+    missing_child_phase = dict(child, usage={"first": child["usage"]["first"]})
+    missing_child_run = dict(run_usage, child_sessions=[missing_child_phase])
+    assert "CHILD:child-a:TOTAL_USAGE_UNAVAILABLE" in validate_run_usage(
+        missing_child_run)
 
     calls = count_tool_calls([
         {"type": "response_item", "payload": {"type": "function_call", "call_id": "f1",
