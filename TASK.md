@@ -27,6 +27,14 @@
 - Task 10 본 비교 24회를 승인된 순서로 완료했다(재시도 0회). 최초 실패 pilot 1회와 승인된 새 pilot 2회는 별도 보존했다.
 - Task 11 결과: [lite 비교 보고서](docs/experiments/codex-agents/gh-223-lite-report.md). Task 12 [독립 리뷰·최종 검증](docs/experiments/codex-agents/gh-223-lite-verification.md)은 PASS이며 사용자가 결과·검증 두 커밋 초안을 승인했다.
 
+## Supplementary follow-up
+
+- 사용자 승인으로 [보충 8회 계획](docs/superpowers/plans/2026-09-12-codex-instruction-supplement-8.md)을 진행한다.
+- 대상은 B2·B3의 L2·L3 각 2회이다. 기존 24회 결과를 보고 선택한 후속 평가로 별도 기록하며, 기존 결과·계획·도구·후보는 보존한다.
+- 동일 질문·모델·후보를 사용하고 새 표본 8회 후 종료한다. 재시도·추가 pilot·Gradle·실제 테스트·Terraform 실행은 하지 않는다.
+- 별도 수집기는 기존 24회 순서 게이트를 우회하지 않고 독립된 8회 계약과 provenance를 검증한다. 신규 계획·수집기 hash를 고정한 뒤 실행하며, 최종 검토는 한 번으로 묶는다.
+- 현재 상태: 보충 8회 실행 완료(재시도 0회). [결과 보고서](docs/experiments/codex-agents/gh-223-supplement-report.md)와 [묶음 독립 검증](docs/experiments/codex-agents/gh-223-supplement-verification.md)은 PASS다. 테스트 영역 B3 우위는 재현됐고 인프라는 우열 불명확이다. 사용자가 보충 평가 세 커밋 초안과 PR 생성을 승인했다.
+
 ## Objective
 
 - 모든 baseline 정책을 보존하며 instruction 시작 고정비와 필요 시 추가 로딩 비용을 줄인다.
