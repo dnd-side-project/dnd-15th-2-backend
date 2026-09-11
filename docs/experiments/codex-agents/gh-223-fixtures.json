@@ -3,7 +3,7 @@
   "issue_number": 223,
   "task_id": "GH-223-INSTRUCTION-ARCHITECTURE-PHASE2",
   "design_id": "HARNESS-DESIGN-GH-223-001",
-  "status": "B0_SOURCE_REVIEW_PASS_PENDING_COMMIT_APPROVAL",
+  "status": "B1_COMMITTED_SOURCE_REVIEW_PASS",
   "baseline_commit": "4aa58b8b5cad727372e7dac1dd254099b62243b8",
   "historical_a3_commit": "5b2af27706c7a3f9d6d1593ea35788c074566362",
   "plan_commit": "02669ede0f94ee7676605962d8c130e07cfb8132",
@@ -83,7 +83,7 @@
       "directory_name": "qello-gh223-b0",
       "parent_commit": "d342c9c3c0c0eccc8fd019515f1afc4dacb68309",
       "candidate_commit": "256a0dbcb7798904fa9ed4e44c2556016b5f56bd",
-      "status": "SOURCE_REVIEW_PASS_PENDING_COMMIT_APPROVAL",
+      "status": "COMMITTED_SOURCE_REVIEW_PASS",
       "files": {
         "AGENTS.md": {
           "bytes": 26664,
@@ -99,9 +99,90 @@
       "id": "B1",
       "branch": "chore/gh-223-instruction-b1",
       "directory_name": "qello-gh223-b1",
-      "parent_commit": null,
-      "candidate_commit": null,
-      "status": "NOT_CREATED_PENDING_APPROVED_PREDECESSOR"
+      "parent_commit": "256a0dbcb7798904fa9ed4e44c2556016b5f56bd",
+      "candidate_commit": "d13fd2f9057bfa80f6591dcb0f80a99e00ffdd79",
+      "status": "COMMITTED_SOURCE_REVIEW_PASS",
+      "files": {
+        ".agents/skills/harness-commit/SKILL.md": {
+          "bytes": 6497,
+          "sha256": "66a58fa5d175055b94f8f78239a4b6cd65e84077508088ad7492c4b2dfd03e72"
+        },
+        ".agents/skills/harness-infra-build/SKILL.md": {
+          "bytes": 2455,
+          "sha256": "7f2f61e4eac1a9a4a6b2a187c08b8c9d0d2015b1bfdab61120656d5e62530467"
+        },
+        ".agents/skills/harness-infra-build/references/terraform-comments.md": {
+          "bytes": 4884,
+          "sha256": "0c323c25074494c0e913d7e7635ec48621bf5ac823a276d034aeb07a55c4906b"
+        },
+        ".agents/skills/harness-infra-build/references/terraform-verify.md": {
+          "bytes": 2748,
+          "sha256": "7f2bc6e7bf7fad6dec3d7acffc4eff7d916322db3f397807aa5db6b0755ca693"
+        },
+        ".agents/skills/harness-infra-design/references/architecture.md": {
+          "bytes": 2698,
+          "sha256": "620eaec25c89e8a116822207c7dff3f43e54902963c8acc5bbd95bc194eeb5c8"
+        },
+        ".agents/skills/harness-infra-design/references/intake.md": {
+          "bytes": 2516,
+          "sha256": "b8b1a8ce77b3b1e2beef744bf90a1f827fa79b2c1f2a6df1973b72720d6ebe6a"
+        },
+        ".agents/skills/harness-infra-design/references/security-review.md": {
+          "bytes": 2172,
+          "sha256": "39b240a2e51ba091bbbb566e4923340647fe67bb7895ccf57e9dcb05a3329a96"
+        },
+        ".agents/skills/harness-issue/SKILL.md": {
+          "bytes": 9559,
+          "sha256": "4b0626c9285a2b35e14c60141b8284cd2151c7f7e35587cd47d55bdfae56bc1a"
+        },
+        ".agents/skills/harness-issue/references/work-contract.md": {
+          "bytes": 1763,
+          "sha256": "6339271aa7b32595de8ffe9b185c3c7806a87561863e52f0013109c9c498e3f5"
+        },
+        ".agents/skills/harness-pr/SKILL.md": {
+          "bytes": 9194,
+          "sha256": "d3f2d146dd8e49ffa298a3e2f538bd1f47ee3a55fb45f2ec2588fec0e6f11de9"
+        },
+        ".agents/skills/harness-pr/references/validation-evidence.md": {
+          "bytes": 3923,
+          "sha256": "e8980fb178f01168d48633f51c1f1c3bed893d8bf2fcbac41aa00cb5adc3afb6"
+        },
+        ".agents/skills/harness-test-plan/SKILL.md": {
+          "bytes": 956,
+          "sha256": "117278ddbdf18dd7fa1b2405a25b1b43240ac678fa16cfabda6d1ca66c718d81"
+        },
+        ".agents/skills/harness-test-plan/references/test-policy.md": {
+          "bytes": 762,
+          "sha256": "75d96cd6a625ace7b32da3044aa650071f66e50211e50de01491ad245019a168"
+        },
+        ".agents/skills/harness-test-run/SKILL.md": {
+          "bytes": 1375,
+          "sha256": "26b76f5a038e6b4608a46b5646b40fc3093186fb64bcc5e662f0ee5880049cb8"
+        },
+        ".agents/skills/harness-test-run/references/reporting.md": {
+          "bytes": 270,
+          "sha256": "626344df02bc2554bae82e066e19878dd84c268b38b5def7f90c46c11673cd82"
+        },
+        "AGENTS.md": {
+          "bytes": 15523,
+          "sha256": "021348fdebbea70591b6466902475848cb4d80f038c178674685db79aff248ab"
+        },
+        "TASK.md": {
+          "bytes": 5838,
+          "sha256": "d052f5005e22b66cd022ad4536472b3cddc908346a1d9a87c11932b5269500c9"
+        }
+      },
+      "catalog_frontmatter_matches_b0": true,
+      "implementation_incidents": [
+        {
+          "kind": "wrong_worktree_write",
+          "owned_files": 10,
+          "cause": "Relative patch paths resolved against original checkout",
+          "recovery": "Executor ownership confirmed; exact bytes and hashes snapshotted; changes transferred to B1; only executor changes restored in original checkout",
+          "original_checkout_status_after_recovery": "clean",
+          "evaluation_run": false
+        }
+      ]
     },
     {
       "id": "B2",
@@ -142,5 +223,76 @@
     "report_sha256": "e7ff2598cd0f933b6f855ee6302b4a1add6ef677f50e635b39e9922df58a67aa",
     "agents_sha256": "9351741e39acc6351d7ef7c2e5c555ddaf865723f918370b826e98cd30d72523",
     "scope": "B0 static source semantics only; runtime loading, gates, adoption and 204-session evaluation remain unverified"
+  },
+  "b1_source_review": {
+    "status": "PASS",
+    "reviewer": "b1_policy_reviewer",
+    "model": "gpt-5.6-sol",
+    "reasoning_effort": "high",
+    "source_units_reviewed": 447,
+    "source_units_passed": 447,
+    "context_groups_reviewed": 40,
+    "read_before_groups_reviewed": 5,
+    "changed_files_verified": 17,
+    "catalog_frontmatter_matches_common": true,
+    "original_checkout_clean": true,
+    "b0_checkout_clean": true,
+    "resolved_findings": [
+      {
+        "id": "B1-001",
+        "problem": "Moving IaC exception below root allowed stricter module guidance to block baseline exceptions",
+        "resolution": "Restore complete original section4.1 in root; restore module-conventions to B0 exact bytes; map P078-P103 to root",
+        "status": "PASS_ON_REVIEW"
+      },
+      {
+        "id": "B1-002",
+        "problem": "Moving Hook bypass reporting below commit Skill changed precedence of baseline procedure",
+        "resolution": "Restore P380-P386 original reporting procedure in root and update map",
+        "status": "PASS_ON_REVIEW"
+      }
+    ],
+    "unresolved_findings": [],
+    "method": [
+      "Re-extract all447 baseline source ranges and compare exact source_text",
+      "Verify each source_text inside its actual B1 path and non-fence anchor range",
+      "Review all40 context groups for rules, examples, conditions, exceptions, actors and ordering",
+      "Review five read-before groups from root through Skill/reference routes, including ordinary document validation",
+      "Compare all17 previous CSV fields with committed coordinator bc6887f; verify candidate allowlist, hashes and common catalog"
+    ],
+    "agents_sha256": "021348fdebbea70591b6466902475848cb4d80f038c178674685db79aff248ab",
+    "scope": "B1 static source semantics and route timing only. Actual runtime loading, pilot,204-session evaluation,remote CI and adoption remain unverified.",
+    "report_sha256": "b5ea8eca562e24bdb73405954385f5efebbb58258065a477c0dae1ac161c9a7b",
+    "post_review_format_only_changes": [
+      {
+        "file": ".agents/skills/harness-infra-build/references/terraform-comments.md",
+        "before_sha256": "068833b993fbe367a030b61d060b70c6882795f0912212cd57be4563d17bc26d",
+        "after_sha256": "0c323c25074494c0e913d7e7635ec48621bf5ac823a276d034aeb07a55c4906b",
+        "change": "Remove extra blank lines at EOF only"
+      },
+      {
+        "file": ".agents/skills/harness-issue/references/work-contract.md",
+        "before_sha256": "ca1178ff66b935e171ee6bef21a47ac36e3514abd76577acf82effc7d777668e",
+        "after_sha256": "6339271aa7b32595de8ffe9b185c3c7806a87561863e52f0013109c9c498e3f5",
+        "change": "Remove extra blank lines at EOF only"
+      },
+      {
+        "file": ".agents/skills/harness-pr/references/validation-evidence.md",
+        "before_sha256": "48173fb255dc15822d3d0b0bffa61ee66405daddd0e43c076da11fb775411f18",
+        "after_sha256": "e8980fb178f01168d48633f51c1f1c3bed893d8bf2fcbac41aa00cb5adc3afb6",
+        "change": "Remove extra blank lines at EOF only"
+      },
+      {
+        "file": ".agents/skills/harness-test-plan/references/test-policy.md",
+        "before_sha256": "5cfc77ecfd4b91e424b997b6c9718e2b9e190e344de162b05f41473aaf23b307",
+        "after_sha256": "75d96cd6a625ace7b32da3044aa650071f66e50211e50de01491ad245019a168",
+        "change": "Remove extra blank lines at EOF only"
+      },
+      {
+        "file": ".agents/skills/harness-test-run/references/reporting.md",
+        "before_sha256": "224f173732f4088fe3f26ea81cf6331b8323d62bc0843cf04480a1dad9c892b5",
+        "after_sha256": "626344df02bc2554bae82e066e19878dd84c268b38b5def7f90c46c11673cd82",
+        "change": "Remove extra blank lines at EOF only"
+      }
+    ]
   }
 }
