@@ -2190,13 +2190,13 @@
   "common_commit": "d342c9c3c0c0eccc8fd019515f1afc4dacb68309",
   "common_files_sha256": "c79fc4e5c61cbd3814a915abd262ab2af32ac58fbc5bc2875317204821b7f4b9",
   "common_fixture_sha256": "dade6733e8aecd941f06939f0da764eaadf4b806ee5710ba6af58e12346de462",
-  "comparison_environment_core_sha256": "a3be75ab8c16bfa6cc2936b302545690adbde57e35daa797146ccfb2e85115cd",
-  "comparison_environment_sha256": "2bedd6e4a5d7ac2f63f0fffc09ebe2966310f07ea71fd3df752ef0d2332ea62e",
+  "comparison_environment_core_sha256": "e8d6ea123df3e7bbd52f8d2dc6e2330967c3fae2dcaa875c462b1f9571470a1c",
+  "comparison_environment_sha256": "bf729ea9c7b5a3a4d3ef706531d94929db8c6d7d78d426c62237eb1d5ef5f6d7",
   "design_id": "HARNESS-DESIGN-GH-223-001",
   "execution_status": "NOT_STARTED",
   "instrumentation": {
     "metrics_sha256": "03a4f2c057696a2f1db23878185325cb82404ebba4620d589405929d18b7e97e",
-    "runner_sha256": "6b6b3adc8a19c7ec132a4fe2383298d808a68644471e5ab122886cc0dfb00ea4"
+    "runner_sha256": "4ae906b23c89604efb49750987b39ca9dead02afd0893bd6d70520250b07dfa7"
   },
   "issue_number": 223,
   "model": "gpt-5.6-sol",
