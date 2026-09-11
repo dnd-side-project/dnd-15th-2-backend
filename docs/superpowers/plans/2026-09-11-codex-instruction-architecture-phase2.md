@@ -1,5 +1,8 @@
 # Codex Instruction Architecture Phase 2 Implementation Plan
 
+> **Status: PAUSED_BY_USER — 기존 full 계획의 Task 8~12 보류.** 현재 실행 계약은 [26회 lite 계획](2026-09-11-codex-instruction-token-comparison-lite.md)이다. 이 문서의 원래 본문과 승인 이력은 보존하며, 명시적 재개 요청 및 환경 재확인 전에는 실행하지 않는다. 완료된 Task 1~7과 후보는 유지한다.
+
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 모든 baseline 정책을 보존한 B0~B3의 시작·추가 instruction 비용과 행동 품질을 비교한다.
