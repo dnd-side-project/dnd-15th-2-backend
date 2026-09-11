@@ -3,7 +3,7 @@
   "issue_number": 223,
   "task_id": "GH-223-INSTRUCTION-ARCHITECTURE-PHASE2",
   "design_id": "HARNESS-DESIGN-GH-223-001",
-  "status": "B2_COMMITTED_VALIDATION_PASS",
+  "status": "B3_COMMITTED_VALIDATION_PASS",
   "baseline_commit": "4aa58b8b5cad727372e7dac1dd254099b62243b8",
   "historical_a3_commit": "5b2af27706c7a3f9d6d1593ea35788c074566362",
   "plan_commit": "02669ede0f94ee7676605962d8c130e07cfb8132",
@@ -240,9 +240,42 @@
       "id": "B3",
       "branch": "chore/gh-223-instruction-b3",
       "directory_name": "qello-gh223-b3",
-      "parent_commit": null,
-      "candidate_commit": null,
-      "status": "NOT_CREATED_PENDING_APPROVED_PREDECESSOR"
+      "parent_commit": "9b6ddcd4d15226a318a716e7286149fc7dd12029",
+      "candidate_commit": "8e0028b1729ad7ba8331d528ea15be4fbe9a0be0",
+      "status": "COMMITTED_VALIDATION_PASS",
+      "changed_files": {
+        "AGENTS.md": {
+          "bytes": 16990,
+          "sha256": "5ea6109b2055b2000fbb3e5dffdc526ef923f27c3d44b44878590a6b0af6ba90"
+        },
+        "TASK.md": {
+          "bytes": 5838,
+          "sha256": "ca959804609ea4463f3de9ca0b230595663ddb716661cc2ad77e130e6740d4be"
+        },
+        "docs/harness/instruction-links.json": {
+          "bytes": 7324,
+          "sha256": "d4c66f10e21dc6e909c9ccf2a4a3214765c4092edad69453af806ae962c2420c"
+        },
+        "infra/AGENTS.md": {
+          "bytes": 1955,
+          "sha256": "5f8803c9d0cb9a94b8e92cfcac17bd1cc1e3aa41d6794d7b1bbc30a82bcd3cb7"
+        },
+        "src/integrationTest/AGENTS.md": {
+          "bytes": 1262,
+          "sha256": "4d12f0aab0d4dd455621650707de2858ce5ea0e75552dfba5c045578ef4f7b74"
+        },
+        "src/test/AGENTS.md": {
+          "bytes": 1123,
+          "sha256": "b48991cbe96e1fa6b6ae48ebfc447fd5dc1eb8ef1623eb9096da78fefd47e8d2"
+        }
+      },
+      "instruction_chain_bytes": {
+        "root": 16990,
+        "infra": 18945,
+        "src/test": 18113,
+        "src/integrationTest": 18252
+      },
+      "manifest_entry_count": 46
     }
   ],
   "evidence_boundary": "Manifest records fixture identities and source hashes only. It does not assert semantic preservation, runtime gates, adoption, or environment equivalence before verification.",
@@ -384,5 +417,45 @@
       "Observability management scrape no response; focused and final full run passed; root cause unconfirmed"
     ],
     "report": "docs/experiments/codex-agents/gh-223-b2-validation.md"
+  },
+  "b3_local_verification": {
+    "status": "PASS",
+    "executed_commands": [
+      "./harness check",
+      "npm run hooks:validate",
+      "git diff --check",
+      "./gradlew check",
+      "./harness pr-ready --project-tests"
+    ],
+    "test_results": {
+      "test": {
+        "tests": 1064,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "integrationTest": {
+        "tests": 735,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      }
+    },
+    "execution": "Full Gradle check executed unit/integration; final pr-ready reused UP-TO-DATE results",
+    "runtime_evaluation": "UNVERIFIED"
+  },
+  "b3_source_review": {
+    "status": "PASS",
+    "reviewer": "b3_independent_reviewer",
+    "model": "gpt-5.6-sol",
+    "reasoning_effort": "high",
+    "source_units_reviewed": 447,
+    "previous_columns_preserved": 25,
+    "manifest_original_entries_preserved": 21,
+    "manifest_new_entries": 25,
+    "changed_files_reviewed": 6,
+    "unresolved_findings": [],
+    "report_sha256": "8fccc4cb87b2641285c17ba651efd2f664ffb108c33cc98ea8eaeb12edb293c3",
+    "scope": "B3 static policy semantics and routing only; runtime loading,pilot,204-session evaluation and remote CI unverified"
   }
 }
