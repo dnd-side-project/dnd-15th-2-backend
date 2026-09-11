@@ -72,13 +72,26 @@ DB:
   `## 테스트 범위`(단위/통합/동시성·트랜잭션/외부 API·장애 복구) 체크리스트를 넣는다.
   완료 조건에 `@DisplayName`, 클래스 헤더 timestamp·source scenario,
   `templates/test-report.md` 기반 보고서를 포함한다.
-- **인프라**: `## IaC`(Terraform 또는 AWS CDK), `## 대안과 비용 가정`(EC2/ECS,
-  RDS/자체 운영, 공식 AWS 가격 근거)을 넣는다. 완료 조건에 least-privilege IAM,
-  `fmt`/`validate`/static/`plan`, `@Byuntil`·`@tkv00` 리뷰 요청, apply 기본 비활성을
-  포함한다. 본문 끝에 다음 안전 확인을 넣는다.
+- **인프라**: `## IaC`(Terraform)과 `## 대안과 비용 가정`을 넣는다.
+  워크로드에 적합한 서비스 후보만 비교하며 EC2/ECS, RDS/자체 운영을
+  무조건 후보로 고정하지 않는다. 공식 AWS 가격 근거를 사용한다. 기존의
+  다른 IaC는 임의로 삭제·변환하지 않고, 별도 Issue·마이그레이션 계획·사람
+  승인을 요구한다. 완료 조건에 least-privilege IAM, 필수 정적 검사,
+  `@Byuntil`·`@tkv00` 리뷰 요청, AI apply·State 조작 금지와 보호된 Actions
+  apply 경로를 포함한다. 정적 검사와 plan은 다음 문서 예시를 사용한다.
+
+  ```text
+  terraform fmt -check -recursive
+  terraform init -backend=false
+  terraform validate
+  승인된 Plan 환경에서만 plan 증거 생성. AI apply/state 조작 금지.
+  ```
+
+  본문 끝에 다음 안전 확인을 넣는다.
 
   ```markdown
   ## 안전 확인
   - [x] 비밀 키, 주소, IAM/계정 ID, 토큰, .env 값을 기록하지 않습니다.
-  - [x] 두 백엔드 승인과 명시적 사람 확인 전에는 apply/deploy 하지 않습니다.
+  - [x] AI 에이전트는 승인 여부와 관계없이 apply·State 조작을 실행하지 않습니다.
+  - [x] apply는 필수 사람 승인과 Environment 승인을 통과한 보호된 GitHub Actions만 수행합니다.
   ```

@@ -57,20 +57,36 @@ PR을 올리기 전에 base 브랜치(`./harness base`, 보통 `main`)를 rebase
 PR 생성 전에 반드시 실행한다.
 
 ```bash
+./harness check
 ./harness pr-ready --project-tests
+npm run hooks:validate
+git diff --check
 ```
 
-`./harness check`(규약·훅·라벨·워크플로 검사) + `./gradlew check` + `git diff --check`를
-한 번에 돌린다. 시간이 오래 걸리므로 백그라운드 실행을 고려한다.
+`./harness pr-ready --project-tests`는 프로젝트 테스트를 포함한다. 각 명령의
+실제 종료 코드와 미실행 범위를 구분해 보고한다.
 
-실패하면 **PR을 만들지 않고 멈춘다.** 실패 로그를 그대로 보고하고 지시를 받는다.
+실패하면 **PR을 만들지 않고 멈춘다.** 민감값을 제거한 명령·종료 코드·
+오류 요약·재현 조건을 보고한다. 원문 로그를 PR 본문이나 공개 보고서에
+복사하지 않는다.
 검증을 건너뛰기로 사용자가 결정하면 그 사실과 남은 위험을 PR 본문 `## 참고`에
 명시한다 — 실행하지 않은 검증을 통과했다고 쓰지 않는다.
 
 인프라 변경이 포함되면 추가로 실행한다.
 
 ```bash
-terraform fmt -check && terraform validate && terraform plan
+terraform fmt -check -recursive
+terraform init -backend=false
+terraform validate
+```
+
+저장소에 구성된 tflint, terraform test, Checkov, Conftest, Infracost,
+terraform-docs 검증도 해당하면 실행한다. plan은 승인된 Plan 환경과 자격
+증명이 준비된 경우에만 별도로 실행하고, 준비되지 않으면 미실행
+이유·영향 범위·남은 위험·후속 검증 방법을 보고한다.
+
+```bash
+terraform plan -lock-timeout=5m -out=tfplan
 ```
 
 ## 2. 옵션 질문
@@ -203,6 +219,6 @@ PR URL, 제목, Draft 여부, 라벨, 리뷰어, 실행한 검증과 결과, CI 
   `--force-with-lease`만 예외로 허용한다.
 - PR 본문에 반말·평서체(`~한다`)를 쓰지 않는다. 합쇼체로 통일한다.
 - `references/writing-style.md`의 금지 표현을 쓰지 않는다.
-- 인프라 PR에서 `terraform apply`·CDK deploy를 실행하지 않는다.
+- 인프라 PR에서 `terraform apply`를 실행하지 않는다.
   적용은 `@Byuntil`과 `@tkv00`의 승인과 사람의 workflow dispatch가 모두 필요하다.
 - PR 본문에 `.env` 값, 토큰, URL, 계정·IAM 식별자를 쓰지 않는다.

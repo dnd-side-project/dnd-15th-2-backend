@@ -5,32 +5,37 @@ description: "\uc2b9\uc778 \uc804 AWS \uc778\ud504\ub77c \uc694\uad6c\uc0ac\ud56
 
 # Infrastructure Design Workflow
 
-`AGENTS.md`, `TASK.md`와
+`AGENTS.md`, 존재하는 경우 `TASK.md`,
 `agents/infrastructure-orchestrator.md`를 읽는다.
 
-## 실행 전 게이트
+## 설계 진입과 게이트
 
 다음을 확인한다.
 
-- 현재 브랜치가 `infra/gh-<ISSUE>-<slug>` 형식이다.
-- 현재 브랜치와 연결된 GitHub Issue가 존재한다.
-- `TASK.md`의 Issue 번호가 브랜치와 일치한다.
-- 사용자가 제공한 유효한 `DESIGN-ID`가 있다.
+- 현재 브랜치, GitHub Issue, `TASK.md`의 일치 여부를 확인한다.
+- 유효한 `DESIGN-ID`는 Issue와 연결해 생성할 수 있지만, ID 생성을 사람의
+  설계 승인 증거로 간주하지 않는다.
 - 기존 작업 트리에 다른 사용자의 변경이 있으면 보존한다.
 
-조건이 충족되지 않으면 구현하거나 설계를 확정하지 않고 `BLOCKED`로 반환한다.
+Issue·`TASK.md`·Issue 번호 branch가 없어도 읽기, 요구사항 분석과 Project draft
+계획·작업 분해는 할 수 있다. 이 상태에서는 설계를 승인 상태로 확정하거나
+Terraform 구현을 시작하지 않는다. 설계 보고서를 완성하려면 유효한 Issue, 일치하는
+branch·`TASK.md`·`DESIGN-ID`가 필요하다.
 
-## Skill 실행 순서
+## Reference 적용 순서
 
-다음 내부 Skill을 순서대로 사용한다.
+다음 reference를 순서대로 읽어 설계에 적용한다.
 
-1. `infra-intake`
-2. `infra-architecture`
-3. `infra-security-review`
-4. `infra-cost-review`
-5. `infra-change-risk`
+1. `references/intake.md`
+2. `references/architecture.md`
+3. `references/security-review.md`
+4. `references/cost-review.md`
+5. `../harness-infra-build/references/change-risk.md`
 
-보안 검토와 비용 검토는 동일한 설계 초안을 대상으로 독립적으로 수행한다.
+이 reference를 읽는 것은 에이전트 위임이 아니다. 보안·비용 검토는 동일한
+설계 초안을 각 독립 검토 에이전트에 인계하고, 각 결과를 구분해 통합한다.
+독립 인계를 실행할 수 없으면 `BLOCKED`로 반환하고 독립 검토를 수행했다고
+보고하지 않는다.
 
 ## 하네스 실행
 
@@ -75,3 +80,5 @@ templates/infrastructure-design-report.md 형식을 사용해 다음을 작성�
 
 사람이 APPROVED_FOR_BUILD로 승인하기 전에는 Terraform 구현을 시작하지 않는다.
 terraform apply, AWS CLI 변경 명령 또는 배포를 실행하지 않는다.
+승인 후에도 설계 역할이 직접 Terraform을 구현하지 않고
+`harness-infra-build`의 실행·독립 검증 단계로 인계한다.
