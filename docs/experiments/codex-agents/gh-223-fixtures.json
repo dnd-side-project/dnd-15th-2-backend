@@ -1,0 +1,146 @@
+{
+  "schema_version": 1,
+  "issue_number": 223,
+  "task_id": "GH-223-INSTRUCTION-ARCHITECTURE-PHASE2",
+  "design_id": "HARNESS-DESIGN-GH-223-001",
+  "status": "B0_SOURCE_REVIEW_PASS_PENDING_COMMIT_APPROVAL",
+  "baseline_commit": "4aa58b8b5cad727372e7dac1dd254099b62243b8",
+  "historical_a3_commit": "5b2af27706c7a3f9d6d1593ea35788c074566362",
+  "plan_commit": "02669ede0f94ee7676605962d8c130e07cfb8132",
+  "common_commit": "d342c9c3c0c0eccc8fd019515f1afc4dacb68309",
+  "common_files": {
+    ".agents/skills/harness-api-docs/SKILL.md": {
+      "bytes": 9030,
+      "sha256": "2f38bd8751b27370a8babe61ac4a90bee108628c6eb9a3e340fe34c17f30884b"
+    },
+    ".agents/skills/harness-commit/references/splitting-rules.md": {
+      "bytes": 3963,
+      "sha256": "55f06a5b91f0f2f7a7058b8c8c7ffd45b12cdf2fbbb119e8c7d61a3087359dd5"
+    },
+    ".agents/skills/harness-infra-build/SKILL.md": {
+      "bytes": 2318,
+      "sha256": "0e00b86a87365cf8be1631fbe370eb1d7547b04c3328da4faf5fb24663b37bea"
+    },
+    ".agents/skills/harness-infra-design/SKILL.md": {
+      "bytes": 2890,
+      "sha256": "4d47480b6a92350b68235992a43eea48c8586d7f0a4275395351bcaf7c9b0805"
+    },
+    ".agents/skills/harness-issue/SKILL.md": {
+      "bytes": 9478,
+      "sha256": "77d221baa67d5da58107d24af85c26b5244b2c7c2cb32e61bdcf15927c7cf151"
+    },
+    ".agents/skills/harness-issue/references/issue-forms.md": {
+      "bytes": 4280,
+      "sha256": "2cece92111aa030124cade85abbb0afd4ca9eea202f9c71f64e8ce83ceccbb66"
+    },
+    ".agents/skills/harness-pr/SKILL.md": {
+      "bytes": 9063,
+      "sha256": "078904bc125b1c802a0f62fd2d76ccd0eb2e39ecb6b7c34a20e05ac900196bde"
+    },
+    ".agents/skills/harness-test-run/SKILL.md": {
+      "bytes": 1110,
+      "sha256": "68ff2e7e85f9348ee9dbd44defff007f2db8746e5b980655e46fd8a2f6c176f9"
+    },
+    "CLAUDE.md": {
+      "bytes": 9857,
+      "sha256": "6a7906e848744a20fbc1c3b902a96c50dc4f5ebdbbc8a1acff0d07df22b1744c"
+    },
+    "agents/api-docs-executor.md": {
+      "bytes": 6235,
+      "sha256": "499e587c0d6ecc339d37ad3b6865c98792bdb5d70f4f5d26ecee3bb5e7f3e8d5"
+    },
+    "agents/infrastructure-executor.md": {
+      "bytes": 1943,
+      "sha256": "efc164e389a18847e345300557199258e272daca49d064d2dbbca330080503aa"
+    },
+    "agents/infrastructure-orchestrator.md": {
+      "bytes": 1644,
+      "sha256": "68de71036892881b3221dbd81baf306667d02e4dd9966da52e4035be69848d7d"
+    },
+    "agents/pm-reviewer.md": {
+      "bytes": 1249,
+      "sha256": "0abf149fc2cc99c80d06d766a1fca1b1e38cb6eecba9c66ff2723c3820c3965f"
+    },
+    "agents/test-executor.md": {
+      "bytes": 1471,
+      "sha256": "b2d6f2fc8b71e3e6ad8b7ed6e24390ce7c09f698b1a2c8431deea3a64983abd8"
+    }
+  },
+  "model": "gpt-5.6-sol",
+  "reasoning_effort": "high",
+  "codex_cli_version": "0.153.4",
+  "instruction_loading": {
+    "project_doc_max_bytes": 32768,
+    "basis": "Official default; global override unset",
+    "source": "https://learn.chatgpt.com/docs/agent-configuration/agents-md",
+    "runtime_delivery_verification": "PENDING_APPROVED_PILOT",
+    "candidate_override_permitted": false
+  },
+  "candidates": [
+    {
+      "id": "B0",
+      "branch": "chore/gh-223-instruction-b0",
+      "directory_name": "qello-gh223-b0",
+      "parent_commit": "d342c9c3c0c0eccc8fd019515f1afc4dacb68309",
+      "candidate_commit": "256a0dbcb7798904fa9ed4e44c2556016b5f56bd",
+      "status": "SOURCE_REVIEW_PASS_PENDING_COMMIT_APPROVAL",
+      "files": {
+        "AGENTS.md": {
+          "bytes": 26664,
+          "sha256": "9351741e39acc6351d7ef7c2e5c555ddaf865723f918370b826e98cd30d72523"
+        },
+        "TASK.md": {
+          "bytes": 5839,
+          "sha256": "eb94113ccb602c07092cc6541ae8d1bf2136f0e859b4c8fefc5146bc60a11ec2"
+        }
+      }
+    },
+    {
+      "id": "B1",
+      "branch": "chore/gh-223-instruction-b1",
+      "directory_name": "qello-gh223-b1",
+      "parent_commit": null,
+      "candidate_commit": null,
+      "status": "NOT_CREATED_PENDING_APPROVED_PREDECESSOR"
+    },
+    {
+      "id": "B2",
+      "branch": "chore/gh-223-instruction-b2",
+      "directory_name": "qello-gh223-b2",
+      "parent_commit": null,
+      "candidate_commit": null,
+      "status": "NOT_CREATED_PENDING_APPROVED_PREDECESSOR"
+    },
+    {
+      "id": "B3",
+      "branch": "chore/gh-223-instruction-b3",
+      "directory_name": "qello-gh223-b3",
+      "parent_commit": null,
+      "candidate_commit": null,
+      "status": "NOT_CREATED_PENDING_APPROVED_PREDECESSOR"
+    }
+  ],
+  "evidence_boundary": "Manifest records fixture identities and source hashes only. It does not assert semantic preservation, runtime gates, adoption, or environment equivalence before verification.",
+  "b0_source_review": {
+    "status": "PASS",
+    "reviewer": "b0_policy_reviewer",
+    "model": "gpt-5.6-sol",
+    "reasoning_effort": "high",
+    "source_units_reviewed": 447,
+    "source_units_passed": 447,
+    "anchors_reviewed": 38,
+    "skill_links_verified": 10,
+    "required_reference_role_paths_verified": 18,
+    "failures": [],
+    "method": [
+      "Re-extract all baseline source ranges and compare CSV source_text exactly",
+      "Verify each source_text within its actual B0 anchor range and original ordering",
+      "Review all anchor contexts for rule/example relationships, conditions, exceptions, and actor preservation",
+      "Normalize added top-level headings and routing; verify byte identity with baseline",
+      "Verify common file hashes, candidate contract lineage, route paths, and file size"
+    ],
+    "report_sha256": "e7ff2598cd0f933b6f855ee6302b4a1add6ef677f50e635b39e9922df58a67aa",
+    "agents_sha256": "9351741e39acc6351d7ef7c2e5c555ddaf865723f918370b826e98cd30d72523",
+    "scope": "B0 static source semantics only; runtime loading, gates, adoption and 204-session evaluation remain unverified"
+  }
+}
