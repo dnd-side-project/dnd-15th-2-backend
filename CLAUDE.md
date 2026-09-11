@@ -46,11 +46,14 @@ h task-init
 
 ### 공통 워크플로
 
-Issue 생성부터 커밋과 PR 생성까지의 흐름은 `docs/harness/WORKFLOW_SKILLS.md`를 따른다.
+Project draft 계획부터 Repository Issue 전환, 커밋과 PR 생성까지의 각
+실행 절차는 `.agents/skills/harness-issue/SKILL.md`,
+`.agents/skills/harness-commit/SKILL.md`, `.agents/skills/harness-pr/SKILL.md`를 직접 따른다.
+`AGENTS.md`의 공통 계약이 모든 Skill 진입점보다 우선한다.
 
 * `/harness-issue`
 
-    * GitHub Issue 생성
+    * 승인된 GitHub Project draft item을 Repository Issue로 전환
     * GitHub Project 필드 연결
     * 작업 branch 생성
 * `/harness-commit`
@@ -84,7 +87,8 @@ Issue 생성부터 커밋과 PR 생성까지의 흐름은 `docs/harness/WORKFLOW
 
     * 승인된 설계에 포함된 Terraform만 구현한다.
     * `agents/infrastructure-executor.md`를 역할 계약으로 사용한다.
-    * 정적 검사와 `terraform plan` 증거를 생성한다.
+    * 정적 검사를 수행하고 승인된 Plan 환경이 준비된 경우에만 `terraform plan`
+      증거를 생성한다.
     * `terraform apply` 또는 AWS 배포를 실행하지 않는다.
 * `/harness-review`
 
@@ -95,14 +99,15 @@ Issue 생성부터 커밋과 PR 생성까지의 흐름은 `docs/harness/WORKFLOW
 모든 인프라 변경은 다음 순서를 따라야 한다.
 
 ```text
-GitHub Issue
+승인된 GitHub Project draft item
+→ Repository Issue 전환
 → TASK.md 초기화
 → /harness-infra-design
 → Infrastructure Design Report
 → 사람의 설계 승인
 → /harness-infra-build
 → Terraform 정적 검증
-→ Terraform plan
+→ 승인된 Plan 환경에서 Terraform plan
 → Pull Request
 → 사람의 코드 승인
 → 보호된 GitHub Actions에서 apply
@@ -130,6 +135,9 @@ AWS 인프라는 Terraform으로만 관리한다.
 * AWS SDK를 이용한 인프라 생성
 * AWS CLI 스크립트를 이용한 선언적 인프라 대체
 * 애플리케이션 시작 시 AWS 리소스를 생성하는 방식
+
+기존 저장소에 다른 IaC가 있으면 임의로 삭제하거나 Terraform으로 변환하지 않는다.
+별도 Issue, 마이그레이션 계획과 사람의 승인을 먼저 받는다.
 
 Terraform은 다음 원칙을 따른다.
 
@@ -287,7 +295,7 @@ agents/model-profiles.local.yml
 ## 공통 금지 사항
 
 * GitHub Issue 게이트 없이 구현 시작
-* 유효한 `TASK.md` 없이 작업 시작
+* 유효한 `TASK.md` 없이 구현 시작
 * 승인된 설계 없이 Terraform 구현
 * 승인 없이 인프라 적용 또는 프로덕션 변경
 * Terraform 이외의 IaC 추가

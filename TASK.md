@@ -1,62 +1,89 @@
-# GitHub Issue #221 Task Contract
+# GitHub Issue #223 Task Contract
 
-> Generated at: `2026-09-10T13:45:12+09:00`
+> Generated at: `2026-09-10T23:54:06+09:00`
 >
 > 이 파일은 현재 작업 브랜치의 계약이다. 저장소 전역 정책은 `AGENTS.md`를
 > 따른다.
 
 ## Work gate
 
-- Title: `Codex AGENTS.md 토큰 최적화 실험`
-- GitHub Issue: `#221`
-- Coordinator branch: `chore/gh-221-agents-token-experiment`
-- Branch family: `chore/gh-221-agents-*`
+- Title: `Codex instruction architecture Phase 2 구조 비용·정책 보존 평가`
+- GitHub Issue: `#223`
+- Branch: `chore/gh-223-instruction-architecture-phase2`
 - Base branch: `main`
-- Candidate branches:
-  - `chore/gh-221-agents-a0-control`
-  - `chore/gh-221-agents-a1-compact`
-  - `chore/gh-221-agents-a2-outcome`
-  - `chore/gh-221-agents-a3-routing`
+- Task ID: `GH-223-INSTRUCTION-ARCHITECTURE-PHASE2`
+- Design ID: `HARNESS-DESIGN-GH-223-001`
+- Status: `IMPLEMENTATION_APPROVED`
+- Intake approval: 사용자가 전체 Issue 초안과 Project/branch/TASK 연결 제안에 `좋아`로 승인했다. 설계·구현·커밋 승인은 별도다.
 
-이 계약은 기준 브랜치와 위 네 후보 브랜치에 공통으로 적용된다. 모든 브랜치는
-Issue `#221`과 type `chore`를 공유한다.
+## Active execution plan
+
+- Active plan: [GH-223-TOKEN-COMPARISON-LITE-001](docs/superpowers/plans/2026-09-11-codex-instruction-token-comparison-lite.md), ACTIVE_APPROVED_PLAN.
+- 기존 Task 1~7은 완료했다. Task 7 커밋: 1edeb3e, 3a8f8f7.
+- 남은 Task 8~12는 pilot 2회 + 대표 read-only 작업 3개 × B0~B3 × 2회, 총 26회 계약으로 대체한다.
+- 사용자 요청으로 기존 204회 평가와 실제 변경 smoke 계획은 PAUSED_BY_USER로 보존한다. 이 파일 아래의 기존 smoke·S1~S7 전체 평가·완료 조건은 과거 full 범위 기록이며 현재 lite 실행의 필수 조건이 아니다.
+- 현재 완료 조건은 active plan Task 8~12를 따른다. lite는 토큰 사용량과 답변 충족 여부만 비교하며 실제 구현 품질·안전성 전체 검증을 완료했다고 주장하지 않는다.
+- Task 8 lite 도구·계약 및 Task 9 계측 검증을 완료했다. Task 9 증거 커밋은 `87cd509`이다.
+- Task 10 본 비교 24회를 승인된 순서로 완료했다(재시도 0회). 최초 실패 pilot 1회와 승인된 새 pilot 2회는 별도 보존했다.
+- Task 11 결과: [lite 비교 보고서](docs/experiments/codex-agents/gh-223-lite-report.md). Task 12 [독립 리뷰·최종 검증](docs/experiments/codex-agents/gh-223-lite-verification.md)은 PASS이며 사용자가 결과·검증 두 커밋 초안을 승인했다.
+
+## Supplementary follow-up
+
+- 사용자 승인으로 [보충 8회 계획](docs/superpowers/plans/2026-09-12-codex-instruction-supplement-8.md)을 진행한다.
+- 대상은 B2·B3의 L2·L3 각 2회이다. 기존 24회 결과를 보고 선택한 후속 평가로 별도 기록하며, 기존 결과·계획·도구·후보는 보존한다.
+- 동일 질문·모델·후보를 사용하고 새 표본 8회 후 종료한다. 재시도·추가 pilot·Gradle·실제 테스트·Terraform 실행은 하지 않는다.
+- 별도 수집기는 기존 24회 순서 게이트를 우회하지 않고 독립된 8회 계약과 provenance를 검증한다. 신규 계획·수집기 hash를 고정한 뒤 실행하며, 최종 검토는 한 번으로 묶는다.
+- 현재 상태: 보충 8회 실행 완료(재시도 0회). [결과 보고서](docs/experiments/codex-agents/gh-223-supplement-report.md)와 [묶음 독립 검증](docs/experiments/codex-agents/gh-223-supplement-verification.md)은 PASS다. 테스트 영역 B3 우위는 재현됐고 인프라는 우열 불명확이다. 사용자가 보충 평가 세 커밋 초안과 PR 생성을 승인했다.
 
 ## Objective
 
-- Codex 세션 시작 시 자동 로드되는 `AGENTS.md`의 입력 토큰을 줄이면서
-  Qello 저장소의 안전 게이트와 작업 계약 준수율을 유지하는 최적안을 찾는다.
+- 모든 baseline 정책을 보존하며 instruction 시작 고정비와 필요 시 추가 로딩 비용을 줄인다.
+- 실제 변경 smoke는 안전성과 작업 품질을 판정하는 gate이며 코드 생성 토큰 최소화가 목적이 아니다.
 
 ## Scope
 
-- 현재 `AGENTS.md`를 A0 기준군으로 측정한다.
-- A1 압축형, A2 결과 중심형, A3 라우터형을 각각 독립된 worktree에서 만든다.
-- A1~A3에서는 `AGENTS.md`만 변경하고 나머지 tracked 파일은 동일하게 유지한다.
-- `gpt-5.6-sol`과 reasoning effort `high`에서 동일한 7개 시나리오를 실행한다.
-- 시작·누적·캐시 토큰, 도구 호출, 실행 시간과 계약 준수 결과를 기록한다.
-- 안전 게이트를 통과한 후보 중 대표 작업의 누적 토큰이 가장 적은 안을 선정한다.
-- 실험 설계와 결과를 재현 가능한 문서로 남긴다.
+- 전체 baseline 정책을 식별하고 후보 위치·적용 시점·강제 수단·검증 시나리오에 mapping한다.
+- 역사적 A3 `5b2af27706c7a3f9d6d1593ea35788c074566362`를 입력으로 모든 누락 정책을 복구한 B0를 설계한다.
+- 누적 B1: 상세 자연어 규칙을 Skill/reference로 이동한다.
+- 누적 B2: 기계 판정 규칙을 Harness·Husky·CI로 이동한다.
+- 누적 B3: infra/test 하위 AGENTS.md로 적용 범위를 분리한다.
+- 전체 instruction chain의 우선순위, 자율 실행 경계, subagent 조건, 검증 범위를 감사한다.
+- gpt-5.6-sol/high와 동일 Codex·플러그인·도구·프롬프트 조건으로 S1~S7 반복 평가한다.
+- 실제 변경 smoke는 격리된 문서·테스트 작업으로 제한한다. infra는 읽기 전용 gate와 cwd별 로딩을 평가한다.
+- 시작·캐시 입력, 추가 instruction bytes/추정 tokens, 누적 input/output, tool calls, elapsed, gate/routing/false-block 및 품질을 기록한다.
+- 원시 로그 대신 재현 가능한 집계와 독립 검증 근거를 기록한다.
+
+## Approval sequence
+
+1. Issue intake 승인 완료. Project draft를 Issue #223으로 전환했다.
+2. 상세 설계 섹션별 사람 승인 후 design spec을 작성한다.
+3. harness-commit 초안과 사람 승인 후 spec을 커밋하고 문서 검토를 요청한다.
+4. spec 검토 승인 후 writing-plans로 구현 계획을 작성하고 승인받는다.
+5. 승인된 계획에 따라 B0~B3를 격리해 구현·평가한다.
+6. 모든 후속 커밋도 초안과 사람 승인이 필요하다. push/PR/merge는 별도 요청이 필요하다.
 
 ## Explicit exclusions
 
-- Skill, reference, `docs/harness`, Harness, Husky와 CI 구조 변경
-- GPT-6 Astra 모델 비교와 reasoning effort 최적화
-- 애플리케이션 코드, 테스트 코드와 Terraform 변경
-- 최종 후보의 `main` 반영과 PR 생성
-- 인프라 apply, 배포, 프로덕션 변경은 별도 승인 없이는 실행하지 않는다.
+- Terraform 코드 변경, 인프라 적용, 배포와 프로덕션 변경
+- GPT-6 Astra 비교 및 reasoning effort 최적화
+- 서비스 애플리케이션 동작과 DB 변경
+- 원시 Codex 세션 로그 및 민감정보 커밋
+- 기존 기본 checkout 및 Phase 1 A0~A3 branch/worktree 변경·정리
+- 별도 요청 없는 push·PR·merge
 - Secret, 계정 식별자, 토큰, `.env` 값은 기록하지 않는다.
 
 ## Ownership
 
 | Area | Owner | Required review |
 | --- | --- | --- |
-| 실험 설계·측정 계약 | Codex | Human partner |
-| A0~A3 `AGENTS.md` 후보 | Codex | Human partner |
-| 안전·계약 준수 평가 | Codex | Human partner |
+| 정책 mapping·설계·측정 계약 | Orchestrator | Human partner |
+| 승인된 후보·평가기·smoke 구현 | Executor | Independent verifier 및 Human partner |
+| 정책 보존·결과·품질 검증 | Independent verifier | Human partner |
 
 ## Existing user-owned changes
 
-- 작업 시작 시 `git status --short` 결과는 clean이었다.
-- 기존 사용자 소유 변경 없음.
+- 원래 checkout과 새 조정 worktree 모두 시작 시 clean이었다. 기존 Phase 1 worktree는 보존한다.
+- 조정 worktree만 Issue #223 branch로 전환했다. PR #222는 병합되어 stacked base가 필요하지 않다.
 
 ## Validation
 
@@ -69,30 +96,17 @@ git diff --check
 
 ## Completion criteria
 
-- [x] A0~A3가 같은 기준 commit에서 분기되고 각 worktree가 clean이다.
-- [x] A1~A3의 tracked 파일 차이는 `AGENTS.md`로 제한된다.
-- [x] 각 후보의 바이트와 추정 토큰 수가 기록됐다.
-- [x] 동일한 7개 시나리오의 시작·누적·캐시 토큰과 행동 평가가 기록됐다.
-- [x] 금지 명령, Issue·`TASK.md`·승인 게이트와 routing 위반 후보를 탈락 처리했다.
-- [x] 불필요한 `BLOCKED`와 잘못된 Skill routing을 평가했다.
-- [x] 실험 무효 조건, replacement와 artifact 복구 근거를 기록했다.
-- [x] Phase 1 screening 후보 A3와 선정 근거, 정책 gap에 따른 promotion 차단을
-  보고서에 문서화했다.
+- [ ] 모든 baseline 정책의 보존 mapping이 완성되고 누락된 안전 불변조건이 복구된다.
+- [ ] 설계 섹션·spec·구현 계획 및 커밋의 사람 승인 증거가 기록된다.
+- [ ] 각 후보의 안전·Issue·TASK·승인·routing gate가 모든 유효 관측에서 통과한다.
+- [ ] false-block과 문서·테스트 smoke 품질을 별도로 판정한다.
+- [ ] 구조 비용 산식과 반복 표본 수를 실행 전에 확정한다.
+- [ ] 시작 비용과 추가 로딩 비용을 누적 작업 비용과 구분한다.
+- [ ] 적격 후보 중 구조 비용 최소안을 선정하거나 적격 후보가 없음을 보고한다.
+- [ ] 필수 검증과 독립 검증 결과, 미검증 범위 및 위험을 기록한다.
 
-## Completion evidence
+## Current evidence
 
-- Phase 1 measurement status: `PASS`
-- Screening result: A3 routing candidate
-- Promotion/adoption status: `BLOCKED`
-- Report: `docs/experiments/codex-agents/gh-221-phase-1-report.md`
-- Runtime evidence: 36 valid runs, 1 invalid A0/S1 attempt; 각 variant·scenario에 valid
-  sample 1개 이상, S3에는 각 3개
-- Safety evidence: hard gate observation 9/9 for every variant, false block 0/8,
-  routing observation 9/9 for A3
-- Excluded candidates: A0·A1은 S3 routing 0/3, A2는 2/3; majority가 아닌 모든 valid
-  observation 통과 조건 적용
-- Promotion blocker: A3에 원본 원장, 마이그레이션 이력과 운영 감사 이력의 수정·삭제
-  절대 금지가 누락됐다. baseline-to-candidate policy mapping, corrected candidate revision,
-  regression과 실제 변경 smoke 평가가 필요하다.
-- Validation evidence: `./harness check`, `./harness pr-ready --project-tests`,
-  `npm run hooks:validate`, `git diff --check` 모두 exit 0
+- Issue intake 및 Project 연결 완료: P2 / In Progress / Chore / Sprint 미지정.
+- 정책 보존 첫 섹션 기준은 사용자 `좋아`로 승인됨. 공통 fixture 충돌 정정 방식은 후속 `승인`으로 승인됨. B1~B3 파일 배치와 B2 검사 범위도 후속 `승인`으로 승인됨. 204개 세션의 평가 설계도 후속 `승인`으로 승인됨. 설계 문서 두 커밋(85cec19, c42ce20) 및 전체 spec 문서 검토도 승인됨. 구현 계획·테스트 계획·실행 계약 문서 커밋도 승인됨. 후속 구현 커밋은 별도 승인 대상이다.
+- 정책 원문 색인 및 B0 복원 설계 작업 자료를 작성했다. 후보 파일과 평가 코드는 변경하지 않았다.

@@ -1,0 +1,461 @@
+{
+  "schema_version": 1,
+  "issue_number": 223,
+  "task_id": "GH-223-INSTRUCTION-ARCHITECTURE-PHASE2",
+  "design_id": "HARNESS-DESIGN-GH-223-001",
+  "status": "B3_COMMITTED_VALIDATION_PASS",
+  "baseline_commit": "4aa58b8b5cad727372e7dac1dd254099b62243b8",
+  "historical_a3_commit": "5b2af27706c7a3f9d6d1593ea35788c074566362",
+  "plan_commit": "02669ede0f94ee7676605962d8c130e07cfb8132",
+  "common_commit": "d342c9c3c0c0eccc8fd019515f1afc4dacb68309",
+  "common_files": {
+    ".agents/skills/harness-api-docs/SKILL.md": {
+      "bytes": 9030,
+      "sha256": "2f38bd8751b27370a8babe61ac4a90bee108628c6eb9a3e340fe34c17f30884b"
+    },
+    ".agents/skills/harness-commit/references/splitting-rules.md": {
+      "bytes": 3963,
+      "sha256": "55f06a5b91f0f2f7a7058b8c8c7ffd45b12cdf2fbbb119e8c7d61a3087359dd5"
+    },
+    ".agents/skills/harness-infra-build/SKILL.md": {
+      "bytes": 2318,
+      "sha256": "0e00b86a87365cf8be1631fbe370eb1d7547b04c3328da4faf5fb24663b37bea"
+    },
+    ".agents/skills/harness-infra-design/SKILL.md": {
+      "bytes": 2890,
+      "sha256": "4d47480b6a92350b68235992a43eea48c8586d7f0a4275395351bcaf7c9b0805"
+    },
+    ".agents/skills/harness-issue/SKILL.md": {
+      "bytes": 9478,
+      "sha256": "77d221baa67d5da58107d24af85c26b5244b2c7c2cb32e61bdcf15927c7cf151"
+    },
+    ".agents/skills/harness-issue/references/issue-forms.md": {
+      "bytes": 4280,
+      "sha256": "2cece92111aa030124cade85abbb0afd4ca9eea202f9c71f64e8ce83ceccbb66"
+    },
+    ".agents/skills/harness-pr/SKILL.md": {
+      "bytes": 9063,
+      "sha256": "078904bc125b1c802a0f62fd2d76ccd0eb2e39ecb6b7c34a20e05ac900196bde"
+    },
+    ".agents/skills/harness-test-run/SKILL.md": {
+      "bytes": 1110,
+      "sha256": "68ff2e7e85f9348ee9dbd44defff007f2db8746e5b980655e46fd8a2f6c176f9"
+    },
+    "CLAUDE.md": {
+      "bytes": 9857,
+      "sha256": "6a7906e848744a20fbc1c3b902a96c50dc4f5ebdbbc8a1acff0d07df22b1744c"
+    },
+    "agents/api-docs-executor.md": {
+      "bytes": 6235,
+      "sha256": "499e587c0d6ecc339d37ad3b6865c98792bdb5d70f4f5d26ecee3bb5e7f3e8d5"
+    },
+    "agents/infrastructure-executor.md": {
+      "bytes": 1943,
+      "sha256": "efc164e389a18847e345300557199258e272daca49d064d2dbbca330080503aa"
+    },
+    "agents/infrastructure-orchestrator.md": {
+      "bytes": 1644,
+      "sha256": "68de71036892881b3221dbd81baf306667d02e4dd9966da52e4035be69848d7d"
+    },
+    "agents/pm-reviewer.md": {
+      "bytes": 1249,
+      "sha256": "0abf149fc2cc99c80d06d766a1fca1b1e38cb6eecba9c66ff2723c3820c3965f"
+    },
+    "agents/test-executor.md": {
+      "bytes": 1471,
+      "sha256": "b2d6f2fc8b71e3e6ad8b7ed6e24390ce7c09f698b1a2c8431deea3a64983abd8"
+    }
+  },
+  "model": "gpt-5.6-sol",
+  "reasoning_effort": "high",
+  "codex_cli_version": "0.153.4",
+  "instruction_loading": {
+    "project_doc_max_bytes": 32768,
+    "basis": "Official default; global override unset",
+    "source": "https://learn.chatgpt.com/docs/agent-configuration/agents-md",
+    "runtime_delivery_verification": "PENDING_APPROVED_PILOT",
+    "candidate_override_permitted": false
+  },
+  "candidates": [
+    {
+      "id": "B0",
+      "branch": "chore/gh-223-instruction-b0",
+      "directory_name": "qello-gh223-b0",
+      "parent_commit": "d342c9c3c0c0eccc8fd019515f1afc4dacb68309",
+      "candidate_commit": "256a0dbcb7798904fa9ed4e44c2556016b5f56bd",
+      "status": "COMMITTED_SOURCE_REVIEW_PASS",
+      "files": {
+        "AGENTS.md": {
+          "bytes": 26664,
+          "sha256": "9351741e39acc6351d7ef7c2e5c555ddaf865723f918370b826e98cd30d72523"
+        },
+        "TASK.md": {
+          "bytes": 5839,
+          "sha256": "eb94113ccb602c07092cc6541ae8d1bf2136f0e859b4c8fefc5146bc60a11ec2"
+        }
+      }
+    },
+    {
+      "id": "B1",
+      "branch": "chore/gh-223-instruction-b1",
+      "directory_name": "qello-gh223-b1",
+      "parent_commit": "256a0dbcb7798904fa9ed4e44c2556016b5f56bd",
+      "candidate_commit": "d13fd2f9057bfa80f6591dcb0f80a99e00ffdd79",
+      "status": "COMMITTED_SOURCE_REVIEW_PASS",
+      "files": {
+        ".agents/skills/harness-commit/SKILL.md": {
+          "bytes": 6497,
+          "sha256": "66a58fa5d175055b94f8f78239a4b6cd65e84077508088ad7492c4b2dfd03e72"
+        },
+        ".agents/skills/harness-infra-build/SKILL.md": {
+          "bytes": 2455,
+          "sha256": "7f2f61e4eac1a9a4a6b2a187c08b8c9d0d2015b1bfdab61120656d5e62530467"
+        },
+        ".agents/skills/harness-infra-build/references/terraform-comments.md": {
+          "bytes": 4884,
+          "sha256": "0c323c25074494c0e913d7e7635ec48621bf5ac823a276d034aeb07a55c4906b"
+        },
+        ".agents/skills/harness-infra-build/references/terraform-verify.md": {
+          "bytes": 2748,
+          "sha256": "7f2bc6e7bf7fad6dec3d7acffc4eff7d916322db3f397807aa5db6b0755ca693"
+        },
+        ".agents/skills/harness-infra-design/references/architecture.md": {
+          "bytes": 2698,
+          "sha256": "620eaec25c89e8a116822207c7dff3f43e54902963c8acc5bbd95bc194eeb5c8"
+        },
+        ".agents/skills/harness-infra-design/references/intake.md": {
+          "bytes": 2516,
+          "sha256": "b8b1a8ce77b3b1e2beef744bf90a1f827fa79b2c1f2a6df1973b72720d6ebe6a"
+        },
+        ".agents/skills/harness-infra-design/references/security-review.md": {
+          "bytes": 2172,
+          "sha256": "39b240a2e51ba091bbbb566e4923340647fe67bb7895ccf57e9dcb05a3329a96"
+        },
+        ".agents/skills/harness-issue/SKILL.md": {
+          "bytes": 9559,
+          "sha256": "4b0626c9285a2b35e14c60141b8284cd2151c7f7e35587cd47d55bdfae56bc1a"
+        },
+        ".agents/skills/harness-issue/references/work-contract.md": {
+          "bytes": 1763,
+          "sha256": "6339271aa7b32595de8ffe9b185c3c7806a87561863e52f0013109c9c498e3f5"
+        },
+        ".agents/skills/harness-pr/SKILL.md": {
+          "bytes": 9194,
+          "sha256": "d3f2d146dd8e49ffa298a3e2f538bd1f47ee3a55fb45f2ec2588fec0e6f11de9"
+        },
+        ".agents/skills/harness-pr/references/validation-evidence.md": {
+          "bytes": 3923,
+          "sha256": "e8980fb178f01168d48633f51c1f1c3bed893d8bf2fcbac41aa00cb5adc3afb6"
+        },
+        ".agents/skills/harness-test-plan/SKILL.md": {
+          "bytes": 956,
+          "sha256": "117278ddbdf18dd7fa1b2405a25b1b43240ac678fa16cfabda6d1ca66c718d81"
+        },
+        ".agents/skills/harness-test-plan/references/test-policy.md": {
+          "bytes": 762,
+          "sha256": "75d96cd6a625ace7b32da3044aa650071f66e50211e50de01491ad245019a168"
+        },
+        ".agents/skills/harness-test-run/SKILL.md": {
+          "bytes": 1375,
+          "sha256": "26b76f5a038e6b4608a46b5646b40fc3093186fb64bcc5e662f0ee5880049cb8"
+        },
+        ".agents/skills/harness-test-run/references/reporting.md": {
+          "bytes": 270,
+          "sha256": "626344df02bc2554bae82e066e19878dd84c268b38b5def7f90c46c11673cd82"
+        },
+        "AGENTS.md": {
+          "bytes": 15523,
+          "sha256": "021348fdebbea70591b6466902475848cb4d80f038c178674685db79aff248ab"
+        },
+        "TASK.md": {
+          "bytes": 5838,
+          "sha256": "d052f5005e22b66cd022ad4536472b3cddc908346a1d9a87c11932b5269500c9"
+        }
+      },
+      "catalog_frontmatter_matches_b0": true,
+      "implementation_incidents": [
+        {
+          "kind": "wrong_worktree_write",
+          "owned_files": 10,
+          "cause": "Relative patch paths resolved against original checkout",
+          "recovery": "Executor ownership confirmed; exact bytes and hashes snapshotted; changes transferred to B1; only executor changes restored in original checkout",
+          "original_checkout_status_after_recovery": "clean",
+          "evaluation_run": false
+        }
+      ]
+    },
+    {
+      "id": "B2",
+      "branch": "chore/gh-223-instruction-b2",
+      "directory_name": "qello-gh223-b2",
+      "parent_commit": "d13fd2f9057bfa80f6591dcb0f80a99e00ffdd79",
+      "candidate_commit": "9b6ddcd4d15226a318a716e7286149fc7dd12029",
+      "status": "COMMITTED_VALIDATION_PASS",
+      "agents_bytes": 16342,
+      "agents_sha256": "ca889b6ee6636fef329ed6cef61a417b47f3fba55b510c0ebd2cd436f40e4ca0",
+      "changed_files": {
+        ".agents/skills/harness-issue/SKILL.md": {
+          "bytes": 9770,
+          "sha256": "639a212ee028e9fa394ad9fe2dbc08c126f9a8f990781f6cf92fa174c3edfed2"
+        },
+        ".agents/skills/harness-pr/references/validation-evidence.md": {
+          "bytes": 3465,
+          "sha256": "336fb50d0100cf9a545e0421e029855cff976c8735b05aadf821881d2e984b75"
+        },
+        ".github/workflows/harness-policy.yml": {
+          "bytes": 6308,
+          "sha256": "71a16bac334c92dd69ca1620f775af2c3d49d64561b1bc27d9f4aa4dc3cb8edc"
+        },
+        "AGENTS.md": {
+          "bytes": 16342,
+          "sha256": "ca889b6ee6636fef329ed6cef61a417b47f3fba55b510c0ebd2cd436f40e4ca0"
+        },
+        "TASK.md": {
+          "bytes": 5838,
+          "sha256": "6cca50234b09344631056f0217b996c4da5d2892557737c67611d7814b703a4d"
+        },
+        "docs/harness/instruction-links.json": {
+          "bytes": 3361,
+          "sha256": "05877427333fee2d5636523a0446aae6d65f4d85a599a109923ecfeb78182b97"
+        },
+        "scripts/harness.py": {
+          "bytes": 15566,
+          "sha256": "1e833036dc622ee14dfaa72c5423baef4c0cd8669895b2073a5408ea1162a13d"
+        },
+        "scripts/run-hook.py": {
+          "bytes": 5330,
+          "sha256": "f6be8faef52178401f07a0f55d2c6d80ab1fac3c6427a9af566578de23b13a9a"
+        },
+        "scripts/validate-instruction-links.py": {
+          "bytes": 21013,
+          "sha256": "617248f57af562706d3008841bd758da8abbf0607fe05e989ced40a4fab32795"
+        },
+        "scripts/validate-task-contract.py": {
+          "bytes": 11434,
+          "sha256": "5529635cfe6c8bb3d82d8a3c57288d1868f86301262ecf3452e32d18b575b7ea"
+        }
+      }
+    },
+    {
+      "id": "B3",
+      "branch": "chore/gh-223-instruction-b3",
+      "directory_name": "qello-gh223-b3",
+      "parent_commit": "9b6ddcd4d15226a318a716e7286149fc7dd12029",
+      "candidate_commit": "8e0028b1729ad7ba8331d528ea15be4fbe9a0be0",
+      "status": "COMMITTED_VALIDATION_PASS",
+      "changed_files": {
+        "AGENTS.md": {
+          "bytes": 16990,
+          "sha256": "5ea6109b2055b2000fbb3e5dffdc526ef923f27c3d44b44878590a6b0af6ba90"
+        },
+        "TASK.md": {
+          "bytes": 5838,
+          "sha256": "ca959804609ea4463f3de9ca0b230595663ddb716661cc2ad77e130e6740d4be"
+        },
+        "docs/harness/instruction-links.json": {
+          "bytes": 7324,
+          "sha256": "d4c66f10e21dc6e909c9ccf2a4a3214765c4092edad69453af806ae962c2420c"
+        },
+        "infra/AGENTS.md": {
+          "bytes": 1955,
+          "sha256": "5f8803c9d0cb9a94b8e92cfcac17bd1cc1e3aa41d6794d7b1bbc30a82bcd3cb7"
+        },
+        "src/integrationTest/AGENTS.md": {
+          "bytes": 1262,
+          "sha256": "4d12f0aab0d4dd455621650707de2858ce5ea0e75552dfba5c045578ef4f7b74"
+        },
+        "src/test/AGENTS.md": {
+          "bytes": 1123,
+          "sha256": "b48991cbe96e1fa6b6ae48ebfc447fd5dc1eb8ef1623eb9096da78fefd47e8d2"
+        }
+      },
+      "instruction_chain_bytes": {
+        "root": 16990,
+        "infra": 18945,
+        "src/test": 18113,
+        "src/integrationTest": 18252
+      },
+      "manifest_entry_count": 46
+    }
+  ],
+  "evidence_boundary": "Manifest records fixture identities and source hashes only. It does not assert semantic preservation, runtime gates, adoption, or environment equivalence before verification.",
+  "b0_source_review": {
+    "status": "PASS",
+    "reviewer": "b0_policy_reviewer",
+    "model": "gpt-5.6-sol",
+    "reasoning_effort": "high",
+    "source_units_reviewed": 447,
+    "source_units_passed": 447,
+    "anchors_reviewed": 38,
+    "skill_links_verified": 10,
+    "required_reference_role_paths_verified": 18,
+    "failures": [],
+    "method": [
+      "Re-extract all baseline source ranges and compare CSV source_text exactly",
+      "Verify each source_text within its actual B0 anchor range and original ordering",
+      "Review all anchor contexts for rule/example relationships, conditions, exceptions, and actor preservation",
+      "Normalize added top-level headings and routing; verify byte identity with baseline",
+      "Verify common file hashes, candidate contract lineage, route paths, and file size"
+    ],
+    "report_sha256": "e7ff2598cd0f933b6f855ee6302b4a1add6ef677f50e635b39e9922df58a67aa",
+    "agents_sha256": "9351741e39acc6351d7ef7c2e5c555ddaf865723f918370b826e98cd30d72523",
+    "scope": "B0 static source semantics only; runtime loading, gates, adoption and 204-session evaluation remain unverified"
+  },
+  "b1_source_review": {
+    "status": "PASS",
+    "reviewer": "b1_policy_reviewer",
+    "model": "gpt-5.6-sol",
+    "reasoning_effort": "high",
+    "source_units_reviewed": 447,
+    "source_units_passed": 447,
+    "context_groups_reviewed": 40,
+    "read_before_groups_reviewed": 5,
+    "changed_files_verified": 17,
+    "catalog_frontmatter_matches_common": true,
+    "original_checkout_clean": true,
+    "b0_checkout_clean": true,
+    "resolved_findings": [
+      {
+        "id": "B1-001",
+        "problem": "Moving IaC exception below root allowed stricter module guidance to block baseline exceptions",
+        "resolution": "Restore complete original section4.1 in root; restore module-conventions to B0 exact bytes; map P078-P103 to root",
+        "status": "PASS_ON_REVIEW"
+      },
+      {
+        "id": "B1-002",
+        "problem": "Moving Hook bypass reporting below commit Skill changed precedence of baseline procedure",
+        "resolution": "Restore P380-P386 original reporting procedure in root and update map",
+        "status": "PASS_ON_REVIEW"
+      }
+    ],
+    "unresolved_findings": [],
+    "method": [
+      "Re-extract all447 baseline source ranges and compare exact source_text",
+      "Verify each source_text inside its actual B1 path and non-fence anchor range",
+      "Review all40 context groups for rules, examples, conditions, exceptions, actors and ordering",
+      "Review five read-before groups from root through Skill/reference routes, including ordinary document validation",
+      "Compare all17 previous CSV fields with committed coordinator bc6887f; verify candidate allowlist, hashes and common catalog"
+    ],
+    "agents_sha256": "021348fdebbea70591b6466902475848cb4d80f038c178674685db79aff248ab",
+    "scope": "B1 static source semantics and route timing only. Actual runtime loading, pilot,204-session evaluation,remote CI and adoption remain unverified.",
+    "report_sha256": "b5ea8eca562e24bdb73405954385f5efebbb58258065a477c0dae1ac161c9a7b",
+    "post_review_format_only_changes": [
+      {
+        "file": ".agents/skills/harness-infra-build/references/terraform-comments.md",
+        "before_sha256": "068833b993fbe367a030b61d060b70c6882795f0912212cd57be4563d17bc26d",
+        "after_sha256": "0c323c25074494c0e913d7e7635ec48621bf5ac823a276d034aeb07a55c4906b",
+        "change": "Remove extra blank lines at EOF only"
+      },
+      {
+        "file": ".agents/skills/harness-issue/references/work-contract.md",
+        "before_sha256": "ca1178ff66b935e171ee6bef21a47ac36e3514abd76577acf82effc7d777668e",
+        "after_sha256": "6339271aa7b32595de8ffe9b185c3c7806a87561863e52f0013109c9c498e3f5",
+        "change": "Remove extra blank lines at EOF only"
+      },
+      {
+        "file": ".agents/skills/harness-pr/references/validation-evidence.md",
+        "before_sha256": "48173fb255dc15822d3d0b0bffa61ee66405daddd0e43c076da11fb775411f18",
+        "after_sha256": "e8980fb178f01168d48633f51c1f1c3bed893d8bf2fcbac41aa00cb5adc3afb6",
+        "change": "Remove extra blank lines at EOF only"
+      },
+      {
+        "file": ".agents/skills/harness-test-plan/references/test-policy.md",
+        "before_sha256": "5cfc77ecfd4b91e424b997b6c9718e2b9e190e344de162b05f41473aaf23b307",
+        "after_sha256": "75d96cd6a625ace7b32da3044aa650071f66e50211e50de01491ad245019a168",
+        "change": "Remove extra blank lines at EOF only"
+      },
+      {
+        "file": ".agents/skills/harness-test-run/references/reporting.md",
+        "before_sha256": "224f173732f4088fe3f26ea81cf6331b8323d62bc0843cf04480a1dad9c892b5",
+        "after_sha256": "626344df02bc2554bae82e066e19878dd84c268b38b5def7f90c46c11673cd82",
+        "change": "Remove extra blank lines at EOF only"
+      }
+    ]
+  },
+  "b2_source_review": {
+    "status": "PASS",
+    "reviewer": "b2_independent_reviewer",
+    "model": "gpt-5.6-sol",
+    "reasoning_effort": "high",
+    "source_units_reviewed": 447,
+    "previous_columns_preserved": 22,
+    "scope": "B2 static code, policy preservation and routing PASS; final local project check PASS; runtime pilot, remote CI and 204-session evaluation unverified",
+    "resolved_findings": [
+      "Safe repository-internal parent-relative links falsely blocked",
+      "CLI lacked safe relative-path diagnostics",
+      "Unicode non-printing characters in diagnostic paths"
+    ],
+    "unresolved_code_findings": [],
+    "reports": {
+      "task-5-independent-review.md": "d275531911404d8cb4f3fcd106363a89be91528f90e100d82af42c2dda650f1c",
+      "task-5-independent-rereview.md": "cf2b68e94d6bae32caff4730e54fec04d3c1ac659a4a28d080b701432e778352",
+      "task-5-independent-final-review.md": "6da1122ddd4427709c06348ce4a03902863fea3c22c414399573fa9008612ecb"
+    }
+  },
+  "b2_local_verification": {
+    "status": "PASS",
+    "final_command": "./harness pr-ready --project-tests",
+    "exit_code": 0,
+    "test_results": {
+      "test": {
+        "tests": 1064,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "integrationTest": {
+        "tests": 735,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      }
+    },
+    "unit_execution": "UP-TO-DATE",
+    "integration_execution": "EXECUTED",
+    "prior_failures": [
+      "PushDevice local DB SSL setup failure; focused and later full run passed; root cause unconfirmed",
+      "Observability management scrape no response; focused and final full run passed; root cause unconfirmed"
+    ],
+    "report": "docs/experiments/codex-agents/gh-223-b2-validation.md"
+  },
+  "b3_local_verification": {
+    "status": "PASS",
+    "executed_commands": [
+      "./harness check",
+      "npm run hooks:validate",
+      "git diff --check",
+      "./gradlew check",
+      "./harness pr-ready --project-tests"
+    ],
+    "test_results": {
+      "test": {
+        "tests": 1064,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "integrationTest": {
+        "tests": 735,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      }
+    },
+    "execution": "Full Gradle check executed unit/integration; final pr-ready reused UP-TO-DATE results",
+    "runtime_evaluation": "UNVERIFIED"
+  },
+  "b3_source_review": {
+    "status": "PASS",
+    "reviewer": "b3_independent_reviewer",
+    "model": "gpt-5.6-sol",
+    "reasoning_effort": "high",
+    "source_units_reviewed": 447,
+    "previous_columns_preserved": 25,
+    "manifest_original_entries_preserved": 21,
+    "manifest_new_entries": 25,
+    "changed_files_reviewed": 6,
+    "unresolved_findings": [],
+    "report_sha256": "8fccc4cb87b2641285c17ba651efd2f664ffb108c33cc98ea8eaeb12edb293c3",
+    "scope": "B3 static policy semantics and routing only; runtime loading,pilot,204-session evaluation and remote CI unverified"
+  }
+}

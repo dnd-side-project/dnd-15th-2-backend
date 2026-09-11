@@ -17,10 +17,11 @@ GitHub Issue를 단일 기준으로 유지하면서 범위, 완료 조건, 증�
 
 ## Infrastructure-specific review
 
-- EC2/ECS와 관리형/자체 운영 대안 비교
+- 워크로드에 적합한 후보와 탈락 이유. EC2/ECS와 관리형/자체 운영
+  대안은 둘 다 실제 후보인 경우에만 비교했는가
 - 공식 가격 가정과 조회일
 - 최소 권한 IAM
-- apply 기본 비활성화
+- AI apply/State 조작 금지와 보호된 GitHub Actions apply 조건의 분리
 - `@Byuntil`, `@tkv00` 두 명 승인
 - GitHub Ruleset와 Environment 설정이 저장소 외부 작업으로 명확히 기록됨
 
