@@ -3,7 +3,7 @@
   "issue_number": 223,
   "task_id": "GH-223-INSTRUCTION-ARCHITECTURE-PHASE2",
   "design_id": "HARNESS-DESIGN-GH-223-001",
-  "status": "B1_COMMITTED_SOURCE_REVIEW_PASS",
+  "status": "B2_COMMITTED_VALIDATION_PASS",
   "baseline_commit": "4aa58b8b5cad727372e7dac1dd254099b62243b8",
   "historical_a3_commit": "5b2af27706c7a3f9d6d1593ea35788c074566362",
   "plan_commit": "02669ede0f94ee7676605962d8c130e07cfb8132",
@@ -188,9 +188,53 @@
       "id": "B2",
       "branch": "chore/gh-223-instruction-b2",
       "directory_name": "qello-gh223-b2",
-      "parent_commit": null,
-      "candidate_commit": null,
-      "status": "NOT_CREATED_PENDING_APPROVED_PREDECESSOR"
+      "parent_commit": "d13fd2f9057bfa80f6591dcb0f80a99e00ffdd79",
+      "candidate_commit": "9b6ddcd4d15226a318a716e7286149fc7dd12029",
+      "status": "COMMITTED_VALIDATION_PASS",
+      "agents_bytes": 16342,
+      "agents_sha256": "ca889b6ee6636fef329ed6cef61a417b47f3fba55b510c0ebd2cd436f40e4ca0",
+      "changed_files": {
+        ".agents/skills/harness-issue/SKILL.md": {
+          "bytes": 9770,
+          "sha256": "639a212ee028e9fa394ad9fe2dbc08c126f9a8f990781f6cf92fa174c3edfed2"
+        },
+        ".agents/skills/harness-pr/references/validation-evidence.md": {
+          "bytes": 3465,
+          "sha256": "336fb50d0100cf9a545e0421e029855cff976c8735b05aadf821881d2e984b75"
+        },
+        ".github/workflows/harness-policy.yml": {
+          "bytes": 6308,
+          "sha256": "71a16bac334c92dd69ca1620f775af2c3d49d64561b1bc27d9f4aa4dc3cb8edc"
+        },
+        "AGENTS.md": {
+          "bytes": 16342,
+          "sha256": "ca889b6ee6636fef329ed6cef61a417b47f3fba55b510c0ebd2cd436f40e4ca0"
+        },
+        "TASK.md": {
+          "bytes": 5838,
+          "sha256": "6cca50234b09344631056f0217b996c4da5d2892557737c67611d7814b703a4d"
+        },
+        "docs/harness/instruction-links.json": {
+          "bytes": 3361,
+          "sha256": "05877427333fee2d5636523a0446aae6d65f4d85a599a109923ecfeb78182b97"
+        },
+        "scripts/harness.py": {
+          "bytes": 15566,
+          "sha256": "1e833036dc622ee14dfaa72c5423baef4c0cd8669895b2073a5408ea1162a13d"
+        },
+        "scripts/run-hook.py": {
+          "bytes": 5330,
+          "sha256": "f6be8faef52178401f07a0f55d2c6d80ab1fac3c6427a9af566578de23b13a9a"
+        },
+        "scripts/validate-instruction-links.py": {
+          "bytes": 21013,
+          "sha256": "617248f57af562706d3008841bd758da8abbf0607fe05e989ced40a4fab32795"
+        },
+        "scripts/validate-task-contract.py": {
+          "bytes": 11434,
+          "sha256": "5529635cfe6c8bb3d82d8a3c57288d1868f86301262ecf3452e32d18b575b7ea"
+        }
+      }
     },
     {
       "id": "B3",
@@ -294,5 +338,51 @@
         "change": "Remove extra blank lines at EOF only"
       }
     ]
+  },
+  "b2_source_review": {
+    "status": "PASS",
+    "reviewer": "b2_independent_reviewer",
+    "model": "gpt-5.6-sol",
+    "reasoning_effort": "high",
+    "source_units_reviewed": 447,
+    "previous_columns_preserved": 22,
+    "scope": "B2 static code, policy preservation and routing PASS; final local project check PASS; runtime pilot, remote CI and 204-session evaluation unverified",
+    "resolved_findings": [
+      "Safe repository-internal parent-relative links falsely blocked",
+      "CLI lacked safe relative-path diagnostics",
+      "Unicode non-printing characters in diagnostic paths"
+    ],
+    "unresolved_code_findings": [],
+    "reports": {
+      "task-5-independent-review.md": "d275531911404d8cb4f3fcd106363a89be91528f90e100d82af42c2dda650f1c",
+      "task-5-independent-rereview.md": "cf2b68e94d6bae32caff4730e54fec04d3c1ac659a4a28d080b701432e778352",
+      "task-5-independent-final-review.md": "6da1122ddd4427709c06348ce4a03902863fea3c22c414399573fa9008612ecb"
+    }
+  },
+  "b2_local_verification": {
+    "status": "PASS",
+    "final_command": "./harness pr-ready --project-tests",
+    "exit_code": 0,
+    "test_results": {
+      "test": {
+        "tests": 1064,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "integrationTest": {
+        "tests": 735,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      }
+    },
+    "unit_execution": "UP-TO-DATE",
+    "integration_execution": "EXECUTED",
+    "prior_failures": [
+      "PushDevice local DB SSL setup failure; focused and later full run passed; root cause unconfirmed",
+      "Observability management scrape no response; focused and final full run passed; root cause unconfirmed"
+    ],
+    "report": "docs/experiments/codex-agents/gh-223-b2-validation.md"
   }
 }
