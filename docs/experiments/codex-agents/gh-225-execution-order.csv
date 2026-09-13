@@ -1,0 +1,15 @@
+index,phase,cell,configuration,model,effort
+1,pilot,L2,sol,gpt-5.6-sol,high
+2,pilot,L2,astra,gpt-6-astra,medium
+3,1,L1,sol,gpt-5.6-sol,high
+4,1,L1,astra,gpt-6-astra,medium
+5,1,L2,astra,gpt-6-astra,medium
+6,1,L2,sol,gpt-5.6-sol,high
+7,1,L3,sol,gpt-5.6-sol,high
+8,1,L3,astra,gpt-6-astra,medium
+9,2,L3,astra,gpt-6-astra,medium
+10,2,L3,sol,gpt-5.6-sol,high
+11,2,L2,sol,gpt-5.6-sol,high
+12,2,L2,astra,gpt-6-astra,medium
+13,2,L1,astra,gpt-6-astra,medium
+14,2,L1,sol,gpt-5.6-sol,high
