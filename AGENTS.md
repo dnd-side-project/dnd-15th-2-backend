@@ -25,6 +25,12 @@
 7. 현재 브랜치, Issue와 `TASK.md`의 작업 식별자가 일치하는지 확인한다.
 8. 작업에 필요한 역할 문서와 Skill을 확인한다.
 
+production Java 작업 전 [Java 지침](src/main/java/AGENTS.md)을 명시적으로 읽는다.
+AWS 요구사항·설계는 [설계 정책](.agents/skills/harness-infra-design/references/design-policy.md),
+Terraform 작성·검토와 주석 규칙 질의는 [주석 정책](.agents/skills/harness-infra-build/references/comment-policy.md)을 먼저 읽는다.
+경로가 없는 분석과 복수 영역 작업은 [문서 선택표](docs/harness/TASK_DOCUMENT_ROUTING.md)에서 필요한 문서를 선택한다.
+파일 존재나 `cd`에 따른 자동 로딩을 가정하지 않는다. 테스트 작업은 §3도 적용한다.
+
 브랜치 형식:
 
 ```text
@@ -112,32 +118,15 @@ PM과 리뷰어는 다음을 확인한다.
 
 ## 3. 테스트 규칙
 
-* JUnit 5를 사용한다.
-* 단위 테스트와 통합 테스트를 분리한다.
-* 모든 테스트 메서드에 `@DisplayName`을 작성한다.
-* 모든 테스트 클래스 상단에 정확한 ISO 8601 생성 시각과 원본 테스트 계획 식별자를 기록한다.
-* 테스트 후 애플리케이션, 인프라, DB, 동시성, 트랜잭션, 외부 API와 장애 복구 관점의 잠재 문제를 분석한다.
-* 보고서는 `templates/test-report.md`에서 생성한다.
-* `.env` 값, 토큰, URL, 계정 식별자 등 민감정보를 기록하지 않는다.
+단위 테스트는 [단위 지침](src/test/AGENTS.md), 통합 테스트는
+[통합 지침](src/integrationTest/AGENTS.md)을 적용한다. root에서 시작해도 해당 하위 지침과 필수
+reference를 작업 전에 명시적으로 읽는다. `cd`만으로 자동 재로딩된다고 가정하지 않는다.
+단위·통합 혼합 작업은 두 하위 지침을 모두 적용한다.
 
-테스트 클래스 헤더 예:
-
-```java
-/**
- * Created at: 2026-08-03T12:00:00+09:00
- * Source scenario: TEST-PLAN-GH-42-DIRECTION-UNIT-001
- */
-```
-
-테스트 실패를 구현 문제와 테스트 환경 문제로 구분한다.
-
-테스트 환경 문제라고 판단한 경우에도 다음을 기록한다.
-
-* 실패한 명령
-* 오류 요약
-* 재현 조건
-* 미검증 범위
-* 남은 위험
+계획·작성 전 [계획](.agents/skills/harness-test-plan/SKILL.md)과
+[테스트 정책](.agents/skills/harness-test-plan/references/test-policy.md)을 읽는다. 사람 승인 후,
+실행·보고 전 [실행](.agents/skills/harness-test-run/SKILL.md)과
+[보고 계약](.agents/skills/harness-test-run/references/reporting.md)을 읽는다.
 
 ## 4. 인프라 규칙
 
@@ -193,96 +182,9 @@ Terraform은 다음 원칙을 따른다.
 
 조건을 충족하지 못하면 구현하지 않고 `BLOCKED`로 반환한다.
 
-### 4.3 설계 입력
+### 4.3 설계 입력과 검토
 
-인프라 설계 전에 다음 항목을 확인한다.
-
-* 환경 구분
-* AWS Region
-* 예상 요청량과 동시 사용자
-* 네트워크 트래픽
-* 데이터 저장량과 증가율
-* 월 예산 상한
-* 가용성 목표
-* RTO
-* RPO
-* 데이터 민감도
-* 외부 공개 범위
-* 배포 빈도
-* 운영 인력과 운영 가능 시간
-* 예상 서비스 수명
-* 장애 발생 시 허용 가능한 영향
-
-확인되지 않은 값은 임의로 확정하지 않는다.
-
-다음 중 하나로 구분해 설계 보고서에 기록한다.
-
-* `CONFIRMED`: Issue 또는 승인 문서에서 확인됨
-* `ASSUMED`: 설계를 위해 임시 가정함
-* `UNKNOWN`: 현재 확인할 수 없음
-* `BLOCKED`: 확인 전에는 구현할 수 없음
-
-### 4.4 아키텍처 대안 비교
-
-초기 설계는 가장 낮은 실용 비용을 우선하지만, 특정 AWS 서비스를 사전에 정답으로 고정하지 않는다.
-
-워크로드 요구사항을 분석한 뒤 필요한 후보만 비교한다.
-
-컴퓨팅 후보 예:
-
-* EC2
-* ECS on Fargate
-* ECS on EC2
-* Lambda
-* App Runner
-* EKS
-
-데이터베이스 후보 예:
-
-* RDS
-* Aurora
-* DynamoDB
-* 자체 운영 데이터베이스
-
-설계 보고서에는 다음을 기록한다.
-
-* 선택안
-* 비교한 대안
-* 각 대안의 탈락 이유
-* 가용성
-* 운영 부담
-* 확장성
-* 장애 복구
-* 비용
-* 서비스 종속성
-* 예상되는 미래 전환 비용
-
-EC2와 ECS, RDS와 자체 운영 DB 비교는 해당 후보가 실제 요구사항에 적합할 때 수행한다.
-
-### 4.5 AWS 설계 검토 영역
-
-모든 인프라 설계는 다음을 검토한다.
-
-* 네트워크 경계
-* 외부 공개 범위
-* IAM 최소 권한
-* 암호화
-* 비밀 관리
-* 로그
-* 메트릭
-* 알람
-* 백업
-* 복구
-* 장애 모드
-* 확장 방식
-* 비용과 비용 증가 요인
-* 배포 방식
-* 롤백 방식
-* 운영 Runbook
-* Terraform State
-* Terraform Locking
-* 리소스 삭제 보호
-* 태그 정책
+AWS 요구사항·설계 전에 [설계 정책](.agents/skills/harness-infra-design/references/design-policy.md)을 읽고 적용한다. 입력 상태 구분, 적합한 대안 비교와 필수 검토 영역의 원문 계약을 따른다.
 
 ### 4.6 Terraform State
 
@@ -403,189 +305,7 @@ PR 승인과 GitHub Environment 승인은 별개의 게이트로 취급한다.
 
 ## 5. Terraform 주석 규칙
 
-Terraform 주석은 코드가 무엇을 하는지 번역하지 않고, 코드만으로 알 수 없는 설계 의도와 제약을 설명한다.
-
-### 5.1 주석이 필요한 경우
-
-다음 경우에는 주석을 작성한다.
-
-* 일반적인 기본값과 다른 설정
-* AWS 서비스 제약으로 인한 우회 구현
-* 보안 또는 컴플라이언스 요구사항
-* 비용 절감을 위해 가용성이나 기능을 제한한 결정
-* 명시적 `depends_on`
-* `lifecycle`
-* `prevent_destroy`
-* `ignore_changes`
-* 조건부 리소스 생성
-* 환경별 동작 차이
-* 외부 시스템이 관리하는 속성
-* eventual consistency 대응
-* 보안 검사 예외
-* 임시 호환성 설정
-
-### 5.2 작성하지 않는 주석
-
-코드에서 직접 알 수 있는 내용을 반복하지 않는다.
-
-잘못된 예:
-
-```hcl
-# VPC를 생성한다.
-resource "aws_vpc" "main" {
-}
-
-# 버킷 이름
-bucket = var.bucket_name
-
-# Claude가 생성한 코드
-# 사용자 요청에 따라 수정
-```
-
-에이전트의 추론 과정, 프롬프트, 대화 내용과 작업 과정을 주석에 기록하지 않는다.
-
-### 5.3 설계 의도 주석
-
-짧은 설계 의도는 대상 블록 바로 위에 작성한다.
-
-```hcl
-# 개발 환경의 고정 비용을 줄이기 위해 NAT Gateway를 단일 AZ에만 생성한다.
-# 운영 환경에서는 가용성 요구사항에 따라 AZ별로 생성한다.
-resource "aws_nat_gateway" "this" {
-}
-```
-
-복잡한 제약은 원인, 결정과 영향 순서로 작성한다.
-
-```hcl
-# 원인: ECS의 기존 Task가 배포 중 연결을 최대 10분 유지할 수 있다.
-# 결정: ALB deregistration delay를 600초로 유지한다.
-# 영향: 배포 완료 시간은 증가하지만 진행 중 요청의 강제 종료를 방지한다.
-deregistration_delay = 600
-```
-
-상세 근거가 ADR 또는 설계 문서에 있으면 문서 식별자를 기록한다.
-
-```hcl
-# ADR-INFRA-004: 운영 데이터베이스의 우발적 삭제를 방지한다.
-lifecycle {
-  prevent_destroy = true
-}
-```
-
-### 5.4 `depends_on`
-
-Terraform이 참조를 통해 추론할 수 있는 의존성에는 `depends_on`을 사용하지 않는다.
-
-명시적 의존성이 필요한 경우 이유를 작성한다.
-
-```hcl
-# IAM 정책 연결 직후 발생할 수 있는 권한 전파 지연으로
-# ECS 최초 배포가 실패하지 않도록 명시적인 선행 조건을 둔다.
-depends_on = [
-  aws_iam_role_policy_attachment.ecs_execution
-]
-```
-
-이유를 설명할 수 없는 `depends_on`은 추가하지 않는다.
-
-### 5.5 `ignore_changes`
-
-`ignore_changes`는 외부 시스템이 실제로 관리하는 속성에만 사용한다.
-
-다음을 주석으로 기록한다.
-
-* 외부 관리 주체
-* Terraform이 변경을 무시해야 하는 이유
-* 무시하는 속성
-* 제거 조건
-
-```hcl
-lifecycle {
-  # 배포 workflow가 Task Definition revision을 갱신한다.
-  # 배포 주체가 Terraform으로 전환되면 이 예외를 제거한다.
-  ignore_changes = [
-    task_definition
-  ]
-}
-```
-
-다음 설정은 기본적으로 금지한다.
-
-```hcl
-lifecycle {
-  ignore_changes = all
-}
-```
-
-사용이 필요한 경우 ADR, 추적 Issue와 사람의 승인이 필요하다.
-
-### 5.6 TODO와 임시 예외
-
-`TODO`, `FIXME`, `TEMP`, `HACK`만 단독으로 작성하지 않는다.
-
-TODO에는 다음을 포함한다.
-
-* 추적 Issue
-* 재검토 또는 만료 날짜
-* 완료 조건
-
-```hcl
-# TODO(INFRA-142, 2026-10-31): Multi-AZ 전환 후 단일 NAT Gateway 예외를 제거한다.
-```
-
-금지 예:
-
-```hcl
-# TODO: 나중에 수정
-# FIXME
-# 임시
-```
-
-### 5.7 보안 예외
-
-보안 예외에는 다음을 기록한다.
-
-* 예외 이유
-* 영향 범위
-* 보완 통제
-* 담당 팀
-* 만료일
-* 추적 Issue 또는 ADR
-
-```hcl
-# SECURITY-EXCEPTION
-# 이유: 외부 시스템의 송신 IP가 고정되어 있지 않다.
-# 범위: staging webhook listener의 443 포트
-# 보완 통제: 요청 서명 검증과 WAF rate limit
-# 소유자: platform-team
-# 만료일: 2026-10-31
-# 추적: INFRA-142
-```
-
-만료일과 추적 항목이 없는 보안 예외는 추가하지 않는다.
-
-### 5.8 변수와 출력 설명
-
-변수와 output의 설명은 별도 주석보다 `description`을 사용한다.
-
-```hcl
-variable "backup_retention_days" {
-  description = "RDS 자동 백업 보존 기간. 운영 환경은 최소 7일이어야 한다."
-  type        = number
-}
-```
-
-민감한 output에는 `sensitive = true`를 지정한다.
-
-### 5.9 주석 언어
-
-* 기본 주석 언어는 한국어로 통일한다.
-* AWS 서비스명, Terraform 속성명과 프로토콜명은 원문을 유지한다.
-* 짧고 단정한 문장으로 작성한다.
-* 추측성 표현을 사용하지 않는다.
-* 장문 설명은 ADR 또는 Infrastructure Design Report로 이동한다.
-* 주석과 구현이 달라지면 같은 변경에서 함께 수정한다.
+Terraform 작성·검토 및 주석 규칙 질의 전에 [주석 정책](.agents/skills/harness-infra-build/references/comment-policy.md)을 읽고 적용한다. 예외·금지·승인 조건을 포함한 전체 계약을 따른다.
 
 ## 6. 변경 안전성
 

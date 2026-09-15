@@ -7,6 +7,10 @@ flowchart LR
     Project["GitHub Project<br/>schedule and priority"] --> Issue["GitHub Issue<br/>scope and acceptance"]
     Issue --> Branch["Convention branch<br/>Issue number"]
     Branch --> Router{"Work type"}
+    Router --> Software["기능·버그·리팩터링: 승인 범위 실행"]
+    Router --> Analysis["요구사항·아키텍처: 분석과 설계"]
+    Software --> EvidenceS["실제 변경과 검증 증거"]
+    EvidenceS --> PR
     Router --> TestO["Test orchestrator"]
     Router --> InfraO["Infrastructure orchestrator"]
     TestO --> TestPlan["Approved test plan"]
@@ -52,9 +56,9 @@ sequenceDiagram
 ```mermaid
 flowchart TD
     Ticket["Infrastructure Issue"] --> Design["High-capability design"]
-    Design --> Compare["EC2/ECS and RDS/self-hosted comparison"]
+    Design --> Compare["Workload-appropriate alternatives"]
     Compare --> Cost["Official AWS one-month cost assumptions"]
-    Cost --> IaC["Terraform or AWS CDK"]
+    Cost --> IaC["Terraform"]
     IaC --> Static["fmt / validate / static / plan"]
     Static --> PR["Design + IaC PR"]
     PR --> A1{"@Byuntil approved exact head?"}
@@ -86,3 +90,5 @@ flowchart TD
 - apply는 별도 workflow라 일반 PR/CI에서 우발적으로 실행되지 않는다.
 - 동일 PR의 head가 변경되면 기존 승인을 적용 승인으로 인정하지 않는다.
 - plan과 apply는 같은 workflow의 동일 파일을 사용한다.
+
+일반 작업의 관련 문서는 [문서 선택표](TASK_DOCUMENT_ROUTING.md)를 따른다.
