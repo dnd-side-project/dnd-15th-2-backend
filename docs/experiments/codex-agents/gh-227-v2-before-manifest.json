@@ -1,0 +1,614 @@
+{
+  "id": "GH-227-BEFORE-C0",
+  "commit": "4aa58b8b5cad727372e7dac1dd254099b62243b8",
+  "selection_status": "USER_CONFIRMED",
+  "confirmation": "2026-09-14 user: 네, 그 버전을 Before로 사용",
+  "scope": "repository instruction bundle; not historical global config or product snapshot",
+  "roots": [
+    "AGENTS.md",
+    "CLAUDE.md",
+    ".agents",
+    ".claude",
+    ".codex",
+    "agents",
+    "docs/harness",
+    "templates"
+  ],
+  "files": [
+    {
+      "path": ".agents/skills/harness-api-docs/SKILL.md",
+      "mode": "100644",
+      "git_blob": "0437e6d269ad2e308185adde257177712341b770",
+      "bytes": 8963,
+      "sha256": "8275b8638d6bea0f4675b8d465522af055c13f996b709de1d3f035cda76ce9ea"
+    },
+    {
+      "path": ".agents/skills/harness-commit/SKILL.md",
+      "mode": "100644",
+      "git_blob": "52363e397e2d105fef3496e511eee98ac92a0fda",
+      "bytes": 6299,
+      "sha256": "00957b096e8f028a7cf9e0ea556cd2596dcb4896defe41e46c36669746b66833"
+    },
+    {
+      "path": ".agents/skills/harness-commit/references/splitting-rules.md",
+      "mode": "100644",
+      "git_blob": "d1948d705183e974fd288380a430ca3a203e678e",
+      "bytes": 3972,
+      "sha256": "5ee202ae208569d9ef27e5de822aee309807f1ae68fb7f38e580ff8fb194608c"
+    },
+    {
+      "path": ".agents/skills/harness-infra-build/SKILL.md",
+      "mode": "100644",
+      "git_blob": "046b417acf13a8a198adb2a47a29915bf6140da7",
+      "bytes": 1454,
+      "sha256": "0c51beeffd6072d38c750aed56d052f476eea9da516ddf81b9a2cb0f08c6a2cb"
+    },
+    {
+      "path": ".agents/skills/harness-infra-build/references/change-risk.md",
+      "mode": "100644",
+      "git_blob": "629c7a06589de23a64bd2fa4881cef2e7cd1d1f9",
+      "bytes": 1216,
+      "sha256": "15ac5deede8eb6983218e9bd73c46ebb286cfbff747e0ba4d2420cf1557ab929"
+    },
+    {
+      "path": ".agents/skills/harness-infra-build/references/module-conventions.md",
+      "mode": "100644",
+      "git_blob": "20e9b7bda1f4ffc0e5ca1baec56934a6c7767957",
+      "bytes": 1571,
+      "sha256": "fc02ed3dedee32980589b73ec10f9ee1c032cce957f3affcaad931fd0ebfecc3"
+    },
+    {
+      "path": ".agents/skills/harness-infra-build/references/terraform-build.md",
+      "mode": "100644",
+      "git_blob": "b3516fab969dec91a3c383cb0a2d89904e531adb",
+      "bytes": 1318,
+      "sha256": "8c1432771bc4698eba2287d1f89b4e641f70a02b844eacca6d6ea4408bb79f47"
+    },
+    {
+      "path": ".agents/skills/harness-infra-build/references/terraform-verify.md",
+      "mode": "100644",
+      "git_blob": "2f34cabfd41d5c5d91193492e9a20a25a537ae82",
+      "bytes": 1818,
+      "sha256": "c7fe2e7cd4367dc0c5041979c7adfee52d890bb461dc740ece917dbdd19f285c"
+    },
+    {
+      "path": ".agents/skills/harness-infra-design/SKILL.md",
+      "mode": "100644",
+      "git_blob": "d662a770af4653dc47175c8cc318cbc49f7aa813",
+      "bytes": 2183,
+      "sha256": "af356d5bec0652ab8fefd5f43d359a9080fb5c64fa9ee3114a39c5ad2ec98dd3"
+    },
+    {
+      "path": ".agents/skills/harness-infra-design/references/architecture.md",
+      "mode": "100644",
+      "git_blob": "f84cb370db8d86940a9ce68bb79394a2574e2fc7",
+      "bytes": 1875,
+      "sha256": "d16e5e235c63efeb6c7beae3c93180081ebe8d4210e209c08b6cead662b8b19a"
+    },
+    {
+      "path": ".agents/skills/harness-infra-design/references/cost-review.md",
+      "mode": "100644",
+      "git_blob": "0311b5a3e5c762770253c8b7c2b050625c57cb2f",
+      "bytes": 1278,
+      "sha256": "c5be94f5e73f44fd44208ad8140268e872227633461117d02db5d1b5a9bb5c9b"
+    },
+    {
+      "path": ".agents/skills/harness-infra-design/references/intake.md",
+      "mode": "100644",
+      "git_blob": "9ad13c4da941de147bdf378668b15df3f7ffd179",
+      "bytes": 1725,
+      "sha256": "f3ea1f9267da95a8d3cccc7a1a3ab01f85e1177a07f7b1dcea4d84c5330a5607"
+    },
+    {
+      "path": ".agents/skills/harness-infra-design/references/security-review.md",
+      "mode": "100644",
+      "git_blob": "ed2b97333af11ca85edb17ecae1b9247dcbc3925",
+      "bytes": 1711,
+      "sha256": "3937950a90de2df938053213ed0a6e334af436aaa701c4edfd9351a762ba5cc2"
+    },
+    {
+      "path": ".agents/skills/harness-issue/SKILL.md",
+      "mode": "100644",
+      "git_blob": "82f7e5af81941e619155babcf2e1946e52b89963",
+      "bytes": 8242,
+      "sha256": "6156438626c3a87c2c8e99b3fe4dd0cacf5bc6d5ffeaee9e79740c479c6b009c"
+    },
+    {
+      "path": ".agents/skills/harness-issue/references/issue-forms.md",
+      "mode": "100644",
+      "git_blob": "3e903c5ca66f7b5d1d1bce11ac4a3a98e41a8227",
+      "bytes": 3622,
+      "sha256": "ff6f1479fe7f886b8a524db640db6e4d95a1fa3464ee46679c7abe0414d823bd"
+    },
+    {
+      "path": ".agents/skills/harness-issue/references/project-fields.md",
+      "mode": "100644",
+      "git_blob": "8f82fd80e11ccedecb90bd344a19b0c268abec4a",
+      "bytes": 2635,
+      "sha256": "12f7b53428bcac1b9c96cf916e059ec4713dcdcf2750a1e237902081788c2e23"
+    },
+    {
+      "path": ".agents/skills/harness-pr/SKILL.md",
+      "mode": "100644",
+      "git_blob": "8bf37f9f430fe4c8fc4138f99967d9fc0922a5df",
+      "bytes": 8531,
+      "sha256": "7ed55e07779cc3451b1d830f4418b99d41ed2454d2b52973635ad6ff2b442331"
+    },
+    {
+      "path": ".agents/skills/harness-pr/references/writing-style.md",
+      "mode": "100644",
+      "git_blob": "9bdb2dbb6ed6aee2987b40d855f83a3aed4442dd",
+      "bytes": 4158,
+      "sha256": "9e0bd5773c558fd0228fe1f234b514e5ca1907b15c483611109513707bc2c4d8"
+    },
+    {
+      "path": ".agents/skills/harness-review/SKILL.md",
+      "mode": "100644",
+      "git_blob": "3e7c60159752da54f2af0eef8abdbf617c6aa435",
+      "bytes": 613,
+      "sha256": "0494e868e19d23d9b0b06600bb9df39640b8060ea7a9fc41aea5d80a1bd29d35"
+    },
+    {
+      "path": ".agents/skills/harness-test-plan/SKILL.md",
+      "mode": "100644",
+      "git_blob": "49f0f97f5563a9b83786eb5f48d966a4d8315e60",
+      "bytes": 839,
+      "sha256": "56c423ea43e869b2665c3e49bb68e9fffe908a4d1a35929aa16d0237f94df92a"
+    },
+    {
+      "path": ".agents/skills/harness-test-run/SKILL.md",
+      "mode": "100644",
+      "git_blob": "559be604f1001b1d1e0d99ddf936a23721bbb3a3",
+      "bytes": 910,
+      "sha256": "a8cb073fbfeda90abf4f2a12aa0100562c186602755ae92a0cf28123f1f78979"
+    },
+    {
+      "path": ".agents/skills/infra-post-verify/SKILL.md",
+      "mode": "100644",
+      "git_blob": "3ceafa03a206ae6137b88b00bf1db970bd554bc2",
+      "bytes": 1110,
+      "sha256": "2bf5742c32f8cc99d194804b4c7349039f28f1d075037c3ec4c2f4295efabeeb"
+    },
+    {
+      "path": ".claude/agents/api-docs-executor.md",
+      "mode": "100644",
+      "git_blob": "7574e1f26c88232ecde0bcb7ec768b5a477f28d6",
+      "bytes": 3915,
+      "sha256": "4d9d264af8d194635a68c15a8747deee9ba7ab321d8a8c2c4106ce52780a4fd7"
+    },
+    {
+      "path": ".claude/agents/infrastructure-executor.md",
+      "mode": "100644",
+      "git_blob": "7a22fbfc8204799104daed35b0cdff4c77d889d0",
+      "bytes": 500,
+      "sha256": "2540906a9b81402b4496240b3a70e5f803a6af8787af3fac67d48d5b28367b35"
+    },
+    {
+      "path": ".claude/agents/infrastructure-orchestrator.md",
+      "mode": "100644",
+      "git_blob": "990ddcfa730f01eb677b214a1e2ad2e64a679232",
+      "bytes": 647,
+      "sha256": "2102f89c9cd5632b50fffe511e931faa4a6049459b6b4586daccdb516f92403e"
+    },
+    {
+      "path": ".claude/agents/terraform-implementer.md",
+      "mode": "100644",
+      "git_blob": "6a514578365653640037244a44086ab075a739a2",
+      "bytes": 1360,
+      "sha256": "8d03c04e9211d2ca601de75d23207880217cbd29079400805091f31270f9009a"
+    },
+    {
+      "path": ".claude/agents/terraform-plan-verifier.md",
+      "mode": "100644",
+      "git_blob": "e05d171ab7a8eba9adbe35c67b46560992c99bbb",
+      "bytes": 1187,
+      "sha256": "b714eb15482bfce48ac17c474e717bd637054fb285eba2e0f82e833fae2c521f"
+    },
+    {
+      "path": ".claude/settings.json",
+      "mode": "100644",
+      "git_blob": "ee6d0fa9415aa68de001222d3b8c4f08a23aacd5",
+      "bytes": 573,
+      "sha256": "bd89132fd8c654567c1c7d6c3a2d06b3484efdf308a48ffaf95ba848e9a17ce7"
+    },
+    {
+      "path": ".claude/skills/harness-api-docs/SKILL.md",
+      "mode": "100644",
+      "git_blob": "b1ba239078739de23c3ed0768801f4fe032b7f3b",
+      "bytes": 8908,
+      "sha256": "ec38cb9aba04c7de759efb475d02f0be6e25837da1441eb37ebf6f31795fa41f"
+    },
+    {
+      "path": ".claude/skills/harness-commit/SKILL.md",
+      "mode": "100644",
+      "git_blob": "2dcfe163e10ee240be2e194bd5efc75f56710c5b",
+      "bytes": 6073,
+      "sha256": "e82e9023566cb4e5b2f592721a0acaaeb405423b3959a0f51443cd564d446be1"
+    },
+    {
+      "path": ".claude/skills/harness-commit/references/splitting-rules.md",
+      "mode": "100644",
+      "git_blob": "d1948d705183e974fd288380a430ca3a203e678e",
+      "bytes": 3972,
+      "sha256": "5ee202ae208569d9ef27e5de822aee309807f1ae68fb7f38e580ff8fb194608c"
+    },
+    {
+      "path": ".claude/skills/harness-infra-build/SKILL.md",
+      "mode": "100644",
+      "git_blob": "81fb8c551115f540aef8b3ccc042d7e9b6fefb3f",
+      "bytes": 1659,
+      "sha256": "7492e574d9f0aeddb1a7c7ca18aeae04592828ddd1a07abdbb7ecddd8bb3e6e3"
+    },
+    {
+      "path": ".claude/skills/harness-infra-build/references/change-risk.md",
+      "mode": "100644",
+      "git_blob": "629c7a06589de23a64bd2fa4881cef2e7cd1d1f9",
+      "bytes": 1216,
+      "sha256": "15ac5deede8eb6983218e9bd73c46ebb286cfbff747e0ba4d2420cf1557ab929"
+    },
+    {
+      "path": ".claude/skills/harness-infra-build/references/module-conventions.md",
+      "mode": "100644",
+      "git_blob": "20e9b7bda1f4ffc0e5ca1baec56934a6c7767957",
+      "bytes": 1571,
+      "sha256": "fc02ed3dedee32980589b73ec10f9ee1c032cce957f3affcaad931fd0ebfecc3"
+    },
+    {
+      "path": ".claude/skills/harness-infra-build/references/terraform-build.md",
+      "mode": "100644",
+      "git_blob": "b3516fab969dec91a3c383cb0a2d89904e531adb",
+      "bytes": 1318,
+      "sha256": "8c1432771bc4698eba2287d1f89b4e641f70a02b844eacca6d6ea4408bb79f47"
+    },
+    {
+      "path": ".claude/skills/harness-infra-build/references/terraform-verify.md",
+      "mode": "100644",
+      "git_blob": "2f34cabfd41d5c5d91193492e9a20a25a537ae82",
+      "bytes": 1818,
+      "sha256": "c7fe2e7cd4367dc0c5041979c7adfee52d890bb461dc740ece917dbdd19f285c"
+    },
+    {
+      "path": ".claude/skills/harness-infra-design/SKILL.md",
+      "mode": "100644",
+      "git_blob": "06e75ab35515a8a6c4d83b678f47497171cb3e35",
+      "bytes": 2226,
+      "sha256": "c4923d7d5cfe64fb476f58f8591de23799df5824b3618e5951ece2deef0e3d44"
+    },
+    {
+      "path": ".claude/skills/harness-infra-design/references/architecture.md",
+      "mode": "100644",
+      "git_blob": "f84cb370db8d86940a9ce68bb79394a2574e2fc7",
+      "bytes": 1875,
+      "sha256": "d16e5e235c63efeb6c7beae3c93180081ebe8d4210e209c08b6cead662b8b19a"
+    },
+    {
+      "path": ".claude/skills/harness-infra-design/references/cost-review.md",
+      "mode": "100644",
+      "git_blob": "0311b5a3e5c762770253c8b7c2b050625c57cb2f",
+      "bytes": 1278,
+      "sha256": "c5be94f5e73f44fd44208ad8140268e872227633461117d02db5d1b5a9bb5c9b"
+    },
+    {
+      "path": ".claude/skills/harness-infra-design/references/intake.md",
+      "mode": "100644",
+      "git_blob": "9ad13c4da941de147bdf378668b15df3f7ffd179",
+      "bytes": 1725,
+      "sha256": "f3ea1f9267da95a8d3cccc7a1a3ab01f85e1177a07f7b1dcea4d84c5330a5607"
+    },
+    {
+      "path": ".claude/skills/harness-infra-design/references/security-review.md",
+      "mode": "100644",
+      "git_blob": "ed2b97333af11ca85edb17ecae1b9247dcbc3925",
+      "bytes": 1711,
+      "sha256": "3937950a90de2df938053213ed0a6e334af436aaa701c4edfd9351a762ba5cc2"
+    },
+    {
+      "path": ".claude/skills/harness-issue/SKILL.md",
+      "mode": "100644",
+      "git_blob": "e4a083deef8414c4fda9dd2d7fb82757d4ecf38b",
+      "bytes": 8682,
+      "sha256": "03302eaa230942210239deb439bf0364f767e32763c67b6726d72dd7b2e8bfb9"
+    },
+    {
+      "path": ".claude/skills/harness-issue/references/issue-forms.md",
+      "mode": "100644",
+      "git_blob": "3e903c5ca66f7b5d1d1bce11ac4a3a98e41a8227",
+      "bytes": 3622,
+      "sha256": "ff6f1479fe7f886b8a524db640db6e4d95a1fa3464ee46679c7abe0414d823bd"
+    },
+    {
+      "path": ".claude/skills/harness-issue/references/project-fields.md",
+      "mode": "100644",
+      "git_blob": "8f82fd80e11ccedecb90bd344a19b0c268abec4a",
+      "bytes": 2635,
+      "sha256": "12f7b53428bcac1b9c96cf916e059ec4713dcdcf2750a1e237902081788c2e23"
+    },
+    {
+      "path": ".claude/skills/harness-issue/references/writing-style.md",
+      "mode": "100644",
+      "git_blob": "a396633d340bae66a6788ca5d6ed68bf2fb00d86",
+      "bytes": 6002,
+      "sha256": "c31db614c7e891ab0b2962e4e8d7ba35444a839d0c388ea341b1938c4dfe6e11"
+    },
+    {
+      "path": ".claude/skills/harness-pr/SKILL.md",
+      "mode": "100644",
+      "git_blob": "6be19522fa80435630149373778d4ea880e629aa",
+      "bytes": 8623,
+      "sha256": "2c4caef06cc6d514b9039302db8260ee6a02b66e879b4ac6b859780884a6120e"
+    },
+    {
+      "path": ".claude/skills/harness-pr/references/writing-style.md",
+      "mode": "100644",
+      "git_blob": "b2fd0be02752e9bad21dd1166111e9825097fee9",
+      "bytes": 4307,
+      "sha256": "71bbc8ddd0158d44a0b844c8c6b14f5344bb7505bdb728acc3f69092b890be86"
+    },
+    {
+      "path": ".claude/skills/harness-review/SKILL.md",
+      "mode": "100644",
+      "git_blob": "705550ce4b1efda24f9abc071d7865d75211d12e",
+      "bytes": 609,
+      "sha256": "ed4d609589de5ba9d9da8914cfecaf9cc8b2528dc320388fd3544e86963078b0"
+    },
+    {
+      "path": ".claude/skills/harness-test-plan/SKILL.md",
+      "mode": "100644",
+      "git_blob": "ceca4130a9c9234f391decf75f77e9f1a6fb292f",
+      "bytes": 835,
+      "sha256": "2d0feb745f5ee53247918cd4eba3af1d8ec063b167c9294332f7904c048ced19"
+    },
+    {
+      "path": ".claude/skills/harness-test-run/SKILL.md",
+      "mode": "100644",
+      "git_blob": "011c7d1ac2997bac4b08f7a0c22aac019faeefbe",
+      "bytes": 906,
+      "sha256": "1f34c7b36b7788bb803ca19e1854400f755ad811f600582a6895b0794f49acea"
+    },
+    {
+      "path": ".claude/skills/infra-post-verify/SKILL.md",
+      "mode": "100644",
+      "git_blob": "11e7a60abbcfc401fdcb51a6a7428a0829210c75",
+      "bytes": 1077,
+      "sha256": "f4092e6f2c1db783807c4884cb5379a61ad32ce2fabe3aeaa5a1d87598ba615f"
+    },
+    {
+      "path": ".codex/agents/api-docs-executor.toml",
+      "mode": "100644",
+      "git_blob": "5d0836de1cdf11b72d87bc073543674d35a8317f",
+      "bytes": 2740,
+      "sha256": "bf3a303e8317827d075fd6db5b131a6afc2f96da7ca4533d30e30987b1c212e2"
+    },
+    {
+      "path": ".codex/agents/infrastructure-executor.toml",
+      "mode": "100644",
+      "git_blob": "aa4d30e2793b5feddccde3413c1b1ac18461c495",
+      "bytes": 786,
+      "sha256": "3be15eaf09037cb068e40b80c8296b6bc9e3ce01c59519f3e35c421cf74f89a5"
+    },
+    {
+      "path": ".codex/agents/infrastructure-orchestrator.toml",
+      "mode": "100644",
+      "git_blob": "3f4fbed1f9d4a614a68108f2dc9b6f09b1473407",
+      "bytes": 910,
+      "sha256": "fe0d7c4d214a41b0bb9c46c20ec29562f44078119ed55d43ac423c5f80f88b25"
+    },
+    {
+      "path": ".codex/agents/terraform-implementer.toml",
+      "mode": "100644",
+      "git_blob": "373cc6d5792052fd3f7c75e460880eaade82ae04",
+      "bytes": 1512,
+      "sha256": "43222aa705873758968aff0f9d926554f1be25a333db99bd18ab472182c082b8"
+    },
+    {
+      "path": ".codex/agents/terraform-plan-verifier.toml",
+      "mode": "100644",
+      "git_blob": "3c5adb35b1c33205fbcc44047599ee7c0866f1fd",
+      "bytes": 1303,
+      "sha256": "9b55df07d5bfd27ccd155ba2f6f9d11679710bce083077ac87ad69aa97ac4adf"
+    },
+    {
+      "path": "AGENTS.md",
+      "mode": "100644",
+      "git_blob": "faa51f1d0fbf61ce904755be0e4b7ac8eb6daaa9",
+      "bytes": 25233,
+      "sha256": "cb2a80093dfd08c755e66b89a106400f95a3246a377903afa4f432f9a84b4847"
+    },
+    {
+      "path": "CLAUDE.md",
+      "mode": "100644",
+      "git_blob": "daa8b376e37f99f4f0c364e5e3e0d0f23daa2872",
+      "bytes": 9261,
+      "sha256": "6245655599fa234d267f796d06091fddac6112f4d7e6a0c88e50831f1193fac5"
+    },
+    {
+      "path": "agents/README.md",
+      "mode": "100644",
+      "git_blob": "fc9a72db4869f3ae8125ec34e510821fc0a86412",
+      "bytes": 1377,
+      "sha256": "032de1f91f7791ae12fbfe0427c700af0391d092940a43acced40013cad79ed2"
+    },
+    {
+      "path": "agents/api-docs-executor.md",
+      "mode": "100644",
+      "git_blob": "2fa8f6eb27fe18f17bf7a2fca9b301078887b9ed",
+      "bytes": 6132,
+      "sha256": "49d55142839b940783160a828da567167a80da6843299b97a1bb5294837b820d"
+    },
+    {
+      "path": "agents/infrastructure-executor.md",
+      "mode": "100644",
+      "git_blob": "c797e7a0822ccfe822d1cdaa65a1274b22a0ba4a",
+      "bytes": 1179,
+      "sha256": "def54cc33a951a5a608894ce5bd6d120db2d7a5d5ccfa9229b93fbfe520c43e4"
+    },
+    {
+      "path": "agents/infrastructure-orchestrator.md",
+      "mode": "100644",
+      "git_blob": "39f1c0235124433f5527795291b342791a76e9b9",
+      "bytes": 1394,
+      "sha256": "5b1891df178f3f7ec6cc553129fd28c0b07fb899c78f1227878de4ffcba5c97f"
+    },
+    {
+      "path": "agents/model-profiles.example.yml",
+      "mode": "100644",
+      "git_blob": "34db5a4126d1ec693182f068c98630594a7f0d13",
+      "bytes": 954,
+      "sha256": "1058d91446d7172c91994837ac9c99ee880056de5d0c4eaec1fb5470c81f9db0"
+    },
+    {
+      "path": "agents/pm-reviewer.md",
+      "mode": "100644",
+      "git_blob": "7033d2409615dc9cb196cc370d606c92fa85c3b2",
+      "bytes": 1092,
+      "sha256": "566b6f1c11c713ac7f8b0e499554a630b70d391ca0b4052e271b1359092f51aa"
+    },
+    {
+      "path": "agents/test-executor.md",
+      "mode": "100644",
+      "git_blob": "e11ce9c196ba50b7e451734f8649004a8f0672bf",
+      "bytes": 1288,
+      "sha256": "be63a622e2a13da74102110d7b9d6cddcef0bfefeb7b37958a54222a78911815"
+    },
+    {
+      "path": "agents/test-orchestrator.md",
+      "mode": "100644",
+      "git_blob": "3cbb2912d7d1df3d2a3ca326ec3de5d6215a8fb7",
+      "bytes": 1406,
+      "sha256": "2217185da647d635aba65aa8ca18e32e2e667bf01d3f808d6f42e3554cca7db4"
+    },
+    {
+      "path": "docs/harness/ARCHITECTURE.md",
+      "mode": "100644",
+      "git_blob": "abdb18d8c376ea1d0e3a19e8fe12a168d45655ac",
+      "bytes": 3532,
+      "sha256": "58c7d144aae3da4ef8b477e323b79ea8a789824e8c2c84ef3f5af9a1a9920e49"
+    },
+    {
+      "path": "docs/harness/CHEATSHEET.md",
+      "mode": "100644",
+      "git_blob": "744eea80e34e2f250b77d1464ee6641cc5f65dc9",
+      "bytes": 1348,
+      "sha256": "9707d492557115f4890bd4f1f40a5102547559da613974d04baab1251c3aa6c2"
+    },
+    {
+      "path": "docs/harness/DAILY_WORKFLOW.md",
+      "mode": "100644",
+      "git_blob": "b7cf7c2acc00c6ef54ff1c45a753b08d016df7b8",
+      "bytes": 1953,
+      "sha256": "8ee1ab2e8968802f9154f13e967caa82f7d312fddcdbbf10deeca43883fd1b6d"
+    },
+    {
+      "path": "docs/harness/FAILURE_RECOVERY.md",
+      "mode": "100644",
+      "git_blob": "2b86115e5822e7a9c8994ef456cd8c9eee02498a",
+      "bytes": 4052,
+      "sha256": "f7ef732cacd41c2346c17fbee6893cfdd10974d7ee64b1d022c3acb13a2d402a"
+    },
+    {
+      "path": "docs/harness/GITHUB_ENFORCEMENT.md",
+      "mode": "100644",
+      "git_blob": "76b6459a829367860c02decdfbf8580b2abb20b5",
+      "bytes": 3568,
+      "sha256": "823e962780cd66ffa9e6f96779a898242b3a8fdae896cadf4e49f7002b30644e"
+    },
+    {
+      "path": "docs/harness/HUSKY.md",
+      "mode": "100644",
+      "git_blob": "08387cd1f7e2c41d86327011fa120c3ab4fb19d7",
+      "bytes": 5097,
+      "sha256": "6b8a7be30883374d7996a3deaaeb363453a58e1926e9d8f39f11694cc8cf7ba3"
+    },
+    {
+      "path": "docs/harness/JAVA_CONVENTIONS.md",
+      "mode": "100644",
+      "git_blob": "9ff67905811cc1866565a8db6c563e99e3f5608e",
+      "bytes": 5960,
+      "sha256": "7eea28b01bfe393e960f78bb22785d1be233e6f2c41fb31268d0e538b865ec7e"
+    },
+    {
+      "path": "docs/harness/LABELS.md",
+      "mode": "100644",
+      "git_blob": "004643806a4143be82939cf46cebc2a6d380fc52",
+      "bytes": 3437,
+      "sha256": "8a9478d8759d4e34890234617eefb756716d352f7a26b664abfc2d2a5fab9b2a"
+    },
+    {
+      "path": "docs/harness/MACOS_SETUP.md",
+      "mode": "100644",
+      "git_blob": "008e775568ac401c80411767aef91da665b1dfff",
+      "bytes": 3001,
+      "sha256": "78b50737f7fa887d3f1863b10fd7947dd6b95a635a2cc667540c8cc76b98ae5d"
+    },
+    {
+      "path": "docs/harness/OVERVIEW.md",
+      "mode": "100644",
+      "git_blob": "4a3f65f4c154442ef4621b6ac18a8af0615eee4e",
+      "bytes": 3512,
+      "sha256": "93ef0461305372f58d3f355edf0674fde90f81b73de7ba6bc7056567093785a3"
+    },
+    {
+      "path": "docs/harness/SECRET_HANDLING.md",
+      "mode": "100644",
+      "git_blob": "5451db3d2521ac48ae9d40e60b86e6b40d8802a9",
+      "bytes": 1498,
+      "sha256": "0de02cc95f51e04f9be26857bd9a8a0870b80e446fc10b3a0125aa5a6d32d3c8"
+    },
+    {
+      "path": "docs/harness/WORKFLOW_SKILLS.md",
+      "mode": "100644",
+      "git_blob": "d5eb0dbd6adcf2e37a966631820cd0b69c1a23f7",
+      "bytes": 8776,
+      "sha256": "3f031cd9d777505a58f5ce4d361a84ea31c9c2394ebf2023bc2c8bc0bb358162"
+    },
+    {
+      "path": "templates/api-docs-review.md",
+      "mode": "100644",
+      "git_blob": "da02dc3b26e8083bd88d9017405070b989a1fcd4",
+      "bytes": 2390,
+      "sha256": "feac507e348b144589633fb4fa517a3e54c65eece5070d8ee4576b4101bc5a74"
+    },
+    {
+      "path": "templates/decision-record.md",
+      "mode": "100644",
+      "git_blob": "34fb810663cfc9c43aefaad0323f6e214c2b78c6",
+      "bytes": 612,
+      "sha256": "da814667dcacfc24588f91f74e20b4ccc30ce80f462239ef49f91fd22467f630"
+    },
+    {
+      "path": "templates/infrastructure-design-report.md",
+      "mode": "100644",
+      "git_blob": "56976e76dfa218247ce059911b0f96c088767952",
+      "bytes": 2482,
+      "sha256": "9b016df62915acbb25224d53a5cd5b4cea749e6080690dbbf7af8f5753b07e21"
+    },
+    {
+      "path": "templates/performance-experiment-report.md",
+      "mode": "100644",
+      "git_blob": "86699ad5f2bfa1a5b4d524ec8638fd00c64d9eac",
+      "bytes": 1653,
+      "sha256": "638dcdb93a441f82c145d26d0d73e1856d6edc602282beffff36bcc17e603605"
+    },
+    {
+      "path": "templates/task-contract.md",
+      "mode": "100644",
+      "git_blob": "0e7d2fae578541b9830ed4620aa4a99ab1aa7a07",
+      "bytes": 902,
+      "sha256": "6f091e5aaa2cf108d6bb571037bb7e066d80c02c188f6732ff7155e1d4151b7e"
+    },
+    {
+      "path": "templates/test-plan.md",
+      "mode": "100644",
+      "git_blob": "11ec7200c1f5fb0fc788ef788920e07e2adb695b",
+      "bytes": 1701,
+      "sha256": "94b62366f0c85246fcba48d7a9b46684636a91be5f999d7cbdb04aa45d350ab5"
+    },
+    {
+      "path": "templates/test-report.md",
+      "mode": "100644",
+      "git_blob": "d36791b1bcf08068d8842f7bcc4f606e769d0b82",
+      "bytes": 1664,
+      "sha256": "c1d6ff2f04627f5d84fbb01403d49dae3c130a5f5f559b8d15638c9daf4cf209"
+    }
+  ]
+}

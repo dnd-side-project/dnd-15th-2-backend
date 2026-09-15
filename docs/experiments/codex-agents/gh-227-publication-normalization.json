@@ -1,0 +1,23 @@
+{
+  "purpose": "Publication-only CRLF to LF conversion; immutable source retained; all CSV cells identical",
+  "files": [
+    {
+      "path": "docs/experiments/codex-agents/gh-227-policy-map.csv",
+      "source_sha256": "ae8900563ad89f39de5cd946cc29efc345e7e3402cf746ea951e73997109fc2d",
+      "published_sha256": "931596f71109d8fc25ace756c10e80574d07cd84ae7d3a06cd3588a49eaa3f29",
+      "parsed_cells_identical": true
+    },
+    {
+      "path": "docs/experiments/codex-agents/gh-227-v2-policy-map.csv",
+      "source_sha256": "cb9cfaa3912869ff5d3da646fe8f29dae02d7e8dbec24eb98f93c0cc70bb12f3",
+      "published_sha256": "27ccf7747ba5a819104d01c85d8b9865e029f3e45ca8d0422a3dfe49a003616f",
+      "parsed_cells_identical": true
+    },
+    {
+      "path": "docs/experiments/codex-agents/gh-227-v2-results.csv",
+      "source_sha256": "906fb0efccf6ceb4277e1e7584d319ff5bc3484452eed0e23228fb0946fd501d",
+      "published_sha256": "e28bfde8589c894d491bbd87773a3c5ebf90995614db3fe971d720ddf98fa0c7",
+      "parsed_cells_identical": true
+    }
+  ]
+}
