@@ -8,6 +8,8 @@ description: "\uc0ac\ub78c\uc5d0\uac8c \uc2b9\uc778\ub41c Infrastructure Design 
 `AGENTS.md`, `TASK.md`,
 `agents/infrastructure-executor.md`와 승인된 Infrastructure Design Report를 읽는다.
 
+작업 전에 [주석 정책](references/comment-policy.md)을 읽고 적용한다.
+
 ## 실행 전 게이트
 
 다음을 모두 확인한다.

@@ -5,8 +5,9 @@ description: "Implement and run approved JUnit 5 scenarios and create a safe rep
 
 # Test Execution
 
-1. Read `AGENTS.md`, `TASK.md`, `agents/test-executor.md`, and the approved test
-   plan.
+1. Read `AGENTS.md`, `TASK.md`, `agents/test-executor.md`, the approved test
+   plan, the [test policy](../harness-test-plan/references/test-policy.md), and
+   the [reporting contract](references/reporting.md).
 2. Confirm the current branch includes the GitHub Issue number.
 3. Modify only assigned test/report files. Ask before changing production code.
 4. Use JUnit 5, `@DisplayName` on every test, and a class header containing the

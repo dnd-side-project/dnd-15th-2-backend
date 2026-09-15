@@ -26,6 +26,8 @@ h task-init --title "방향 글 API" --replace
 
 | 작업 | 먼저 실행 | 승인 후 실행 |
 | --- | --- | --- |
+| 일반 기능·버그·리팩터링 | root 오케스트레이터/작업 계약 | 승인 범위를 소유한 실행자 |
+| 요구사항·아키텍처 | root 오케스트레이터 | 구현이 필요할 때 별도 실행자 |
 | 테스트 | Test Orchestrator | Test Executor |
 | AWS/IaC | Infrastructure Orchestrator | Infrastructure Executor |
 | 범위/완료 검토 | PM/Reviewer | - |
@@ -65,3 +67,5 @@ PR 제목은 `<type>: <summary>`, 본문은 `Closes #<issue>`를 사용한다. �
 
 병합 후 Project의 Status를 갱신한다. 이월 작업은 새 Issue로 분리하며 다른
 사람의 미커밋 변경을 정리하거나 되돌리지 않는다.
+
+작업 목적에 필요한 문서는 [문서 선택표](TASK_DOCUMENT_ROUTING.md)에서 선택한다. 모델은 이 표에서 강제하지 않는다.
