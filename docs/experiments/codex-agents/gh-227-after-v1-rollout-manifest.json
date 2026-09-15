@@ -1,0 +1,81 @@
+{
+  "version": "After-v1-rollout",
+  "issue_number": 227,
+  "design_id": "HARNESS-DESIGN-GH-227-003",
+  "basis": "Measured frozen C1 plus unmeasured requirements and exploration guidance",
+  "runtime_files": [
+    {
+      "path": ".agents/skills/harness-infra-build/SKILL.md",
+      "sha256": "06819b2e1f333e5170a05262bb420d175a81fe50819431c5e7fa816b82c5dcb9"
+    },
+    {
+      "path": ".agents/skills/harness-infra-build/references/comment-policy.md",
+      "sha256": "61bc647884d63dc5e8d290c57b2689db862b1e38f97c73dd1782eb4c2d017329"
+    },
+    {
+      "path": ".agents/skills/harness-infra-design/SKILL.md",
+      "sha256": "54d7179960cda7221701c1fac13bd5f19089c04469bcf99785d3c15b996c74a0"
+    },
+    {
+      "path": ".agents/skills/harness-infra-design/references/design-policy.md",
+      "sha256": "d9e88c780a24242ece952164abddc605a065327701a7dcaee273df5c96890de5"
+    },
+    {
+      "path": ".agents/skills/harness-test-plan/SKILL.md",
+      "sha256": "7f3a4a60c5c801900d30bf8c0d5e49737250947ba430e5c1b64f181441e3a563"
+    },
+    {
+      "path": ".agents/skills/harness-test-plan/references/test-policy.md",
+      "sha256": "75d96cd6a625ace7b32da3044aa650071f66e50211e50de01491ad245019a168"
+    },
+    {
+      "path": ".agents/skills/harness-test-run/SKILL.md",
+      "sha256": "be908b5a84e814f028f837ebad97afe7cfedada42cd0839a15911b47204739cd"
+    },
+    {
+      "path": ".agents/skills/harness-test-run/references/reporting.md",
+      "sha256": "626344df02bc2554bae82e066e19878dd84c268b38b5def7f90c46c11673cd82"
+    },
+    {
+      "path": "AGENTS.md",
+      "sha256": "c6df49f0bf0f716ef26e5107e8cd71e406f97eaf16b140d54d917fc0c6b313f3"
+    },
+    {
+      "path": "docs/harness/ARCHITECTURE.md",
+      "sha256": "9f5351802278065edc0ee63648f01a7929690e75d6666e34c239cca3cbecc4c3"
+    },
+    {
+      "path": "docs/harness/DAILY_WORKFLOW.md",
+      "sha256": "7eb1e1391645010dd4813b11b9b5c16ca79f1d5c66db4387223b1528f9c88c9b"
+    },
+    {
+      "path": "docs/harness/TASK_DOCUMENT_ROUTING.md",
+      "sha256": "895928a6af852f8477be7434a46529afb478341dd7aa22f3d6ee4ee43d5dad7c"
+    },
+    {
+      "path": "docs/harness/WORKFLOW_SKILLS.md",
+      "sha256": "e5d01f075f5be35a04e4767195bebdc2a142a15d491edf8b461e4b2ecd472889"
+    },
+    {
+      "path": "infra/AGENTS.md",
+      "sha256": "a5ab758f0906c435251eb974ea942371b92f8f57c626e54dde6524df42e4cf25"
+    },
+    {
+      "path": "src/integrationTest/AGENTS.md",
+      "sha256": "f71399bfe10f8585eb352677fb4f3d4e654de66a0e52cb7bcffe2375d1175e25"
+    },
+    {
+      "path": "src/main/java/AGENTS.md",
+      "sha256": "300fe21fa649bbfea36db7b4d72708d538914e81f90d0174541fc4c29c24b38e"
+    },
+    {
+      "path": "src/test/AGENTS.md",
+      "sha256": "3c94a215e384c967b64f90b20d7894987292575ce771ab104e72bb2ebe1e1545"
+    }
+  ],
+  "frozen_c1_differences": {
+    "docs/harness/TASK_DOCUMENT_ROUTING.md": "requirements evidence and exploration guidance",
+    ".agents/skills/harness-infra-build/references/comment-policy.md": "remove one trailing newline only",
+    ".agents/skills/harness-infra-design/references/design-policy.md": "remove one trailing newline only"
+  }
+}
