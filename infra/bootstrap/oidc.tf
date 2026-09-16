@@ -951,3 +951,115 @@ resource "aws_iam_role_policy" "infra_apply" {
   role   = aws_iam_role.infra_apply.id
   policy = data.aws_iam_policy_document.infra_apply_permissions.json
 }
+
+# --- test-server-deploy role -------------------------------------------------
+# GitHub Actions가 #231 배포 workflow에서 ECR push와 EC2 SSM SendCommand를
+# 수행할 때 assume한다(D-4, #240). infra-apply는 Terraform State·계정
+# 전체 관리 권한을 가진 고권한 Role이라 애플리케이션 배포에 재사용하면
+# 권한이 부당하게 넓어지고, infra-deployer는 사람의 MFA AssumeRole
+# 전용이라 GitHub Actions OIDC로 assume할 수 없다(D-4 §4).
+
+data "aws_iam_policy_document" "test_server_deploy_trust" {
+  statement {
+    effect  = "Allow"
+    actions = ["sts:AssumeRoleWithWebIdentity"]
+
+    principals {
+      type        = "Federated"
+      identifiers = [aws_iam_openid_connect_provider.github.arn]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "token.actions.githubusercontent.com:aud"
+      values   = ["sts.amazonaws.com"]
+    }
+
+    # 이 Role은 쓰기 권한(ECR push, SSM 명령 실행)을 가지므로 infra-plan과
+    # 달리 저장소 전체를 허용하지 않는다. main 브랜치 push와 그 브랜치
+    # 기준 workflow_dispatch만 assume할 수 있다(D-4 §4/§15, 사람 확정
+    # 2026-09-17).
+    condition {
+      test     = "StringEquals"
+      variable = "token.actions.githubusercontent.com:sub"
+      values   = ["repo:${var.github_repository}:ref:refs/heads/main"]
+    }
+  }
+}
+
+resource "aws_iam_role" "test_server_deploy" {
+  name                 = "${var.project_prefix}-test-server-deploy"
+  assume_role_policy   = data.aws_iam_policy_document.test_server_deploy_trust.json
+  max_session_duration = 3600
+
+  tags = var.tags
+}
+
+data "aws_iam_policy_document" "test_server_deploy_permissions" {
+  # ECR 인증 토큰 발급은 리소스 수준으로 좁힐 수 없는 AWS 제약이다
+  # (policy_sentry 확인, D-4 §5). 실제 push 권한은 아래 별도 statement가
+  # 리포지토리 하나로 한정한다.
+  statement {
+    sid       = "EcrAuth"
+    effect    = "Allow"
+    actions   = ["ecr:GetAuthorizationToken"]
+    resources = ["*"]
+  }
+
+  statement {
+    sid    = "EcrPush"
+    effect = "Allow"
+    actions = [
+      "ecr:BatchCheckLayerAvailability",
+      "ecr:InitiateLayerUpload",
+      "ecr:UploadLayerPart",
+      "ecr:CompleteLayerUpload",
+      "ecr:PutImage",
+      "ecr:BatchGetImage",
+      "ecr:DescribeRepositories",
+    ]
+    resources = ["arn:aws:ecr:*:*:repository/${var.project_prefix}-*"]
+  }
+
+  # SendCommand는 대상 인스턴스와 실행할 문서 양쪽에 대한 리소스 수준
+  # 권한이 모두 필요하다(policy_sentry 확인, D-4 §5). 인스턴스는 이
+  # 프로젝트 태그로, 문서는 AWS 관리형 AWS-RunShellScript 하나로
+  # 한정한다.
+  statement {
+    sid       = "SendCommandToTestServerInstance"
+    effect    = "Allow"
+    actions   = ["ssm:SendCommand"]
+    resources = ["arn:aws:ec2:*:*:instance/*"]
+
+    condition {
+      test     = "StringLike"
+      variable = "aws:ResourceTag/Project"
+      values   = ["qello"]
+    }
+  }
+
+  statement {
+    sid       = "SendCommandRunShellScriptDocument"
+    effect    = "Allow"
+    actions   = ["ssm:SendCommand"]
+    resources = ["arn:aws:ssm:*::document/AWS-RunShellScript"]
+  }
+
+  # GetCommandInvocation/ListCommandInvocations는 리소스 수준 권한을
+  # 지원하지 않는 AWS 제약이다(policy_sentry 확인, D-4 §5 SEC-2).
+  statement {
+    sid    = "ReadCommandResults"
+    effect = "Allow"
+    actions = [
+      "ssm:GetCommandInvocation",
+      "ssm:ListCommandInvocations",
+    ]
+    resources = ["*"]
+  }
+}
+
+resource "aws_iam_role_policy" "test_server_deploy" {
+  name   = "${var.project_prefix}-test-server-deploy-permissions"
+  role   = aws_iam_role.test_server_deploy.id
+  policy = data.aws_iam_policy_document.test_server_deploy_permissions.json
+}
