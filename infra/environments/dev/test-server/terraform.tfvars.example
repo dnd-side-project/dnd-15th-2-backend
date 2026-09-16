@@ -1,0 +1,11 @@
+# 실제 값을 이 파일에 채우지 않는다. 이 파일을 복사해 `terraform.tfvars`로
+# 만들고(.gitignore에 의해 커밋되지 않는다), db_password와 auth_token_secret은
+# terraform.tfvars에도 적지 말고 `-var` 또는 `TF_VAR_*` 환경 변수로만
+# 전달한다(D-3 §5 S-5, 결정 항목 H-9).
+
+media_bucket_kms_key_arn = "<infra/environments/dev/storage의 post_image_kms_key_arn output 값>"
+
+# 아래 두 값은 이 파일이 아니라 apply 시점에 별도로 제공한다. 예시:
+#   TF_VAR_db_password="<값>" TF_VAR_auth_token_secret="<값>" terraform apply
+# db_password        = "(여기에 값을 넣지 않는다)"
+# auth_token_secret  = "(여기에 값을 넣지 않는다)"
