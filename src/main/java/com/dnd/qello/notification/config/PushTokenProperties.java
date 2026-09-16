@@ -11,14 +11,13 @@ import com.dnd.qello.notification.push.security.PushTokenKeyRing;
 
 /** D-2 secret-backed push token AES/HMAC key ring 설정. */
 @ConfigurationProperties(prefix = "qello.notification.push.token-protection")
-@Profile("!test & !local & !integration")
+@Profile("!test & !local & !integration & !dev")
 public record PushTokenProperties(
-	String currentKeyId,
-	String currentEncryptionKeyBase64,
-	String previousKeyId,
-	String previousEncryptionKeyBase64,
-	String fingerprintKeyBase64
-) {
+		String currentKeyId,
+		String currentEncryptionKeyBase64,
+		String previousKeyId,
+		String previousEncryptionKeyBase64,
+		String fingerprintKeyBase64) {
 
 	private static final int KEY_LENGTH_BYTES = 32;
 	private static final String INVALID_CONFIGURATION = "push token key configuration is invalid";
