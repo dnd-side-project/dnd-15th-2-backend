@@ -18,11 +18,15 @@ task_id: GH-237
 design_id: D-3
 ```
 
-**`BLOCKED`인 이유**: TASK.md 완료 조건이 요구하는 `terraform plan`(실제
-Backend)이 아직 없다. `PASS`가 아니라 `BLOCKED`로 표기한다 — 정적
-검증과 코드 리뷰 대응은 끝났지만, 실제 계정 대상 plan/apply 전까지는
-전체 완료로 볼 수 없다(§3 참고). §4의 IAM 조합처럼 정적 검사가 잡지
-못하는 apply 시점 오류가 남아 있을 수 있다.
+**`BLOCKED`인 이유**: AGENTS.md 10절은 "승인된 환경과 자격 증명이 준비된
+경우 실제 Backend를 사용하는 plan을 별도로 실행한다"고 요구하고, 11절은
+필요한 환경이나 권한이 없으면 `BLOCKED`로 반환하도록 한다. 이 세션에는
+`infra-plan` OIDC Role을 assume할 수단이 없어 실제 Backend 대상
+`terraform plan`을 실행하지 못했다(§3 참고). `PASS`가 아니라 `BLOCKED`로
+표기한다 — 정적 검증과 코드 리뷰 대응은 끝났지만, §4의 IAM 조합처럼
+정적 검사가 잡지 못하는 apply 시점 오류가 남아 있을 수 있다. TASK.md의
+완료 조건 자체는 실제 Backend plan 실행을 명시적으로 요구하지 않는다 —
+이 `BLOCKED`는 AGENTS.md의 검증 절차 요구에 근거한다.
 
 TASK.md가 요구하는 4개 필수 검증의 실행 결과:
 
