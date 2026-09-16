@@ -1,0 +1,143 @@
+#!/bin/bash
+# Amazon Linux 2023 전용. Docker와 compose plugin을 설치하고, 데이터
+# EBS 볼륨을 마운트한 뒤, ECR에서 이미지를 받아 백엔드 컨테이너와 PostGIS
+# 컨테이너를 기동한다(Issue #229/#233 범위).
+#
+# 재실행에 안전하게 만든다: 인스턴스 재기동·user_data 재실행 시에도 같은
+# 결과가 나오도록 각 단계를 멱등하게 작성한다(AGENTS.md 6절).
+set -euo pipefail
+
+exec > >(tee -a /var/log/qello-user-data.log) 2>&1
+echo "[qello] user_data 시작: $(date -u +%FT%TZ)"
+
+dnf -y update
+dnf -y install docker
+
+systemctl enable --now docker
+
+mkdir -p /usr/local/lib/docker/cli-plugins
+if [ ! -x /usr/local/lib/docker/cli-plugins/docker-compose ]; then
+  curl -fsSL \
+    "https://github.com/docker/compose/releases/download/${compose_version}/docker-compose-linux-x86_64" \
+    -o /usr/local/lib/docker/cli-plugins/docker-compose
+  chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+fi
+
+# --- 데이터 볼륨 마운트 -------------------------------------------------------
+# AWS 제약: Nitro 인스턴스는 EBS를 NVMe로 노출하지만 Amazon Linux 2023의
+# udev 규칙이 device_name(/dev/xvdf)으로 되돌려주는 심링크를 만든다
+# (모듈 main.tf의 aws_volume_attachment 주석 참고).
+DATA_DEVICE="/dev/xvdf"
+DATA_MOUNT="/data"
+
+# udev 심링크가 생성될 때까지 최대 30초 대기한다.
+for _ in $(seq 1 30); do
+  [ -e "$DATA_DEVICE" ] && break
+  sleep 1
+done
+
+if ! blkid "$DATA_DEVICE" >/dev/null 2>&1; then
+  mkfs -t xfs "$DATA_DEVICE"
+fi
+
+mkdir -p "$DATA_MOUNT"
+DATA_UUID=$(blkid -s UUID -o value "$DATA_DEVICE")
+if ! grep -q "$DATA_UUID" /etc/fstab; then
+  echo "UUID=$DATA_UUID $DATA_MOUNT xfs defaults,nofail 0 2" >> /etc/fstab
+fi
+mount -a
+
+mkdir -p "$DATA_MOUNT/postgres" "$DATA_MOUNT/app"
+
+# --- SSM 파라미터에서 비밀값 조회 ---------------------------------------------
+# 값 자체는 Terraform이 생성하지 않는다(D-3 §5 S-5). 인스턴스 Role의
+# ssm:GetParameter 권한 범위는 아래 두 파라미터 ARN으로만 한정되어 있다.
+REGION="${aws_region}"
+DB_PASSWORD=$(aws ssm get-parameter \
+  --region "$REGION" \
+  --name "${db_password_parameter_name}" \
+  --with-decryption \
+  --query "Parameter.Value" --output text)
+AUTH_TOKEN_SECRET=$(aws ssm get-parameter \
+  --region "$REGION" \
+  --name "${auth_token_secret_parameter_name}" \
+  --with-decryption \
+  --query "Parameter.Value" --output text)
+
+# --- ECR 로그인과 이미지 pull -------------------------------------------------
+aws ecr get-login-password --region "$REGION" |
+  docker login --username AWS --password-stdin "${ecr_registry}"
+
+# --- 애플리케이션 정의 --------------------------------------------------------
+# db 서비스는 로컬 개발용 compose.yaml(리포지토리 루트)과 동일한 이미지를
+# 사용해 dev/test 동등성을 유지한다(D-3 §4 CPU 아키텍처 비교).
+mkdir -p /opt/qello
+cat > /opt/qello/.env <<ENVEOF
+QELLO_DB_NAME=qello
+QELLO_DB_USERNAME=qello
+QELLO_DB_PASSWORD=$DB_PASSWORD
+QELLO_AUTH_ACCESS_TOKEN_SECRET=$AUTH_TOKEN_SECRET
+QELLO_MEDIA_BUCKET=${media_bucket_name}
+SPRING_PROFILES_ACTIVE=${spring_profiles_active}
+APP_IMAGE=${ecr_registry}/${ecr_repository_name}:${app_image_tag}
+ENVEOF
+chmod 600 /opt/qello/.env
+
+cat > /opt/qello/compose.yaml <<'COMPOSEEOF'
+name: qello
+
+services:
+  app:
+    image: $${APP_IMAGE}
+    init: true
+    restart: unless-stopped
+    ports:
+      - "${app_port}:8080"
+    environment:
+      SPRING_PROFILES_ACTIVE: $${SPRING_PROFILES_ACTIVE}
+      QELLO_DB_HOST: db
+      QELLO_DB_PORT: 5432
+      QELLO_DB_NAME: $${QELLO_DB_NAME}
+      QELLO_DB_USERNAME: $${QELLO_DB_USERNAME}
+      QELLO_DB_PASSWORD: $${QELLO_DB_PASSWORD}
+      QELLO_MEDIA_BUCKET: $${QELLO_MEDIA_BUCKET}
+      QELLO_AUTH_ACCESS_TOKEN_SECRET: $${QELLO_AUTH_ACCESS_TOKEN_SECRET}
+    depends_on:
+      db:
+        condition: service_healthy
+    stop_grace_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  db:
+    image: postgis/postgis:16-3.5-alpine@sha256:0d14e6c83a1bde7e453c2a5fb41785279992cb5793073a686f4f9e8ec2c5b077
+    platform: linux/amd64
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: $${QELLO_DB_NAME}
+      POSTGRES_USER: $${QELLO_DB_USERNAME}
+      POSTGRES_PASSWORD: $${QELLO_DB_PASSWORD}
+    volumes:
+      - /data/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    stop_grace_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+COMPOSEEOF
+
+cd /opt/qello
+docker compose --env-file .env pull
+docker compose --env-file .env up -d
+
+echo "[qello] user_data 완료: $(date -u +%FT%TZ)"
