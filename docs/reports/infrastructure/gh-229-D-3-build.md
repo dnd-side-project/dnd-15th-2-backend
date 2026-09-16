@@ -9,9 +9,46 @@
 이 문서는 `/harness-infra-build` 산출물의 검증 증거다. 실제 값(계정 ID, ARN,
 버킷 이름, State, plan 원문)은 기록하지 않는다.
 
+## 0. 최종 상태 (AGENTS.md 11절)
+
+```text
+status: BLOCKED
+issue_number: 233 (원본 구현), 237 (이 리뷰 수정)
+task_id: GH-237
+design_id: D-3
+```
+
+**`BLOCKED`인 이유**: AGENTS.md 10절은 "승인된 환경과 자격 증명이 준비된
+경우 실제 Backend를 사용하는 plan을 별도로 실행한다"고 요구하고, 11절은
+필요한 환경이나 권한이 없으면 `BLOCKED`로 반환하도록 한다. 이 세션에는
+`infra-plan` OIDC Role을 assume할 수단이 없어 실제 Backend 대상
+`terraform plan`을 실행하지 못했다(§3 참고). `PASS`가 아니라 `BLOCKED`로
+표기한다 — 정적 검증과 코드 리뷰 대응은 끝났지만, §4의 IAM 조합처럼
+정적 검사가 잡지 못하는 apply 시점 오류가 남아 있을 수 있다. TASK.md의
+완료 조건 자체는 실제 Backend plan 실행을 명시적으로 요구하지 않는다 —
+이 `BLOCKED`는 AGENTS.md의 검증 절차 요구에 근거한다.
+
+TASK.md가 요구하는 4개 필수 검증의 실행 결과:
+
+| 명령 | 결과 |
+| --- | --- |
+| `./harness check` | PASS |
+| `./harness pr-ready --project-tests` | PASS (`BUILD SUCCESSFUL`) |
+| `npm run hooks:validate` | PASS (`Husky validation passed.`) |
+| `git diff --check` | PASS (공백 오류 없음) |
+
+executed_checks: fmt, validate(4 root), tflint(4 root), checkov(전체),
+harness check, harness pr-ready, npm run hooks:validate, git diff --check
+passed_checks: 위 전부
+failed_checks: 없음
+blocked_checks: `terraform plan`(실제 Backend) — §3 참고
+
 ## 1. 구현 범위
 
-설계 §13 Terraform ownership에 선언된 경로만 수정했다. 추가 파일은 없다.
+설계 §13 Terraform ownership에 선언된 경로를 전부 수정했다(두 보고서 파일
+포함, §13에 이미 소유 파일로 명시되어 있다). 이 PR은 추가로 작업 계약
+문서 `TASK.md`도 변경한다 — §13의 Terraform 소유 파일 목록에는 없지만
+이슈 #233의 작업 계약을 기록하는 일반적인 PR 구성 요소다.
 
 | 경로 | 상태 |
 | --- | --- |

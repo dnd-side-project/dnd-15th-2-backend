@@ -14,7 +14,7 @@ Infrastructure Design Report `docs/reports/infrastructure/gh-229-D-3.md`
 | 데이터 EBS 볼륨(gp3, 10 GiB) | PostGIS 데이터 전용. 인스턴스와 분리, `prevent_destroy` |
 | ECR 리포지토리 | 백엔드 이미지. 최근 `ecr_max_image_count`개만 보존 |
 | SSM SecureString 파라미터 2개 | DB 비밀번호, `QELLO_AUTH_ACCESS_TOKEN_SECRET`. `value_wo`로 State에 값이 남지 않는다 |
-| EventBridge Scheduler | 평일 저녁 EC2 자동 정지(H-1). 자동 시작은 없다 |
+| EventBridge Scheduler | 매일 새벽 3시 EC2 자동 정지(H-1). 자동 시작은 없다 |
 
 ## 예산
 

@@ -10,6 +10,32 @@ set -euo pipefail
 exec > >(tee -a /var/log/qello-user-data.log) 2>&1
 echo "[qello] user_data 시작: $(date -u +%FT%TZ)"
 
+# --- 아웃바운드 연결 대기 ------------------------------------------------------
+# Elastic IP는 인스턴스 생성과 별개의 Terraform 리소스(aws_eip_association)로
+# 연결된다. 인스턴스가 부팅해 user_data가 실행되는 시점과 실제 EIP 연결
+# 완료 시점 사이에 순서가 보장되지 않아, 이 시점에는 아직 아웃바운드
+# 인터넷 경로가 없을 수 있다(PR #236 리뷰).
+#
+# 이 확인은 실제 의존 대상이 아니라 진단용 probe다. aws_instance의
+# user_data는 최초 부팅에만 실행되고 cloud-init이 자동으로 재실행하지
+# 않으므로, probe 자체의 일시적 실패(외부 엔드포인트 문제 등)로 전체
+# 부팅을 막지 않는다 — 경고만 남기고 계속 진행한다. 실제로 네트워크가
+# 없다면 뒤따르는 dnf·curl·aws 호출이 각자의 오류로 명확히 실패한다
+# (PR #238 리뷰 반영).
+NETWORK_READY=false
+for _ in $(seq 1 30); do
+  if curl -fsS --max-time 5 -o /dev/null "https://checkip.amazonaws.com"; then
+    NETWORK_READY=true
+    break
+  fi
+  sleep 10
+done
+if [ "$NETWORK_READY" != "true" ]; then
+  echo "[qello] 5분 내 아웃바운드 연결 probe에 응답이 없었다. 계속 진행하되, 이후 단계가 실패하면 EIP 연결 상태를 확인해야 한다." >&2
+else
+  echo "[qello] 아웃바운드 연결 확인: $(date -u +%FT%TZ)"
+fi
+
 dnf -y update
 dnf -y install docker
 
@@ -30,11 +56,21 @@ fi
 DATA_DEVICE="/dev/xvdf"
 DATA_MOUNT="/data"
 
-# udev 심링크가 생성될 때까지 최대 30초 대기한다.
+# aws_volume_attachment도 인스턴스 생성과 별개의 API 호출이라 도착 순서가
+# 보장되지 않는다(위 네트워크 대기와 같은 이유, PR #236 리뷰). udev
+# 심링크가 생성될 때까지 최대 5분 대기한다.
+DEVICE_READY=false
 for _ in $(seq 1 30); do
-  [ -e "$DATA_DEVICE" ] && break
-  sleep 1
+  if [ -e "$DATA_DEVICE" ]; then
+    DEVICE_READY=true
+    break
+  fi
+  sleep 10
 done
+if [ "$DEVICE_READY" != "true" ]; then
+  echo "[qello] 5분 내 $DATA_DEVICE 가 나타나지 않았다. EBS 볼륨 연결 상태를 확인해야 한다." >&2
+  exit 1
+fi
 
 if ! blkid "$DATA_DEVICE" >/dev/null 2>&1; then
   mkfs -t xfs "$DATA_DEVICE"

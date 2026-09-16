@@ -33,6 +33,8 @@ resource "aws_ecr_repository" "app" {
   # 4.5%(D-3 §6)를 넘어선다. 이미지는 이미 서명·스캔되고 리포지토리
   # 정책으로 접근이 인스턴스 Role 하나로 한정되어 있어 기본 AES256
   # 암호화로 충분하다고 판단했다.
+  # 담당 팀: 백엔드팀(tkv00). 재검토: 2027-03-31 또는 프로덕션 전환 시점 중 먼저 오는
+  # 시점. 추적: #229 D-3 §6, #233.
   # checkov:skip=CKV_AWS_136:dev 테스트 서버 예산 제약으로 전용 CMK 대신 기본 AES256 암호화를 쓴다. D-3 §6 참고.
   encryption_configuration {
     encryption_type = "AES256"

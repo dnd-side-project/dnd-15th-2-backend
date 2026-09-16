@@ -66,8 +66,25 @@ data "aws_iam_policy_document" "test_server_shared_permissions" {
       "ec2:DescribeTags",
       "ec2:DescribeAvailabilityZones",
       "ec2:DescribeAccountAttributes",
+      "ec2:DescribeNetworkAcls",
     ]
     resources = ["*"]
+  }
+
+  # aws_instance와 aws_vpc의 refresh가 각각 DescribeInstanceAttribute와
+  # DescribeVpcAttribute를 호출한다(AWS Provider 6.57.1, PR #236 리뷰
+  # 확인). 이 두 action은 리소스 수준으로 좁힐 수 있어 위 목록과 분리한다.
+  statement {
+    sid    = "ReadTestServerAttributeDescriptions"
+    effect = "Allow"
+    actions = [
+      "ec2:DescribeInstanceAttribute",
+      "ec2:DescribeVpcAttribute",
+    ]
+    resources = [
+      "arn:aws:ec2:*:*:instance/*",
+      "arn:aws:ec2:*:*:vpc/*",
+    ]
   }
 
   statement {
@@ -88,6 +105,15 @@ data "aws_iam_policy_document" "test_server_shared_permissions" {
     effect    = "Allow"
     actions   = ["ec2:DeleteVpc", "ec2:ModifyVpcAttribute"]
     resources = [local.test_server_vpc_arn]
+
+    # test_server_vpc_arn은 리전·계정만 한정하고 리소스 ID는 와일드카드다.
+    # 이 계정의 다른 VPC까지 관리하지 못하도록 태그로 이 프로젝트 소유
+    # 리소스로 한정한다(PR #236 리뷰).
+    condition {
+      test     = "StringLike"
+      variable = "aws:ResourceTag/Project"
+      values   = ["qello"]
+    }
   }
 
   statement {
@@ -108,6 +134,12 @@ data "aws_iam_policy_document" "test_server_shared_permissions" {
     effect    = "Allow"
     actions   = ["ec2:DeleteSubnet", "ec2:ModifySubnetAttribute"]
     resources = [local.test_server_subnet_arn]
+
+    condition {
+      test     = "StringLike"
+      variable = "aws:ResourceTag/Project"
+      values   = ["qello"]
+    }
   }
 
   statement {
@@ -132,6 +164,12 @@ data "aws_iam_policy_document" "test_server_shared_permissions" {
       "ec2:DetachInternetGateway",
     ]
     resources = [local.test_server_internet_gateway_arn, local.test_server_vpc_arn]
+
+    condition {
+      test     = "StringLike"
+      variable = "aws:ResourceTag/Project"
+      values   = ["qello"]
+    }
   }
 
   statement {
@@ -157,6 +195,12 @@ data "aws_iam_policy_document" "test_server_shared_permissions" {
       "ec2:ReplaceRoute",
     ]
     resources = [local.test_server_route_table_arn]
+
+    condition {
+      test     = "StringLike"
+      variable = "aws:ResourceTag/Project"
+      values   = ["qello"]
+    }
   }
 
   # 서브넷-라우트 테이블 연결만 다룬다(게이트웨이 라우트 테이블 연결은 이
@@ -170,6 +214,12 @@ data "aws_iam_policy_document" "test_server_shared_permissions" {
       "ec2:ReplaceRouteTableAssociation",
     ]
     resources = [local.test_server_route_table_arn, local.test_server_subnet_arn]
+
+    condition {
+      test     = "StringLike"
+      variable = "aws:ResourceTag/Project"
+      values   = ["qello"]
+    }
   }
 
   statement {
@@ -198,12 +248,55 @@ data "aws_iam_policy_document" "test_server_shared_permissions" {
       "ec2:UpdateSecurityGroupRuleDescriptionsEgress",
     ]
     resources = [local.test_server_security_group_arn]
+
+    condition {
+      test     = "StringLike"
+      variable = "aws:ResourceTag/Project"
+      values   = ["qello"]
+    }
   }
 
   # CreateTags/DeleteTags는 80개 넘는 리소스 유형을 지원하지만, 이 스택이
-  # 실제로 태그를 붙이는 유형만 나열한다.
+  # 실제로 태그를 붙이는 유형만 나열한다. 생성 시점 태깅(Terraform이 리소스
+  # 생성 API 호출에 태그를 함께 보내는 경우)과 기존 리소스 재태깅을
+  # 분리한다 — 전자는 ec2:CreateAction으로 "생성 호출에 한해서만" 허용해
+  # 이미 존재하는 다른 프로젝트 리소스에 태그를 붙이는 데 쓰이지 않게
+  # 막는다(PR #236 리뷰).
   statement {
-    sid    = "TagTestServerResources"
+    sid    = "TagTestServerResourcesOnCreate"
+    effect = "Allow"
+    actions = [
+      "ec2:CreateTags",
+    ]
+    resources = [
+      local.test_server_vpc_arn,
+      local.test_server_subnet_arn,
+      local.test_server_internet_gateway_arn,
+      local.test_server_route_table_arn,
+      local.test_server_security_group_arn,
+      local.test_server_instance_arn,
+      local.test_server_volume_arn,
+      local.test_server_elastic_ip_arn,
+    ]
+
+    condition {
+      test     = "StringLike"
+      variable = "aws:RequestTag/Project"
+      values   = ["qello"]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "ec2:CreateAction"
+      values = [
+        "CreateVpc", "CreateSubnet", "CreateInternetGateway", "CreateRouteTable",
+        "CreateSecurityGroup", "RunInstances", "CreateVolume", "AllocateAddress",
+      ]
+    }
+  }
+
+  statement {
+    sid    = "TagTestServerExistingResources"
     effect = "Allow"
     actions = [
       "ec2:CreateTags",
@@ -219,6 +312,18 @@ data "aws_iam_policy_document" "test_server_shared_permissions" {
       local.test_server_volume_arn,
       local.test_server_elastic_ip_arn,
     ]
+
+    condition {
+      test     = "StringLike"
+      variable = "aws:ResourceTag/Project"
+      values   = ["qello"]
+    }
+
+    condition {
+      test     = "ForAllValues:StringLike"
+      variable = "aws:TagKeys"
+      values   = ["Project", "ManagedBy", "Environment", "Name"]
+    }
   }
 
   # RunInstances가 실제로 건드리는 리소스 유형(image·instance·network-
@@ -261,6 +366,12 @@ data "aws_iam_policy_document" "test_server_shared_permissions" {
       local.test_server_security_group_arn,
       local.test_server_volume_arn,
     ]
+
+    condition {
+      test     = "StringLike"
+      variable = "aws:ResourceTag/Project"
+      values   = ["qello"]
+    }
   }
 
   statement {
@@ -286,6 +397,12 @@ data "aws_iam_policy_document" "test_server_shared_permissions" {
       "ec2:DetachVolume",
     ]
     resources = [local.test_server_volume_arn, local.test_server_instance_arn]
+
+    condition {
+      test     = "StringLike"
+      variable = "aws:ResourceTag/Project"
+      values   = ["qello"]
+    }
   }
 
   statement {
@@ -314,6 +431,12 @@ data "aws_iam_policy_document" "test_server_shared_permissions" {
       local.test_server_instance_arn,
       local.test_server_network_interface_arn,
     ]
+
+    condition {
+      test     = "StringLike"
+      variable = "aws:ResourceTag/Project"
+      values   = ["qello"]
+    }
   }
 
   statement {
@@ -435,6 +558,11 @@ data "aws_iam_policy_document" "test_server_shared_permissions" {
   }
 }
 
+# 이 ARN들은 리소스 "유형"만 한정하고 리전·계정·리소스 ID는 와일드카드다.
+# 이 계정 안의 다른 VPC·서브넷 등도 형식상 이 패턴에 일치한다. 실제로 이
+# 프로젝트 리소스로만 범위를 좁히는 것은 각 statement에 붙인
+# aws:RequestTag/Project(생성 시점)·aws:ResourceTag/Project(기존 리소스)
+# 조건이다(PR #236 리뷰 이후 정정).
 locals {
   test_server_vpc_arn               = "arn:aws:ec2:*:*:vpc/*"
   test_server_subnet_arn            = "arn:aws:ec2:*:*:subnet/*"
@@ -560,8 +688,25 @@ data "aws_iam_policy_document" "infra_plan_permissions" {
       "ec2:DescribeTags",
       "ec2:DescribeAvailabilityZones",
       "ec2:DescribeAccountAttributes",
+      "ec2:DescribeNetworkAcls",
     ]
     resources = ["*"]
+  }
+
+  # aws_instance와 aws_vpc의 refresh가 각각 DescribeInstanceAttribute와
+  # DescribeVpcAttribute를 호출한다(AWS Provider 6.57.1, PR #236 리뷰
+  # 확인). 이 두 action은 리소스 수준으로 좁힐 수 있어 위 목록과 분리한다.
+  statement {
+    sid    = "ReadTestServerAttributeDescriptions"
+    effect = "Allow"
+    actions = [
+      "ec2:DescribeInstanceAttribute",
+      "ec2:DescribeVpcAttribute",
+    ]
+    resources = [
+      "arn:aws:ec2:*:*:instance/*",
+      "arn:aws:ec2:*:*:vpc/*",
+    ]
   }
 
   statement {
