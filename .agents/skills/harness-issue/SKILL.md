@@ -5,7 +5,8 @@ description: "\uc9c8\ubb38\ud615 \ub300\ud654\ub85c GitHub Issue\ub97c \ub9cc\ub
 
 # Issue Intake
 
-새 작업을 GitHub Issue → Project 필드 → 브랜치 → `TASK.md`까지 한 번에 연결한다.
+새 작업을 GitHub Project draft 계획 → 검토·승인 → Repository Issue 전환 →
+Project 필드 → 브랜치 → `TASK.md`까지 연결한다.
 `AGENTS.md` 1절(작업 시작 게이트)과 8절(라벨 정책)의 실행 절차다.
 
 참조 파일:
@@ -23,8 +24,8 @@ git branch --show-current
 ```
 
 - `gh` 인증이 없으면 사용자에게 `! gh auth login` 실행을 요청하고 중단한다.
-- worktree가 더러우면 **브랜치 생성 단계에서만** 막힌다. 이슈 생성까지는 진행할
-  수 있으므로, 미리 알리고 "이슈만 생성 / 커밋·stash 후 브랜치까지" 중 선택하게 한다.
+- worktree가 더러우면 **브랜치 생성 단계에서만** 막힌다. Project draft
+  계획·검토는 계속할 수 있으므로 미리 알린다.
 - 다른 사람의 변경을 임의로 stash·commit·revert 하지 않는다.
 
 ## 1. 이슈 유형 질문
@@ -79,19 +80,25 @@ Work type 필드는 1단계 선택에서 자동 결정하므로 묻지 않는다
 
 ```text
 아래 작업으로 연결됩니다.
-1. GitHub Issue 생성 (라벨: type: feature, area: api)
-2. Project "Qello Backend Roadmap"에 item 추가
-3. 필드 설정 — Sprint: Week 6 · Core creation / Priority: P1 / Status: In Progress / Work type: Feature
-4. 브랜치 생성 — feat/gh-<N>-direction-post   (./harness start)
-5. TASK.md 작업 계약 갱신          (./harness task-init)
+1. Project draft item의 계획·작업 분해 확인
+2. 실제 구현 대상으로의 전환·필드·브랜치·TASK 초안 검토 및 승인
+3. 승인된 Project draft item을 Repository Issue로 전환 (라벨: type: feature, area: api)
+4. 필드 설정 — Sprint: Week 6 · Core creation / Priority: P1 / Status: In Progress / Work type: Feature
+5. 브랜치 생성 — feat/gh-<N>-direction-post   (./harness start)
+6. TASK.md 작업 계약 갱신          (./harness task-init)
 ```
 
-이슈 번호는 생성 후에야 정해지므로 `<N>`으로 표기한다.
+Issue 번호는 전환 후에야 정해지므로 `<N>`으로 표기한다.
 
 ## 5. 초안 제시
 
-생성 전에 반드시 전체 초안을 보여주고 승인을 받는다. 승인 없이 `gh issue create`를
-실행하지 않는다.
+먼저 Project draft 제목·본문·작업 분해를 보여주고 draft 작성 승인을
+받는다. draft item을 만든 뒤, 실제 구현 대상으로 전환할 때 Repository
+Issue 전환, 라벨·Project 필드, 브랜치와 `TASK.md`를 포함한 전체 초안을
+보여주고 사람의 승인을 받는다. 기존 승인이 동일한 구체적 draft 내용과
+전환·필드·브랜치·`TASK.md` 전체를 이미 포함했다면 다시 묻지 않고 그
+승인을 사용한다. Project draft 작성만 승인됐다면 Issue 전환 승인으로
+추정하지 않는다.
 
 ```markdown
 제목: [영역] 한 줄 요약
@@ -126,26 +133,32 @@ DB:
   영어 키워드로 바꾼다.
 - 사용자가 수정을 요청하면 반영한 초안을 다시 보여주고 재승인을 받는다.
 
-## 6. 생성과 연결
+## 6. draft 전환과 연결
 
 승인 후 순서대로 실행한다. 각 단계가 실패하면 즉시 멈추고, 어디까지 반영됐는지
-보고한다.
+보고한다. Repository Issue를 먼저 만들고 Project에 추가하는 절차는 정식
+intake로 사용하지 않는다.
 
-```bash
-# 1) 이슈 생성 (본문은 파일로 넘겨 따옴표 이스케이프 문제를 피한다)
-gh issue create --title "<제목>" --body-file <초안파일> \
-  --label "type: feature" --label "area: api"
+Project에 사용자가 승인한 draft item이 없으면 먼저 승인된 draft 제목·본문으로
+draft item만 생성하고 반환된 item ID를 확인한다. 이 단계는 Repository Issue를
+생성하지 않으며, 전환 승인이 없으면 Project draft 계획·작업 분해까지만
+진행한다. 전환할 때는 승인된 draft item ID를 사용한다.
+전환 API 계약은 다음과 같다.
+
+```graphql
+mutation Convert($item: ID!, $repository: ID!) {
+  convertProjectV2DraftIssueItemToIssue(input: {itemId: $item, repositoryId: $repository}) {
+    item { id content { ... on Issue { number url } } }
+  }
+}
 ```
 
-초안 파일은 scratchpad에 쓰고 저장소에는 남기지 않는다.
+전환 결과의 Issue 번호와 URL을 확인한 뒤, 승인된 `type: *`과 선택된
+`area: *` 라벨을 해당 Issue에 설정한다. 본문 임시 파일은 scratchpad에 쓰고
+저장소에 남기지 않는다.
 
 ```bash
-# 2) Project item 추가 — 출력 JSON의 id가 item ID다
-gh project item-add 141 --owner dnd-side-project --url <이슈 URL> --format json
-```
-
-```bash
-# 3) 필드 설정 (Sprint/Priority/Status/Work type)
+# 전환된 Project item의 필드 설정 (Sprint/Priority/Status/Work type)
 gh project item-edit --id <ITEM_ID> --project-id <PROJECT_ID> \
   --field-id <FIELD_ID> --single-select-option-id <OPTION_ID>
 
@@ -158,7 +171,7 @@ ID는 `references/project-fields.md`에 캐시돼 있다. `item-edit`이 ID 오�
 같은 문서의 조회 명령으로 최신 ID를 다시 읽고 캐시를 갱신한 뒤 재시도한다.
 
 ```bash
-# 4) 브랜치 생성 + 작업 계약
+# 브랜치 생성 + 작업 계약
 ./harness start --issue <N> --type feat --slug <slug>
 ./harness task-init --title "<이슈 제목>" --replace
 ```
@@ -183,7 +196,8 @@ ID는 `references/project-fields.md`에 캐시돼 있다. `item-edit`이 ID 오�
 
 ## 7. 완료 보고
 
-이슈 URL, 라벨, 설정된 Project 필드, 현재 브랜치, `TASK.md` 갱신 여부를 보고한다.
+원래 Project draft item, 전환된 Issue URL, 라벨, 설정된 Project 필드, 현재 브랜치,
+`TASK.md` 갱신 여부를 보고한다.
 건너뛴 단계가 있으면 이유와 함께 명시한다.
 
 이어서 할 일은 제안만 하고 자동 실행하지 않는다: 테스트 계획이 필요하면
@@ -191,7 +205,8 @@ ID는 `references/project-fields.md`에 캐시돼 있다. `item-edit`이 ID 오�
 
 ## 금지
 
-- 승인 없이 이슈를 생성하거나 브랜치를 만들지 않는다.
+- 승인 없이 draft item을 Repository Issue로 전환하거나 브랜치를 만들지 않는다.
+- Repository Issue를 먼저 만든 뒤 `gh project item-add`로 연결하지 않는다.
 - Sprint·Priority·상태를 GitHub **라벨**로 만들지 않는다. Project 필드로만 관리한다.
 - `.env` 값, 토큰, URL, 계정·IAM 식별자를 이슈 본문에 쓰지 않는다.
 - 이슈 없이 구현을 시작하지 않는다.

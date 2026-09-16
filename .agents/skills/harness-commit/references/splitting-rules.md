@@ -75,7 +75,7 @@ feat(direction): report PostGIS persistence test results (#39)
 | `ci` | GitHub Actions 워크플로 |
 | `build` | Gradle, Docker, 빌드 스크립트 |
 | `perf` | 성능·비용 개선 |
-| `infra` | Terraform·CDK 등 IaC |
+| `infra` | Terraform IaC |
 
 ## 커밋하면 안 되는 것
 

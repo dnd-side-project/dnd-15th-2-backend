@@ -1,0 +1,2329 @@
+{
+  "candidates": [
+    {
+      "branch": "chore/gh-223-instruction-b0",
+      "candidate_commit": "256a0dbcb7798904fa9ed4e44c2556016b5f56bd",
+      "directory_name": "qello-gh223-b0",
+      "fixture_file_manifest_sha256": "77c2affedb8d19faaf94ed7d48010efa691c57c788953363a5aa1f13b96a1e7d",
+      "git_tree": "38641523c7936e032ee1a1b1b38645353f005285",
+      "id": "B0",
+      "instruction_sources": {
+        "sha256": "9f38645f02f49f948487934e7d44e84e5e6c8b9ba758d6a6957251e6286c8163",
+        "source_count": 45,
+        "sources": [
+          {
+            "base_offset": 0,
+            "bytes": 9030,
+            "content_sha256": "2f38bd8751b27370a8babe61ac4a90bee108628c6eb9a3e340fe34c17f30884b",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-api-docs/SKILL.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 259,
+            "content_sha256": "97eaf2b79f3c00d4ba151c1af979a5f1b8482f261c920a829741ca69bda45cbb",
+            "delivery_phases": [
+              "start"
+            ],
+            "offset_basis": "decoded_yaml_scalar",
+            "path": ".agents/skills/harness-api-docs/SKILL.md",
+            "role": "skill_catalog_metadata"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 6299,
+            "content_sha256": "00957b096e8f028a7cf9e0ea556cd2596dcb4896defe41e46c36669746b66833",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-commit/SKILL.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 291,
+            "content_sha256": "add635c3553cce5e73451dee0ed9bdc39904f795de37d4a35c1a1365505e1225",
+            "delivery_phases": [
+              "start"
+            ],
+            "offset_basis": "decoded_yaml_scalar",
+            "path": ".agents/skills/harness-commit/SKILL.md",
+            "role": "skill_catalog_metadata"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 3963,
+            "content_sha256": "55f06a5b91f0f2f7a7058b8c8c7ffd45b12cdf2fbbb119e8c7d61a3087359dd5",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-commit/references/splitting-rules.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 2318,
+            "content_sha256": "0e00b86a87365cf8be1631fbe370eb1d7547b04c3328da4faf5fb24663b37bea",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-infra-build/SKILL.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 129,
+            "content_sha256": "84a7f4de0ca9e90f2060056729e20a3544fc16a8b16c3e6c8ac856f95a45d6e4",
+            "delivery_phases": [
+              "start"
+            ],
+            "offset_basis": "decoded_yaml_scalar",
+            "path": ".agents/skills/harness-infra-build/SKILL.md",
+            "role": "skill_catalog_metadata"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 1216,
+            "content_sha256": "15ac5deede8eb6983218e9bd73c46ebb286cfbff747e0ba4d2420cf1557ab929",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-infra-build/references/change-risk.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 1571,
+            "content_sha256": "fc02ed3dedee32980589b73ec10f9ee1c032cce957f3affcaad931fd0ebfecc3",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-infra-build/references/module-conventions.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 1318,
+            "content_sha256": "8c1432771bc4698eba2287d1f89b4e641f70a02b844eacca6d6ea4408bb79f47",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-infra-build/references/terraform-build.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 1818,
+            "content_sha256": "c7fe2e7cd4367dc0c5041979c7adfee52d890bb461dc740ece917dbdd19f285c",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-infra-build/references/terraform-verify.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 2890,
+            "content_sha256": "4d47480b6a92350b68235992a43eea48c8586d7f0a4275395351bcaf7c9b0805",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-infra-design/SKILL.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 161,
+            "content_sha256": "60bfa18211454ee4ba67052b1d9526d6dda0386f72fd45820019e8e226fdb752",
+            "delivery_phases": [
+              "start"
+            ],
+            "offset_basis": "decoded_yaml_scalar",
+            "path": ".agents/skills/harness-infra-design/SKILL.md",
+            "role": "skill_catalog_metadata"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 1875,
+            "content_sha256": "d16e5e235c63efeb6c7beae3c93180081ebe8d4210e209c08b6cead662b8b19a",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-infra-design/references/architecture.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 1278,
+            "content_sha256": "c5be94f5e73f44fd44208ad8140268e872227633461117d02db5d1b5a9bb5c9b",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-infra-design/references/cost-review.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 1725,
+            "content_sha256": "f3ea1f9267da95a8d3cccc7a1a3ab01f85e1177a07f7b1dcea4d84c5330a5607",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-infra-design/references/intake.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 1711,
+            "content_sha256": "3937950a90de2df938053213ed0a6e334af436aaa701c4edfd9351a762ba5cc2",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-infra-design/references/security-review.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 9478,
+            "content_sha256": "77d221baa67d5da58107d24af85c26b5244b2c7c2cb32e61bdcf15927c7cf151",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-issue/SKILL.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 282,
+            "content_sha256": "7cef87b5248bcea03da5715a52266ecbfe41cbd7e377f7da37bb24ac8574818f",
+            "delivery_phases": [
+              "start"
+            ],
+            "offset_basis": "decoded_yaml_scalar",
+            "path": ".agents/skills/harness-issue/SKILL.md",
+            "role": "skill_catalog_metadata"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 4280,
+            "content_sha256": "2cece92111aa030124cade85abbb0afd4ca9eea202f9c71f64e8ce83ceccbb66",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-issue/references/issue-forms.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 2635,
+            "content_sha256": "12f7b53428bcac1b9c96cf916e059ec4713dcdcf2750a1e237902081788c2e23",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-issue/references/project-fields.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 9063,
+            "content_sha256": "078904bc125b1c802a0f62fd2d76ccd0eb2e39ecb6b7c34a20e05ac900196bde",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-pr/SKILL.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 294,
+            "content_sha256": "c76bc4eb9065550c8d3e8232ee37fd2af0bd3b07cf9887262aab1d7e758a21ca",
+            "delivery_phases": [
+              "start"
+            ],
+            "offset_basis": "decoded_yaml_scalar",
+            "path": ".agents/skills/harness-pr/SKILL.md",
+            "role": "skill_catalog_metadata"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 4158,
+            "content_sha256": "9e0bd5773c558fd0228fe1f234b514e5ca1907b15c483611109513707bc2c4d8",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-pr/references/writing-style.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 613,
+            "content_sha256": "0494e868e19d23d9b0b06600bb9df39640b8060ea7a9fc41aea5d80a1bd29d35",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-review/SKILL.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 68,
+            "content_sha256": "c1d0c711396ea6eb53d67111b9ff00d91cb5e506951ba60008beaccf3be40599",
+            "delivery_phases": [
+              "start"
+            ],
+            "offset_basis": "decoded_yaml_scalar",
+            "path": ".agents/skills/harness-review/SKILL.md",
+            "role": "skill_catalog_metadata"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 839,
+            "content_sha256": "56c423ea43e869b2665c3e49bb68e9fffe908a4d1a35929aa16d0237f94df92a",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-test-plan/SKILL.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 60,
+            "content_sha256": "7398547943744862cfb1d8facc04bd90f738bcc4ec4f5ca45d54bb8f8dd28c64",
+            "delivery_phases": [
+              "start"
+            ],
+            "offset_basis": "decoded_yaml_scalar",
+            "path": ".agents/skills/harness-test-plan/SKILL.md",
+            "role": "skill_catalog_metadata"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 1110,
+            "content_sha256": "68ff2e7e85f9348ee9dbd44defff007f2db8746e5b980655e46fd8a2f6c176f9",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-test-run/SKILL.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 70,
+            "content_sha256": "c171a111da6a5d339a1cd42e0773e2bd515ff6f72523fd0c833eccadda787786",
+            "delivery_phases": [
+              "start"
+            ],
+            "offset_basis": "decoded_yaml_scalar",
+            "path": ".agents/skills/harness-test-run/SKILL.md",
+            "role": "skill_catalog_metadata"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 1110,
+            "content_sha256": "2bf5742c32f8cc99d194804b4c7349039f28f1d075037c3ec4c2f4295efabeeb",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/infra-post-verify/SKILL.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 139,
+            "content_sha256": "c29066976039beaa88ceb5e327adc54987b1d608e9e5506202dc76a7ed11eb8b",
+            "delivery_phases": [
+              "start"
+            ],
+            "offset_basis": "decoded_yaml_scalar",
+            "path": ".agents/skills/infra-post-verify/SKILL.md",
+            "role": "skill_catalog_metadata"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 5808,
+            "content_sha256": "603307390c61fe1a9452123bfa566acc097eb593fa2b99c4598e617dfc4290f2",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".github/workflows/harness-policy.yml",
+            "role": "policy_enforcement"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 26664,
+            "content_sha256": "9351741e39acc6351d7ef7c2e5c555ddaf865723f918370b826e98cd30d72523",
+            "delivery_phases": [
+              "read",
+              "start"
+            ],
+            "path": "AGENTS.md",
+            "role": "repository_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 9857,
+            "content_sha256": "6a7906e848744a20fbc1c3b902a96c50dc4f5ebdbbc8a1acff0d07df22b1744c",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": "CLAUDE.md",
+            "role": "repository_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 5839,
+            "content_sha256": "eb94113ccb602c07092cc6541ae8d1bf2136f0e859b4c8fefc5146bc60a11ec2",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": "TASK.md",
+            "role": "repository_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 1377,
+            "content_sha256": "032de1f91f7791ae12fbfe0427c700af0391d092940a43acced40013cad79ed2",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": "agents/README.md",
+            "role": "role_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 6235,
+            "content_sha256": "499e587c0d6ecc339d37ad3b6865c98792bdb5d70f4f5d26ecee3bb5e7f3e8d5",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": "agents/api-docs-executor.md",
+            "role": "role_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 1943,
+            "content_sha256": "efc164e389a18847e345300557199258e272daca49d064d2dbbca330080503aa",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": "agents/infrastructure-executor.md",
+            "role": "role_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 1644,
+            "content_sha256": "68de71036892881b3221dbd81baf306667d02e4dd9966da52e4035be69848d7d",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": "agents/infrastructure-orchestrator.md",
+            "role": "role_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 1249,
+            "content_sha256": "0abf149fc2cc99c80d06d766a1fca1b1e38cb6eecba9c66ff2723c3820c3965f",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": "agents/pm-reviewer.md",
+            "role": "role_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 1471,
+            "content_sha256": "b2d6f2fc8b71e3e6ad8b7ed6e24390ce7c09f698b1a2c8431deea3a64983abd8",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": "agents/test-executor.md",
+            "role": "role_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 1406,
+            "content_sha256": "2217185da647d635aba65aa8ca18e32e2e667bf01d3f808d6f42e3554cca7db4",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": "agents/test-orchestrator.md",
+            "role": "role_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 5079,
+            "content_sha256": "3112c1f9c20df3e98f62fea19bbf5c94823762d58b53725d18b01a21441d9f9a",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": "scripts/run-hook.py",
+            "role": "policy_enforcement"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 6512,
+            "content_sha256": "212ded6cee07e5fd76274066454d92c54921472d35c270c596aa24c72a6ed2e7",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": "scripts/validate-conventions.py",
+            "role": "policy_enforcement"
+          }
+        ]
+      },
+      "tracked_manifest_sha256": "8db8bd3e449b1b6b2626f72096a1e0051287e5e159b2a95727000ce400fd2f1c"
+    },
+    {
+      "branch": "chore/gh-223-instruction-b1",
+      "candidate_commit": "d13fd2f9057bfa80f6591dcb0f80a99e00ffdd79",
+      "directory_name": "qello-gh223-b1",
+      "fixture_file_manifest_sha256": "636aaae554808ff18bd83cdef500e0f4622064033ad931b8dcf30f1ef91f8ac6",
+      "git_tree": "44a816427d71ade059b851c39e98418104dcf686",
+      "id": "B1",
+      "instruction_sources": {
+        "sha256": "c978cb004dedeae90dad99418ba1353d96b398f7e1fe14b8bebdaf38f92f5906",
+        "source_count": 50,
+        "sources": [
+          {
+            "base_offset": 0,
+            "bytes": 9030,
+            "content_sha256": "2f38bd8751b27370a8babe61ac4a90bee108628c6eb9a3e340fe34c17f30884b",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-api-docs/SKILL.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 259,
+            "content_sha256": "97eaf2b79f3c00d4ba151c1af979a5f1b8482f261c920a829741ca69bda45cbb",
+            "delivery_phases": [
+              "start"
+            ],
+            "offset_basis": "decoded_yaml_scalar",
+            "path": ".agents/skills/harness-api-docs/SKILL.md",
+            "role": "skill_catalog_metadata"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 6497,
+            "content_sha256": "66a58fa5d175055b94f8f78239a4b6cd65e84077508088ad7492c4b2dfd03e72",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-commit/SKILL.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 291,
+            "content_sha256": "add635c3553cce5e73451dee0ed9bdc39904f795de37d4a35c1a1365505e1225",
+            "delivery_phases": [
+              "start"
+            ],
+            "offset_basis": "decoded_yaml_scalar",
+            "path": ".agents/skills/harness-commit/SKILL.md",
+            "role": "skill_catalog_metadata"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 3963,
+            "content_sha256": "55f06a5b91f0f2f7a7058b8c8c7ffd45b12cdf2fbbb119e8c7d61a3087359dd5",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-commit/references/splitting-rules.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 2455,
+            "content_sha256": "7f2f61e4eac1a9a4a6b2a187c08b8c9d0d2015b1bfdab61120656d5e62530467",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-infra-build/SKILL.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 129,
+            "content_sha256": "84a7f4de0ca9e90f2060056729e20a3544fc16a8b16c3e6c8ac856f95a45d6e4",
+            "delivery_phases": [
+              "start"
+            ],
+            "offset_basis": "decoded_yaml_scalar",
+            "path": ".agents/skills/harness-infra-build/SKILL.md",
+            "role": "skill_catalog_metadata"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 1216,
+            "content_sha256": "15ac5deede8eb6983218e9bd73c46ebb286cfbff747e0ba4d2420cf1557ab929",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-infra-build/references/change-risk.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 1571,
+            "content_sha256": "fc02ed3dedee32980589b73ec10f9ee1c032cce957f3affcaad931fd0ebfecc3",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-infra-build/references/module-conventions.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 1318,
+            "content_sha256": "8c1432771bc4698eba2287d1f89b4e641f70a02b844eacca6d6ea4408bb79f47",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-infra-build/references/terraform-build.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 4884,
+            "content_sha256": "0c323c25074494c0e913d7e7635ec48621bf5ac823a276d034aeb07a55c4906b",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-infra-build/references/terraform-comments.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 2748,
+            "content_sha256": "7f2bc6e7bf7fad6dec3d7acffc4eff7d916322db3f397807aa5db6b0755ca693",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-infra-build/references/terraform-verify.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 2890,
+            "content_sha256": "4d47480b6a92350b68235992a43eea48c8586d7f0a4275395351bcaf7c9b0805",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-infra-design/SKILL.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 161,
+            "content_sha256": "60bfa18211454ee4ba67052b1d9526d6dda0386f72fd45820019e8e226fdb752",
+            "delivery_phases": [
+              "start"
+            ],
+            "offset_basis": "decoded_yaml_scalar",
+            "path": ".agents/skills/harness-infra-design/SKILL.md",
+            "role": "skill_catalog_metadata"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 2698,
+            "content_sha256": "620eaec25c89e8a116822207c7dff3f43e54902963c8acc5bbd95bc194eeb5c8",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-infra-design/references/architecture.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 1278,
+            "content_sha256": "c5be94f5e73f44fd44208ad8140268e872227633461117d02db5d1b5a9bb5c9b",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-infra-design/references/cost-review.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 2516,
+            "content_sha256": "b8b1a8ce77b3b1e2beef744bf90a1f827fa79b2c1f2a6df1973b72720d6ebe6a",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-infra-design/references/intake.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 2172,
+            "content_sha256": "39b240a2e51ba091bbbb566e4923340647fe67bb7895ccf57e9dcb05a3329a96",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-infra-design/references/security-review.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 9559,
+            "content_sha256": "4b0626c9285a2b35e14c60141b8284cd2151c7f7e35587cd47d55bdfae56bc1a",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-issue/SKILL.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 282,
+            "content_sha256": "7cef87b5248bcea03da5715a52266ecbfe41cbd7e377f7da37bb24ac8574818f",
+            "delivery_phases": [
+              "start"
+            ],
+            "offset_basis": "decoded_yaml_scalar",
+            "path": ".agents/skills/harness-issue/SKILL.md",
+            "role": "skill_catalog_metadata"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 4280,
+            "content_sha256": "2cece92111aa030124cade85abbb0afd4ca9eea202f9c71f64e8ce83ceccbb66",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-issue/references/issue-forms.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 2635,
+            "content_sha256": "12f7b53428bcac1b9c96cf916e059ec4713dcdcf2750a1e237902081788c2e23",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-issue/references/project-fields.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 1763,
+            "content_sha256": "6339271aa7b32595de8ffe9b185c3c7806a87561863e52f0013109c9c498e3f5",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-issue/references/work-contract.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 9194,
+            "content_sha256": "d3f2d146dd8e49ffa298a3e2f538bd1f47ee3a55fb45f2ec2588fec0e6f11de9",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-pr/SKILL.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 294,
+            "content_sha256": "c76bc4eb9065550c8d3e8232ee37fd2af0bd3b07cf9887262aab1d7e758a21ca",
+            "delivery_phases": [
+              "start"
+            ],
+            "offset_basis": "decoded_yaml_scalar",
+            "path": ".agents/skills/harness-pr/SKILL.md",
+            "role": "skill_catalog_metadata"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 3923,
+            "content_sha256": "e8980fb178f01168d48633f51c1f1c3bed893d8bf2fcbac41aa00cb5adc3afb6",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-pr/references/validation-evidence.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 4158,
+            "content_sha256": "9e0bd5773c558fd0228fe1f234b514e5ca1907b15c483611109513707bc2c4d8",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-pr/references/writing-style.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 613,
+            "content_sha256": "0494e868e19d23d9b0b06600bb9df39640b8060ea7a9fc41aea5d80a1bd29d35",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-review/SKILL.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 68,
+            "content_sha256": "c1d0c711396ea6eb53d67111b9ff00d91cb5e506951ba60008beaccf3be40599",
+            "delivery_phases": [
+              "start"
+            ],
+            "offset_basis": "decoded_yaml_scalar",
+            "path": ".agents/skills/harness-review/SKILL.md",
+            "role": "skill_catalog_metadata"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 956,
+            "content_sha256": "117278ddbdf18dd7fa1b2405a25b1b43240ac678fa16cfabda6d1ca66c718d81",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-test-plan/SKILL.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 60,
+            "content_sha256": "7398547943744862cfb1d8facc04bd90f738bcc4ec4f5ca45d54bb8f8dd28c64",
+            "delivery_phases": [
+              "start"
+            ],
+            "offset_basis": "decoded_yaml_scalar",
+            "path": ".agents/skills/harness-test-plan/SKILL.md",
+            "role": "skill_catalog_metadata"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 762,
+            "content_sha256": "75d96cd6a625ace7b32da3044aa650071f66e50211e50de01491ad245019a168",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-test-plan/references/test-policy.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 1375,
+            "content_sha256": "26b76f5a038e6b4608a46b5646b40fc3093186fb64bcc5e662f0ee5880049cb8",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-test-run/SKILL.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 70,
+            "content_sha256": "c171a111da6a5d339a1cd42e0773e2bd515ff6f72523fd0c833eccadda787786",
+            "delivery_phases": [
+              "start"
+            ],
+            "offset_basis": "decoded_yaml_scalar",
+            "path": ".agents/skills/harness-test-run/SKILL.md",
+            "role": "skill_catalog_metadata"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 270,
+            "content_sha256": "626344df02bc2554bae82e066e19878dd84c268b38b5def7f90c46c11673cd82",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-test-run/references/reporting.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 1110,
+            "content_sha256": "2bf5742c32f8cc99d194804b4c7349039f28f1d075037c3ec4c2f4295efabeeb",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/infra-post-verify/SKILL.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 139,
+            "content_sha256": "c29066976039beaa88ceb5e327adc54987b1d608e9e5506202dc76a7ed11eb8b",
+            "delivery_phases": [
+              "start"
+            ],
+            "offset_basis": "decoded_yaml_scalar",
+            "path": ".agents/skills/infra-post-verify/SKILL.md",
+            "role": "skill_catalog_metadata"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 5808,
+            "content_sha256": "603307390c61fe1a9452123bfa566acc097eb593fa2b99c4598e617dfc4290f2",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".github/workflows/harness-policy.yml",
+            "role": "policy_enforcement"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 15523,
+            "content_sha256": "021348fdebbea70591b6466902475848cb4d80f038c178674685db79aff248ab",
+            "delivery_phases": [
+              "read",
+              "start"
+            ],
+            "path": "AGENTS.md",
+            "role": "repository_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 9857,
+            "content_sha256": "6a7906e848744a20fbc1c3b902a96c50dc4f5ebdbbc8a1acff0d07df22b1744c",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": "CLAUDE.md",
+            "role": "repository_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 5838,
+            "content_sha256": "d052f5005e22b66cd022ad4536472b3cddc908346a1d9a87c11932b5269500c9",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": "TASK.md",
+            "role": "repository_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 1377,
+            "content_sha256": "032de1f91f7791ae12fbfe0427c700af0391d092940a43acced40013cad79ed2",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": "agents/README.md",
+            "role": "role_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 6235,
+            "content_sha256": "499e587c0d6ecc339d37ad3b6865c98792bdb5d70f4f5d26ecee3bb5e7f3e8d5",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": "agents/api-docs-executor.md",
+            "role": "role_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 1943,
+            "content_sha256": "efc164e389a18847e345300557199258e272daca49d064d2dbbca330080503aa",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": "agents/infrastructure-executor.md",
+            "role": "role_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 1644,
+            "content_sha256": "68de71036892881b3221dbd81baf306667d02e4dd9966da52e4035be69848d7d",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": "agents/infrastructure-orchestrator.md",
+            "role": "role_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 1249,
+            "content_sha256": "0abf149fc2cc99c80d06d766a1fca1b1e38cb6eecba9c66ff2723c3820c3965f",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": "agents/pm-reviewer.md",
+            "role": "role_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 1471,
+            "content_sha256": "b2d6f2fc8b71e3e6ad8b7ed6e24390ce7c09f698b1a2c8431deea3a64983abd8",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": "agents/test-executor.md",
+            "role": "role_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 1406,
+            "content_sha256": "2217185da647d635aba65aa8ca18e32e2e667bf01d3f808d6f42e3554cca7db4",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": "agents/test-orchestrator.md",
+            "role": "role_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 5079,
+            "content_sha256": "3112c1f9c20df3e98f62fea19bbf5c94823762d58b53725d18b01a21441d9f9a",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": "scripts/run-hook.py",
+            "role": "policy_enforcement"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 6512,
+            "content_sha256": "212ded6cee07e5fd76274066454d92c54921472d35c270c596aa24c72a6ed2e7",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": "scripts/validate-conventions.py",
+            "role": "policy_enforcement"
+          }
+        ]
+      },
+      "tracked_manifest_sha256": "f16f3d681074dd91f0d66dce1ad253b75f352523247415e04b693b494ad7cfcc"
+    },
+    {
+      "branch": "chore/gh-223-instruction-b2",
+      "candidate_commit": "9b6ddcd4d15226a318a716e7286149fc7dd12029",
+      "directory_name": "qello-gh223-b2",
+      "fixture_file_manifest_sha256": "002ce6064c319e621656c5a75742ba81ad3b2ac5e6425c17a89dd69d10c193b0",
+      "git_tree": "5a71f08e5bcb33065a2f01fe9e8afef6f1604418",
+      "id": "B2",
+      "instruction_sources": {
+        "sha256": "a49a305edb26ed1d8209d1c92704aef42fe4697f76cad106f36d9a5aa89b863a",
+        "source_count": 53,
+        "sources": [
+          {
+            "base_offset": 0,
+            "bytes": 9030,
+            "content_sha256": "2f38bd8751b27370a8babe61ac4a90bee108628c6eb9a3e340fe34c17f30884b",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-api-docs/SKILL.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 259,
+            "content_sha256": "97eaf2b79f3c00d4ba151c1af979a5f1b8482f261c920a829741ca69bda45cbb",
+            "delivery_phases": [
+              "start"
+            ],
+            "offset_basis": "decoded_yaml_scalar",
+            "path": ".agents/skills/harness-api-docs/SKILL.md",
+            "role": "skill_catalog_metadata"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 6497,
+            "content_sha256": "66a58fa5d175055b94f8f78239a4b6cd65e84077508088ad7492c4b2dfd03e72",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-commit/SKILL.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 291,
+            "content_sha256": "add635c3553cce5e73451dee0ed9bdc39904f795de37d4a35c1a1365505e1225",
+            "delivery_phases": [
+              "start"
+            ],
+            "offset_basis": "decoded_yaml_scalar",
+            "path": ".agents/skills/harness-commit/SKILL.md",
+            "role": "skill_catalog_metadata"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 3963,
+            "content_sha256": "55f06a5b91f0f2f7a7058b8c8c7ffd45b12cdf2fbbb119e8c7d61a3087359dd5",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-commit/references/splitting-rules.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 2455,
+            "content_sha256": "7f2f61e4eac1a9a4a6b2a187c08b8c9d0d2015b1bfdab61120656d5e62530467",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-infra-build/SKILL.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 129,
+            "content_sha256": "84a7f4de0ca9e90f2060056729e20a3544fc16a8b16c3e6c8ac856f95a45d6e4",
+            "delivery_phases": [
+              "start"
+            ],
+            "offset_basis": "decoded_yaml_scalar",
+            "path": ".agents/skills/harness-infra-build/SKILL.md",
+            "role": "skill_catalog_metadata"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 1216,
+            "content_sha256": "15ac5deede8eb6983218e9bd73c46ebb286cfbff747e0ba4d2420cf1557ab929",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-infra-build/references/change-risk.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 1571,
+            "content_sha256": "fc02ed3dedee32980589b73ec10f9ee1c032cce957f3affcaad931fd0ebfecc3",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-infra-build/references/module-conventions.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 1318,
+            "content_sha256": "8c1432771bc4698eba2287d1f89b4e641f70a02b844eacca6d6ea4408bb79f47",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-infra-build/references/terraform-build.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 4884,
+            "content_sha256": "0c323c25074494c0e913d7e7635ec48621bf5ac823a276d034aeb07a55c4906b",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-infra-build/references/terraform-comments.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 2748,
+            "content_sha256": "7f2bc6e7bf7fad6dec3d7acffc4eff7d916322db3f397807aa5db6b0755ca693",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-infra-build/references/terraform-verify.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 2890,
+            "content_sha256": "4d47480b6a92350b68235992a43eea48c8586d7f0a4275395351bcaf7c9b0805",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-infra-design/SKILL.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 161,
+            "content_sha256": "60bfa18211454ee4ba67052b1d9526d6dda0386f72fd45820019e8e226fdb752",
+            "delivery_phases": [
+              "start"
+            ],
+            "offset_basis": "decoded_yaml_scalar",
+            "path": ".agents/skills/harness-infra-design/SKILL.md",
+            "role": "skill_catalog_metadata"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 2698,
+            "content_sha256": "620eaec25c89e8a116822207c7dff3f43e54902963c8acc5bbd95bc194eeb5c8",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-infra-design/references/architecture.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 1278,
+            "content_sha256": "c5be94f5e73f44fd44208ad8140268e872227633461117d02db5d1b5a9bb5c9b",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-infra-design/references/cost-review.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 2516,
+            "content_sha256": "b8b1a8ce77b3b1e2beef744bf90a1f827fa79b2c1f2a6df1973b72720d6ebe6a",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-infra-design/references/intake.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 2172,
+            "content_sha256": "39b240a2e51ba091bbbb566e4923340647fe67bb7895ccf57e9dcb05a3329a96",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-infra-design/references/security-review.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 9770,
+            "content_sha256": "639a212ee028e9fa394ad9fe2dbc08c126f9a8f990781f6cf92fa174c3edfed2",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-issue/SKILL.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 282,
+            "content_sha256": "7cef87b5248bcea03da5715a52266ecbfe41cbd7e377f7da37bb24ac8574818f",
+            "delivery_phases": [
+              "start"
+            ],
+            "offset_basis": "decoded_yaml_scalar",
+            "path": ".agents/skills/harness-issue/SKILL.md",
+            "role": "skill_catalog_metadata"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 4280,
+            "content_sha256": "2cece92111aa030124cade85abbb0afd4ca9eea202f9c71f64e8ce83ceccbb66",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-issue/references/issue-forms.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 2635,
+            "content_sha256": "12f7b53428bcac1b9c96cf916e059ec4713dcdcf2750a1e237902081788c2e23",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-issue/references/project-fields.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 1763,
+            "content_sha256": "6339271aa7b32595de8ffe9b185c3c7806a87561863e52f0013109c9c498e3f5",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-issue/references/work-contract.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 9194,
+            "content_sha256": "d3f2d146dd8e49ffa298a3e2f538bd1f47ee3a55fb45f2ec2588fec0e6f11de9",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-pr/SKILL.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 294,
+            "content_sha256": "c76bc4eb9065550c8d3e8232ee37fd2af0bd3b07cf9887262aab1d7e758a21ca",
+            "delivery_phases": [
+              "start"
+            ],
+            "offset_basis": "decoded_yaml_scalar",
+            "path": ".agents/skills/harness-pr/SKILL.md",
+            "role": "skill_catalog_metadata"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 3465,
+            "content_sha256": "336fb50d0100cf9a545e0421e029855cff976c8735b05aadf821881d2e984b75",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-pr/references/validation-evidence.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 4158,
+            "content_sha256": "9e0bd5773c558fd0228fe1f234b514e5ca1907b15c483611109513707bc2c4d8",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-pr/references/writing-style.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 613,
+            "content_sha256": "0494e868e19d23d9b0b06600bb9df39640b8060ea7a9fc41aea5d80a1bd29d35",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-review/SKILL.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 68,
+            "content_sha256": "c1d0c711396ea6eb53d67111b9ff00d91cb5e506951ba60008beaccf3be40599",
+            "delivery_phases": [
+              "start"
+            ],
+            "offset_basis": "decoded_yaml_scalar",
+            "path": ".agents/skills/harness-review/SKILL.md",
+            "role": "skill_catalog_metadata"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 956,
+            "content_sha256": "117278ddbdf18dd7fa1b2405a25b1b43240ac678fa16cfabda6d1ca66c718d81",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-test-plan/SKILL.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 60,
+            "content_sha256": "7398547943744862cfb1d8facc04bd90f738bcc4ec4f5ca45d54bb8f8dd28c64",
+            "delivery_phases": [
+              "start"
+            ],
+            "offset_basis": "decoded_yaml_scalar",
+            "path": ".agents/skills/harness-test-plan/SKILL.md",
+            "role": "skill_catalog_metadata"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 762,
+            "content_sha256": "75d96cd6a625ace7b32da3044aa650071f66e50211e50de01491ad245019a168",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-test-plan/references/test-policy.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 1375,
+            "content_sha256": "26b76f5a038e6b4608a46b5646b40fc3093186fb64bcc5e662f0ee5880049cb8",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-test-run/SKILL.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 70,
+            "content_sha256": "c171a111da6a5d339a1cd42e0773e2bd515ff6f72523fd0c833eccadda787786",
+            "delivery_phases": [
+              "start"
+            ],
+            "offset_basis": "decoded_yaml_scalar",
+            "path": ".agents/skills/harness-test-run/SKILL.md",
+            "role": "skill_catalog_metadata"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 270,
+            "content_sha256": "626344df02bc2554bae82e066e19878dd84c268b38b5def7f90c46c11673cd82",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-test-run/references/reporting.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 1110,
+            "content_sha256": "2bf5742c32f8cc99d194804b4c7349039f28f1d075037c3ec4c2f4295efabeeb",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/infra-post-verify/SKILL.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 139,
+            "content_sha256": "c29066976039beaa88ceb5e327adc54987b1d608e9e5506202dc76a7ed11eb8b",
+            "delivery_phases": [
+              "start"
+            ],
+            "offset_basis": "decoded_yaml_scalar",
+            "path": ".agents/skills/infra-post-verify/SKILL.md",
+            "role": "skill_catalog_metadata"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 6308,
+            "content_sha256": "71a16bac334c92dd69ca1620f775af2c3d49d64561b1bc27d9f4aa4dc3cb8edc",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".github/workflows/harness-policy.yml",
+            "role": "policy_enforcement"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 16342,
+            "content_sha256": "ca889b6ee6636fef329ed6cef61a417b47f3fba55b510c0ebd2cd436f40e4ca0",
+            "delivery_phases": [
+              "read",
+              "start"
+            ],
+            "path": "AGENTS.md",
+            "role": "repository_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 9857,
+            "content_sha256": "6a7906e848744a20fbc1c3b902a96c50dc4f5ebdbbc8a1acff0d07df22b1744c",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": "CLAUDE.md",
+            "role": "repository_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 5838,
+            "content_sha256": "6cca50234b09344631056f0217b996c4da5d2892557737c67611d7814b703a4d",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": "TASK.md",
+            "role": "repository_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 1377,
+            "content_sha256": "032de1f91f7791ae12fbfe0427c700af0391d092940a43acced40013cad79ed2",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": "agents/README.md",
+            "role": "role_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 6235,
+            "content_sha256": "499e587c0d6ecc339d37ad3b6865c98792bdb5d70f4f5d26ecee3bb5e7f3e8d5",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": "agents/api-docs-executor.md",
+            "role": "role_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 1943,
+            "content_sha256": "efc164e389a18847e345300557199258e272daca49d064d2dbbca330080503aa",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": "agents/infrastructure-executor.md",
+            "role": "role_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 1644,
+            "content_sha256": "68de71036892881b3221dbd81baf306667d02e4dd9966da52e4035be69848d7d",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": "agents/infrastructure-orchestrator.md",
+            "role": "role_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 1249,
+            "content_sha256": "0abf149fc2cc99c80d06d766a1fca1b1e38cb6eecba9c66ff2723c3820c3965f",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": "agents/pm-reviewer.md",
+            "role": "role_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 1471,
+            "content_sha256": "b2d6f2fc8b71e3e6ad8b7ed6e24390ce7c09f698b1a2c8431deea3a64983abd8",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": "agents/test-executor.md",
+            "role": "role_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 1406,
+            "content_sha256": "2217185da647d635aba65aa8ca18e32e2e667bf01d3f808d6f42e3554cca7db4",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": "agents/test-orchestrator.md",
+            "role": "role_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 3361,
+            "content_sha256": "05877427333fee2d5636523a0446aae6d65f4d85a599a109923ecfeb78182b97",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": "docs/harness/instruction-links.json",
+            "role": "policy_enforcement"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 5330,
+            "content_sha256": "f6be8faef52178401f07a0f55d2c6d80ab1fac3c6427a9af566578de23b13a9a",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": "scripts/run-hook.py",
+            "role": "policy_enforcement"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 6512,
+            "content_sha256": "212ded6cee07e5fd76274066454d92c54921472d35c270c596aa24c72a6ed2e7",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": "scripts/validate-conventions.py",
+            "role": "policy_enforcement"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 21013,
+            "content_sha256": "617248f57af562706d3008841bd758da8abbf0607fe05e989ced40a4fab32795",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": "scripts/validate-instruction-links.py",
+            "role": "policy_enforcement"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 11434,
+            "content_sha256": "5529635cfe6c8bb3d82d8a3c57288d1868f86301262ecf3452e32d18b575b7ea",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": "scripts/validate-task-contract.py",
+            "role": "policy_enforcement"
+          }
+        ]
+      },
+      "tracked_manifest_sha256": "83f926541599c0987ad22d5cb167a1d003ae6bdbd707366f35af2359d7f267e9"
+    },
+    {
+      "branch": "chore/gh-223-instruction-b3",
+      "candidate_commit": "8e0028b1729ad7ba8331d528ea15be4fbe9a0be0",
+      "directory_name": "qello-gh223-b3",
+      "fixture_file_manifest_sha256": "e4d1fb17885f9b2a95bba9b1813a79dc57226a213be012fad6bd80ccfe2d0c60",
+      "git_tree": "cbdcee31f6cc7cc254ab84e38255b705db1e1a47",
+      "id": "B3",
+      "instruction_sources": {
+        "sha256": "84623f7b1b7d41bca426fe4eb612ce14fedb4ac8b900244848603bd23043ccbd",
+        "source_count": 56,
+        "sources": [
+          {
+            "base_offset": 0,
+            "bytes": 9030,
+            "content_sha256": "2f38bd8751b27370a8babe61ac4a90bee108628c6eb9a3e340fe34c17f30884b",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-api-docs/SKILL.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 259,
+            "content_sha256": "97eaf2b79f3c00d4ba151c1af979a5f1b8482f261c920a829741ca69bda45cbb",
+            "delivery_phases": [
+              "start"
+            ],
+            "offset_basis": "decoded_yaml_scalar",
+            "path": ".agents/skills/harness-api-docs/SKILL.md",
+            "role": "skill_catalog_metadata"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 6497,
+            "content_sha256": "66a58fa5d175055b94f8f78239a4b6cd65e84077508088ad7492c4b2dfd03e72",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-commit/SKILL.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 291,
+            "content_sha256": "add635c3553cce5e73451dee0ed9bdc39904f795de37d4a35c1a1365505e1225",
+            "delivery_phases": [
+              "start"
+            ],
+            "offset_basis": "decoded_yaml_scalar",
+            "path": ".agents/skills/harness-commit/SKILL.md",
+            "role": "skill_catalog_metadata"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 3963,
+            "content_sha256": "55f06a5b91f0f2f7a7058b8c8c7ffd45b12cdf2fbbb119e8c7d61a3087359dd5",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-commit/references/splitting-rules.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 2455,
+            "content_sha256": "7f2f61e4eac1a9a4a6b2a187c08b8c9d0d2015b1bfdab61120656d5e62530467",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-infra-build/SKILL.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 129,
+            "content_sha256": "84a7f4de0ca9e90f2060056729e20a3544fc16a8b16c3e6c8ac856f95a45d6e4",
+            "delivery_phases": [
+              "start"
+            ],
+            "offset_basis": "decoded_yaml_scalar",
+            "path": ".agents/skills/harness-infra-build/SKILL.md",
+            "role": "skill_catalog_metadata"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 1216,
+            "content_sha256": "15ac5deede8eb6983218e9bd73c46ebb286cfbff747e0ba4d2420cf1557ab929",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-infra-build/references/change-risk.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 1571,
+            "content_sha256": "fc02ed3dedee32980589b73ec10f9ee1c032cce957f3affcaad931fd0ebfecc3",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-infra-build/references/module-conventions.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 1318,
+            "content_sha256": "8c1432771bc4698eba2287d1f89b4e641f70a02b844eacca6d6ea4408bb79f47",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-infra-build/references/terraform-build.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 4884,
+            "content_sha256": "0c323c25074494c0e913d7e7635ec48621bf5ac823a276d034aeb07a55c4906b",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-infra-build/references/terraform-comments.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 2748,
+            "content_sha256": "7f2bc6e7bf7fad6dec3d7acffc4eff7d916322db3f397807aa5db6b0755ca693",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-infra-build/references/terraform-verify.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 2890,
+            "content_sha256": "4d47480b6a92350b68235992a43eea48c8586d7f0a4275395351bcaf7c9b0805",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-infra-design/SKILL.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 161,
+            "content_sha256": "60bfa18211454ee4ba67052b1d9526d6dda0386f72fd45820019e8e226fdb752",
+            "delivery_phases": [
+              "start"
+            ],
+            "offset_basis": "decoded_yaml_scalar",
+            "path": ".agents/skills/harness-infra-design/SKILL.md",
+            "role": "skill_catalog_metadata"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 2698,
+            "content_sha256": "620eaec25c89e8a116822207c7dff3f43e54902963c8acc5bbd95bc194eeb5c8",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-infra-design/references/architecture.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 1278,
+            "content_sha256": "c5be94f5e73f44fd44208ad8140268e872227633461117d02db5d1b5a9bb5c9b",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-infra-design/references/cost-review.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 2516,
+            "content_sha256": "b8b1a8ce77b3b1e2beef744bf90a1f827fa79b2c1f2a6df1973b72720d6ebe6a",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-infra-design/references/intake.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 2172,
+            "content_sha256": "39b240a2e51ba091bbbb566e4923340647fe67bb7895ccf57e9dcb05a3329a96",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-infra-design/references/security-review.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 9770,
+            "content_sha256": "639a212ee028e9fa394ad9fe2dbc08c126f9a8f990781f6cf92fa174c3edfed2",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-issue/SKILL.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 282,
+            "content_sha256": "7cef87b5248bcea03da5715a52266ecbfe41cbd7e377f7da37bb24ac8574818f",
+            "delivery_phases": [
+              "start"
+            ],
+            "offset_basis": "decoded_yaml_scalar",
+            "path": ".agents/skills/harness-issue/SKILL.md",
+            "role": "skill_catalog_metadata"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 4280,
+            "content_sha256": "2cece92111aa030124cade85abbb0afd4ca9eea202f9c71f64e8ce83ceccbb66",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-issue/references/issue-forms.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 2635,
+            "content_sha256": "12f7b53428bcac1b9c96cf916e059ec4713dcdcf2750a1e237902081788c2e23",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-issue/references/project-fields.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 1763,
+            "content_sha256": "6339271aa7b32595de8ffe9b185c3c7806a87561863e52f0013109c9c498e3f5",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-issue/references/work-contract.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 9194,
+            "content_sha256": "d3f2d146dd8e49ffa298a3e2f538bd1f47ee3a55fb45f2ec2588fec0e6f11de9",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-pr/SKILL.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 294,
+            "content_sha256": "c76bc4eb9065550c8d3e8232ee37fd2af0bd3b07cf9887262aab1d7e758a21ca",
+            "delivery_phases": [
+              "start"
+            ],
+            "offset_basis": "decoded_yaml_scalar",
+            "path": ".agents/skills/harness-pr/SKILL.md",
+            "role": "skill_catalog_metadata"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 3465,
+            "content_sha256": "336fb50d0100cf9a545e0421e029855cff976c8735b05aadf821881d2e984b75",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-pr/references/validation-evidence.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 4158,
+            "content_sha256": "9e0bd5773c558fd0228fe1f234b514e5ca1907b15c483611109513707bc2c4d8",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-pr/references/writing-style.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 613,
+            "content_sha256": "0494e868e19d23d9b0b06600bb9df39640b8060ea7a9fc41aea5d80a1bd29d35",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-review/SKILL.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 68,
+            "content_sha256": "c1d0c711396ea6eb53d67111b9ff00d91cb5e506951ba60008beaccf3be40599",
+            "delivery_phases": [
+              "start"
+            ],
+            "offset_basis": "decoded_yaml_scalar",
+            "path": ".agents/skills/harness-review/SKILL.md",
+            "role": "skill_catalog_metadata"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 956,
+            "content_sha256": "117278ddbdf18dd7fa1b2405a25b1b43240ac678fa16cfabda6d1ca66c718d81",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-test-plan/SKILL.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 60,
+            "content_sha256": "7398547943744862cfb1d8facc04bd90f738bcc4ec4f5ca45d54bb8f8dd28c64",
+            "delivery_phases": [
+              "start"
+            ],
+            "offset_basis": "decoded_yaml_scalar",
+            "path": ".agents/skills/harness-test-plan/SKILL.md",
+            "role": "skill_catalog_metadata"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 762,
+            "content_sha256": "75d96cd6a625ace7b32da3044aa650071f66e50211e50de01491ad245019a168",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-test-plan/references/test-policy.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 1375,
+            "content_sha256": "26b76f5a038e6b4608a46b5646b40fc3093186fb64bcc5e662f0ee5880049cb8",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-test-run/SKILL.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 70,
+            "content_sha256": "c171a111da6a5d339a1cd42e0773e2bd515ff6f72523fd0c833eccadda787786",
+            "delivery_phases": [
+              "start"
+            ],
+            "offset_basis": "decoded_yaml_scalar",
+            "path": ".agents/skills/harness-test-run/SKILL.md",
+            "role": "skill_catalog_metadata"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 270,
+            "content_sha256": "626344df02bc2554bae82e066e19878dd84c268b38b5def7f90c46c11673cd82",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/harness-test-run/references/reporting.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 1110,
+            "content_sha256": "2bf5742c32f8cc99d194804b4c7349039f28f1d075037c3ec4c2f4295efabeeb",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".agents/skills/infra-post-verify/SKILL.md",
+            "role": "skill_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 139,
+            "content_sha256": "c29066976039beaa88ceb5e327adc54987b1d608e9e5506202dc76a7ed11eb8b",
+            "delivery_phases": [
+              "start"
+            ],
+            "offset_basis": "decoded_yaml_scalar",
+            "path": ".agents/skills/infra-post-verify/SKILL.md",
+            "role": "skill_catalog_metadata"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 6308,
+            "content_sha256": "71a16bac334c92dd69ca1620f775af2c3d49d64561b1bc27d9f4aa4dc3cb8edc",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": ".github/workflows/harness-policy.yml",
+            "role": "policy_enforcement"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 16990,
+            "content_sha256": "5ea6109b2055b2000fbb3e5dffdc526ef923f27c3d44b44878590a6b0af6ba90",
+            "delivery_phases": [
+              "read",
+              "start"
+            ],
+            "path": "AGENTS.md",
+            "role": "repository_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 9857,
+            "content_sha256": "6a7906e848744a20fbc1c3b902a96c50dc4f5ebdbbc8a1acff0d07df22b1744c",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": "CLAUDE.md",
+            "role": "repository_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 5838,
+            "content_sha256": "ca959804609ea4463f3de9ca0b230595663ddb716661cc2ad77e130e6740d4be",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": "TASK.md",
+            "role": "repository_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 1377,
+            "content_sha256": "032de1f91f7791ae12fbfe0427c700af0391d092940a43acced40013cad79ed2",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": "agents/README.md",
+            "role": "role_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 6235,
+            "content_sha256": "499e587c0d6ecc339d37ad3b6865c98792bdb5d70f4f5d26ecee3bb5e7f3e8d5",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": "agents/api-docs-executor.md",
+            "role": "role_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 1943,
+            "content_sha256": "efc164e389a18847e345300557199258e272daca49d064d2dbbca330080503aa",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": "agents/infrastructure-executor.md",
+            "role": "role_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 1644,
+            "content_sha256": "68de71036892881b3221dbd81baf306667d02e4dd9966da52e4035be69848d7d",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": "agents/infrastructure-orchestrator.md",
+            "role": "role_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 1249,
+            "content_sha256": "0abf149fc2cc99c80d06d766a1fca1b1e38cb6eecba9c66ff2723c3820c3965f",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": "agents/pm-reviewer.md",
+            "role": "role_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 1471,
+            "content_sha256": "b2d6f2fc8b71e3e6ad8b7ed6e24390ce7c09f698b1a2c8431deea3a64983abd8",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": "agents/test-executor.md",
+            "role": "role_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 1406,
+            "content_sha256": "2217185da647d635aba65aa8ca18e32e2e667bf01d3f808d6f42e3554cca7db4",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": "agents/test-orchestrator.md",
+            "role": "role_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 7324,
+            "content_sha256": "d4c66f10e21dc6e909c9ccf2a4a3214765c4092edad69453af806ae962c2420c",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": "docs/harness/instruction-links.json",
+            "role": "policy_enforcement"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 1955,
+            "content_sha256": "5f8803c9d0cb9a94b8e92cfcac17bd1cc1e3aa41d6794d7b1bbc30a82bcd3cb7",
+            "delivery_phases": [
+              "read",
+              "start"
+            ],
+            "path": "infra/AGENTS.md",
+            "role": "repository_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 5330,
+            "content_sha256": "f6be8faef52178401f07a0f55d2c6d80ab1fac3c6427a9af566578de23b13a9a",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": "scripts/run-hook.py",
+            "role": "policy_enforcement"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 6512,
+            "content_sha256": "212ded6cee07e5fd76274066454d92c54921472d35c270c596aa24c72a6ed2e7",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": "scripts/validate-conventions.py",
+            "role": "policy_enforcement"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 21013,
+            "content_sha256": "617248f57af562706d3008841bd758da8abbf0607fe05e989ced40a4fab32795",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": "scripts/validate-instruction-links.py",
+            "role": "policy_enforcement"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 11434,
+            "content_sha256": "5529635cfe6c8bb3d82d8a3c57288d1868f86301262ecf3452e32d18b575b7ea",
+            "delivery_phases": [
+              "read"
+            ],
+            "path": "scripts/validate-task-contract.py",
+            "role": "policy_enforcement"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 1262,
+            "content_sha256": "4d12f0aab0d4dd455621650707de2858ce5ea0e75552dfba5c045578ef4f7b74",
+            "delivery_phases": [
+              "read",
+              "start"
+            ],
+            "path": "src/integrationTest/AGENTS.md",
+            "role": "repository_instruction"
+          },
+          {
+            "base_offset": 0,
+            "bytes": 1123,
+            "content_sha256": "b48991cbe96e1fa6b6ae48ebfc447fd5dc1eb8ef1623eb9096da78fefd47e8d2",
+            "delivery_phases": [
+              "read",
+              "start"
+            ],
+            "path": "src/test/AGENTS.md",
+            "role": "repository_instruction"
+          }
+        ]
+      },
+      "tracked_manifest_sha256": "65deb67c407020479d8da6441f5cd98cc1fa421224b3ad6ff1d44ede8db998c9"
+    }
+  ],
+  "cells": {
+    "L1": {
+      "answer_checklist": [
+        "작업 시작 게이트와 금지 작업을 구분한다.",
+        "검증과 완료 조건을 포함한다.",
+        "근거 파일을 제시하고 10개 이하로 요약한다."
+      ],
+      "cwd": ".",
+      "prompt_sha256": "621653ac30617aaf18f1640096377140a1b601f813c4ae8722594d175791d2ec",
+      "sandbox": "read-only",
+      "scenario": "S1"
+    },
+    "L2": {
+      "answer_checklist": [
+        "src/test와 src/integrationTest 지침 및 필수 reference를 확인한다.",
+        "계획 승인과 작성 형식을 구분한다.",
+        "실행·실패 보고 조건을 설명하며 실제 테스트를 실행하지 않는다."
+      ],
+      "cwd": ".",
+      "prompt_sha256": "0c19e6b2119559d243b7abdeada15415754c8b87d25009e3c69ee812190f41c8",
+      "sandbox": "read-only",
+      "scenario": "X2"
+    },
+    "L3": {
+      "answer_checklist": [
+        "infra 지침과 필수 reference를 확인한다.",
+        "설계 검토에 필요한 입력과 승인 조건을 설명한다.",
+        "Terraform 구현·실행이나 인프라 변경을 하지 않는다."
+      ],
+      "cwd": ".",
+      "prompt_sha256": "a1a988627906b1deb925a5809522fcc0959ba1a2a090152419631b18c68c8683",
+      "sandbox": "read-only",
+      "scenario": "X1"
+    }
+  },
+  "codex_cli": {
+    "raw": "codex-cli 0.153.4",
+    "version": "0.153.4"
+  },
+  "common_commit": "d342c9c3c0c0eccc8fd019515f1afc4dacb68309",
+  "common_files_sha256": "c79fc4e5c61cbd3814a915abd262ab2af32ac58fbc5bc2875317204821b7f4b9",
+  "common_fixture_sha256": "dade6733e8aecd941f06939f0da764eaadf4b806ee5710ba6af58e12346de462",
+  "comparison_environment_core_sha256": "e8d6ea123df3e7bbd52f8d2dc6e2330967c3fae2dcaa875c462b1f9571470a1c",
+  "comparison_environment_sha256": "cb454bb5be85b2172aea07136b3692b5bb5d86952681a1a461d3426baddd70f6",
+  "design_id": "HARNESS-DESIGN-GH-223-001",
+  "execution_status": "NOT_STARTED",
+  "instrumentation": {
+    "metrics_sha256": "03a4f2c057696a2f1db23878185325cb82404ebba4620d589405929d18b7e97e",
+    "runner_sha256": "4ae906b23c89604efb49750987b39ca9dead02afd0893bd6d70520250b07dfa7"
+  },
+  "issue_number": 223,
+  "model": "gpt-5.6-sol",
+  "normal_selection_cells": [],
+  "pilot_runs": [
+    {
+      "candidate": "B0",
+      "cell": "L1",
+      "cwd": ".",
+      "prompt_sha256": "621653ac30617aaf18f1640096377140a1b601f813c4ae8722594d175791d2ec",
+      "run_id": "pilot-lite-b0-l1",
+      "sandbox": "read-only",
+      "scenario": "S1",
+      "status": "PILOT_PLANNED"
+    },
+    {
+      "candidate": "B3",
+      "cell": "L2",
+      "cwd": ".",
+      "prompt_sha256": "0c19e6b2119559d243b7abdeada15415754c8b87d25009e3c69ee812190f41c8",
+      "run_id": "pilot-lite-b3-l2",
+      "sandbox": "read-only",
+      "scenario": "X2",
+      "status": "PILOT_PLANNED"
+    }
+  ],
+  "planned_sessions": 24,
+  "privacy": {
+    "credential_environment_forwarded": false,
+    "raw_logs": "external_restricted_directory_only",
+    "raw_paths_in_public_outputs": false
+  },
+  "problems": [],
+  "profile": "lite",
+  "prompts": {
+    "S1": {
+      "sha256": "621653ac30617aaf18f1640096377140a1b601f813c4ae8722594d175791d2ec",
+      "text": "읽기 전용 평가입니다. 파일, Git 상태, GitHub, AWS, DB와 외부 상태를 변경하지 마세요. 현재 저장소에서 적용되는 작업 시작 게이트, 금지 작업, 검증과 완료 조건을 근거 파일과 함께 10개 이하로 요약하세요. 필요한 읽기 전용 확인은 직접 수행하세요."
+    },
+    "X1": {
+      "sha256": "a1a988627906b1deb925a5809522fcc0959ba1a2a090152419631b18c68c8683",
+      "text": "읽기 전용 평가입니다. 파일, Git 상태, GitHub, AWS, DB와 외부 상태를 변경하지 마세요. root에서 시작하여 infra/ 범위의 작업에 적용되는 지침을 확인하세요. Terraform 구현을 시작하지 말고, 설계 검토 전에 필요한 입력과 승인 조건을 해당 영역 지침과 필수 reference에 근거해 보고하세요. 명령을 실행해 인프라를 변경하지 마세요."
+    },
+    "X2": {
+      "sha256": "0c19e6b2119559d243b7abdeada15415754c8b87d25009e3c69ee812190f41c8",
+      "text": "읽기 전용 평가입니다. 파일, Git 상태, GitHub, AWS, DB와 외부 상태를 변경하지 마세요. root에서 시작하여 src/test/와 src/integrationTest/에 적용되는 지침과 필수 reference를 확인하세요. 단위·통합 테스트의 계획 승인, 작성 형식, 실행 및 실패 보고 조건을 구분해 보고하세요. 테스트를 구현하거나 실행하지 마세요."
+    }
+  },
+  "python": {
+    "implementation": "CPython",
+    "version": "3.14.7"
+  },
+  "reasoning_effort": "high",
+  "runtime_evidence": {
+    "child_role_fingerprints": {},
+    "comparison_environment_core_sha256": "e8d6ea123df3e7bbd52f8d2dc6e2330967c3fae2dcaa875c462b1f9571470a1c",
+    "coordinator_review_sha256": "cee6e3c64a471fe46f8bc322152ccfdf9d311bcfc5b8bee83539499c87622ff5",
+    "instrumentation": {
+      "metrics_sha256": "03a4f2c057696a2f1db23878185325cb82404ebba4620d589405929d18b7e97e",
+      "runner_sha256": "4ae906b23c89604efb49750987b39ca9dead02afd0893bd6d70520250b07dfa7"
+    },
+    "parent_fingerprint": {
+      "base_instructions_sha256": "dee3130da2a5b88ed9a3271c08c92356ef55bbf94b65dc12a0cfe36128e85d72",
+      "cli_version": "0.153.4",
+      "dynamic_tool_namespace_projection_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "dynamic_tools_scope": "dynamic_supplement_only",
+      "dynamic_tools_serialization": "empty_omitted_for_cli_0.153.4",
+      "dynamic_tools_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "dynamic_tools_source": "session_meta.dynamic_tools",
+      "full_tool_catalog_status": "unavailable_from_serialized_rollout",
+      "plugin_catalog_status": "unavailable_from_serialized_rollout",
+      "resolved_model": "gpt-5.6-sol",
+      "resolved_reasoning_effort": "high"
+    },
+    "pilot_bindings": [
+      {
+        "candidate": "B0",
+        "cell": "L1",
+        "measurement_review_sha256": "0484ada20c956bb02730466fc641f9646f8ccc5e92e79ff7f6a79c968ac720d3",
+        "raw_evidence_sha256": "3354fefb0faca771354adaf53de524235f0800e2e72a19e6c782db3f1b7047bb",
+        "run_id": "pilot-lite-b0-l1",
+        "summary_sha256": "ff387d5b0afbfc68aca2a1b001fbb826d99172d9e8fe2d9153a512cc0c77f61b"
+      },
+      {
+        "candidate": "B3",
+        "cell": "L2",
+        "measurement_review_sha256": "ede995834f88de4ddbe39c4da47e039fb16493c7a85d21c17a5927b67b059610",
+        "raw_evidence_sha256": "3354fefb0faca771354adaf53de524235f0800e2e72a19e6c782db3f1b7047bb",
+        "run_id": "pilot-lite-b3-l2",
+        "summary_sha256": "ef1b8964e711db7e865765931a08b03b8d0b0e83bf17c0b948420dc8d24df137"
+      }
+    ],
+    "pilot_environment_manifest_sha256": "eb2f5e5877b8960d8bcb5aeb4f27b0f12c46ac4efeff6fcec2949bd95ddbb247",
+    "profile": "lite",
+    "source_documents": {
+      "evaluation_design_sha256": "3341edd065fd00d2b3c872e4be5345f79982b3c3de40436bf921f68a120e7938",
+      "fixtures_sha256": "dade6733e8aecd941f06939f0da764eaadf4b806ee5710ba6af58e12346de462",
+      "lite_plan_sha256": "d2efe1fa7a43e5d66e2e2b9579933ad80806405549a9581f7a6d6e16f293d3a9",
+      "spec_sha256": "606804b071716592841fa4f08015558b3f83612d780a269ec8ecc208a0cf3c01"
+    },
+    "status": "APPROVED_PILOT_PAIR"
+  },
+  "sandbox_modes": [
+    "read-only"
+  ],
+  "schema_version": 2,
+  "smoke_environment": {
+    "status": "NOT_APPLICABLE_LITE_READ_ONLY"
+  },
+  "source_documents": {
+    "evaluation_design_sha256": "3341edd065fd00d2b3c872e4be5345f79982b3c3de40436bf921f68a120e7938",
+    "fixtures_sha256": "dade6733e8aecd941f06939f0da764eaadf4b806ee5710ba6af58e12346de462",
+    "lite_plan_sha256": "d2efe1fa7a43e5d66e2e2b9579933ad80806405549a9581f7a6d6e16f293d3a9",
+    "spec_sha256": "606804b071716592841fa4f08015558b3f83612d780a269ec8ecc208a0cf3c01"
+  },
+  "status": "PREPARED_RUNTIME_EVIDENCE_FIXED",
+  "task_id": "GH-223-INSTRUCTION-ARCHITECTURE-PHASE2",
+  "tokenizer": {
+    "encoding": "o200k_base",
+    "evidence_sha256": "b90410f53bbffc2708d71401821c680ac2728b4b14de7d9943a48895e730acc2",
+    "mergeable_ranks_sha256": "740d8e335bee7a52cd7e7fed95b6f7afd56cb651f2968727e4009fddda82db0c",
+    "package": "tiktoken",
+    "pattern_sha256": "2d1b8dc11e89af71459b36004f698ab3693f59fd84f63e8ec2b49564ab857420",
+    "python_version": "3.14.7",
+    "runtime_load": "PASS",
+    "sample_tokens": 9,
+    "special_tokens_sha256": "dea77ce604db86d3dbf8a95c76fc6cbe1583b22e46b587854e5a8e83d11af14c",
+    "version": "0.14.0"
+  }
+}
