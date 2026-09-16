@@ -190,3 +190,24 @@ GitHub Actions는 Hook 우회와 관계없이 같은 핵심 규칙을 다시 검
 workflow dispatch가 모두 필요합니다.
 
 자세한 저장소 계약은 [`AGENTS.md`](AGENTS.md)를 따릅니다.
+
+## 테스트 서버 배포
+
+`main`에 애플리케이션 코드가 병합되면 `.github/workflows/deploy-test-server.yml`이
+백엔드 이미지를 ECR에 push하고 dev 테스트 서버(#229)에 자동 배포합니다.
+이미지 태그는 commit SHA와 `latest` 두 가지이며, EC2의 compose 설정은
+`latest`를 참조합니다.
+
+이 workflow는 롤백을 자동화하지 않습니다. 이전 커밋의 이미지로 되돌려야
+하면 다음을 수동으로 실행합니다.
+
+1. 되돌릴 commit SHA를 확인합니다.
+2. 그 SHA 태그 이미지를 `latest`로 다시 태깅해 ECR에 push합니다
+   (`docker pull <repo>:<이전 SHA>` → `docker tag <repo>:<이전 SHA>
+   <repo>:latest` → `docker push <repo>:latest`. ECR 리포지토리 URL은
+   드러내지 않고 실제 값으로 치환해 실행합니다).
+3. GitHub Actions에서 아무 `deploy-test-server.yml` 실행이나 열어 `deploy`
+   job만 다시 실행합니다(`gh run rerun <run-id> --job <deploy-job-id>`
+   또는 UI의 "Re-run jobs" → 개별 job 선택). `deploy` job은 소스를
+   checkout하지 않고 ECR의 `latest`만 pull하므로, `build-and-push`를
+   다시 실행해 방금 되돌린 태그를 덮어쓰지 않습니다.
