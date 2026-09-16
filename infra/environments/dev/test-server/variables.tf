@@ -95,9 +95,9 @@ variable "enable_auto_stop" {
 }
 
 variable "auto_stop_schedule_expression" {
-  description = "인스턴스를 정지할 cron 표현식."
+  description = "인스턴스를 정지할 cron 표현식. 결정 항목 H-1과 완료 조건은 매일 정지를 요구한다."
   type        = string
-  default     = "cron(0 19 ? * MON-FRI *)"
+  default     = "cron(0 3 ? * * *)"
 }
 
 variable "auto_stop_schedule_timezone" {
