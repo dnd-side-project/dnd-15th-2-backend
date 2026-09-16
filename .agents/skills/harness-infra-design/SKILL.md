@@ -8,6 +8,8 @@ description: "\uc2b9\uc778 \uc804 AWS \uc778\ud504\ub77c \uc694\uad6c\uc0ac\ud56
 `AGENTS.md`, 존재하는 경우 `TASK.md`,
 `agents/infrastructure-orchestrator.md`를 읽는다.
 
+작업 전에 [설계 정책](references/design-policy.md)을 읽고 적용한다.
+
 ## 설계 진입과 게이트
 
 다음을 확인한다.

@@ -1,0 +1,511 @@
+{
+  "id": "GH-227-AFTER-C1-PRIVATE-PREP",
+  "status": "STATIC_VERIFIED_NOT_DEPLOYED_NOT_EVALUATED",
+  "parent_commit": "6ec850652270000f94d561340ac59e09b508f6cd",
+  "before_commit": "4aa58b8b5cad727372e7dac1dd254099b62243b8",
+  "files": [
+    {
+      "path": ".agents/skills/harness-api-docs/SKILL.md",
+      "bytes": 9030,
+      "sha256": "2f38bd8751b27370a8babe61ac4a90bee108628c6eb9a3e340fe34c17f30884b"
+    },
+    {
+      "path": ".agents/skills/harness-commit/SKILL.md",
+      "bytes": 6299,
+      "sha256": "00957b096e8f028a7cf9e0ea556cd2596dcb4896defe41e46c36669746b66833"
+    },
+    {
+      "path": ".agents/skills/harness-commit/references/splitting-rules.md",
+      "bytes": 3963,
+      "sha256": "55f06a5b91f0f2f7a7058b8c8c7ffd45b12cdf2fbbb119e8c7d61a3087359dd5"
+    },
+    {
+      "path": ".agents/skills/harness-infra-build/SKILL.md",
+      "bytes": 2403,
+      "sha256": "06819b2e1f333e5170a05262bb420d175a81fe50819431c5e7fa816b82c5dcb9"
+    },
+    {
+      "path": ".agents/skills/harness-infra-build/references/change-risk.md",
+      "bytes": 1216,
+      "sha256": "15ac5deede8eb6983218e9bd73c46ebb286cfbff747e0ba4d2420cf1557ab929"
+    },
+    {
+      "path": ".agents/skills/harness-infra-build/references/comment-policy.md",
+      "bytes": 4858,
+      "sha256": "109b22528ef1e9a390d55f5901df80c7a6bfe24126193d7cfde76e6a77f19725"
+    },
+    {
+      "path": ".agents/skills/harness-infra-build/references/module-conventions.md",
+      "bytes": 1571,
+      "sha256": "fc02ed3dedee32980589b73ec10f9ee1c032cce957f3affcaad931fd0ebfecc3"
+    },
+    {
+      "path": ".agents/skills/harness-infra-build/references/terraform-build.md",
+      "bytes": 1318,
+      "sha256": "8c1432771bc4698eba2287d1f89b4e641f70a02b844eacca6d6ea4408bb79f47"
+    },
+    {
+      "path": ".agents/skills/harness-infra-build/references/terraform-verify.md",
+      "bytes": 1818,
+      "sha256": "c7fe2e7cd4367dc0c5041979c7adfee52d890bb461dc740ece917dbdd19f285c"
+    },
+    {
+      "path": ".agents/skills/harness-infra-design/SKILL.md",
+      "bytes": 2974,
+      "sha256": "54d7179960cda7221701c1fac13bd5f19089c04469bcf99785d3c15b996c74a0"
+    },
+    {
+      "path": ".agents/skills/harness-infra-design/references/architecture.md",
+      "bytes": 1875,
+      "sha256": "d16e5e235c63efeb6c7beae3c93180081ebe8d4210e209c08b6cead662b8b19a"
+    },
+    {
+      "path": ".agents/skills/harness-infra-design/references/cost-review.md",
+      "bytes": 1278,
+      "sha256": "c5be94f5e73f44fd44208ad8140268e872227633461117d02db5d1b5a9bb5c9b"
+    },
+    {
+      "path": ".agents/skills/harness-infra-design/references/design-policy.md",
+      "bytes": 1959,
+      "sha256": "f6f070aae3c1c763b9396afa8876211ed6889b5a53796a8af7b41d6a2de4c165"
+    },
+    {
+      "path": ".agents/skills/harness-infra-design/references/intake.md",
+      "bytes": 1725,
+      "sha256": "f3ea1f9267da95a8d3cccc7a1a3ab01f85e1177a07f7b1dcea4d84c5330a5607"
+    },
+    {
+      "path": ".agents/skills/harness-infra-design/references/security-review.md",
+      "bytes": 1711,
+      "sha256": "3937950a90de2df938053213ed0a6e334af436aaa701c4edfd9351a762ba5cc2"
+    },
+    {
+      "path": ".agents/skills/harness-issue/SKILL.md",
+      "bytes": 9478,
+      "sha256": "77d221baa67d5da58107d24af85c26b5244b2c7c2cb32e61bdcf15927c7cf151"
+    },
+    {
+      "path": ".agents/skills/harness-issue/references/issue-forms.md",
+      "bytes": 4280,
+      "sha256": "2cece92111aa030124cade85abbb0afd4ca9eea202f9c71f64e8ce83ceccbb66"
+    },
+    {
+      "path": ".agents/skills/harness-issue/references/project-fields.md",
+      "bytes": 2635,
+      "sha256": "12f7b53428bcac1b9c96cf916e059ec4713dcdcf2750a1e237902081788c2e23"
+    },
+    {
+      "path": ".agents/skills/harness-pr/SKILL.md",
+      "bytes": 9063,
+      "sha256": "078904bc125b1c802a0f62fd2d76ccd0eb2e39ecb6b7c34a20e05ac900196bde"
+    },
+    {
+      "path": ".agents/skills/harness-pr/references/writing-style.md",
+      "bytes": 4158,
+      "sha256": "9e0bd5773c558fd0228fe1f234b514e5ca1907b15c483611109513707bc2c4d8"
+    },
+    {
+      "path": ".agents/skills/harness-review/SKILL.md",
+      "bytes": 613,
+      "sha256": "0494e868e19d23d9b0b06600bb9df39640b8060ea7a9fc41aea5d80a1bd29d35"
+    },
+    {
+      "path": ".agents/skills/harness-test-plan/SKILL.md",
+      "bytes": 888,
+      "sha256": "7f3a4a60c5c801900d30bf8c0d5e49737250947ba430e5c1b64f181441e3a563"
+    },
+    {
+      "path": ".agents/skills/harness-test-plan/references/test-policy.md",
+      "bytes": 762,
+      "sha256": "75d96cd6a625ace7b32da3044aa650071f66e50211e50de01491ad245019a168"
+    },
+    {
+      "path": ".agents/skills/harness-test-run/SKILL.md",
+      "bytes": 1231,
+      "sha256": "be908b5a84e814f028f837ebad97afe7cfedada42cd0839a15911b47204739cd"
+    },
+    {
+      "path": ".agents/skills/harness-test-run/references/reporting.md",
+      "bytes": 270,
+      "sha256": "626344df02bc2554bae82e066e19878dd84c268b38b5def7f90c46c11673cd82"
+    },
+    {
+      "path": ".agents/skills/infra-post-verify/SKILL.md",
+      "bytes": 1110,
+      "sha256": "2bf5742c32f8cc99d194804b4c7349039f28f1d075037c3ec4c2f4295efabeeb"
+    },
+    {
+      "path": ".claude/agents/api-docs-executor.md",
+      "bytes": 3915,
+      "sha256": "4d9d264af8d194635a68c15a8747deee9ba7ab321d8a8c2c4106ce52780a4fd7"
+    },
+    {
+      "path": ".claude/agents/infrastructure-executor.md",
+      "bytes": 500,
+      "sha256": "2540906a9b81402b4496240b3a70e5f803a6af8787af3fac67d48d5b28367b35"
+    },
+    {
+      "path": ".claude/agents/infrastructure-orchestrator.md",
+      "bytes": 647,
+      "sha256": "2102f89c9cd5632b50fffe511e931faa4a6049459b6b4586daccdb516f92403e"
+    },
+    {
+      "path": ".claude/agents/terraform-implementer.md",
+      "bytes": 1360,
+      "sha256": "8d03c04e9211d2ca601de75d23207880217cbd29079400805091f31270f9009a"
+    },
+    {
+      "path": ".claude/agents/terraform-plan-verifier.md",
+      "bytes": 1187,
+      "sha256": "b714eb15482bfce48ac17c474e717bd637054fb285eba2e0f82e833fae2c521f"
+    },
+    {
+      "path": ".claude/settings.json",
+      "bytes": 573,
+      "sha256": "bd89132fd8c654567c1c7d6c3a2d06b3484efdf308a48ffaf95ba848e9a17ce7"
+    },
+    {
+      "path": ".claude/skills/harness-api-docs/SKILL.md",
+      "bytes": 8908,
+      "sha256": "ec38cb9aba04c7de759efb475d02f0be6e25837da1441eb37ebf6f31795fa41f"
+    },
+    {
+      "path": ".claude/skills/harness-commit/SKILL.md",
+      "bytes": 6073,
+      "sha256": "e82e9023566cb4e5b2f592721a0acaaeb405423b3959a0f51443cd564d446be1"
+    },
+    {
+      "path": ".claude/skills/harness-commit/references/splitting-rules.md",
+      "bytes": 3972,
+      "sha256": "5ee202ae208569d9ef27e5de822aee309807f1ae68fb7f38e580ff8fb194608c"
+    },
+    {
+      "path": ".claude/skills/harness-infra-build/SKILL.md",
+      "bytes": 1659,
+      "sha256": "7492e574d9f0aeddb1a7c7ca18aeae04592828ddd1a07abdbb7ecddd8bb3e6e3"
+    },
+    {
+      "path": ".claude/skills/harness-infra-build/references/change-risk.md",
+      "bytes": 1216,
+      "sha256": "15ac5deede8eb6983218e9bd73c46ebb286cfbff747e0ba4d2420cf1557ab929"
+    },
+    {
+      "path": ".claude/skills/harness-infra-build/references/module-conventions.md",
+      "bytes": 1571,
+      "sha256": "fc02ed3dedee32980589b73ec10f9ee1c032cce957f3affcaad931fd0ebfecc3"
+    },
+    {
+      "path": ".claude/skills/harness-infra-build/references/terraform-build.md",
+      "bytes": 1318,
+      "sha256": "8c1432771bc4698eba2287d1f89b4e641f70a02b844eacca6d6ea4408bb79f47"
+    },
+    {
+      "path": ".claude/skills/harness-infra-build/references/terraform-verify.md",
+      "bytes": 1818,
+      "sha256": "c7fe2e7cd4367dc0c5041979c7adfee52d890bb461dc740ece917dbdd19f285c"
+    },
+    {
+      "path": ".claude/skills/harness-infra-design/SKILL.md",
+      "bytes": 2226,
+      "sha256": "c4923d7d5cfe64fb476f58f8591de23799df5824b3618e5951ece2deef0e3d44"
+    },
+    {
+      "path": ".claude/skills/harness-infra-design/references/architecture.md",
+      "bytes": 1875,
+      "sha256": "d16e5e235c63efeb6c7beae3c93180081ebe8d4210e209c08b6cead662b8b19a"
+    },
+    {
+      "path": ".claude/skills/harness-infra-design/references/cost-review.md",
+      "bytes": 1278,
+      "sha256": "c5be94f5e73f44fd44208ad8140268e872227633461117d02db5d1b5a9bb5c9b"
+    },
+    {
+      "path": ".claude/skills/harness-infra-design/references/intake.md",
+      "bytes": 1725,
+      "sha256": "f3ea1f9267da95a8d3cccc7a1a3ab01f85e1177a07f7b1dcea4d84c5330a5607"
+    },
+    {
+      "path": ".claude/skills/harness-infra-design/references/security-review.md",
+      "bytes": 1711,
+      "sha256": "3937950a90de2df938053213ed0a6e334af436aaa701c4edfd9351a762ba5cc2"
+    },
+    {
+      "path": ".claude/skills/harness-issue/SKILL.md",
+      "bytes": 8682,
+      "sha256": "03302eaa230942210239deb439bf0364f767e32763c67b6726d72dd7b2e8bfb9"
+    },
+    {
+      "path": ".claude/skills/harness-issue/references/issue-forms.md",
+      "bytes": 3622,
+      "sha256": "ff6f1479fe7f886b8a524db640db6e4d95a1fa3464ee46679c7abe0414d823bd"
+    },
+    {
+      "path": ".claude/skills/harness-issue/references/project-fields.md",
+      "bytes": 2635,
+      "sha256": "12f7b53428bcac1b9c96cf916e059ec4713dcdcf2750a1e237902081788c2e23"
+    },
+    {
+      "path": ".claude/skills/harness-issue/references/writing-style.md",
+      "bytes": 6002,
+      "sha256": "c31db614c7e891ab0b2962e4e8d7ba35444a839d0c388ea341b1938c4dfe6e11"
+    },
+    {
+      "path": ".claude/skills/harness-pr/SKILL.md",
+      "bytes": 8623,
+      "sha256": "2c4caef06cc6d514b9039302db8260ee6a02b66e879b4ac6b859780884a6120e"
+    },
+    {
+      "path": ".claude/skills/harness-pr/references/writing-style.md",
+      "bytes": 4307,
+      "sha256": "71bbc8ddd0158d44a0b844c8c6b14f5344bb7505bdb728acc3f69092b890be86"
+    },
+    {
+      "path": ".claude/skills/harness-review/SKILL.md",
+      "bytes": 609,
+      "sha256": "ed4d609589de5ba9d9da8914cfecaf9cc8b2528dc320388fd3544e86963078b0"
+    },
+    {
+      "path": ".claude/skills/harness-test-plan/SKILL.md",
+      "bytes": 835,
+      "sha256": "2d0feb745f5ee53247918cd4eba3af1d8ec063b167c9294332f7904c048ced19"
+    },
+    {
+      "path": ".claude/skills/harness-test-run/SKILL.md",
+      "bytes": 906,
+      "sha256": "1f34c7b36b7788bb803ca19e1854400f755ad811f600582a6895b0794f49acea"
+    },
+    {
+      "path": ".claude/skills/infra-post-verify/SKILL.md",
+      "bytes": 1077,
+      "sha256": "f4092e6f2c1db783807c4884cb5379a61ad32ce2fabe3aeaa5a1d87598ba615f"
+    },
+    {
+      "path": ".codex/agents/api-docs-executor.toml",
+      "bytes": 2740,
+      "sha256": "bf3a303e8317827d075fd6db5b131a6afc2f96da7ca4533d30e30987b1c212e2"
+    },
+    {
+      "path": ".codex/agents/infrastructure-executor.toml",
+      "bytes": 786,
+      "sha256": "3be15eaf09037cb068e40b80c8296b6bc9e3ce01c59519f3e35c421cf74f89a5"
+    },
+    {
+      "path": ".codex/agents/infrastructure-orchestrator.toml",
+      "bytes": 910,
+      "sha256": "fe0d7c4d214a41b0bb9c46c20ec29562f44078119ed55d43ac423c5f80f88b25"
+    },
+    {
+      "path": ".codex/agents/terraform-implementer.toml",
+      "bytes": 1512,
+      "sha256": "43222aa705873758968aff0f9d926554f1be25a333db99bd18ab472182c082b8"
+    },
+    {
+      "path": ".codex/agents/terraform-plan-verifier.toml",
+      "bytes": 1303,
+      "sha256": "9b55df07d5bfd27ccd155ba2f6f9d11679710bce083077ac87ad69aa97ac4adf"
+    },
+    {
+      "path": "AGENTS.md",
+      "bytes": 19350,
+      "sha256": "c6df49f0bf0f716ef26e5107e8cd71e406f97eaf16b140d54d917fc0c6b313f3"
+    },
+    {
+      "path": "CLAUDE.md",
+      "bytes": 9857,
+      "sha256": "6a7906e848744a20fbc1c3b902a96c50dc4f5ebdbbc8a1acff0d07df22b1744c"
+    },
+    {
+      "path": "agents/README.md",
+      "bytes": 1377,
+      "sha256": "032de1f91f7791ae12fbfe0427c700af0391d092940a43acced40013cad79ed2"
+    },
+    {
+      "path": "agents/api-docs-executor.md",
+      "bytes": 6235,
+      "sha256": "499e587c0d6ecc339d37ad3b6865c98792bdb5d70f4f5d26ecee3bb5e7f3e8d5"
+    },
+    {
+      "path": "agents/infrastructure-executor.md",
+      "bytes": 1943,
+      "sha256": "efc164e389a18847e345300557199258e272daca49d064d2dbbca330080503aa"
+    },
+    {
+      "path": "agents/infrastructure-orchestrator.md",
+      "bytes": 1644,
+      "sha256": "68de71036892881b3221dbd81baf306667d02e4dd9966da52e4035be69848d7d"
+    },
+    {
+      "path": "agents/model-profiles.example.yml",
+      "bytes": 954,
+      "sha256": "1058d91446d7172c91994837ac9c99ee880056de5d0c4eaec1fb5470c81f9db0"
+    },
+    {
+      "path": "agents/pm-reviewer.md",
+      "bytes": 1249,
+      "sha256": "0abf149fc2cc99c80d06d766a1fca1b1e38cb6eecba9c66ff2723c3820c3965f"
+    },
+    {
+      "path": "agents/test-executor.md",
+      "bytes": 1471,
+      "sha256": "b2d6f2fc8b71e3e6ad8b7ed6e24390ce7c09f698b1a2c8431deea3a64983abd8"
+    },
+    {
+      "path": "agents/test-orchestrator.md",
+      "bytes": 1406,
+      "sha256": "2217185da647d635aba65aa8ca18e32e2e667bf01d3f808d6f42e3554cca7db4"
+    },
+    {
+      "path": "docs/harness/ARCHITECTURE.md",
+      "bytes": 3842,
+      "sha256": "9f5351802278065edc0ee63648f01a7929690e75d6666e34c239cca3cbecc4c3"
+    },
+    {
+      "path": "docs/harness/CHEATSHEET.md",
+      "bytes": 1348,
+      "sha256": "9707d492557115f4890bd4f1f40a5102547559da613974d04baab1251c3aa6c2"
+    },
+    {
+      "path": "docs/harness/DAILY_WORKFLOW.md",
+      "bytes": 2329,
+      "sha256": "7eb1e1391645010dd4813b11b9b5c16ca79f1d5c66db4387223b1528f9c88c9b"
+    },
+    {
+      "path": "docs/harness/FAILURE_RECOVERY.md",
+      "bytes": 4052,
+      "sha256": "f7ef732cacd41c2346c17fbee6893cfdd10974d7ee64b1d022c3acb13a2d402a"
+    },
+    {
+      "path": "docs/harness/GITHUB_ENFORCEMENT.md",
+      "bytes": 3568,
+      "sha256": "823e962780cd66ffa9e6f96779a898242b3a8fdae896cadf4e49f7002b30644e"
+    },
+    {
+      "path": "docs/harness/HUSKY.md",
+      "bytes": 5097,
+      "sha256": "6b8a7be30883374d7996a3deaaeb363453a58e1926e9d8f39f11694cc8cf7ba3"
+    },
+    {
+      "path": "docs/harness/JAVA_CONVENTIONS.md",
+      "bytes": 5960,
+      "sha256": "7eea28b01bfe393e960f78bb22785d1be233e6f2c41fb31268d0e538b865ec7e"
+    },
+    {
+      "path": "docs/harness/LABELS.md",
+      "bytes": 3437,
+      "sha256": "8a9478d8759d4e34890234617eefb756716d352f7a26b664abfc2d2a5fab9b2a"
+    },
+    {
+      "path": "docs/harness/MACOS_SETUP.md",
+      "bytes": 3001,
+      "sha256": "78b50737f7fa887d3f1863b10fd7947dd6b95a635a2cc667540c8cc76b98ae5d"
+    },
+    {
+      "path": "docs/harness/OVERVIEW.md",
+      "bytes": 3512,
+      "sha256": "93ef0461305372f58d3f355edf0674fde90f81b73de7ba6bc7056567093785a3"
+    },
+    {
+      "path": "docs/harness/SECRET_HANDLING.md",
+      "bytes": 1498,
+      "sha256": "0de02cc95f51e04f9be26857bd9a8a0870b80e446fc10b3a0125aa5a6d32d3c8"
+    },
+    {
+      "path": "docs/harness/TASK_DOCUMENT_ROUTING.md",
+      "bytes": 1627,
+      "sha256": "70a24d180200836ac7e2d0fb6e1050624b08219c3415279695b5ed413c54f278"
+    },
+    {
+      "path": "docs/harness/WORKFLOW_SKILLS.md",
+      "bytes": 9050,
+      "sha256": "e5d01f075f5be35a04e4767195bebdc2a142a15d491edf8b461e4b2ecd472889"
+    },
+    {
+      "path": "infra/AGENTS.md",
+      "bytes": 461,
+      "sha256": "a5ab758f0906c435251eb974ea942371b92f8f57c626e54dde6524df42e4cf25"
+    },
+    {
+      "path": "src/integrationTest/AGENTS.md",
+      "bytes": 1269,
+      "sha256": "f71399bfe10f8585eb352677fb4f3d4e654de66a0e52cb7bcffe2375d1175e25"
+    },
+    {
+      "path": "src/main/java/AGENTS.md",
+      "bytes": 507,
+      "sha256": "300fe21fa649bbfea36db7b4d72708d538914e81f90d0174541fc4c29c24b38e"
+    },
+    {
+      "path": "src/test/AGENTS.md",
+      "bytes": 1130,
+      "sha256": "3c94a215e384c967b64f90b20d7894987292575ce771ab104e72bb2ebe1e1545"
+    },
+    {
+      "path": "templates/api-docs-review.md",
+      "bytes": 2390,
+      "sha256": "feac507e348b144589633fb4fa517a3e54c65eece5070d8ee4576b4101bc5a74"
+    },
+    {
+      "path": "templates/decision-record.md",
+      "bytes": 612,
+      "sha256": "da814667dcacfc24588f91f74e20b4ccc30ce80f462239ef49f91fd22467f630"
+    },
+    {
+      "path": "templates/infrastructure-design-report.md",
+      "bytes": 2482,
+      "sha256": "9b016df62915acbb25224d53a5cd5b4cea749e6080690dbbf7af8f5753b07e21"
+    },
+    {
+      "path": "templates/performance-experiment-report.md",
+      "bytes": 1653,
+      "sha256": "638dcdb93a441f82c145d26d0d73e1856d6edc602282beffff36bcc17e603605"
+    },
+    {
+      "path": "templates/task-contract.md",
+      "bytes": 902,
+      "sha256": "6f091e5aaa2cf108d6bb571037bb7e066d80c02c188f6732ff7155e1d4151b7e"
+    },
+    {
+      "path": "templates/test-plan.md",
+      "bytes": 1701,
+      "sha256": "94b62366f0c85246fcba48d7a9b46684636a91be5f999d7cbdb04aa45d350ab5"
+    },
+    {
+      "path": "templates/test-report.md",
+      "bytes": 1664,
+      "sha256": "c1d6ff2f04627f5d84fbb01403d49dae3c130a5f5f559b8d15638c9daf4cf209"
+    }
+  ],
+  "added_vs_before": [
+    ".agents/skills/harness-infra-build/references/comment-policy.md",
+    ".agents/skills/harness-infra-design/references/design-policy.md",
+    ".agents/skills/harness-test-plan/references/test-policy.md",
+    ".agents/skills/harness-test-run/references/reporting.md",
+    "docs/harness/TASK_DOCUMENT_ROUTING.md",
+    "infra/AGENTS.md",
+    "src/integrationTest/AGENTS.md",
+    "src/main/java/AGENTS.md",
+    "src/test/AGENTS.md"
+  ],
+  "modified_vs_before": [
+    ".agents/skills/harness-api-docs/SKILL.md",
+    ".agents/skills/harness-commit/references/splitting-rules.md",
+    ".agents/skills/harness-infra-build/SKILL.md",
+    ".agents/skills/harness-infra-design/SKILL.md",
+    ".agents/skills/harness-issue/SKILL.md",
+    ".agents/skills/harness-issue/references/issue-forms.md",
+    ".agents/skills/harness-pr/SKILL.md",
+    ".agents/skills/harness-test-plan/SKILL.md",
+    ".agents/skills/harness-test-run/SKILL.md",
+    "AGENTS.md",
+    "CLAUDE.md",
+    "agents/api-docs-executor.md",
+    "agents/infrastructure-executor.md",
+    "agents/infrastructure-orchestrator.md",
+    "agents/pm-reviewer.md",
+    "agents/test-executor.md",
+    "docs/harness/ARCHITECTURE.md",
+    "docs/harness/DAILY_WORKFLOW.md",
+    "docs/harness/WORKFLOW_SKILLS.md"
+  ],
+  "removed_vs_before": []
+}

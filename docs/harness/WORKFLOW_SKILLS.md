@@ -24,7 +24,8 @@ Issue → 브랜치 → 커밋 → PR을 질문형 대화로 진행하는 Claude
 Issue #N + Project item + <type>/gh-<N>-<slug> 브랜치 + TASK.md
    │
    ▼
-/harness-test-plan → (승인) → /harness-test-run    구현과 검증
+일반 구현: root 역할 계약과 승인된 TASK → 실행·검증
+테스트 작업: /harness-test-plan → (승인) → /harness-test-run
    │
    ▼
 /harness-commit           변경 분할 커밋
@@ -178,3 +179,5 @@ PR:     feat: add direction post API              scope 없음
 ./harness check
 npm run hooks:validate
 ```
+
+일반 기능·버그·리팩터링 및 요구사항·설계는 [문서 선택표](TASK_DOCUMENT_ROUTING.md)를 따른다. 테스트 전용 Skill을 일반 제품 구현 역할로 사용하지 않는다.
