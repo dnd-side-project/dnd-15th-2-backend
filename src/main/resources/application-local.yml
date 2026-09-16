@@ -21,3 +21,17 @@ qello:
   auth:
     access-token:
       secret: ${QELLO_AUTH_ACCESS_TOKEN_SECRET}
+
+management:
+  endpoints:
+    web:
+      # compose.yaml의 app healthcheck가 이 endpoint를 확인한다(#230). health만
+      # 열고 다른 endpoint는 운영 기본값(닫힘)을 유지한다.
+      exposure:
+        include: health
+  endpoint:
+    health:
+      # enabled-by-default(운영 기본값)가 false라 exposure.include와 별개로
+      # endpoint 자체를 켜야 한다.
+      enabled: true
+      show-details: never
