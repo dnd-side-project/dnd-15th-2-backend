@@ -5,11 +5,11 @@
 - Title: `Phase 4 지침 구조 최종 적용 및 정책 보존 검증`
 - GitHub Issue: `#227`
 - Branch: `chore/gh-227-instruction-rollout-phase4`
-- Base branch: `chore/gh-225-instruction-model-phase3`
+- Base branch: `main`
 - Task ID: `GH-227-INSTRUCTION-ROLLOUT-PHASE4`
 - Design ID: `HARNESS-DESIGN-GH-227-003` (APPROVED_FOR_IMPLEMENTATION; 기존001/002는 아래 이력 보존)
 - Status: `AFTER_V1_VERIFIED` (적용·필수 검사·독립 검토 완료; 커밋·PR 게시 진행)
-- Base commit: `6ec850652270000f94d561340ac59e09b508f6cd`
+- Base commit: `00ea1f9d82a45694dc5df2d6ad26095d63017f98`
 - Intake approval: 사용자의 새 Issue 생성 및 Phase 4 시작 요청. 구체적 적용 설계 승인은 별도다.
 - Project: P2 / In Progress / Chore / Sprint 미지정(활성 iteration 없음).
 
