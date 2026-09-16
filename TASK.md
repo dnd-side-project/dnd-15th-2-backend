@@ -80,8 +80,12 @@
 
 ```bash
 terraform fmt -check -recursive infra
-terraform init -backend=false
-terraform validate
+terraform -chdir=infra/modules/network init -backend=false && terraform -chdir=infra/modules/network validate
+terraform -chdir=infra/modules/app-server init -backend=false && terraform -chdir=infra/modules/app-server validate
+terraform -chdir=infra/environments/dev/test-server init -backend=false && terraform -chdir=infra/environments/dev/test-server validate
+terraform -chdir=infra/bootstrap init -backend=false && terraform -chdir=infra/bootstrap validate
+tflint --recursive
+checkov -d infra --framework terraform
 ./harness check
 ./harness pr-ready --project-tests
 npm run hooks:validate
