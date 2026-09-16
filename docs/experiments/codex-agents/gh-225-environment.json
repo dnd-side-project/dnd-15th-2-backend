@@ -1,0 +1,236 @@
+{
+  "issue_number": 225,
+  "task_id": "GH-225-INSTRUCTION-MODEL-PHASE3",
+  "design_id": "HARNESS-DESIGN-GH-225-001",
+  "status": "EVALUATION_VERIFIED_COMMIT_APPROVED",
+  "approval": "User approved plan after Astra medium correction",
+  "candidate": "B3",
+  "candidate_commit": "8e0028b1729ad7ba8331d528ea15be4fbe9a0be0",
+  "configurations": [
+    {
+      "model": "gpt-5.6-sol",
+      "effort": "high"
+    },
+    {
+      "model": "gpt-6-astra",
+      "effort": "medium"
+    }
+  ],
+  "observed_cli_version": "0.154.0-alpha.6.2",
+  "previous_cli_version": "0.153.4",
+  "planned_pilots": 2,
+  "planned_comparison_runs": 12,
+  "executed_evaluation_calls": 15,
+  "retries": 0,
+  "reset_credits_used": 0,
+  "full_delivered_tool_catalog_status": "UNAVAILABLE_ACCEPTED_LIMITATION",
+  "plugin_inventory_status": "BATCH2_14_PRE_POST_MATCH; HISTORICAL_PILOT1_DRIFT",
+  "source_span_attribution_status": "PARTIAL_ACCEPTED_EXACT_TOKENS_UNAVAILABLE",
+  "budget": {
+    "api_equivalent_usd": 40,
+    "input_tokens": 8000000,
+    "output_tokens": 160000,
+    "model_seconds": 5400,
+    "single_session_seconds": 600
+  },
+  "problems": [
+    "Pilot1 POST_ENVIRONMENT_DRIFT in plugin inventory hashes",
+    "Pilot1 original parser omitted custom tool calls and array outputs; immutable original result preserved",
+    "Exact instruction source-span attribution remains unverified"
+  ],
+  "source_hashes": {
+    "scripts/experiments/codex-instruction-phase2.py": "4ae906b23c89604efb49750987b39ca9dead02afd0893bd6d70520250b07dfa7",
+    "scripts/experiments/codex-instruction-metrics.py": "03a4f2c057696a2f1db23878185325cb82404ebba4620d589405929d18b7e97e",
+    "docs/experiments/codex-agents/gh-223-lite-runtime-adapter.md": "a89819350d4752b25bd80e5b6cf9510804ddefc426e8082addcd4ae34e0a331a"
+  },
+  "limited_environment_equivalence_approved": true,
+  "diagnostic_prompt_render": {
+    "status": "SUCCESS_RENDER_ONLY_NOT_DELIVERY_EVIDENCE",
+    "items_per_model": 5,
+    "repository_user_message_equal": true,
+    "root_agents_bytes": 16990,
+    "model_developer_messages_differ": true
+  },
+  "frozen_pilot_environment": {
+    "candidate": "8e0028b1729ad7ba8331d528ea15be4fbe9a0be0",
+    "cli_sha256": "ecad78dbf98adb89ec475edac86630406cbe59d9f3070b17d88065f136b94bcb",
+    "cli_version": "codex-cli 0.154.0-alpha.6.2",
+    "config_plugin_inventory_sha256": "f7537af9e8ec475fa4ed0119d6d0086cedb68187fb645dec7491dbea42084b9c",
+    "cwd_sha256": "c15f7e138db8a8fec4189420350614b68a248f450bda7d2ec0f03ecab38352ad",
+    "equivalence": "limited_user_approved",
+    "full_delivered_catalog": "UNAVAILABLE",
+    "helpers_sha256": {
+      "codex-instruction-metrics": "03a4f2c057696a2f1db23878185325cb82404ebba4620d589405929d18b7e97e",
+      "codex-instruction-phase2": "4ae906b23c89604efb49750987b39ca9dead02afd0893bd6d70520250b07dfa7"
+    },
+    "inventory_scope": "config.toml, plugin.json, plugins root JSON, candidate .codex TOML",
+    "plugin_list_sha256": "9b5c5b7c8f0613730dd96222039e0843c9fde47cb4d42816d5e4f36c3932f360",
+    "prompt_plan_sha256": "d2efe1fa7a43e5d66e2e2b9579933ad80806405549a9581f7a6d6e16f293d3a9",
+    "runner_sha256": "6276a2c4bea33261b61c54cd6347ea2b2ff13958be33d28f9cdb348bb6240030",
+    "safe_environment_sha256": "2dd5ba69e8ddcd37caf3635be09de90a66c00713e93641a3f5f4a5f3b308d742",
+    "sandbox": "read-only",
+    "tree": "cbdcee31f6cc7cc254ab84e38255b705db1e1a47"
+  },
+  "pilot_manifest_sha256": "84f438dada5db99d76bf892084e142be26a3c42008a3608d297208ba29df6876",
+  "accepted_pilots": 2,
+  "main_runs": 12,
+  "observed_api_equivalent_usd": 6.8557556,
+  "parser_repair_status": "SYNTHETIC_17_PASS_INDEPENDENT_REVIEW_PASS",
+  "batch2": {
+    "environment": {
+      "candidate": "8e0028b1729ad7ba8331d528ea15be4fbe9a0be0",
+      "cli_sha256": "ecad78dbf98adb89ec475edac86630406cbe59d9f3070b17d88065f136b94bcb",
+      "cli_version": "codex-cli 0.154.0-alpha.6.2",
+      "config_plugin_inventory_sha256": "77deb3eeee21f23266e601b70cfb865096212c4cda7fff370a5ea086fd4ff217",
+      "cwd_sha256": "c15f7e138db8a8fec4189420350614b68a248f450bda7d2ec0f03ecab38352ad",
+      "equivalence": "limited_user_approved",
+      "full_delivered_catalog": "UNAVAILABLE",
+      "helpers_sha256": {
+        "codex-instruction-metrics": "03a4f2c057696a2f1db23878185325cb82404ebba4620d589405929d18b7e97e",
+        "codex-instruction-phase2": "4ae906b23c89604efb49750987b39ca9dead02afd0893bd6d70520250b07dfa7"
+      },
+      "inventory_scope": "config.toml, plugin.json, plugins root JSON, candidate .codex TOML",
+      "plugin_list_sha256": "83c75d15634dcc2754ba211a3228a253c187ea36e2d5439b13be7bfba27aee23",
+      "prompt_plan_sha256": "d2efe1fa7a43e5d66e2e2b9579933ad80806405549a9581f7a6d6e16f293d3a9",
+      "runner_sha256": "e22a822cc65582475f0391913598da02e6ddfc4eea3c416e4d450600f29915ff",
+      "safe_environment_sha256": "2dd5ba69e8ddcd37caf3635be09de90a66c00713e93641a3f5f4a5f3b308d742",
+      "sandbox": "read-only",
+      "tree": "cbdcee31f6cc7cc254ab84e38255b705db1e1a47"
+    },
+    "configurations": {
+      "astra": [
+        "gpt-6-astra",
+        "medium"
+      ],
+      "sol": [
+        "gpt-5.6-sol",
+        "high"
+      ]
+    },
+    "order": [
+      {
+        "cell": "L2",
+        "configuration": "sol",
+        "index": 1,
+        "phase": "pilot"
+      },
+      {
+        "cell": "L2",
+        "configuration": "astra",
+        "index": 2,
+        "phase": "pilot"
+      },
+      {
+        "cell": "L1",
+        "configuration": "sol",
+        "index": 3,
+        "phase": "1"
+      },
+      {
+        "cell": "L1",
+        "configuration": "astra",
+        "index": 4,
+        "phase": "1"
+      },
+      {
+        "cell": "L2",
+        "configuration": "astra",
+        "index": 5,
+        "phase": "1"
+      },
+      {
+        "cell": "L2",
+        "configuration": "sol",
+        "index": 6,
+        "phase": "1"
+      },
+      {
+        "cell": "L3",
+        "configuration": "sol",
+        "index": 7,
+        "phase": "1"
+      },
+      {
+        "cell": "L3",
+        "configuration": "astra",
+        "index": 8,
+        "phase": "1"
+      },
+      {
+        "cell": "L3",
+        "configuration": "astra",
+        "index": 9,
+        "phase": "2"
+      },
+      {
+        "cell": "L3",
+        "configuration": "sol",
+        "index": 10,
+        "phase": "2"
+      },
+      {
+        "cell": "L2",
+        "configuration": "sol",
+        "index": 11,
+        "phase": "2"
+      },
+      {
+        "cell": "L2",
+        "configuration": "astra",
+        "index": 12,
+        "phase": "2"
+      },
+      {
+        "cell": "L1",
+        "configuration": "astra",
+        "index": 13,
+        "phase": "2"
+      },
+      {
+        "cell": "L1",
+        "configuration": "sol",
+        "index": 14,
+        "phase": "2"
+      }
+    ],
+    "limits": {
+      "input": 8000000,
+      "output": 160000,
+      "seconds": 5400,
+      "usd": 40
+    },
+    "single_seconds": 600,
+    "batch": "batch2",
+    "authorized_new_sessions": 14,
+    "authorized_total_sessions": 15,
+    "historical_result_sha256": "29cb688a13d1c543f73fa49a2a0ef0117a07a6082bc4a969806c5dce6f8a7253",
+    "historical_budget": {
+      "input": 314416,
+      "output": 5464,
+      "seconds": 121.36788773536682,
+      "usd": 0.34304640000000003
+    },
+    "partial_attribution": "USER_APPROVED_FOR_MAIN_AFTER_PILOT_REVIEW",
+    "manifest_sha256": "4a34718fb1a4ea45cd61e9e25f673cf479c1ed58a54310d227e7ef7c58d89feb"
+  },
+  "historical_reanalysis_runner_sha256": "d3580272d8aa9ac469dbe8c96c0d34f45df794d6e4807c7611ddd7ce290bfca8",
+  "historical_reanalysis_source_snapshot": "NOT_PRESERVED",
+  "current_runner_sha256": "e22a822cc65582475f0391913598da02e6ddfc4eea3c416e4d450600f29915ff",
+  "cumulative_usage": {
+    "input": 3864044,
+    "output": 59037,
+    "seconds": 1795.0830237865448,
+    "api_equivalent_usd": 6.8557556
+  },
+  "main_quality": {
+    "pass": 10,
+    "fail": 2,
+    "fail_indices": [
+      7,
+      10
+    ],
+    "safety_pass": 12,
+    "eligible_pairs": 4
+  },
+  "transport_retries": "UNAVAILABLE"
+}
