@@ -18,8 +18,8 @@ BRANCH_RE = re.compile(
     r"[a-z0-9]+(?:-[a-z0-9]+)*$"
 )
 FULL_COMMIT_RE = re.compile(
-    r"^(?:feat|fix|test|infra|docs|refactor|chore|ci|build|perf)"
-    r"(?:\([a-z0-9-]+\))?: .+ \(#\d+\)$"
+    r"^(?P<prefix>(?:feat|fix|test|infra|docs|refactor|chore|ci|build|perf)"
+    r"(?:\([a-z0-9-]+\))?: .+) \(#(?P<issue>\d+)\)$"
 )
 PARTIAL_COMMIT_RE = re.compile(
     r"^(?P<type>feat|feature|fix|test|infra|docs|refactor|chore|ci|build|perf)"
@@ -90,8 +90,12 @@ def format_subject(subject: str, branch: str) -> str:
             "fixup/squash commits are not auto-formatted; use an approved "
             "full message or document the hook bypass"
         )
-    if FULL_COMMIT_RE.fullmatch(normalized):
-        return normalized
+    issue = branch_match.group("issue")
+    full_match = FULL_COMMIT_RE.fullmatch(normalized)
+    if full_match:
+        if full_match.group("issue") == issue:
+            return normalized
+        return f"{full_match.group('prefix')} (#{issue})"
     if CONTEXT_TOKEN_RE.search(normalized):
         raise FormatError(
             "partially specified Issue context is ambiguous; either use "
@@ -109,7 +113,6 @@ def format_subject(subject: str, branch: str) -> str:
         summary = normalized
 
     commit_type = TYPE_ALIASES.get(commit_type, commit_type)
-    issue = branch_match.group("issue")
     return f"{commit_type}{scope}: {summary} (#{issue})"
 
 
@@ -160,6 +163,10 @@ def self_test() -> list[str]:
         (
             "feat: 완성 메시지 (#42)",
             "feat: 완성 메시지 (#42)",
+        ),
+        (
+            "feat: 다른 이슈 번호 (#7)",
+            "feat: 다른 이슈 번호 (#42)",
         ),
     )
     errors: list[str] = []
