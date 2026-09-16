@@ -25,6 +25,429 @@ resource "aws_iam_openid_connect_provider" "github" {
   tags = var.tags
 }
 
+# 프론트 테스트 서버 스택(D-3)의 SSM SecureString 파라미터가 쓰는 계정 기본
+# 키. infra-apply 역할의 kms:Decrypt 범위를 이 Key로 한정하는 데 참조한다.
+data "aws_kms_alias" "ssm_default" {
+  name = "alias/aws/ssm"
+}
+
+# --- 프론트 테스트 서버 스택(D-3, #229/#233) 공통 권한 -------------------------
+# infra-apply(oidc.tf)와 infra-deployer(deployer.tf) 모두 이 스택을 apply할
+# 수 있어야 해서 문서를 하나로 만들고 source_policy_documents로 양쪽에
+# 합성한다. 리소스 ARN은 policy_sentry(AWS 서비스 권한 부여 참조 데이터
+# 기반)로 각 action이 실제 지원하는 리소스 유형을 확인해 채웠다 — 대부분의
+# EC2 action은 "*" 없이도 리소스 수준으로 좁힐 수 있어, 이전 초안의 "AWS
+# 제약" 주석은 부정확했다(PR #232 이후 자체 재검토).
+data "aws_iam_policy_document" "test_server_shared_permissions" {
+  # apply도 내부적으로 refresh(조회)를 수행하므로 plan 역할과 동일한 조회
+  # 권한이 필요하다. 이 스택이 실제로 만드는 리소스 유형의 조회 action만
+  # 나열한다("ec2:Describe*" 와일드카드는 Client VPN·Spot Fleet 등 무관한
+  # 하위 action까지 포함해 넓게 부여하는 문제가 있고, 그 중 일부(예:
+  # DescribeInstanceAttribute)는 리소스 수준으로 좁힐 수 있는데도 "*"로
+  # 남게 된다).
+  statement {
+    sid    = "ReadTestServerNetworkAndCompute"
+    effect = "Allow"
+    actions = [
+      "ec2:DescribeVpcs",
+      "ec2:DescribeSubnets",
+      "ec2:DescribeInternetGateways",
+      "ec2:DescribeRouteTables",
+      "ec2:DescribeSecurityGroups",
+      "ec2:DescribeSecurityGroupRules",
+      "ec2:DescribeImages",
+      "ec2:DescribeInstances",
+      "ec2:DescribeInstanceTypes",
+      "ec2:DescribeInstanceCreditSpecifications",
+      "ec2:DescribeVolumes",
+      "ec2:DescribeNetworkInterfaces",
+      "ec2:DescribeAddresses",
+      "ec2:DescribeAddressesAttribute",
+      "ec2:DescribeTags",
+      "ec2:DescribeAvailabilityZones",
+      "ec2:DescribeAccountAttributes",
+    ]
+    resources = ["*"]
+  }
+
+  statement {
+    sid       = "CreateTestServerVpc"
+    effect    = "Allow"
+    actions   = ["ec2:CreateVpc"]
+    resources = [local.test_server_vpc_arn]
+
+    condition {
+      test     = "StringLike"
+      variable = "aws:RequestTag/Project"
+      values   = ["qello"]
+    }
+  }
+
+  statement {
+    sid       = "ManageTestServerVpc"
+    effect    = "Allow"
+    actions   = ["ec2:DeleteVpc", "ec2:ModifyVpcAttribute"]
+    resources = [local.test_server_vpc_arn]
+  }
+
+  statement {
+    sid       = "CreateTestServerSubnet"
+    effect    = "Allow"
+    actions   = ["ec2:CreateSubnet"]
+    resources = [local.test_server_subnet_arn, local.test_server_vpc_arn]
+
+    condition {
+      test     = "StringLike"
+      variable = "aws:RequestTag/Project"
+      values   = ["qello"]
+    }
+  }
+
+  statement {
+    sid       = "ManageTestServerSubnet"
+    effect    = "Allow"
+    actions   = ["ec2:DeleteSubnet", "ec2:ModifySubnetAttribute"]
+    resources = [local.test_server_subnet_arn]
+  }
+
+  statement {
+    sid       = "CreateTestServerInternetGateway"
+    effect    = "Allow"
+    actions   = ["ec2:CreateInternetGateway"]
+    resources = [local.test_server_internet_gateway_arn]
+
+    condition {
+      test     = "StringLike"
+      variable = "aws:RequestTag/Project"
+      values   = ["qello"]
+    }
+  }
+
+  statement {
+    sid    = "ManageTestServerInternetGateway"
+    effect = "Allow"
+    actions = [
+      "ec2:DeleteInternetGateway",
+      "ec2:AttachInternetGateway",
+      "ec2:DetachInternetGateway",
+    ]
+    resources = [local.test_server_internet_gateway_arn, local.test_server_vpc_arn]
+  }
+
+  statement {
+    sid       = "CreateTestServerRouteTable"
+    effect    = "Allow"
+    actions   = ["ec2:CreateRouteTable"]
+    resources = [local.test_server_route_table_arn, local.test_server_vpc_arn]
+
+    condition {
+      test     = "StringLike"
+      variable = "aws:RequestTag/Project"
+      values   = ["qello"]
+    }
+  }
+
+  statement {
+    sid    = "ManageTestServerRouteTable"
+    effect = "Allow"
+    actions = [
+      "ec2:DeleteRouteTable",
+      "ec2:CreateRoute",
+      "ec2:DeleteRoute",
+      "ec2:ReplaceRoute",
+    ]
+    resources = [local.test_server_route_table_arn]
+  }
+
+  # 서브넷-라우트 테이블 연결만 다룬다(게이트웨이 라우트 테이블 연결은 이
+  # 설계 범위 밖이라 internet-gateway/vpn-gateway 리소스는 포함하지 않는다).
+  statement {
+    sid    = "ManageTestServerRouteTableAssociation"
+    effect = "Allow"
+    actions = [
+      "ec2:AssociateRouteTable",
+      "ec2:DisassociateRouteTable",
+      "ec2:ReplaceRouteTableAssociation",
+    ]
+    resources = [local.test_server_route_table_arn, local.test_server_subnet_arn]
+  }
+
+  statement {
+    sid       = "CreateTestServerSecurityGroup"
+    effect    = "Allow"
+    actions   = ["ec2:CreateSecurityGroup"]
+    resources = [local.test_server_security_group_arn, local.test_server_vpc_arn]
+
+    condition {
+      test     = "StringLike"
+      variable = "aws:RequestTag/Project"
+      values   = ["qello"]
+    }
+  }
+
+  statement {
+    sid    = "ManageTestServerSecurityGroup"
+    effect = "Allow"
+    actions = [
+      "ec2:DeleteSecurityGroup",
+      "ec2:AuthorizeSecurityGroupIngress",
+      "ec2:AuthorizeSecurityGroupEgress",
+      "ec2:RevokeSecurityGroupIngress",
+      "ec2:RevokeSecurityGroupEgress",
+      "ec2:UpdateSecurityGroupRuleDescriptionsIngress",
+      "ec2:UpdateSecurityGroupRuleDescriptionsEgress",
+    ]
+    resources = [local.test_server_security_group_arn]
+  }
+
+  # CreateTags/DeleteTags는 80개 넘는 리소스 유형을 지원하지만, 이 스택이
+  # 실제로 태그를 붙이는 유형만 나열한다.
+  statement {
+    sid    = "TagTestServerResources"
+    effect = "Allow"
+    actions = [
+      "ec2:CreateTags",
+      "ec2:DeleteTags",
+    ]
+    resources = [
+      local.test_server_vpc_arn,
+      local.test_server_subnet_arn,
+      local.test_server_internet_gateway_arn,
+      local.test_server_route_table_arn,
+      local.test_server_security_group_arn,
+      local.test_server_instance_arn,
+      local.test_server_volume_arn,
+      local.test_server_elastic_ip_arn,
+    ]
+  }
+
+  # RunInstances가 실제로 건드리는 리소스 유형(image·instance·network-
+  # interface·security-group·subnet·volume)만 나열한다. key-pair, launch-
+  # template 등 이 스택이 쓰지 않는 유형은 넣지 않는다.
+  statement {
+    sid    = "RunTestServerInstance"
+    effect = "Allow"
+    actions = [
+      "ec2:RunInstances",
+    ]
+    resources = [
+      local.test_server_image_arn,
+      local.test_server_instance_arn,
+      local.test_server_network_interface_arn,
+      local.test_server_security_group_arn,
+      local.test_server_subnet_arn,
+      local.test_server_volume_arn,
+    ]
+
+    condition {
+      test     = "StringLike"
+      variable = "aws:RequestTag/Project"
+      values   = ["qello"]
+    }
+  }
+
+  statement {
+    sid    = "ManageTestServerInstanceLifecycle"
+    effect = "Allow"
+    actions = [
+      "ec2:TerminateInstances",
+      "ec2:StopInstances",
+      "ec2:StartInstances",
+      "ec2:ModifyInstanceAttribute",
+      "ec2:ModifyInstanceMetadataOptions",
+    ]
+    resources = [
+      local.test_server_instance_arn,
+      local.test_server_security_group_arn,
+      local.test_server_volume_arn,
+    ]
+  }
+
+  statement {
+    sid       = "CreateTestServerVolume"
+    effect    = "Allow"
+    actions   = ["ec2:CreateVolume"]
+    resources = [local.test_server_volume_arn]
+
+    condition {
+      test     = "StringLike"
+      variable = "aws:RequestTag/Project"
+      values   = ["qello"]
+    }
+  }
+
+  statement {
+    sid    = "ManageTestServerVolume"
+    effect = "Allow"
+    actions = [
+      "ec2:DeleteVolume",
+      "ec2:ModifyVolume",
+      "ec2:AttachVolume",
+      "ec2:DetachVolume",
+    ]
+    resources = [local.test_server_volume_arn, local.test_server_instance_arn]
+  }
+
+  statement {
+    sid       = "AllocateTestServerElasticIp"
+    effect    = "Allow"
+    actions   = ["ec2:AllocateAddress"]
+    resources = [local.test_server_elastic_ip_arn]
+
+    condition {
+      test     = "StringLike"
+      variable = "aws:RequestTag/Project"
+      values   = ["qello"]
+    }
+  }
+
+  statement {
+    sid    = "ManageTestServerElasticIp"
+    effect = "Allow"
+    actions = [
+      "ec2:ReleaseAddress",
+      "ec2:AssociateAddress",
+      "ec2:DisassociateAddress",
+    ]
+    resources = [
+      local.test_server_elastic_ip_arn,
+      local.test_server_instance_arn,
+      local.test_server_network_interface_arn,
+    ]
+  }
+
+  statement {
+    sid    = "ManageTestServerEcr"
+    effect = "Allow"
+    actions = [
+      "ecr:CreateRepository",
+      "ecr:DeleteRepository",
+      "ecr:DescribeRepositories",
+      "ecr:DescribeImages",
+      "ecr:PutLifecyclePolicy",
+      "ecr:DeleteLifecyclePolicy",
+      "ecr:GetLifecyclePolicy",
+      "ecr:PutImageScanningConfiguration",
+      "ecr:PutImageTagMutability",
+      "ecr:TagResource",
+      "ecr:UntagResource",
+      "ecr:ListTagsForResource",
+    ]
+    resources = ["arn:aws:ecr:*:*:repository/${var.project_prefix}-*"]
+  }
+
+  # 이 스택 소유 경로로만 한정한다. GetParameter/GetParameters는 apply
+  # 자신의 refresh에 필요하지만 값을 반환하므로 plan 역할에는 주지 않는다
+  # (PR #232 리뷰 반영, D-3 §5).
+  statement {
+    sid    = "ManageTestServerSsmParameters"
+    effect = "Allow"
+    actions = [
+      "ssm:PutParameter",
+      "ssm:DeleteParameter",
+      "ssm:GetParameter",
+      "ssm:GetParameters",
+      "ssm:DescribeParameters",
+      "ssm:AddTagsToResource",
+      "ssm:RemoveTagsFromResource",
+      "ssm:ListTagsForResource",
+    ]
+    resources = ["arn:aws:ssm:*:*:parameter/${var.project_prefix}/*"]
+  }
+
+  # 알려진 Terraform AWS Provider 제약(hashicorp/terraform-provider-aws#42849):
+  # value_wo를 쓰는 SecureString 파라미터도 apply가 내부적으로
+  # GetParameter(WithDecryption=true)를 호출해 kms:Decrypt 없이는 apply가
+  # 실패한다. 계정 기본 SSM 키(alias/aws/ssm)는 다른 SecureString과
+  # 공유되므로, SSM이 요청에 자동으로 붙이는 encryption context로 복호화
+  # 대상을 이 스택 소유 파라미터 경로로 한정한다(AWS 문서: SSM Parameter
+  # Store와 KMS 암호화 컨텍스트).
+  statement {
+    sid       = "DecryptTestServerSsmParameters"
+    effect    = "Allow"
+    actions   = ["kms:Decrypt"]
+    resources = [data.aws_kms_alias.ssm_default.target_key_arn]
+
+    condition {
+      test     = "StringLike"
+      variable = "kms:EncryptionContext:PARAMETER_ARN"
+      values   = ["arn:aws:ssm:*:*:parameter/${var.project_prefix}/*"]
+    }
+  }
+
+  statement {
+    sid    = "ManageTestServerInstanceProfiles"
+    effect = "Allow"
+    actions = [
+      "iam:CreateInstanceProfile",
+      "iam:DeleteInstanceProfile",
+      "iam:GetInstanceProfile",
+      "iam:TagInstanceProfile",
+      "iam:AddRoleToInstanceProfile",
+      "iam:RemoveRoleFromInstanceProfile",
+    ]
+    resources = ["arn:aws:iam::*:instance-profile/${var.project_prefix}-*"]
+  }
+
+  # PassRole은 이 스택이 만드는 두 Role(인스턴스 Role, Scheduler Role)로만
+  # 한정하고, 각각 실제로 그 Role을 넘겨받는 서비스로 iam:PassedToService를
+  # 제한해 다른 서비스가 가로채 assume하지 못하게 한다.
+  statement {
+    sid       = "PassTestServerInstanceRole"
+    effect    = "Allow"
+    actions   = ["iam:PassRole"]
+    resources = ["arn:aws:iam::*:role/${var.project_prefix}-*-instance"]
+
+    condition {
+      test     = "StringEquals"
+      variable = "iam:PassedToService"
+      values   = ["ec2.amazonaws.com"]
+    }
+  }
+
+  statement {
+    sid       = "PassTestServerSchedulerRole"
+    effect    = "Allow"
+    actions   = ["iam:PassRole"]
+    resources = ["arn:aws:iam::*:role/${var.project_prefix}-*-auto-stop"]
+
+    condition {
+      test     = "StringEquals"
+      variable = "iam:PassedToService"
+      values   = ["scheduler.amazonaws.com"]
+    }
+  }
+
+  statement {
+    sid    = "ManageTestServerScheduler"
+    effect = "Allow"
+    actions = [
+      "scheduler:CreateSchedule",
+      "scheduler:UpdateSchedule",
+      "scheduler:DeleteSchedule",
+      "scheduler:GetSchedule",
+      "scheduler:ListSchedules",
+      "scheduler:TagResource",
+      "scheduler:UntagResource",
+      "scheduler:ListTagsForResource",
+    ]
+    resources = ["arn:aws:scheduler:*:*:schedule/default/${var.project_prefix}-*"]
+  }
+}
+
+locals {
+  test_server_vpc_arn               = "arn:aws:ec2:*:*:vpc/*"
+  test_server_subnet_arn            = "arn:aws:ec2:*:*:subnet/*"
+  test_server_internet_gateway_arn  = "arn:aws:ec2:*:*:internet-gateway/*"
+  test_server_route_table_arn       = "arn:aws:ec2:*:*:route-table/*"
+  test_server_security_group_arn    = "arn:aws:ec2:*:*:security-group/*"
+  test_server_instance_arn          = "arn:aws:ec2:*:*:instance/*"
+  test_server_volume_arn            = "arn:aws:ec2:*:*:volume/*"
+  test_server_elastic_ip_arn        = "arn:aws:ec2:*:*:elastic-ip/*"
+  test_server_network_interface_arn = "arn:aws:ec2:*:*:network-interface/*"
+  test_server_image_arn             = "arn:aws:ec2:*::image/*"
+}
+
 # --- infra-plan role -------------------------------------------------------
 # PR에서 실행되는 정적 검사·`terraform plan`이 사용한다. 쓰기 권한은 부여하지
 # 않는다.
@@ -110,6 +533,83 @@ data "aws_iam_policy_document" "infra_plan_permissions" {
       variable = "aws:ResourceTag/Project"
       values   = ["qello"]
     }
+  }
+
+  # 프론트 테스트 서버 스택(D-3, #229/#233)이 계획할 EC2·VPC·ECR·SSM·
+  # EventBridge Scheduler 리소스를 조회하는 권한. 쓰기 권한은 주지 않는다.
+  # apply 역할과 동일한 근거로 와일드카드 대신 curated 목록을 쓴다(위
+  # test_server_shared_permissions의 동일 이름 statement 주석 참고).
+  statement {
+    sid    = "ReadTestServerNetworkAndCompute"
+    effect = "Allow"
+    actions = [
+      "ec2:DescribeVpcs",
+      "ec2:DescribeSubnets",
+      "ec2:DescribeInternetGateways",
+      "ec2:DescribeRouteTables",
+      "ec2:DescribeSecurityGroups",
+      "ec2:DescribeSecurityGroupRules",
+      "ec2:DescribeImages",
+      "ec2:DescribeInstances",
+      "ec2:DescribeInstanceTypes",
+      "ec2:DescribeInstanceCreditSpecifications",
+      "ec2:DescribeVolumes",
+      "ec2:DescribeNetworkInterfaces",
+      "ec2:DescribeAddresses",
+      "ec2:DescribeAddressesAttribute",
+      "ec2:DescribeTags",
+      "ec2:DescribeAvailabilityZones",
+      "ec2:DescribeAccountAttributes",
+    ]
+    resources = ["*"]
+  }
+
+  statement {
+    sid    = "ReadTestServerEcr"
+    effect = "Allow"
+    actions = [
+      "ecr:DescribeRepositories",
+      "ecr:DescribeImages",
+      "ecr:GetRepositoryPolicy",
+      "ecr:GetLifecyclePolicy",
+      "ecr:ListTagsForResource",
+    ]
+    resources = ["arn:aws:ecr:*:*:repository/${var.project_prefix}-*"]
+  }
+
+  # DescribeParameters는 파라미터 값이 아니라 메타데이터(이름·타입·버전)만
+  # 반환한다. GetParameter*는 값을 반환할 수 있어 plan 역할에는 주지 않는다
+  # (D-3 §5, PR #232 리뷰 반영).
+  statement {
+    sid    = "ReadTestServerSsmParameterMetadata"
+    effect = "Allow"
+    actions = [
+      "ssm:DescribeParameters",
+    ]
+    # DescribeParameters는 리소스 수준 권한을 지원하지 않는 AWS 제약이 있다.
+    resources = ["*"]
+  }
+
+  statement {
+    sid    = "ReadTestServerInstanceProfiles"
+    effect = "Allow"
+    actions = [
+      "iam:GetInstanceProfile",
+      "iam:ListInstanceProfiles",
+      "iam:ListInstanceProfilesForRole",
+    ]
+    resources = ["arn:aws:iam::*:instance-profile/${var.project_prefix}-*"]
+  }
+
+  statement {
+    sid    = "ReadTestServerScheduler"
+    effect = "Allow"
+    actions = [
+      "scheduler:GetSchedule",
+      "scheduler:ListSchedules",
+      "scheduler:ListTagsForResource",
+    ]
+    resources = ["arn:aws:scheduler:*:*:schedule/default/${var.project_prefix}-*"]
   }
 
   statement {
@@ -280,6 +780,10 @@ data "aws_iam_policy_document" "infra_apply_permissions" {
       "arn:aws:iam::*:group/${var.project_prefix}-*",
     ]
   }
+
+  # 프론트 테스트 서버 스택(D-3, #229/#233)의 EC2·ECR·SSM·IAM·Scheduler
+  # 권한은 infra-deployer(deployer.tf)와 공유하는 문서에서 합성한다.
+  source_policy_documents = [data.aws_iam_policy_document.test_server_shared_permissions.json]
 
   # CI가 장기 자격 증명을 만들 수 있으면 OIDC 단기 세션 전제가 무너진다
   # (AGENTS.md 4.9). 허용 목록에 없더라도 이후 정책 변경으로 새어 나가지
