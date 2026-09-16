@@ -1,0 +1,56 @@
+# #229 EC2 테스트 서버 프로필. 프론트엔드가 실제 백엔드에 붙어 통합 테스트하는
+# 용도이며 production이 아니다(#230).
+spring:
+  datasource:
+    # user_data가 Docker Compose로 같은 호스트의 db 컨테이너를 기동하고 이
+    # 환경변수를 채운다(infra/modules/app-server/user_data.sh.tftpl).
+    url: jdbc:postgresql://${QELLO_DB_HOST:localhost}:${QELLO_DB_PORT:5432}/${QELLO_DB_NAME:qello}
+    username: ${QELLO_DB_USERNAME:qello}
+    password: ${QELLO_DB_PASSWORD}
+    hikari:
+      maximum-pool-size: 5
+      minimum-idle: 1
+      connection-timeout: 5000
+
+# 프론트 개발자가 API를 직접 탐색할 수 있게 켠다. local 프로필과 동일한
+# 판단이다. 운영 기본값(false)은 바뀌지 않는다.
+springdoc:
+  api-docs:
+    enabled: true
+
+qello:
+  web:
+    # 프론트 개발자 로컬 환경 origin. 실제 값은 배포 시점에 환경변수로 채운다.
+    allowed-origins: ${QELLO_WEB_ALLOWED_ORIGINS:}
+  media:
+    bucket: ${QELLO_MEDIA_BUCKET}
+  auth:
+    access-token:
+      secret: ${QELLO_AUTH_ACCESS_TOKEN_SECRET}
+  notification:
+    push:
+      policy:
+        # dev 테스트 서버 전용 fixture 값이다. 운영 권장값이 아니다. 이 설정은
+        # 프로필과 무관하게 항상 바인딩되므로(PushConfiguration) 값이 없으면
+        # 기동 자체가 실패한다.
+        bundle-window: PT10M
+        max-delay: PT8H
+        daily-limit: 5
+        direction-reserved: 2
+        recommendation-min-interval: PT24H
+
+management:
+  endpoints:
+    web:
+      # health만 연다. 다른 endpoint는 기본값(닫힘)을 유지한다(#230).
+      exposure:
+        include: health
+  endpoint:
+    health:
+      # enabled-by-default(운영 기본값)가 false라 exposure.include에 넣는 것과
+      # 별개로 endpoint 자체를 켜야 한다(application-observability.yml과 동일
+      # 패턴).
+      enabled: true
+      # 8080이 공인 IP로 그대로 노출되므로(D-3 §5 S-1) DB·디스크 세부 상태를
+      # 알 수 없는 사람에게 보이지 않게 한다.
+      show-details: never

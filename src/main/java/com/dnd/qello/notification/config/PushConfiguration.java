@@ -39,8 +39,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 @EnableConfigurationProperties(PushPolicyProperties.class)
 public class PushConfiguration {
 
+	// dev는 #229 EC2 테스트 서버 프로필이다(#230). 실제 FCM 자격 증명 없이
+	// 기동해야 하고, 테스트 서버가 우발적으로 실제 push를 보내서도 안 되므로
+	// local/test/integration과 같은 취급을 받는다.
 	@Bean
-	@Profile({"test", "local", "integration"})
+	@Profile({"test", "local", "integration", "dev"})
 	public PushProvider noOpPushProvider() {
 		return new NoOpPushProvider();
 	}
@@ -61,16 +64,14 @@ public class PushConfiguration {
 	}
 
 	@Configuration(proxyBeanMethods = false)
-	@ConditionalOnProperty(
-		prefix = "qello.worker.scheduling",
-		name = {"enabled", "push-delivery-dispatch.enabled"},
-		havingValue = "true")
+	@ConditionalOnProperty(prefix = "qello.worker.scheduling", name = {"enabled",
+			"push-delivery-dispatch.enabled"}, havingValue = "true")
 	@EnableConfigurationProperties(WorkerSchedulingProperties.class)
 	static class PushDispatchWorkerConfiguration {
 
 		@Bean
 		PushDispatchGroupPlanner pushDispatchGroupPlanner(
-			PushDispatchGroupRepository repository, PushGroupingPolicy policy) {
+				PushDispatchGroupRepository repository, PushGroupingPolicy policy) {
 			return new PushDispatchGroupPlanner(repository, policy);
 		}
 
@@ -86,28 +87,28 @@ public class PushConfiguration {
 
 		@Bean
 		PushDeliveryDispatchWorker pushDeliveryDispatchWorker(
-			PushDispatchGroupPlanner groupPlanner,
-			PushDispatchGroupClaimService groupClaims,
-			PlatformTransactionManager transactionManager,
-			PushDispatchEligibility eligibility,
-			PushSuppressionPolicy suppressionPolicy,
-			PushBudgetPolicy budgetPolicy,
-			PushPolicyProperties policyProperties,
-			PushPayloadFactory payloadFactory,
-			PushDeliveryRetryPolicy retryPolicy,
-			PushTokenProtector tokenProtector,
-			PushProvider provider,
-			Clock clock) {
+				PushDispatchGroupPlanner groupPlanner,
+				PushDispatchGroupClaimService groupClaims,
+				PlatformTransactionManager transactionManager,
+				PushDispatchEligibility eligibility,
+				PushSuppressionPolicy suppressionPolicy,
+				PushBudgetPolicy budgetPolicy,
+				PushPolicyProperties policyProperties,
+				PushPayloadFactory payloadFactory,
+				PushDeliveryRetryPolicy retryPolicy,
+				PushTokenProtector tokenProtector,
+				PushProvider provider,
+				Clock clock) {
 			return new PushDeliveryDispatchWorker(
-				groupPlanner, groupClaims, new TransactionTemplate(transactionManager),
-				eligibility, suppressionPolicy, budgetPolicy, policyProperties,
-				payloadFactory, retryPolicy, tokenProtector, provider, clock);
+					groupPlanner, groupClaims, new TransactionTemplate(transactionManager),
+					eligibility, suppressionPolicy, budgetPolicy, policyProperties,
+					payloadFactory, retryPolicy, tokenProtector, provider, clock);
 		}
 
 	}
 
 	@Configuration(proxyBeanMethods = false)
-	@Profile("!test & !local & !integration")
+	@Profile("!test & !local & !integration & !dev")
 	@EnableConfigurationProperties({PushProperties.class, PushTokenProperties.class})
 	static class ProductionPushConfiguration {
 
@@ -122,9 +123,9 @@ public class PushConfiguration {
 			requestFactory.setConnectTimeout(properties.connectTimeout());
 			requestFactory.setReadTimeout(properties.readTimeout());
 			return RestClient.builder()
-				.baseUrl("https://fcm.googleapis.com")
-				.requestFactory(requestFactory)
-				.build();
+					.baseUrl("https://fcm.googleapis.com")
+					.requestFactory(requestFactory)
+					.build();
 		}
 
 		@Bean
@@ -134,12 +135,12 @@ public class PushConfiguration {
 
 		@Bean
 		PushProvider pushProvider(RestClient fcmRestClient, FcmAccessTokenProvider fcmAccessTokenProvider,
-			PushProperties properties) {
+				PushProperties properties) {
 			return new FcmHttpV1PushProvider(
-				fcmRestClient,
-				fcmAccessTokenProvider,
-				new ObjectMapper(),
-				properties.projectId());
+					fcmRestClient,
+					fcmAccessTokenProvider,
+					new ObjectMapper(),
+					properties.projectId());
 		}
 
 	}
