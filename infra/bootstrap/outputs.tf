@@ -28,6 +28,11 @@ output "infra_deployer_role_arn" {
   value       = aws_iam_role.infra_deployer.arn
 }
 
+output "test_server_deploy_role_arn" {
+  description = "GitHub Actions #231 배포 workflow가 ECR push·SSM SendCommand에 assume하는 역할의 ARN. apply 이후 사람이 repository secret으로 옮겨 넣는다."
+  value       = aws_iam_role.test_server_deploy.arn
+}
+
 output "github_oidc_provider_arn" {
   description = "GitHub Actions OIDC Provider ARN."
   value       = aws_iam_openid_connect_provider.github.arn
