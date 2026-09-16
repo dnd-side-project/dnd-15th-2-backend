@@ -188,6 +188,8 @@ resource "aws_instance" "this" {
   # 상세 모니터링(1분 주기 유료 CloudWatch 메트릭)은 켜지 않는다. 기본
   # 5분 주기 메트릭으로 충분하고, 월 10 USD 예산에서 이 항목을 추가할
   # 여유가 없다(D-3 §2 Observability).
+  # 담당: tkv00. 재검토: 2027-03-31 또는 프로덕션 전환 시점 중 먼저 오는
+  # 시점. 추적: #229 D-3 §2, #233.
   # checkov:skip=CKV_AWS_126:dev 테스트 서버 예산 제약으로 상세 모니터링을 켜지 않는다. D-3 §2 참고.
   ami                    = data.aws_ami.al2023.id
   instance_type          = var.instance_type
@@ -246,6 +248,8 @@ resource "aws_ebs_volume" "data" {
   # 월 1 USD 고정 비용이 발생하고, 이미 4.5%뿐인 예산 여유(D-3 §6)를
   # 넘어선다. 기본 AWS 관리형 EBS 암호화 키(alias/aws/ebs)로 암호화 요건은
   # 충족한다.
+  # 담당: tkv00. 재검토: 2027-03-31 또는 프로덕션 전환 시점 중 먼저 오는
+  # 시점. 추적: #229 D-3 §6, #233.
   # checkov:skip=CKV_AWS_189:dev 테스트 서버 예산 제약으로 전용 CMK 대신 기본 AWS 관리형 키를 쓴다. D-3 §6 참고.
   availability_zone = aws_instance.this.availability_zone
   size              = var.data_volume_size
@@ -353,6 +357,8 @@ resource "aws_scheduler_schedule" "auto_stop" {
   # 이 스케줄이 담는 값(인스턴스 ID, 정지 명령)은 비밀값이 아니다. 전용 CMK
   # 대신 EventBridge Scheduler 기본 AWS 관리형 키로 암호화해 월 1 USD 고정
   # 비용을 피한다(D-3 §6 예산 여유 4.5% 참고).
+  # 담당: tkv00. 재검토: 2027-03-31 또는 프로덕션 전환 시점 중 먼저 오는
+  # 시점. 추적: #229 D-3 §6, #233.
   # checkov:skip=CKV_AWS_297:비밀값을 담지 않는 스케줄이라 전용 CMK 대신 기본 AWS 관리형 키를 쓴다. D-3 §6 참고.
 
   flexible_time_window {

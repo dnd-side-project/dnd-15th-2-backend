@@ -5,8 +5,9 @@
 resource "aws_vpc" "this" {
   # CloudWatch Logs 수집 비용이 월 10 USD 예산을 잠식해 VPC Flow Logs를
   # 비활성화한다. dev 테스트 서버이고 저장 데이터가 테스트 데이터로 한정되어
-  # 위험을 수용했다(Infrastructure Design Report D-3 §5 S-7). 프로덕션 전환
-  # 또는 #132 MVP 아키텍처 설계 시 재검토한다.
+  # 위험을 수용했다(Infrastructure Design Report D-3 §5 S-7).
+  # 담당: tkv00. 재검토: 2027-03-31 또는 프로덕션 전환·#132 MVP 아키텍처
+  # 설계 착수 시점 중 먼저 오는 시점. 추적: #229 D-3 §5 S-7, #233.
   # checkov:skip=CKV2_AWS_11:dev 테스트 서버 예산 제약으로 Flow Logs를 비활성화한다. D-3 §5 S-7 참고.
   cidr_block           = var.vpc_cidr
   enable_dns_support   = true
