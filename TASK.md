@@ -5,13 +5,13 @@
 - Title: `Phase 3 모델별 지침 구조 시작·추가 읽기 비용 비교`
 - GitHub Issue: `#225`
 - Branch: `chore/gh-225-instruction-model-phase3`
-- Base branch: `chore/gh-223-instruction-architecture-phase2`
+- Base branch: `main`
 - Task ID: `GH-225-INSTRUCTION-MODEL-PHASE3`
 - Design ID: `HARNESS-DESIGN-GH-225-001`
 - Status: `EVALUATION_VERIFIED_COMMIT_APPROVED`
 - Intake approval: 사용자가 새 작업에서 Issue 생성과 Phase 3 시작을 명시적으로 요청했다.
 - Project: P2 / In Progress / Chore / Sprint 미지정(활성 iteration 없음).
-- Base commit: `e1d29a490ad38bafa3537cd936f07e38039523f0`
+- Base commit: `4c63ee6348b9610470e3fe6a5b7429549008be77`
 
 ## Objective
 
