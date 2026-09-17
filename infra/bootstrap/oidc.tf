@@ -31,6 +31,12 @@ data "aws_kms_alias" "ssm_default" {
   name = "alias/aws/ssm"
 }
 
+# 같은 스택의 데이터 볼륨과 인스턴스 루트 볼륨이 쓰는 계정 기본 EBS 키.
+# infra-apply 역할의 KMS 범위를 이 Key로 한정하는 데 참조한다(#270).
+data "aws_kms_alias" "ebs_default" {
+  name = "alias/aws/ebs"
+}
+
 # --- 프론트 테스트 서버 스택(D-3, #229/#233) 공통 권한 -------------------------
 # infra-apply(oidc.tf)와 infra-deployer(deployer.tf) 모두 이 스택을 apply할
 # 수 있어야 해서 문서를 만들어 양쪽에 별도 인라인 정책으로 붙인다. 리소스
@@ -549,6 +555,37 @@ data "aws_iam_policy_document" "test_server_shared_permissions_compute" {
     resources = [local.test_server_network_interface_arn]
   }
 
+  # 데이터 볼륨과 인스턴스 루트 볼륨이 encrypted = true인데 kms_key_id를
+  # 지정하지 않아 계정 기본 EBS 키(alias/aws/ebs)를 쓴다. 암호화된 EBS 볼륨을
+  # 만들 때 EC2가 호출자를 대신해 grant를 만들어서 호출자에게 아래 action이
+  # 필요하다. AWS 관리형 키는 Project 태그가 없어 태그 조건이 걸린
+  # ManageProjectKmsKeys에 매칭되지 않는다 — #261/#263의 SSM 기본 키와 같은
+  # 구조다.
+  #
+  # 이 Key의 키 정책은 kms:CallerAccount와 kms:ViaService 조건으로 이미 계정
+  # 내 EC2 경유 사용을 허용한다(직접 확인). 그래서 이 statement 없이도 동작할
+  # 가능성이 있지만, 그 해석에 의존하지 않도록 명시한다. ViaService 조건을
+  # 함께 걸어 EC2를 거친 호출로만 한정한다(#270).
+  statement {
+    sid    = "UseDefaultEbsKmsKey"
+    effect = "Allow"
+    actions = [
+      "kms:CreateGrant",
+      "kms:GenerateDataKeyWithoutPlaintext",
+      "kms:Decrypt",
+      "kms:DescribeKey",
+      "kms:ReEncryptFrom",
+      "kms:ReEncryptTo",
+    ]
+    resources = [data.aws_kms_alias.ebs_default.target_key_arn]
+
+    condition {
+      test     = "StringLike"
+      variable = "kms:ViaService"
+      values   = ["ec2.*.amazonaws.com"]
+    }
+  }
+
   statement {
     sid    = "ManageTestServerEcr"
     effect = "Allow"
@@ -629,6 +666,16 @@ data "aws_iam_policy_document" "test_server_shared_permissions_compute" {
     effect    = "Allow"
     actions   = ["kms:DescribeKey"]
     resources = [data.aws_kms_alias.ssm_default.target_key_arn]
+  }
+
+  # 같은 이유로 alias/aws/ebs도 필요하다. 위 UseDefaultEbsKmsKey는
+  # kms:ViaService 조건이 걸려 있어 Terraform이 data source 해석을 위해
+  # 직접 호출하는 DescribeKey에는 적용되지 않는다(#270).
+  statement {
+    sid       = "DescribeEbsDefaultKmsKey"
+    effect    = "Allow"
+    actions   = ["kms:DescribeKey"]
+    resources = [data.aws_kms_alias.ebs_default.target_key_arn]
   }
 
   statement {
