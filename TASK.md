@@ -24,14 +24,19 @@
 
 ## Scope
 
-- `infra/bootstrap/oidc.tf`: `infra_apply_permissions`에서
-  `source_policy_documents`(`test_server_shared_permissions`)를 제거하고,
-  `aws_iam_role.infra_apply`에 그 내용만 담는 별도의
-  `aws_iam_role_policy` 리소스를 추가한다.
-- `infra/bootstrap/deployer.tf`: 같은 방식으로
-  `infra_deployer_permissions`에서 `source_policy_documents`를 제거하고
-  `aws_iam_role.infra_deployer`에 별도 `aws_iam_role_policy` 리소스를
-  추가한다.
+- `infra/bootstrap/oidc.tf`, `deployer.tf`: `infra_apply_permissions`/
+  `infra_deployer_permissions`에서 `source_policy_documents`
+  (`test_server_shared_permissions`)를 제거한다.
+- 실제로는 인라인 정책으로 분리하는 것만으로는 부족했다 — AWS IAM은
+  Role 하나에 붙는 **모든 인라인 정책의 합계**를 10,240바이트로
+  제한하고(개별 문서 크기가 아니라 총합), 공유 문서(network/tags/
+  compute로 나눠도 총합 12,229바이트)가 그 총합을 넘었다. 최종적으로
+  `aws_iam_policy`(customer-managed) 4개(network/tags/compute/
+  iam-management)를 만들어 `infra_apply`·`infra_deployer` 양쪽에
+  `aws_iam_role_policy_attachment`로 붙이는 방식으로 바꿨다. Managed
+  policy는 인라인 총합에 포함되지 않는다.
+- 새로 필요해진 `iam:CreatePolicy`/`AttachRolePolicy` 등은 이 프로젝트
+  접두사의 policy·role ARN으로만 한정해 별도 managed policy로 부여한다.
 
 ## Explicit exclusions
 
@@ -66,11 +71,13 @@ git diff --check
 
 ## Completion criteria
 
-- [ ] `terraform fmt`/`validate`/`tflint`/`checkov`가 통과한다.
-- [ ] 각 Role에 결과적으로 붙는 개별 인라인 정책이 각각 10,240바이트
-      이하다(사람이 실제 apply로 확인).
-- [ ] `infra-plan`/`infra-apply`/`infra-deployer`가 부여받는 실제 권한
-      범위는 이번 변경 전후로 동일하다.
+- [x] `terraform fmt`/`validate`/`tflint`/`checkov`가 통과한다.
+- [x] 각 Role의 인라인 정책 합계가 10,240바이트 이하다(사람이 실제
+      apply로 확인 — 2026-09-17, 성공).
+- [x] `infra-plan`/`infra-apply`/`infra-deployer`가 부여받는 실제 권한
+      범위는 이번 변경 전후로 동일하다(managed policy로 옮긴
+      network/tags/compute 권한 내용은 그대로, IAM 자기관리 권한만
+      최소 범위로 신규 추가됨).
 
 ## 참고
 
