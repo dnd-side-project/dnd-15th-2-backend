@@ -16,9 +16,22 @@ resource "aws_security_group" "this" {
   })
 }
 
+# SECURITY-EXCEPTION
+# 이유: dev 테스트 서버이고 프론트 개발자의 송신 IP가 유동적이라 고정 허용
+#       목록을 둘 수 없다. TLS 없이 평문 HTTP로 전체 공개한다.
+# 범위: 이 인스턴스의 app_port
+# 보완 통제: 테스트 계정과 테스트 데이터만 사용하고, 액세스 토큰 비밀값을
+#            로컬·프로덕션과 분리하며 토큰 만료를 짧게 유지한다.
+# 소유자: 백엔드팀(tkv00)
+# 만료일: 2026-12-31
+# 추적: #229 D-3 §5 S-1, #233
+#
+# AWS 제약: 보안 그룹 규칙의 description은 256자 미만이어야 하고 한글을
+# 포함하지 않는 제한된 ASCII 집합만 허용한다. 예외 전문은 위 주석에 두고
+# description에는 단문만 남긴다(#268 — 한글 설명으로 apply가 거부되어 발견).
 resource "aws_vpc_security_group_ingress_rule" "app_port" {
   security_group_id = aws_security_group.this.id
-  description       = "SECURITY-EXCEPTION: TLS 없이 평문 HTTP로 전체 공개한다. 이유: dev 테스트 서버이고 프론트 개발자 IP가 유동적이라 고정 허용 목록을 둘 수 없다. 범위: 이 인스턴스의 app_port. 보완 통제: 테스트 계정·짧은 토큰 만료만 사용(D-3 §5 S-1). 소유자: tkv00. 만료일: 2026-12-31. 추적: #229 D-3 §5 S-1, #233."
+  description       = "SECURITY-EXCEPTION: public plaintext HTTP to app_port (see #229 D-3 S-1, expires 2026-12-31)"
   from_port         = var.app_port
   to_port           = var.app_port
   ip_protocol       = "tcp"
@@ -27,7 +40,7 @@ resource "aws_vpc_security_group_ingress_rule" "app_port" {
 
 resource "aws_vpc_security_group_egress_rule" "https" {
   security_group_id = aws_security_group.this.id
-  description       = "ECR, SSM, S3 HTTPS 호출"
+  description       = "HTTPS to ECR, SSM and S3"
   from_port         = 443
   to_port           = 443
   ip_protocol       = "tcp"
@@ -42,9 +55,14 @@ data "aws_ami" "al2023" {
   most_recent = true
   owners      = ["amazon"]
 
+  # `al2023-ami-*-x86_64`는 ECS·Neuron 등 파생 변종까지 함께 잡아, most_recent와
+  # 합쳐지면 apply 시점마다 다른 이미지가 선택된다. 실제로 루트 스냅샷이
+  # 30GiB인 ECS Neuron 변종이 선택되어 8GiB 루트 볼륨과 충돌해 RunInstances가
+  # 거부됐다(#268). 표준 기본 이미지 계열만 남겨 루트 스냅샷 크기(8GiB)를
+  # 예측 가능하게 유지한다.
   filter {
     name   = "name"
-    values = ["al2023-ami-*-x86_64"]
+    values = ["al2023-ami-2023.*-kernel-6.1-x86_64"]
   }
 
   filter {
