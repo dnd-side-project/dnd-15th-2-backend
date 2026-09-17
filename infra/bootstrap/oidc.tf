@@ -549,6 +549,41 @@ data "aws_iam_policy_document" "test_server_shared_permissions_compute" {
     resources = [local.test_server_network_interface_arn]
   }
 
+  # 데이터 볼륨과 인스턴스 루트 볼륨이 encrypted = true인데 kms_key_id를
+  # 지정하지 않아 계정 기본 EBS 키(alias/aws/ebs)를 쓴다. 암호화된 EBS 볼륨을
+  # 만들 때 EC2가 호출자를 대신해 grant를 만들어서 호출자에게 아래 action이
+  # 필요하고, AWS 관리형 키는 Project 태그가 없어 태그 조건이 걸린
+  # ManageProjectKmsKeys에 매칭되지 않는다(#270 — apply 전에 IAM
+  # 시뮬레이션으로 확인. #261/#263의 SSM 기본 키와 같은 구조다).
+  #
+  # 이 키는 첫 사용 시 AWS가 만들기 때문에 아직 존재하지 않아 ARN으로 좁힐 수
+  # 없다. 대신 EC2를 거친 호출로만, 그리고 이 계정 소유 키로만 한정한다.
+  statement {
+    sid    = "UseDefaultEbsKmsKey"
+    effect = "Allow"
+    actions = [
+      "kms:CreateGrant",
+      "kms:GenerateDataKeyWithoutPlaintext",
+      "kms:Decrypt",
+      "kms:DescribeKey",
+      "kms:ReEncryptFrom",
+      "kms:ReEncryptTo",
+    ]
+    resources = ["*"]
+
+    condition {
+      test     = "StringLike"
+      variable = "kms:ViaService"
+      values   = ["ec2.*.amazonaws.com"]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "kms:CallerAccount"
+      values   = [data.aws_caller_identity.current.account_id]
+    }
+  }
+
   statement {
     sid    = "ManageTestServerEcr"
     effect = "Allow"
