@@ -114,6 +114,11 @@ jobs:
     env:
       TF_DIR: ${{ inputs.terraform_dir }}
       TF_IN_AUTOMATION: "true"
+      # infra/environments/dev/test-server의 db_password/auth_token_secret
+      # 변수(둘 다 sensitive = true)에만 쓰인다. 이 변수를 선언하지 않은
+      # 다른 스택을 apply할 때는 Terraform이 무시한다(#245).
+      TF_VAR_db_password: ${{ secrets.TF_VAR_DB_PASSWORD }}
+      TF_VAR_auth_token_secret: ${{ secrets.TF_VAR_AUTH_TOKEN_SECRET }}
     steps:
       - name: Checkout the approved commit
         uses: actions/checkout@v5
