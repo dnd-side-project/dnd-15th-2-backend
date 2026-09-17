@@ -55,9 +55,14 @@ data "aws_ami" "al2023" {
   most_recent = true
   owners      = ["amazon"]
 
+  # `al2023-ami-*-x86_64`는 ECS·Neuron 등 파생 변종까지 함께 잡아, most_recent와
+  # 합쳐지면 apply 시점마다 다른 이미지가 선택된다. 실제로 루트 스냅샷이
+  # 30GiB인 ECS Neuron 변종이 선택되어 8GiB 루트 볼륨과 충돌해 RunInstances가
+  # 거부됐다(#268). 표준 기본 이미지 계열만 남겨 루트 스냅샷 크기(8GiB)를
+  # 예측 가능하게 유지한다.
   filter {
     name   = "name"
-    values = ["al2023-ami-*-x86_64"]
+    values = ["al2023-ami-2023.*-kernel-6.1-x86_64"]
   }
 
   filter {
