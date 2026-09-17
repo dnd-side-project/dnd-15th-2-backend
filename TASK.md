@@ -1,39 +1,36 @@
-# GitHub Issue #245 Task Contract
+# GitHub Issue #247 Task Contract
 
-> Generated at: `2026-09-17T10:15:43+09:00`
+> Generated at: `2026-09-17T10:42:49+09:00`
 >
 > 이 파일은 현재 작업 브랜치의 계약이다. 저장소 전역 정책은 `AGENTS.md`를
 > 따른다.
 
 ## Work gate
 
-- Title: `infrastructure-apply workflow에 test-server 비밀 변수 주입`
-- GitHub Issue: `#245`
-- Branch: `chore/gh-245-apply-secret-vars`
+- Title: `test-server 최초 apply 승인용 PR`
+- GitHub Issue: `#247`
+- Branch: `docs/gh-247-test-server-first-apply`
 - Base branch: `main`
-- DESIGN-ID: `D-3`(기존, `docs/reports/infrastructure/gh-229-D-3.md`,
-  `APPROVED_FOR_BUILD`). 이미 승인된 apply 경로의 배선 누락을 채우는
-  작업이라 새 설계 승인을 요구하지 않는다(사용자 지시, 2026-09-17).
+- DESIGN-ID: `D-3`(기존, `APPROVED_FOR_BUILD`). 코드 변경이 없는 문서
+  갱신이라 새 설계 승인을 요구하지 않는다.
 
 ## Objective
 
-- `infrastructure-apply.yml`이 `infra/environments/dev/test-server`를
-  apply할 때 필요한 민감 변수(`db_password`, `auth_token_secret`)를
-  GitHub secret에서 주입하도록 배선한다.
+- `infra/environments/dev/test-server`의 최초 실제 apply를 승인받기
+  위한 PR을 연다. `infrastructure-apply.yml`의 승인 게이트는 열린 PR과
+  그 head SHA에 대한 `@Byuntil`·`tkv00` 승인을 요구하는데, 이 스택의
+  기존 PR(#238)은 이미 병합·종료되어 재사용할 수 없다.
 
 ## Scope
 
-- `.github/workflows/infrastructure-apply.yml`의 `apply` job `env`
-  블록에 `TF_VAR_db_password`, `TF_VAR_auth_token_secret`을 각각
-  `secrets.TF_VAR_DB_PASSWORD`, `secrets.TF_VAR_AUTH_TOKEN_SECRET`에서
-  주입한다.
-- 버전 변수는 기본값(1)을 쓰고 이번 범위에서 다루지 않는다.
+- `docs/reports/infrastructure/gh-229-D-3-build.md`에 최초 apply
+  시점까지의 경위(#243, #245 발견·수정)와 현재 apply 준비 상태를
+  기록한다.
 
 ## Explicit exclusions
 
+- Terraform 코드 변경.
 - `terraform apply`, `destroy`, `import`, `state`, `force-unlock`, `taint`.
-- 비밀값 회전 절차 자동화.
-- 새 권한 추가(이번 변경은 GitHub secret 참조만 추가, IAM 권한 변경 없음).
 - 인프라 apply, 배포, 프로덕션 변경은 별도 승인 없이는 실행하지 않는다.
 - Secret, 계정 식별자, 토큰, `.env` 값은 기록하지 않는다.
 
@@ -41,8 +38,7 @@
 
 | Area | Owner | Required review |
 | --- | --- | --- |
-| Workflow 구현 (`.github/workflows/infrastructure-apply.yml`) | `tkv00` | PR 승인, `@Byuntil`·`@tkv00` |
-| GitHub secret 값 생성·등록 | 사람 | 이미 완료(TF_VAR_DB_PASSWORD, TF_VAR_AUTH_TOKEN_SECRET) |
+| 문서 갱신 | `tkv00` | `@Byuntil`·`@tkv00` PR 승인(이 PR 자체가 apply 승인 근거) |
 
 ## Existing user-owned changes
 
@@ -52,9 +48,6 @@
 ## Validation
 
 ```bash
-python scripts/validate-workflows.py
-npm run hooks:validate
-actionlint .github/workflows/infrastructure-apply.yml
 ./harness check
 ./harness pr-ready --project-tests
 git diff --check
@@ -62,15 +55,9 @@ git diff --check
 
 ## Completion criteria
 
-- [x] `python scripts/validate-workflows.py`, `npm run hooks:validate`가
-      통과한다.
-- [x] `actionlint`가 통과한다.
-- [x] plan/apply 원문이나 이 두 변수의 실제 값이 workflow 로그에
-      노출되지 않는다(Terraform이 `sensitive = true` 변수를 자동
-      마스킹하는 것으로 확인, 정적으로 검토).
+- [ ] `@Byuntil`, `tkv00` 둘 다 이 PR의 최종 commit에 Approve한다.
+- [ ] `./harness pr-ready --project-tests`가 통과한다.
 
 ## 참고
 
-- 관련 이슈: #243(같은 발견 경위의 D-3 배선 버그 수정).
-- `TF_VAR_DB_PASSWORD`, `TF_VAR_AUTH_TOKEN_SECRET` GitHub secret은 이미
-  사람이 등록했다(2026-09-17).
+- 관련 이슈: #229, #233, #237, #240, #243, #245.
