@@ -157,6 +157,35 @@ data "aws_iam_policy_document" "infra_deployer_permissions" {
     ]
   }
 
+  # test-server 공유 권한을 customer-managed policy로 붙이면서 필요해진
+  # 권한이다(#243). 인라인 정책 대신 managed policy를 쓴 이유는 AWS IAM이
+  # Role 하나에 붙는 모든 인라인 정책의 합계를 10,240바이트로 제한하기
+  # 때문이다(개별 문서 크기가 아니라 총합). AttachRolePolicy는 위
+  # ManageProjectIamIdentities 주석이 원래 배제하기로 했던 action이라,
+  # 대상을 이 프로젝트 접두사의 policy·role ARN으로만 한정해 임의
+  # policy를 다른 Role에 붙이지 못하게 좁혔다.
+  statement {
+    sid    = "ManageTestServerPolicies"
+    effect = "Allow"
+    actions = [
+      "iam:CreatePolicy",
+      "iam:DeletePolicy",
+      "iam:GetPolicy",
+      "iam:GetPolicyVersion",
+      "iam:ListPolicyVersions",
+      "iam:CreatePolicyVersion",
+      "iam:DeletePolicyVersion",
+      "iam:TagPolicy",
+      "iam:AttachRolePolicy",
+      "iam:DetachRolePolicy",
+      "iam:ListAttachedRolePolicies",
+    ]
+    resources = [
+      "arn:aws:iam::*:policy/${var.project_prefix}-*",
+      "arn:aws:iam::*:role/${var.project_prefix}-*",
+    ]
+  }
+
   statement {
     sid    = "ManageGithubOidcProvider"
     effect = "Allow"
@@ -200,26 +229,21 @@ resource "aws_iam_role_policy" "infra_deployer" {
 }
 
 # 프론트 테스트 서버 스택(D-3, #229/#233)의 EC2·ECR·SSM·IAM·Scheduler
-# 권한은 infra-apply(oidc.tf)와 공유하는 문서를 쓴다. 이전에는
-# infra_deployer_permissions에 source_policy_documents로 합쳐 하나의
-# 인라인 정책으로 두었으나, 합친 결과가 AWS IAM의 Role당 인라인 정책
-# 크기 한도(10,240바이트)를 초과해 실제 apply가 실패했다(#243). 네트워크
-# 권한 문서 자체도 단독으로 그 한도를 넘어, network/tags/compute 세
-# 인라인 정책으로 나눈다.
-resource "aws_iam_role_policy" "infra_deployer_test_server_network" {
-  name   = "${var.project_prefix}-infra-deployer-test-server-network-permissions"
-  role   = aws_iam_role.infra_deployer.id
-  policy = data.aws_iam_policy_document.test_server_shared_permissions_network.json
+# 권한은 infra-apply(oidc.tf)에서 만든 customer-managed policy 3개를
+# 그대로 attach한다. AWS IAM은 Role 하나에 붙는 모든 인라인 정책의
+# 합계를 10,240바이트로 제한해(개별 문서 크기가 아니라 총합) 인라인으로
+# 두면 계속 실패했다(#243). Managed policy는 이 총합에 포함되지 않는다.
+resource "aws_iam_role_policy_attachment" "infra_deployer_test_server_network" {
+  role       = aws_iam_role.infra_deployer.name
+  policy_arn = aws_iam_policy.test_server_network.arn
 }
 
-resource "aws_iam_role_policy" "infra_deployer_test_server_compute" {
-  name   = "${var.project_prefix}-infra-deployer-test-server-compute-permissions"
-  role   = aws_iam_role.infra_deployer.id
-  policy = data.aws_iam_policy_document.test_server_shared_permissions_compute.json
+resource "aws_iam_role_policy_attachment" "infra_deployer_test_server_tags" {
+  role       = aws_iam_role.infra_deployer.name
+  policy_arn = aws_iam_policy.test_server_tags.arn
 }
 
-resource "aws_iam_role_policy" "infra_deployer_test_server_tags" {
-  name   = "${var.project_prefix}-infra-deployer-test-server-tags-permissions"
-  role   = aws_iam_role.infra_deployer.id
-  policy = data.aws_iam_policy_document.test_server_shared_permissions_tags.json
+resource "aws_iam_role_policy_attachment" "infra_deployer_test_server_compute" {
+  role       = aws_iam_role.infra_deployer.name
+  policy_arn = aws_iam_policy.test_server_compute.arn
 }
