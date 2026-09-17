@@ -170,11 +170,6 @@ data "aws_iam_policy_document" "infra_deployer_permissions" {
     resources = ["arn:aws:iam::*:oidc-provider/token.actions.githubusercontent.com"]
   }
 
-  # 프론트 테스트 서버 스택(D-3, #229/#233)의 EC2·ECR·SSM·IAM·Scheduler
-  # 권한은 infra-apply(oidc.tf)와 공유하는 문서에서 합성한다.
-  source_policy_documents = [data.aws_iam_policy_document.test_server_shared_permissions.json]
-
-
   # 장기 자격 증명을 만들 수 있으면 이 Role의 단기 세션 전제가 무너진다.
   # 허용 목록에 없더라도 이후 정책 변경으로 새어 나가지 않도록 명시적으로
   # 거부한다(AGENTS.md 4.9).
@@ -202,4 +197,16 @@ resource "aws_iam_role_policy" "infra_deployer" {
   name   = "${var.project_prefix}-infra-deployer-permissions"
   role   = aws_iam_role.infra_deployer.id
   policy = data.aws_iam_policy_document.infra_deployer_permissions.json
+}
+
+# 프론트 테스트 서버 스택(D-3, #229/#233)의 EC2·ECR·SSM·IAM·Scheduler
+# 권한은 infra-apply(oidc.tf)와 공유하는 문서를 쓴다. 이전에는
+# infra_deployer_permissions에 source_policy_documents로 합쳐 하나의
+# 인라인 정책으로 두었으나, 합친 결과가 AWS IAM의 Role당 인라인 정책
+# 크기 한도(10,240바이트)를 초과해 실제 apply가 실패했다(#243). 권한
+# 내용은 그대로 두고 별도 인라인 정책으로 분리한다.
+resource "aws_iam_role_policy" "infra_deployer_test_server" {
+  name   = "${var.project_prefix}-infra-deployer-test-server-permissions"
+  role   = aws_iam_role.infra_deployer.id
+  policy = data.aws_iam_policy_document.test_server_shared_permissions.json
 }
