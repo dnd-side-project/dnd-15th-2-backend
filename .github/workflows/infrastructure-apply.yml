@@ -155,18 +155,26 @@ jobs:
           terraform -chdir="${TF_DIR}" plan -input=false -lock-timeout=5m
           -no-color -out=tfplan > /dev/null
 
+      # 저장된 .tfplan 바이너리는 실행마다 생성 시각 등 실행별 메타데이터를
+      # 담아, 동일한 State·설정으로 다시 만들어도 매번 다른 파일이 된다
+      # (직접 재현 테스트로 확인, #264). 그 바이너리를 그대로 해시하면
+      # 사람이 사전에 계산한 값과 절대 일치할 수 없다. resource_changes만
+      # 정규화(jq -S로 키 정렬)해 해시하면 같은 diff에 대해 재현 가능하다.
       - name: Require the plan to match the reviewed hash
         env:
           EXPECTED_PLAN_SHA256: ${{ inputs.plan_sha256 }}
         shell: bash
         run: |
           set -euo pipefail
-          actual="$(sha256sum "${TF_DIR}/tfplan" | cut -d' ' -f1)"
+          terraform -chdir="${TF_DIR}" show -json tfplan \
+            | jq -S '.resource_changes' > /tmp/normalized-plan.json
+          actual="$(sha256sum /tmp/normalized-plan.json | cut -d' ' -f1)"
           if [ "${actual}" != "${EXPECTED_PLAN_SHA256}" ]; then
             echo "Generated plan does not match the reviewed plan hash." >&2
             exit 1
           fi
           echo "Plan hash matches the reviewed value."
+          rm -f /tmp/normalized-plan.json
 
       - name: Summarize the plan without exposing values
         shell: bash
