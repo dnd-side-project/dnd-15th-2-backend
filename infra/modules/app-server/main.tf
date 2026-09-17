@@ -16,9 +16,22 @@ resource "aws_security_group" "this" {
   })
 }
 
+# SECURITY-EXCEPTION
+# 이유: dev 테스트 서버이고 프론트 개발자의 송신 IP가 유동적이라 고정 허용
+#       목록을 둘 수 없다. TLS 없이 평문 HTTP로 전체 공개한다.
+# 범위: 이 인스턴스의 app_port
+# 보완 통제: 테스트 계정과 테스트 데이터만 사용하고, 액세스 토큰 비밀값을
+#            로컬·프로덕션과 분리하며 토큰 만료를 짧게 유지한다.
+# 소유자: 백엔드팀(tkv00)
+# 만료일: 2026-12-31
+# 추적: #229 D-3 §5 S-1, #233
+#
+# AWS 제약: 보안 그룹 규칙의 description은 256자 미만이어야 하고 한글을
+# 포함하지 않는 제한된 ASCII 집합만 허용한다. 예외 전문은 위 주석에 두고
+# description에는 단문만 남긴다(#268 — 한글 설명으로 apply가 거부되어 발견).
 resource "aws_vpc_security_group_ingress_rule" "app_port" {
   security_group_id = aws_security_group.this.id
-  description       = "SECURITY-EXCEPTION: TLS 없이 평문 HTTP로 전체 공개한다. 이유: dev 테스트 서버이고 프론트 개발자 IP가 유동적이라 고정 허용 목록을 둘 수 없다. 범위: 이 인스턴스의 app_port. 보완 통제: 테스트 계정·짧은 토큰 만료만 사용(D-3 §5 S-1). 소유자: tkv00. 만료일: 2026-12-31. 추적: #229 D-3 §5 S-1, #233."
+  description       = "SECURITY-EXCEPTION: public plaintext HTTP to app_port (see #229 D-3 S-1, expires 2026-12-31)"
   from_port         = var.app_port
   to_port           = var.app_port
   ip_protocol       = "tcp"
@@ -27,7 +40,7 @@ resource "aws_vpc_security_group_ingress_rule" "app_port" {
 
 resource "aws_vpc_security_group_egress_rule" "https" {
   security_group_id = aws_security_group.this.id
-  description       = "ECR, SSM, S3 HTTPS 호출"
+  description       = "HTTPS to ECR, SSM and S3"
   from_port         = 443
   to_port           = 443
   ip_protocol       = "tcp"
