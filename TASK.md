@@ -1,53 +1,47 @@
-# GitHub Issue #231 Task Contract
+# GitHub Issue #243 Task Contract
 
-> Generated at: `2026-09-17T02:55:37+09:00`
+> Generated at: `2026-09-17T09:27:06+09:00`
 >
 > 이 파일은 현재 작업 브랜치의 계약이다. 저장소 전역 정책은 `AGENTS.md`를
 > 따른다.
 
 ## Work gate
 
-- Title: `백엔드 이미지 ECR 푸시와 테스트 서버 배포 workflow`
-- GitHub Issue: `#231`
-- Branch: `chore/gh-231-deploy-test-server-workflow`
+- Title: `infra-apply·infra-deployer 인라인 정책 크기 초과 수정`
+- GitHub Issue: `#243`
+- Branch: `fix/gh-243-infra-policy-size`
 - Base branch: `main`
+- DESIGN-ID: `D-3`(기존, `docs/reports/infrastructure/gh-229-D-3.md`,
+  `APPROVED_FOR_BUILD`). 권한 범위를 바꾸지 않는 버그 수정이라 새 설계
+  승인을 요구하지 않는다(사용자 지시, 2026-09-17).
 
 ## Objective
 
-- `.github/workflows/deploy-test-server.yml`을 신설해 `main` push와
-  `workflow_dispatch`를 트리거로 백엔드 이미지를 ECR에 push하고 dev
-  테스트 서버(#229)에 배포한다.
-- GitHub OIDC로 #240이 만든 배포 Role을 assume해 장기 Access Key 없이
-  ECR push와 SSM SendCommand를 수행한다.
+- `infra-apply`, `infra-deployer` Role의 인라인 정책이 AWS IAM의 Role당
+  10,240바이트 한도를 초과해 `terraform apply`가 실패하는 문제를
+  고친다.
+- 두 Role이 부여받는 실제 권한 범위는 바꾸지 않는다.
 
 ## Scope
 
-- `.github/workflows/deploy-test-server.yml` 신설.
-  - 트리거: `push`(`main`), `workflow_dispatch`.
-  - `Dockerfile`의 runtime 스테이지를 빌드해 commit SHA와 `latest` 두
-    태그로 ECR에 push한다.
-  - SSM `SendCommand`(`AWS-RunShellScript`)로 EC2에서
-    `docker compose --env-file .env pull`과 `up -d`를 실행한다. SSH
-    접속 경로는 만들지 않는다.
-  - 같은 SSM 명령 안에서 `GET /actuator/health`를 재시도 루프로 확인하고,
-    실패하면 명령 자체가 실패해 workflow가 실패한다.
-  - `aws-actions/configure-aws-credentials`를 OIDC 모드로만 사용하고
-    `secrets`에 AWS Access Key를 두지 않는다.
-- 필요한 GitHub repository secret/variable 이름을 정하고 workflow에서
-  참조한다(실제 값은 #229/#233/#237 EC2 스택이 apply된 뒤 사람이 넣는다):
-  - `secrets.AWS_TEST_SERVER_DEPLOY_ROLE_ARN`(#240이 출력하는 Role ARN)
-  - `vars.AWS_REGION`
-  - `vars.ECR_REPOSITORY_URL`
-  - `vars.TEST_SERVER_INSTANCE_ID`
-- 이전 태그로 재배포하는 수동 절차를 문서화한다(자동화하지 않는다).
+- `infra/bootstrap/oidc.tf`, `deployer.tf`: `infra_apply_permissions`/
+  `infra_deployer_permissions`에서 `source_policy_documents`
+  (`test_server_shared_permissions`)를 제거한다.
+- 실제로는 인라인 정책으로 분리하는 것만으로는 부족했다 — AWS IAM은
+  Role 하나에 붙는 **모든 인라인 정책의 합계**를 10,240바이트로
+  제한하고(개별 문서 크기가 아니라 총합), 공유 문서(network/tags/
+  compute로 나눠도 총합 12,229바이트)가 그 총합을 넘었다. 최종적으로
+  `aws_iam_policy`(customer-managed) 4개(network/tags/compute/
+  iam-management)를 만들어 `infra_apply`·`infra_deployer` 양쪽에
+  `aws_iam_role_policy_attachment`로 붙이는 방식으로 바꿨다. Managed
+  policy는 인라인 총합에 포함되지 않는다.
+- 새로 필요해진 `iam:CreatePolicy`/`AttachRolePolicy` 등은 이 프로젝트
+  접두사의 policy·role ARN으로만 한정해 별도 managed policy로 부여한다.
 
 ## Explicit exclusions
 
-- production 배포와 무중단 배포 전략.
-- Terraform 코드 변경(`infra/**`).
-- 롤백 자동화. 이전 태그로 재배포하는 수동 절차만 문서화한다.
-- `infrastructure-apply.yml`, `CODEOWNERS`, GitHub Ruleset 수정.
-- `terraform apply` 실행.
+- 권한 범위(어떤 action·resource를 허용하는지) 변경.
+- `terraform apply`, `destroy`, `import`, `state`, `force-unlock`, `taint`.
 - 인프라 apply, 배포, 프로덕션 변경은 별도 승인 없이는 실행하지 않는다.
 - Secret, 계정 식별자, 토큰, `.env` 값은 기록하지 않는다.
 
@@ -55,8 +49,8 @@
 
 | Area | Owner | Required review |
 | --- | --- | --- |
-| Workflow 구현 (`.github/workflows/**`) | `tkv00` | PR 승인 |
-| GitHub repository secret/variable 값 입력 | 사람 | EC2 스택 apply 이후 |
+| Terraform 구현 (`infra/bootstrap/**`) | `tkv00` | PR 승인 |
+| Apply | 사람 | 로컬에서 `infra-deployer` Role로 직접 실행(D-1 예외) |
 
 ## Existing user-owned changes
 
@@ -66,8 +60,10 @@
 ## Validation
 
 ```bash
-npm run hooks:validate
-python scripts/validate-workflows.py
+terraform fmt -check -recursive infra
+terraform -chdir=infra/bootstrap init -backend=false && terraform -chdir=infra/bootstrap validate
+tflint --recursive
+checkov -d infra --framework terraform
 ./harness check
 ./harness pr-ready --project-tests
 git diff --check
@@ -75,20 +71,16 @@ git diff --check
 
 ## Completion criteria
 
-- [x] `npm run hooks:validate`와 `python scripts/validate-workflows.py`가
-      통과한다.
-- [x] workflow가 `aws-actions/configure-aws-credentials`를 OIDC 모드로만
-      사용하고 `secrets`에 AWS Access Key를 참조하지 않는다.
-- [x] 이미지 태그에 commit SHA가 포함되어 배포된 이미지를 commit으로
-      추적할 수 있다.
-- [x] 배포 후 헬스체크 단계가 존재하고 실패 시 exit code가 0이 아니다.
-- [x] `infrastructure-apply.yml`, `CODEOWNERS`, GitHub Ruleset을
-      수정하지 않는다.
-- [x] workflow가 `terraform apply`를 실행하지 않는다.
+- [x] `terraform fmt`/`validate`/`tflint`/`checkov`가 통과한다.
+- [x] 각 Role의 인라인 정책 합계가 10,240바이트 이하다(사람이 실제
+      apply로 확인 — 2026-09-17, 성공).
+- [x] `infra-plan`/`infra-apply`/`infra-deployer`가 부여받는 실제 권한
+      범위는 이번 변경 전후로 동일하다(managed policy로 옮긴
+      network/tags/compute 권한 내용은 그대로, IAM 자기관리 권한만
+      최소 범위로 신규 추가됨).
 
 ## 참고
 
-- 선행 이슈: #229/#233/#237(EC2·ECR·네트워크), #240(배포 IAM Role,
-  `docs/reports/infrastructure/gh-240-D-4.md`)
-- 이 workflow는 실제 AWS 리소스가 apply되고 GitHub repository
-  secret/variable 값이 채워지기 전까지는 동작하지 않는다(Scope 참고).
+- 실제 apply 오류 재현: `docs/reports/infrastructure/gh-229-D-3-build.md`
+  갱신 또는 이슈 #243 본문 참고.
+- 관련 이슈: #233, #237, #240.

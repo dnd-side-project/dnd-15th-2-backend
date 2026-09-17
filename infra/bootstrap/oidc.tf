@@ -33,12 +33,19 @@ data "aws_kms_alias" "ssm_default" {
 
 # --- 프론트 테스트 서버 스택(D-3, #229/#233) 공통 권한 -------------------------
 # infra-apply(oidc.tf)와 infra-deployer(deployer.tf) 모두 이 스택을 apply할
-# 수 있어야 해서 문서를 하나로 만들고 source_policy_documents로 양쪽에
-# 합성한다. 리소스 ARN은 policy_sentry(AWS 서비스 권한 부여 참조 데이터
-# 기반)로 각 action이 실제 지원하는 리소스 유형을 확인해 채웠다 — 대부분의
-# EC2 action은 "*" 없이도 리소스 수준으로 좁힐 수 있어, 이전 초안의 "AWS
-# 제약" 주석은 부정확했다(PR #232 이후 자체 재검토).
-data "aws_iam_policy_document" "test_server_shared_permissions" {
+# 수 있어야 해서 문서를 만들어 양쪽에 별도 인라인 정책으로 붙인다. 리소스
+# ARN은 policy_sentry(AWS 서비스 권한 부여 참조 데이터 기반)로 각 action이
+# 실제 지원하는 리소스 유형을 확인해 채웠다 — 대부분의 EC2 action은 "*"
+# 없이도 리소스 수준으로 좁힐 수 있어, 이전 초안의 "AWS 제약" 주석은
+# 부정확했다(PR #232 이후 자체 재검토).
+#
+# 네트워크(VPC·서브넷·IGW·라우트 테이블·보안 그룹), 태그(Tag*, ARN을
+# 8개씩 나열해 유독 크다), 컴퓨팅·부속 리소스(인스턴스·볼륨·EIP·ECR·
+# SSM·IAM·Scheduler) 세 문서로 나눈다. 합쳐서 하나의 인라인 정책으로
+# 두면 AWS IAM의 Role당 인라인 정책 크기 한도(10,240바이트)를 초과해
+# 실제 apply가 실패한다(#243) — network 문서 하나만으로도 그 한도를
+# 넘어 세 개로 나눴다.
+data "aws_iam_policy_document" "test_server_shared_permissions_network" {
   # apply도 내부적으로 refresh(조회)를 수행하므로 plan 역할과 동일한 조회
   # 권한이 필요하다. 이 스택이 실제로 만드는 리소스 유형의 조회 action만
   # 나열한다("ec2:Describe*" 와일드카드는 Client VPN·Spot Fleet 등 무관한
@@ -256,6 +263,12 @@ data "aws_iam_policy_document" "test_server_shared_permissions" {
     }
   }
 
+}
+
+# Tag* statement 두 개가 리소스 ARN을 8개씩 나열해 다른 statement보다
+# 훨씬 커서, network 문서에 그대로 두면 그 문서 혼자서도 10,240바이트를
+# 넘었다(#243). 별도 문서로 뗀다.
+data "aws_iam_policy_document" "test_server_shared_permissions_tags" {
   # CreateTags/DeleteTags는 80개 넘는 리소스 유형을 지원하지만, 이 스택이
   # 실제로 태그를 붙이는 유형만 나열한다. 생성 시점 태깅(Terraform이 리소스
   # 생성 API 호출에 태그를 함께 보내는 경우)과 기존 리소스 재태깅을
@@ -325,7 +338,9 @@ data "aws_iam_policy_document" "test_server_shared_permissions" {
       values   = ["Project", "ManagedBy", "Environment", "Name"]
     }
   }
+}
 
+data "aws_iam_policy_document" "test_server_shared_permissions_compute" {
   # RunInstances가 실제로 건드리는 리소스 유형(image·instance·network-
   # interface·security-group·subnet·volume)만 나열한다. key-pair, launch-
   # template 등 이 스택이 쓰지 않는 유형은 넣지 않는다.
@@ -576,6 +591,54 @@ locals {
   test_server_image_arn             = "arn:aws:ec2:*::image/*"
 }
 
+# infra-apply/infra-deployer가 위 test-server 공유 권한을 customer-managed
+# policy로 attach하려면 필요한 권한이다(#243). 이 statement를 infra_apply_
+# permissions/infra_deployer_permissions 인라인 정책에 직접 추가했더니 그
+# 정책들이 이미 10,240바이트 한도에 거의 다 차 있어 그것만으로도 한도를
+# 넘겼다. 그래서 이것도 별도 managed policy로 둔다. AttachRolePolicy는
+# ManageProjectIamIdentities 주석이 원래 배제하기로 했던 action이라, 대상을
+# 이 프로젝트 접두사의 policy·role ARN으로만 한정해 임의 policy를 다른
+# Role에 붙이지 못하게 좁혔다.
+data "aws_iam_policy_document" "test_server_iam_management" {
+  statement {
+    sid    = "ManageTestServerPolicies"
+    effect = "Allow"
+    actions = [
+      "iam:CreatePolicy",
+      "iam:DeletePolicy",
+      "iam:GetPolicy",
+      "iam:GetPolicyVersion",
+      "iam:ListPolicyVersions",
+      "iam:CreatePolicyVersion",
+      "iam:DeletePolicyVersion",
+      "iam:TagPolicy",
+      "iam:AttachRolePolicy",
+      "iam:DetachRolePolicy",
+      "iam:ListAttachedRolePolicies",
+    ]
+    resources = [
+      "arn:aws:iam::*:policy/${var.project_prefix}-*",
+      "arn:aws:iam::*:role/${var.project_prefix}-*",
+    ]
+  }
+}
+
+resource "aws_iam_policy" "test_server_iam_management" {
+  name   = "${var.project_prefix}-test-server-iam-management"
+  policy = data.aws_iam_policy_document.test_server_iam_management.json
+  tags   = var.tags
+}
+
+resource "aws_iam_role_policy_attachment" "infra_apply_test_server_iam_management" {
+  role       = aws_iam_role.infra_apply.name
+  policy_arn = aws_iam_policy.test_server_iam_management.arn
+}
+
+resource "aws_iam_role_policy_attachment" "infra_deployer_test_server_iam_management" {
+  role       = aws_iam_role.infra_deployer.name
+  policy_arn = aws_iam_policy.test_server_iam_management.arn
+}
+
 # --- infra-plan role -------------------------------------------------------
 # PR에서 실행되는 정적 검사·`terraform plan`이 사용한다. 쓰기 권한은 부여하지
 # 않는다.
@@ -666,7 +729,7 @@ data "aws_iam_policy_document" "infra_plan_permissions" {
   # 프론트 테스트 서버 스택(D-3, #229/#233)이 계획할 EC2·VPC·ECR·SSM·
   # EventBridge Scheduler 리소스를 조회하는 권한. 쓰기 권한은 주지 않는다.
   # apply 역할과 동일한 근거로 와일드카드 대신 curated 목록을 쓴다(위
-  # test_server_shared_permissions의 동일 이름 statement 주석 참고).
+  # test_server_shared_permissions_network의 동일 이름 statement 주석 참고).
   statement {
     sid    = "ReadTestServerNetworkAndCompute"
     effect = "Allow"
@@ -926,10 +989,6 @@ data "aws_iam_policy_document" "infra_apply_permissions" {
     ]
   }
 
-  # 프론트 테스트 서버 스택(D-3, #229/#233)의 EC2·ECR·SSM·IAM·Scheduler
-  # 권한은 infra-deployer(deployer.tf)와 공유하는 문서에서 합성한다.
-  source_policy_documents = [data.aws_iam_policy_document.test_server_shared_permissions.json]
-
   # CI가 장기 자격 증명을 만들 수 있으면 OIDC 단기 세션 전제가 무너진다
   # (AGENTS.md 4.9). 허용 목록에 없더라도 이후 정책 변경으로 새어 나가지
   # 않도록 명시적으로 거부한다.
@@ -950,6 +1009,49 @@ resource "aws_iam_role_policy" "infra_apply" {
   name   = "${var.project_prefix}-infra-apply-permissions"
   role   = aws_iam_role.infra_apply.id
   policy = data.aws_iam_policy_document.infra_apply_permissions.json
+}
+
+# 프론트 테스트 서버 스택(D-3, #229/#233)의 EC2·ECR·SSM·IAM·Scheduler
+# 권한은 infra-apply와 infra-deployer(deployer.tf) 둘 다 assume할 수
+# 있는 별도의 customer-managed policy 3개(network/tags/compute, 아래
+# aws_iam_policy 리소스)로 만들어 두 Role에 attach한다. 이전에는
+# 인라인 정책(aws_iam_role_policy)으로 두었으나, AWS IAM은 Role 하나에
+# 붙는 "모든" 인라인 정책의 합계 크기를 10,240바이트로 제한한다 —
+# 개별 문서 크기가 아니라 총합이라, 아무리 잘게 나눠도 총합이 그대로면
+# 계속 실패한다(#243, 개별 문서는 각각 5,162/1,736/5,331바이트로 크지
+# 않았다). Managed policy는 이 인라인 총합에 포함되지 않고 각각
+# 6,144바이트 한도만 넘지 않으면 되므로, 이 경계를 근본적으로 피한다.
+resource "aws_iam_policy" "test_server_network" {
+  name   = "${var.project_prefix}-test-server-network"
+  policy = data.aws_iam_policy_document.test_server_shared_permissions_network.json
+  tags   = var.tags
+}
+
+resource "aws_iam_policy" "test_server_tags" {
+  name   = "${var.project_prefix}-test-server-tags"
+  policy = data.aws_iam_policy_document.test_server_shared_permissions_tags.json
+  tags   = var.tags
+}
+
+resource "aws_iam_policy" "test_server_compute" {
+  name   = "${var.project_prefix}-test-server-compute"
+  policy = data.aws_iam_policy_document.test_server_shared_permissions_compute.json
+  tags   = var.tags
+}
+
+resource "aws_iam_role_policy_attachment" "infra_apply_test_server_network" {
+  role       = aws_iam_role.infra_apply.name
+  policy_arn = aws_iam_policy.test_server_network.arn
+}
+
+resource "aws_iam_role_policy_attachment" "infra_apply_test_server_tags" {
+  role       = aws_iam_role.infra_apply.name
+  policy_arn = aws_iam_policy.test_server_tags.arn
+}
+
+resource "aws_iam_role_policy_attachment" "infra_apply_test_server_compute" {
+  role       = aws_iam_role.infra_apply.name
+  policy_arn = aws_iam_policy.test_server_compute.arn
 }
 
 # --- test-server-deploy role -------------------------------------------------
