@@ -119,6 +119,9 @@ jobs:
       # 다른 스택을 apply할 때는 Terraform이 무시한다(#245).
       TF_VAR_db_password: ${{ secrets.TF_VAR_DB_PASSWORD }}
       TF_VAR_auth_token_secret: ${{ secrets.TF_VAR_AUTH_TOKEN_SECRET }}
+      # 같은 스택의 media_bucket_kms_key_arn(#63 storage 스택 출력값,
+      # 기본값 없음). 민감값이 아니라 secret이 아니라 variable로 관리한다(#248).
+      TF_VAR_media_bucket_kms_key_arn: ${{ vars.MEDIA_BUCKET_KMS_KEY_ARN }}
     steps:
       - name: Checkout the approved commit
         uses: actions/checkout@v5
