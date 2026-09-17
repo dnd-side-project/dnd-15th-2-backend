@@ -88,10 +88,15 @@ variable "compose_version" {
 
 # --- 자동 정지 가드레일 --------------------------------------------------------
 
+# 자동 정지는 결정 항목 H-1(#233)로 승인된 예산 통제 수단이었다. 매일 03:00에
+# 정지되지만 자동 시작이 없어 쓸 때마다 수동 시작이 필요한 운영 마찰 때문에
+# 끄기로 재결정했다(#276). 상시 구동은 월 약 24.37 USD로 Issue #229의 월 10 USD
+# 상한을 2.4배 초과하므로, 이 기본값을 false로 두는 것은 상한 재설정을 전제한다.
+# 다시 켜려면 true로 되돌리고 apply하면 스케줄러 리소스가 재생성된다.
 variable "enable_auto_stop" {
-  description = "EventBridge Scheduler 자동 정지 활성화 여부. 결정 항목 H-1로 승인되었다(#233)."
+  description = "EventBridge Scheduler 자동 정지 활성화 여부. H-1(#233)로 승인되었다가 #276에서 비활성화로 재결정되었다."
   type        = bool
-  default     = true
+  default     = false
 }
 
 variable "auto_stop_schedule_expression" {
