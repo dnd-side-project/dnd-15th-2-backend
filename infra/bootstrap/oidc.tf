@@ -33,12 +33,17 @@ data "aws_kms_alias" "ssm_default" {
 
 # --- 프론트 테스트 서버 스택(D-3, #229/#233) 공통 권한 -------------------------
 # infra-apply(oidc.tf)와 infra-deployer(deployer.tf) 모두 이 스택을 apply할
-# 수 있어야 해서 문서를 하나로 만들고 source_policy_documents로 양쪽에
-# 합성한다. 리소스 ARN은 policy_sentry(AWS 서비스 권한 부여 참조 데이터
-# 기반)로 각 action이 실제 지원하는 리소스 유형을 확인해 채웠다 — 대부분의
-# EC2 action은 "*" 없이도 리소스 수준으로 좁힐 수 있어, 이전 초안의 "AWS
-# 제약" 주석은 부정확했다(PR #232 이후 자체 재검토).
-data "aws_iam_policy_document" "test_server_shared_permissions" {
+# 수 있어야 해서 문서를 만들어 양쪽에 별도 인라인 정책으로 붙인다. 리소스
+# ARN은 policy_sentry(AWS 서비스 권한 부여 참조 데이터 기반)로 각 action이
+# 실제 지원하는 리소스 유형을 확인해 채웠다 — 대부분의 EC2 action은 "*"
+# 없이도 리소스 수준으로 좁힐 수 있어, 이전 초안의 "AWS 제약" 주석은
+# 부정확했다(PR #232 이후 자체 재검토).
+#
+# 네트워크(VPC·서브넷·IGW·라우트 테이블·보안 그룹)와 컴퓨팅·부속
+# 리소스(인스턴스·볼륨·EIP·ECR·SSM·IAM·Scheduler) 두 문서로 나눈다.
+# 합쳐서 하나의 인라인 정책으로 두면 AWS IAM의 Role당 인라인 정책 크기
+# 한도(10,240바이트)를 초과해 실제 apply가 실패한다(#243).
+data "aws_iam_policy_document" "test_server_shared_permissions_network" {
   # apply도 내부적으로 refresh(조회)를 수행하므로 plan 역할과 동일한 조회
   # 권한이 필요하다. 이 스택이 실제로 만드는 리소스 유형의 조회 action만
   # 나열한다("ec2:Describe*" 와일드카드는 Client VPN·Spot Fleet 등 무관한
@@ -325,7 +330,9 @@ data "aws_iam_policy_document" "test_server_shared_permissions" {
       values   = ["Project", "ManagedBy", "Environment", "Name"]
     }
   }
+}
 
+data "aws_iam_policy_document" "test_server_shared_permissions_compute" {
   # RunInstances가 실제로 건드리는 리소스 유형(image·instance·network-
   # interface·security-group·subnet·volume)만 나열한다. key-pair, launch-
   # template 등 이 스택이 쓰지 않는 유형은 넣지 않는다.
@@ -666,7 +673,7 @@ data "aws_iam_policy_document" "infra_plan_permissions" {
   # 프론트 테스트 서버 스택(D-3, #229/#233)이 계획할 EC2·VPC·ECR·SSM·
   # EventBridge Scheduler 리소스를 조회하는 권한. 쓰기 권한은 주지 않는다.
   # apply 역할과 동일한 근거로 와일드카드 대신 curated 목록을 쓴다(위
-  # test_server_shared_permissions의 동일 이름 statement 주석 참고).
+  # test_server_shared_permissions_network의 동일 이름 statement 주석 참고).
   statement {
     sid    = "ReadTestServerNetworkAndCompute"
     effect = "Allow"
@@ -952,12 +959,19 @@ resource "aws_iam_role_policy" "infra_apply" {
 # 권한은 infra-deployer(deployer.tf)와 공유하는 문서를 쓴다. 이전에는
 # infra_apply_permissions에 source_policy_documents로 합쳐 하나의
 # 인라인 정책으로 두었으나, 합친 결과가 AWS IAM의 Role당 인라인 정책
-# 크기 한도(10,240바이트)를 초과해 실제 apply가 실패했다(#243). 권한
-# 내용은 그대로 두고 별도 인라인 정책으로 분리한다.
-resource "aws_iam_role_policy" "infra_apply_test_server" {
-  name   = "${var.project_prefix}-infra-apply-test-server-permissions"
+# 크기 한도(10,240바이트)를 초과해 실제 apply가 실패했다(#243). 네트워크
+# 권한 문서 자체도 단독으로 그 한도를 넘어, 컴퓨팅 권한 문서와 별도의
+# 두 인라인 정책으로 나눈다.
+resource "aws_iam_role_policy" "infra_apply_test_server_network" {
+  name   = "${var.project_prefix}-infra-apply-test-server-network-permissions"
   role   = aws_iam_role.infra_apply.id
-  policy = data.aws_iam_policy_document.test_server_shared_permissions.json
+  policy = data.aws_iam_policy_document.test_server_shared_permissions_network.json
+}
+
+resource "aws_iam_role_policy" "infra_apply_test_server_compute" {
+  name   = "${var.project_prefix}-infra-apply-test-server-compute-permissions"
+  role   = aws_iam_role.infra_apply.id
+  policy = data.aws_iam_policy_document.test_server_shared_permissions_compute.json
 }
 
 # --- test-server-deploy role -------------------------------------------------
