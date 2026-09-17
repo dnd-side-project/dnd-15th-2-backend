@@ -15,6 +15,7 @@ BRANCH_RE = re.compile(
     r"^(?P<type>feat|feature|fix|test|infra|docs|refactor|chore|ci|build|perf)/"
     r"gh-(?P<issue>\d+)-[a-z0-9]+(?:-[a-z0-9]+)*$"
 )
+COPILOT_BRANCH_RE = re.compile(r"^copilot/[a-z0-9]+(?:-[a-z0-9]+)*$")
 COMMIT_RE = re.compile(
     r"^(?P<type>feat|fix|test|infra|docs|refactor|chore|ci|build|perf)"
     r"(?:\([a-z0-9-]+\))?: .+ \(#(?P<issue>\d+)\)$"
@@ -30,6 +31,14 @@ TYPE_ALIASES = {"feature": "feat"}
 
 def check(label: str, value: str, pattern: re.Pattern[str]) -> list[str]:
     return [] if pattern.fullmatch(value) else [f"{label} does not match: {value}"]
+
+
+def check_branch(branch: str) -> list[str]:
+    return (
+        []
+        if BRANCH_RE.fullmatch(branch) or COPILOT_BRANCH_RE.fullmatch(branch)
+        else [f"branch does not match: {branch}"]
+    )
 
 
 def check_context(
@@ -91,6 +100,7 @@ def self_test() -> list[str]:
     valid = (
         (BRANCH_RE, "chore/gh-9-repository-harness"),
         (BRANCH_RE, "feat/gh-42-issue-context"),
+        (COPILOT_BRANCH_RE, "copilot/fix-harness-policy-branch-validation"),
         (COMMIT_RE, "feat(harness): use branch context (#42)"),
         (PR_RE, "feat: use branch context"),
     )
@@ -153,7 +163,7 @@ def main() -> int:
     if args.self_test:
         errors.extend(self_test())
     if args.branch:
-        errors.extend(check("branch", args.branch, BRANCH_RE))
+        errors.extend(check_branch(args.branch))
     for message in args.commit:
         errors.extend(check("commit", message.splitlines()[0], COMMIT_RE))
     if args.commit_file:
@@ -179,11 +189,11 @@ def main() -> int:
             args.pr_body,
         )
     ):
-        errors.extend(check("branch", current_branch(), BRANCH_RE))
+        errors.extend(check_branch(current_branch()))
     if any((commits, args.pr_title, args.pr_body is not None)):
         branch = args.branch or current_branch()
         if not args.branch:
-            errors.extend(check("branch", branch, BRANCH_RE))
+            errors.extend(check_branch(branch))
         errors.extend(check_context(branch, commits, args.pr_title, args.pr_body))
 
     if errors:
