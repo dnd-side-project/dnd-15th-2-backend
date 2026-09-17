@@ -200,3 +200,31 @@ provider_lock_sha256 (h1, darwin_arm64):
   AWS CLI를 이용한 리소스 생성·변경·삭제는 이 세션에서 실행하지 않았다.
   AWS CLI 호출은 `sts get-caller-identity`(신원 확인)와 `pricing
   get-products`(읽기 전용 가격 조회, 설계 단계)뿐이다.
+
+## 8. 최초 실제 apply 준비 상태 (2026-09-17 갱신)
+
+`infra/bootstrap`은 사람이 로컬에서 직접 적용해(D-1 예외) 실제로
+존재한다. `infra/environments/dev/storage`(#63)도 이미 실제 적용되어
+있다. `infra/environments/dev/test-server`(이 이슈 D-3)는 아직 실제
+apply 전이다.
+
+`infra/bootstrap`을 처음 실제 apply하는 과정에서 이 스택이 이미
+병합했던 IAM 정책 구성에 결함이 있음이 드러났다.
+
+- **#243**: `infra_apply_permissions`/`infra_deployer_permissions`에
+  `test_server_shared_permissions`를 `source_policy_documents`로
+  합치는 방식이 AWS IAM의 Role당 인라인 정책 합계 한도(10,240바이트)를
+  초과해 apply가 실패했다. Customer-managed policy 4개로 전환해
+  해결했고, 실제 apply로 성공을 확인했다. 권한 범위 자체는 바뀌지
+  않았다.
+- **#245**: `infrastructure-apply.yml`이 이 스택의 민감 변수
+  (`db_password`, `auth_token_secret`)를 주입하는 경로가 없어서
+  추가했다.
+- **#248**: 같은 경위로 `media_bucket_kms_key_arn`(#63 storage 스택
+  출력값, 기본값 없음) 주입 경로도 빠져 있어 추가한다.
+
+이 PR(#247) 자체는 Terraform 코드를 바꾸지 않는다.
+`infrastructure-apply.yml`의 승인 게이트(`verify-infra-approvals.py`)가
+열린 PR과 그 head SHA에 대한 `@Byuntil`·`tkv00`의 정확한 승인을
+요구하는데, 이 스택의 기존 PR(#238)은 이미 병합·종료되어 재사용할 수
+없다. 이 PR이 그 승인의 새 근거가 된다.
