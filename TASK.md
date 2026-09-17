@@ -1,33 +1,33 @@
-# GitHub Issue #253 Task Contract
+# GitHub Issue #255 Task Contract
 
-> Generated at: `2026-09-17T15:38:49+09:00`
+> Generated at: `2026-09-17T15:54:18+09:00`
 >
 > 이 파일은 현재 작업 브랜치의 계약이다. 저장소 전역 정책은 `AGENTS.md`를
 > 따른다.
 
 ## Work gate
 
-- Title: `test-server apply 승인용 PR (재생성)`
-- GitHub Issue: `#253`
-- Branch: `docs/gh-253-apply-approval-pr`
+- Title: `media_bucket_kms_key_arn을 secret으로 이동`
+- GitHub Issue: `#255`
+- Branch: `fix/gh-255-kms-arn-secret`
 - Base branch: `main`
 
 ## Objective
 
-- #249가 apply 승인 근거로 쓰이려던 PR이었는데 머지되어 더 이상 열린
-  PR이 아니게 됐다(`verify-infra-approvals.py`는 열린 PR만 인정한다).
-  이 PR로 다시 연다.
+- 실제 apply 실행 중 `TF_VAR_media_bucket_kms_key_arn`(계정 ID가 포함된
+  전체 ARN)이 GitHub Actions 로그에 마스킹 없이 노출된 것을 고친다.
+  GitHub Actions는 secret만 자동으로 로그를 마스킹하고 variable은
+  마스킹하지 않는다 — Terraform의 `sensitive` 여부와는 무관하다.
 
 ## Scope
 
-- `docs/reports/infrastructure/gh-229-D-3-build.md`에 #249가 머지되어
-  무효화된 경위와 이 PR(#253)이 그 대체 근거라는 사실을 기록한다.
+- `.github/workflows/infrastructure-apply.yml`에서
+  `TF_VAR_media_bucket_kms_key_arn`을 `vars.MEDIA_BUCKET_KMS_KEY_ARN`
+  대신 `secrets.MEDIA_BUCKET_KMS_KEY_ARN`에서 주입한다.
 
 ## Explicit exclusions
 
-- 이 PR을 apply 완료 전까지 머지하지 않는다.
 - `terraform apply`, `destroy`, `import`, `state`, `force-unlock`, `taint`.
-- Terraform 코드 변경.
 - 인프라 apply, 배포, 프로덕션 변경은 별도 승인 없이는 실행하지 않는다.
 - Secret, 계정 식별자, 토큰, `.env` 값은 기록하지 않는다.
 
@@ -35,7 +35,8 @@
 
 | Area | Owner | Required review |
 | --- | --- | --- |
-| 문서 갱신 | `tkv00` | `@Byuntil` 또는 `@tkv00` 중 한 명(#252 이후 완화됨) |
+| Workflow 구현 | `tkv00` | PR 승인(1인, #251 기준) |
+| GitHub secret 값 등록/variable 삭제 | 사람/세션 | 이미 완료(2026-09-17) |
 
 ## Existing user-owned changes
 
@@ -45,6 +46,9 @@
 ## Validation
 
 ```bash
+python scripts/validate-workflows.py
+npm run hooks:validate
+actionlint .github/workflows/infrastructure-apply.yml
 ./harness check
 ./harness pr-ready --project-tests
 git diff --check
@@ -52,10 +56,12 @@ git diff --check
 
 ## Completion criteria
 
-- [ ] `@Byuntil` 또는 `tkv00` 중 한 명이 이 PR의 최종 commit에 Approve한다.
-- [x] `./harness pr-ready --project-tests`가 통과한다.
-- [ ] 이 PR은 apply 완료 전까지 머지하지 않는다.
+- [x] `python scripts/validate-workflows.py`, `npm run hooks:validate`가
+      통과한다.
+- [x] `actionlint`가 통과한다.
+- [x] workflow 어디에도 `vars.MEDIA_BUCKET_KMS_KEY_ARN` 참조가 남지 않는다.
 
 ## 참고
 
-- 관련 이슈: #229, #233, #237, #240, #243, #245, #248, #249(무효화됨), #251, #252.
+- 발견 경위: 첫 실제 apply 실행 로그에 계정 ID가 노출됨(2026-09-17).
+- 관련 이슈: #248, #229/#233/#237.
