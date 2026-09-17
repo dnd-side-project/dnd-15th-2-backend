@@ -660,11 +660,16 @@ data "aws_iam_policy_document" "infra_plan_trust" {
     }
 
     # 어떤 branch/PR에서든 plan은 실행할 수 있어야 하므로 ref를 제한하지
-    # 않고 저장소만 제한한다. 쓰기 권한이 없으므로 위험이 낮다.
+    # 않고 저장소만 제한한다. 쓰기 권한이 없으므로 위험이 낮다. 기존
+    # sub 형식과 GitHub의 2026-07-15 신형식(org-id/repo-id 포함) 둘 다
+    # 허용한다(#259).
     condition {
       test     = "StringLike"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:${var.github_repository}:*"]
+      values = [
+        "repo:${var.github_repository}:*",
+        "repo:${var.github_repository_with_id}:*",
+      ]
     }
   }
 }
@@ -855,10 +860,15 @@ data "aws_iam_policy_document" "infra_apply_trust" {
       values   = ["sts.amazonaws.com"]
     }
 
+    # 기존 sub 형식과 GitHub의 2026-07-15 신형식(org-id/repo-id 포함)
+    # 둘 다 허용한다(#259).
     condition {
       test     = "StringLike"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:${var.github_repository}:environment:${var.github_apply_environment}"]
+      values = [
+        "repo:${var.github_repository}:environment:${var.github_apply_environment}",
+        "repo:${var.github_repository_with_id}:environment:${var.github_apply_environment}",
+      ]
     }
   }
 }
@@ -1080,11 +1090,15 @@ data "aws_iam_policy_document" "test_server_deploy_trust" {
     # 이 Role은 쓰기 권한(ECR push, SSM 명령 실행)을 가지므로 infra-plan과
     # 달리 저장소 전체를 허용하지 않는다. main 브랜치 push와 그 브랜치
     # 기준 workflow_dispatch만 assume할 수 있다(D-4 §4/§15, 사람 확정
-    # 2026-09-17).
+    # 2026-09-17). 기존 sub 형식과 GitHub의 2026-07-15 신형식(org-id/
+    # repo-id 포함) 둘 다 허용한다(#259).
     condition {
       test     = "StringEquals"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:${var.github_repository}:ref:refs/heads/main"]
+      values = [
+        "repo:${var.github_repository}:ref:refs/heads/main",
+        "repo:${var.github_repository_with_id}:ref:refs/heads/main",
+      ]
     }
   }
 }

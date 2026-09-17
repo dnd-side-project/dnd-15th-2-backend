@@ -42,6 +42,18 @@ variable "github_repository" {
   default     = "dnd-side-project/dnd-15th-2-backend"
 }
 
+# GitHub가 2026-07-15부터 신규 저장소의 OIDC sub claim 형식을
+# "repo:<org>@<org-id>/<repo>@<repo-id>:..."로 바꿨다(기존
+# "repo:<org>/<repo>:..."와 병행). 이 저장소가 신형식 대상이라 신뢰
+# 정책이 이 값도 함께 허용해야 실제로 assume된다(#259, CloudTrail로
+# 실제 클레임 확인). org ID·repo ID는 GitHub가 공개하는 식별자이며
+# 비밀값이 아니다(GitHub 공식 권고: 신뢰 정책에 하드코딩 가능).
+variable "github_repository_with_id" {
+  description = "GitHub OIDC 신형식 sub claim에 쓰이는 \"owner@org-id/repo@repo-id\" 식별자."
+  type        = string
+  default     = "dnd-side-project@71167956/dnd-15th-2-backend@1310010471"
+}
+
 variable "github_apply_environment" {
   description = "Terraform apply를 실행하는 보호된 GitHub Environment 이름. infra-apply 역할의 신뢰 조건을 이 Environment로 제한한다."
   type        = string
