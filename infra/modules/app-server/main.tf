@@ -231,10 +231,16 @@ resource "aws_instance" "this" {
   # 정적 검사가 명시적 선언을 요구해 값을 그대로 적는다. 추가 비용은 없다.
   ebs_optimized = true
 
+  # 애플리케이션은 컨테이너로 실행되고, dev 프로필에서 정적 Access Key를 주지
+  # 않아 AWS SDK 기본 자격 증명 체인(EC2에서는 IMDS)으로 인스턴스 Role
+  # 자격 증명을 받는다(MediaStorageS3Config). 컨테이너는 docker bridge를 한 번
+  # 거쳐 IMDS 응답의 홉을 하나 더 쓰므로, 홉 제한이 1이면 응답이 컨테이너에
+  # 도달하지 못한다 — AWS도 컨테이너 워크로드에 2를 권고한다. IMDSv2 강제
+  # (http_tokens = "required")는 유지한다(#272).
   metadata_options {
     http_endpoint               = "enabled"
     http_tokens                 = "required"
-    http_put_response_hop_limit = 1
+    http_put_response_hop_limit = 2
   }
 
   root_block_device {
