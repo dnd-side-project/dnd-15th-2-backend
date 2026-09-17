@@ -157,35 +157,6 @@ data "aws_iam_policy_document" "infra_deployer_permissions" {
     ]
   }
 
-  # test-server 공유 권한을 customer-managed policy로 붙이면서 필요해진
-  # 권한이다(#243). 인라인 정책 대신 managed policy를 쓴 이유는 AWS IAM이
-  # Role 하나에 붙는 모든 인라인 정책의 합계를 10,240바이트로 제한하기
-  # 때문이다(개별 문서 크기가 아니라 총합). AttachRolePolicy는 위
-  # ManageProjectIamIdentities 주석이 원래 배제하기로 했던 action이라,
-  # 대상을 이 프로젝트 접두사의 policy·role ARN으로만 한정해 임의
-  # policy를 다른 Role에 붙이지 못하게 좁혔다.
-  statement {
-    sid    = "ManageTestServerPolicies"
-    effect = "Allow"
-    actions = [
-      "iam:CreatePolicy",
-      "iam:DeletePolicy",
-      "iam:GetPolicy",
-      "iam:GetPolicyVersion",
-      "iam:ListPolicyVersions",
-      "iam:CreatePolicyVersion",
-      "iam:DeletePolicyVersion",
-      "iam:TagPolicy",
-      "iam:AttachRolePolicy",
-      "iam:DetachRolePolicy",
-      "iam:ListAttachedRolePolicies",
-    ]
-    resources = [
-      "arn:aws:iam::*:policy/${var.project_prefix}-*",
-      "arn:aws:iam::*:role/${var.project_prefix}-*",
-    ]
-  }
-
   statement {
     sid    = "ManageGithubOidcProvider"
     effect = "Allow"

@@ -591,6 +591,54 @@ locals {
   test_server_image_arn             = "arn:aws:ec2:*::image/*"
 }
 
+# infra-apply/infra-deployer가 위 test-server 공유 권한을 customer-managed
+# policy로 attach하려면 필요한 권한이다(#243). 이 statement를 infra_apply_
+# permissions/infra_deployer_permissions 인라인 정책에 직접 추가했더니 그
+# 정책들이 이미 10,240바이트 한도에 거의 다 차 있어 그것만으로도 한도를
+# 넘겼다. 그래서 이것도 별도 managed policy로 둔다. AttachRolePolicy는
+# ManageProjectIamIdentities 주석이 원래 배제하기로 했던 action이라, 대상을
+# 이 프로젝트 접두사의 policy·role ARN으로만 한정해 임의 policy를 다른
+# Role에 붙이지 못하게 좁혔다.
+data "aws_iam_policy_document" "test_server_iam_management" {
+  statement {
+    sid    = "ManageTestServerPolicies"
+    effect = "Allow"
+    actions = [
+      "iam:CreatePolicy",
+      "iam:DeletePolicy",
+      "iam:GetPolicy",
+      "iam:GetPolicyVersion",
+      "iam:ListPolicyVersions",
+      "iam:CreatePolicyVersion",
+      "iam:DeletePolicyVersion",
+      "iam:TagPolicy",
+      "iam:AttachRolePolicy",
+      "iam:DetachRolePolicy",
+      "iam:ListAttachedRolePolicies",
+    ]
+    resources = [
+      "arn:aws:iam::*:policy/${var.project_prefix}-*",
+      "arn:aws:iam::*:role/${var.project_prefix}-*",
+    ]
+  }
+}
+
+resource "aws_iam_policy" "test_server_iam_management" {
+  name   = "${var.project_prefix}-test-server-iam-management"
+  policy = data.aws_iam_policy_document.test_server_iam_management.json
+  tags   = var.tags
+}
+
+resource "aws_iam_role_policy_attachment" "infra_apply_test_server_iam_management" {
+  role       = aws_iam_role.infra_apply.name
+  policy_arn = aws_iam_policy.test_server_iam_management.arn
+}
+
+resource "aws_iam_role_policy_attachment" "infra_deployer_test_server_iam_management" {
+  role       = aws_iam_role.infra_deployer.name
+  policy_arn = aws_iam_policy.test_server_iam_management.arn
+}
+
 # --- infra-plan role -------------------------------------------------------
 # PR에서 실행되는 정적 검사·`terraform plan`이 사용한다. 쓰기 권한은 부여하지
 # 않는다.
@@ -938,32 +986,6 @@ data "aws_iam_policy_document" "infra_apply_permissions" {
       "arn:aws:iam::*:role/${var.project_prefix}-*",
       "arn:aws:iam::*:user/${var.project_prefix}-*",
       "arn:aws:iam::*:group/${var.project_prefix}-*",
-    ]
-  }
-
-  # test-server 공유 권한을 customer-managed policy로 붙이면서 필요해진
-  # 권한이다(#243). 인라인 정책 대신 managed policy를 쓴 이유는 AWS IAM이
-  # Role 하나에 붙는 모든 인라인 정책의 합계를 10,240바이트로 제한하기
-  # 때문이다(개별 문서 크기가 아니라 총합).
-  statement {
-    sid    = "ManageTestServerPolicies"
-    effect = "Allow"
-    actions = [
-      "iam:CreatePolicy",
-      "iam:DeletePolicy",
-      "iam:GetPolicy",
-      "iam:GetPolicyVersion",
-      "iam:ListPolicyVersions",
-      "iam:CreatePolicyVersion",
-      "iam:DeletePolicyVersion",
-      "iam:TagPolicy",
-      "iam:AttachRolePolicy",
-      "iam:DetachRolePolicy",
-      "iam:ListAttachedRolePolicies",
-    ]
-    resources = [
-      "arn:aws:iam::*:policy/${var.project_prefix}-*",
-      "arn:aws:iam::*:role/${var.project_prefix}-*",
     ]
   }
 
