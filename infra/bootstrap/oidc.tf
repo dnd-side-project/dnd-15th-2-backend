@@ -1169,6 +1169,7 @@ data "aws_iam_policy_document" "infra_apply_permissions" {
       "iam:DeleteRolePolicy",
       "iam:GetRolePolicy",
       "iam:ListRolePolicies",
+      "iam:ListInstanceProfilesForRole",
       "iam:UpdateAssumeRolePolicy",
       "iam:CreateUser",
       "iam:DeleteUser",
