@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
-"""Require named reviewers to approve the exact current PR head."""
+"""Require at least one named reviewer to approve the exact current PR head.
+
+GitHub does not let a PR author approve their own PR, so requiring every
+named reviewer would always fail for whichever one opened the PR. Any one
+of the named reviewers approving the exact head commit is sufficient
+(AGENTS.md 4.8, decided 2026-09-17).
+"""
 
 from __future__ import annotations
 
@@ -62,22 +68,23 @@ def main() -> int:
         ):
             latest[login.lower()] = review
 
-    missing = []
+    approved_by = []
     for required in args.required_reviewers:
         review = latest.get(required.lower())
         if (
-            not review
-            or review.get("state") != "APPROVED"
-            or review.get("commit_id") != head_sha
+            review
+            and review.get("state") == "APPROVED"
+            and review.get("commit_id") == head_sha
         ):
-            missing.append(required)
-    if missing:
+            approved_by.append(required)
+    if not approved_by:
         print(
-            "Exact-head approval is missing for: " + ", ".join(missing),
+            "Exact-head approval is missing from all of: "
+            + ", ".join(args.required_reviewers),
             file=sys.stderr,
         )
         return 1
-    print("Required reviewers approved the exact PR head.")
+    print(f"Required reviewer approved the exact PR head: {approved_by[0]}")
     return 0
 
 
