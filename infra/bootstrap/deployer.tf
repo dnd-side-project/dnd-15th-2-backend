@@ -116,6 +116,16 @@ data "aws_iam_policy_document" "infra_deployer_permissions" {
     resources = ["*"]
   }
 
+  # test-server 스택(D-3, #229/#233)의 data "aws_kms_alias" "ssm_default"가
+  # plan/apply 시점마다 읽는다. kms:ListAliases는 리소스 수준 권한도
+  # 조건 키도 지원하지 않는 AWS 제약이다(policy_sentry 확인, #261).
+  statement {
+    sid       = "ListAccountKmsAliases"
+    effect    = "Allow"
+    actions   = ["kms:ListAliases"]
+    resources = ["*"]
+  }
+
   # 권한 상승 경로를 막기 위해 대상을 접두사로 한정하고, 관리형 정책을
   # 임의로 부착할 수 있는 iam:AttachRolePolicy/AttachUserPolicy는 주지 않는다.
   statement {

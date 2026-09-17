@@ -731,6 +731,17 @@ data "aws_iam_policy_document" "infra_plan_permissions" {
     }
   }
 
+  # test-server 스택(D-3, #229/#233)의 data "aws_kms_alias" "ssm_default"가
+  # plan/apply 시점마다 읽는다. kms:ListAliases는 리소스 수준 권한도
+  # 조건 키도 지원하지 않는 AWS 제약이라 위 ReadProjectResources처럼
+  # 태그 조건을 걸 수 없다(policy_sentry 확인, #261).
+  statement {
+    sid       = "ListAccountKmsAliases"
+    effect    = "Allow"
+    actions   = ["kms:ListAliases"]
+    resources = ["*"]
+  }
+
   # 프론트 테스트 서버 스택(D-3, #229/#233)이 계획할 EC2·VPC·ECR·SSM·
   # EventBridge Scheduler 리소스를 조회하는 권한. 쓰기 권한은 주지 않는다.
   # apply 역할과 동일한 근거로 와일드카드 대신 curated 목록을 쓴다(위
@@ -957,6 +968,16 @@ data "aws_iam_policy_document" "infra_apply_permissions" {
     sid       = "CreateProjectKmsKeys"
     effect    = "Allow"
     actions   = ["kms:CreateKey"]
+    resources = ["*"]
+  }
+
+  # test-server 스택(D-3, #229/#233)의 data "aws_kms_alias" "ssm_default"가
+  # plan/apply 시점마다 읽는다. kms:ListAliases는 리소스 수준 권한도
+  # 조건 키도 지원하지 않는 AWS 제약이다(policy_sentry 확인, #261).
+  statement {
+    sid       = "ListAccountKmsAliases"
+    effect    = "Allow"
+    actions   = ["kms:ListAliases"]
     resources = ["*"]
   }
 
