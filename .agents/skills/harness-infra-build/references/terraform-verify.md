@@ -31,7 +31,11 @@ terraform-docs 검증
 
 ```bash
 terraform plan -lock-timeout=5m -out=tfplan
-sha256sum tfplan
+# .tfplan 바이너리는 실행별 메타데이터(생성 시각 등)를 담아 같은 State·설정에서
+# 다시 만들어도 매번 다른 파일이 된다. infrastructure-apply.yml이 비교하는
+# plan_sha256은 resource_changes만 정규화한 해시다(#264).
+terraform show -json tfplan | jq -S '.resource_changes' > normalized-plan.json
+sha256sum normalized-plan.json
 sha256sum .terraform.lock.hcl
 ```
 
