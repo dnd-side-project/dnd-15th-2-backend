@@ -39,10 +39,12 @@ data "aws_kms_alias" "ssm_default" {
 # 없이도 리소스 수준으로 좁힐 수 있어, 이전 초안의 "AWS 제약" 주석은
 # 부정확했다(PR #232 이후 자체 재검토).
 #
-# 네트워크(VPC·서브넷·IGW·라우트 테이블·보안 그룹)와 컴퓨팅·부속
-# 리소스(인스턴스·볼륨·EIP·ECR·SSM·IAM·Scheduler) 두 문서로 나눈다.
-# 합쳐서 하나의 인라인 정책으로 두면 AWS IAM의 Role당 인라인 정책 크기
-# 한도(10,240바이트)를 초과해 실제 apply가 실패한다(#243).
+# 네트워크(VPC·서브넷·IGW·라우트 테이블·보안 그룹), 태그(Tag*, ARN을
+# 8개씩 나열해 유독 크다), 컴퓨팅·부속 리소스(인스턴스·볼륨·EIP·ECR·
+# SSM·IAM·Scheduler) 세 문서로 나눈다. 합쳐서 하나의 인라인 정책으로
+# 두면 AWS IAM의 Role당 인라인 정책 크기 한도(10,240바이트)를 초과해
+# 실제 apply가 실패한다(#243) — network 문서 하나만으로도 그 한도를
+# 넘어 세 개로 나눴다.
 data "aws_iam_policy_document" "test_server_shared_permissions_network" {
   # apply도 내부적으로 refresh(조회)를 수행하므로 plan 역할과 동일한 조회
   # 권한이 필요하다. 이 스택이 실제로 만드는 리소스 유형의 조회 action만
@@ -261,6 +263,12 @@ data "aws_iam_policy_document" "test_server_shared_permissions_network" {
     }
   }
 
+}
+
+# Tag* statement 두 개가 리소스 ARN을 8개씩 나열해 다른 statement보다
+# 훨씬 커서, network 문서에 그대로 두면 그 문서 혼자서도 10,240바이트를
+# 넘었다(#243). 별도 문서로 뗀다.
+data "aws_iam_policy_document" "test_server_shared_permissions_tags" {
   # CreateTags/DeleteTags는 80개 넘는 리소스 유형을 지원하지만, 이 스택이
   # 실제로 태그를 붙이는 유형만 나열한다. 생성 시점 태깅(Terraform이 리소스
   # 생성 API 호출에 태그를 함께 보내는 경우)과 기존 리소스 재태깅을
@@ -960,8 +968,8 @@ resource "aws_iam_role_policy" "infra_apply" {
 # infra_apply_permissions에 source_policy_documents로 합쳐 하나의
 # 인라인 정책으로 두었으나, 합친 결과가 AWS IAM의 Role당 인라인 정책
 # 크기 한도(10,240바이트)를 초과해 실제 apply가 실패했다(#243). 네트워크
-# 권한 문서 자체도 단독으로 그 한도를 넘어, 컴퓨팅 권한 문서와 별도의
-# 두 인라인 정책으로 나눈다.
+# 권한 문서 자체도 단독으로 그 한도를 넘어, network/tags/compute 세
+# 인라인 정책으로 나눈다.
 resource "aws_iam_role_policy" "infra_apply_test_server_network" {
   name   = "${var.project_prefix}-infra-apply-test-server-network-permissions"
   role   = aws_iam_role.infra_apply.id
@@ -972,6 +980,12 @@ resource "aws_iam_role_policy" "infra_apply_test_server_compute" {
   name   = "${var.project_prefix}-infra-apply-test-server-compute-permissions"
   role   = aws_iam_role.infra_apply.id
   policy = data.aws_iam_policy_document.test_server_shared_permissions_compute.json
+}
+
+resource "aws_iam_role_policy" "infra_apply_test_server_tags" {
+  name   = "${var.project_prefix}-infra-apply-test-server-tags-permissions"
+  role   = aws_iam_role.infra_apply.id
+  policy = data.aws_iam_policy_document.test_server_shared_permissions_tags.json
 }
 
 # --- test-server-deploy role -------------------------------------------------

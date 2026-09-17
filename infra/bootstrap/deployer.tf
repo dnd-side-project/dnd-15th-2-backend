@@ -204,8 +204,8 @@ resource "aws_iam_role_policy" "infra_deployer" {
 # infra_deployer_permissions에 source_policy_documents로 합쳐 하나의
 # 인라인 정책으로 두었으나, 합친 결과가 AWS IAM의 Role당 인라인 정책
 # 크기 한도(10,240바이트)를 초과해 실제 apply가 실패했다(#243). 네트워크
-# 권한 문서 자체도 단독으로 그 한도를 넘어, 컴퓨팅 권한 문서와 별도의
-# 두 인라인 정책으로 나눈다.
+# 권한 문서 자체도 단독으로 그 한도를 넘어, network/tags/compute 세
+# 인라인 정책으로 나눈다.
 resource "aws_iam_role_policy" "infra_deployer_test_server_network" {
   name   = "${var.project_prefix}-infra-deployer-test-server-network-permissions"
   role   = aws_iam_role.infra_deployer.id
@@ -216,4 +216,10 @@ resource "aws_iam_role_policy" "infra_deployer_test_server_compute" {
   name   = "${var.project_prefix}-infra-deployer-test-server-compute-permissions"
   role   = aws_iam_role.infra_deployer.id
   policy = data.aws_iam_policy_document.test_server_shared_permissions_compute.json
+}
+
+resource "aws_iam_role_policy" "infra_deployer_test_server_tags" {
+  name   = "${var.project_prefix}-infra-deployer-test-server-tags-permissions"
+  role   = aws_iam_role.infra_deployer.id
+  policy = data.aws_iam_policy_document.test_server_shared_permissions_tags.json
 }
