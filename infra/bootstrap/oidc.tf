@@ -123,15 +123,37 @@ data "aws_iam_policy_document" "test_server_shared_permissions_network" {
     }
   }
 
+  # AWS는 생성 action의 인가를 요청에 포함된 리소스마다 따로 평가한다.
+  # 부모 VPC는 이미 존재하는 리소스라 요청 태그(aws:RequestTag)가 적용되지
+  # 않으므로, 새로 만드는 자식 리소스와 조건을 분리해야 한다. 자식은 요청
+  # 태그로, 부모 VPC는 이미 붙어 있는 태그(aws:ResourceTag)로 판단한다
+  # (#266 — 실제 apply에서 부모 VPC ARN에 대해 거부되어 발견).
   statement {
     sid       = "CreateTestServerSubnet"
     effect    = "Allow"
     actions   = ["ec2:CreateSubnet"]
-    resources = [local.test_server_subnet_arn, local.test_server_vpc_arn]
+    resources = [local.test_server_subnet_arn]
 
     condition {
       test     = "StringLike"
       variable = "aws:RequestTag/Project"
+      values   = ["qello"]
+    }
+  }
+
+  statement {
+    sid    = "CreateTestServerVpcChildren"
+    effect = "Allow"
+    actions = [
+      "ec2:CreateSubnet",
+      "ec2:CreateRouteTable",
+      "ec2:CreateSecurityGroup",
+    ]
+    resources = [local.test_server_vpc_arn]
+
+    condition {
+      test     = "StringLike"
+      variable = "aws:ResourceTag/Project"
       values   = ["qello"]
     }
   }
@@ -183,7 +205,7 @@ data "aws_iam_policy_document" "test_server_shared_permissions_network" {
     sid       = "CreateTestServerRouteTable"
     effect    = "Allow"
     actions   = ["ec2:CreateRouteTable"]
-    resources = [local.test_server_route_table_arn, local.test_server_vpc_arn]
+    resources = [local.test_server_route_table_arn]
 
     condition {
       test     = "StringLike"
@@ -233,7 +255,7 @@ data "aws_iam_policy_document" "test_server_shared_permissions_network" {
     sid       = "CreateTestServerSecurityGroup"
     effect    = "Allow"
     actions   = ["ec2:CreateSecurityGroup"]
-    resources = [local.test_server_security_group_arn, local.test_server_vpc_arn]
+    resources = [local.test_server_security_group_arn]
 
     condition {
       test     = "StringLike"
@@ -338,6 +360,32 @@ data "aws_iam_policy_document" "test_server_shared_permissions_tags" {
       values   = ["Project", "ManagedBy", "Environment", "Name"]
     }
   }
+
+  # AWS가 VPC와 함께 자동으로 만드는 기본 보안 그룹은 태그 없이 생성되고,
+  # Terraform(aws_default_security_group)이 그것을 채택하며 독립 CreateTags
+  # 호출로 태그를 붙인다. 이 호출에는 ec2:CreateAction이 없어 위
+  # TagTestServerResourcesOnCreate 조건을 만족하지 못하고, 대상이 아직
+  # 무태그라 TagTestServerExistingResources 조건도 만족하지 못한다(#266 —
+  # 실제 apply에서 이 단계에서 거부되어 발견). 요청 태그와 태그 키만으로
+  # 한정하고, 보안 그룹 한 유형에만 허용한다.
+  statement {
+    sid       = "TagTestServerDefaultSecurityGroup"
+    effect    = "Allow"
+    actions   = ["ec2:CreateTags"]
+    resources = [local.test_server_security_group_arn]
+
+    condition {
+      test     = "StringLike"
+      variable = "aws:RequestTag/Project"
+      values   = ["qello"]
+    }
+
+    condition {
+      test     = "ForAllValues:StringLike"
+      variable = "aws:TagKeys"
+      values   = ["Project", "ManagedBy", "Environment", "Name"]
+    }
+  }
 }
 
 data "aws_iam_policy_document" "test_server_shared_permissions_compute" {
@@ -350,20 +398,46 @@ data "aws_iam_policy_document" "test_server_shared_permissions_compute" {
     actions = [
       "ec2:RunInstances",
     ]
-    resources = [
-      local.test_server_image_arn,
-      local.test_server_instance_arn,
-      local.test_server_network_interface_arn,
-      local.test_server_security_group_arn,
-      local.test_server_subnet_arn,
-      local.test_server_volume_arn,
-    ]
+    resources = [local.test_server_instance_arn]
 
     condition {
       test     = "StringLike"
       variable = "aws:RequestTag/Project"
       values   = ["qello"]
     }
+  }
+
+  # RunInstances는 요청에 등장하는 리소스를 각각 따로 인가한다. 이미 존재하고
+  # 이 프로젝트가 태그를 붙여 둔 서브넷과 보안 그룹은 붙어 있는 태그로
+  # 판단한다(#266).
+  statement {
+    sid       = "RunTestServerInstanceInOwnNetwork"
+    effect    = "Allow"
+    actions   = ["ec2:RunInstances"]
+    resources = [local.test_server_subnet_arn, local.test_server_security_group_arn]
+
+    condition {
+      test     = "StringLike"
+      variable = "aws:ResourceTag/Project"
+      values   = ["qello"]
+    }
+  }
+
+  # 나머지 세 유형은 태그 조건을 만족할 수 없다. AMI는 AWS가 배포한 Amazon
+  # Linux 2023 이미지라 이 계정이 태그를 붙일 수 없고, 네트워크 인터페이스와
+  # 루트 볼륨은 RunInstances가 암묵적으로 만들며 Terraform이 태그 명세를
+  # 보내지 않는다(모듈이 volume_tags와 root_block_device.tags를 쓰지 않는다).
+  # 리소스 유형과 계정·리전으로만 한정하고, 이 Role을 이 저장소의 보호된
+  # Environment에서만 Assume할 수 있다는 점을 보완 통제로 둔다(#266).
+  statement {
+    sid     = "RunTestServerInstanceImplicitResources"
+    effect  = "Allow"
+    actions = ["ec2:RunInstances"]
+    resources = [
+      local.test_server_image_arn,
+      local.test_server_network_interface_arn,
+      local.test_server_volume_arn,
+    ]
   }
 
   statement {
@@ -379,7 +453,6 @@ data "aws_iam_policy_document" "test_server_shared_permissions_compute" {
     resources = [
       local.test_server_instance_arn,
       local.test_server_security_group_arn,
-      local.test_server_volume_arn,
     ]
 
     condition {
@@ -387,6 +460,16 @@ data "aws_iam_policy_document" "test_server_shared_permissions_compute" {
       variable = "aws:ResourceTag/Project"
       values   = ["qello"]
     }
+  }
+
+  # TerminateInstances는 delete_on_termination인 루트 볼륨도 인가 대상으로
+  # 평가한다. 루트 볼륨은 RunInstances가 무태그로 만들어 aws:ResourceTag
+  # 조건을 만족할 수 없다(#266).
+  statement {
+    sid       = "TerminateTestServerRootVolume"
+    effect    = "Allow"
+    actions   = ["ec2:TerminateInstances"]
+    resources = [local.test_server_volume_arn]
   }
 
   statement {
@@ -444,7 +527,6 @@ data "aws_iam_policy_document" "test_server_shared_permissions_compute" {
     resources = [
       local.test_server_elastic_ip_arn,
       local.test_server_instance_arn,
-      local.test_server_network_interface_arn,
     ]
 
     condition {
@@ -452,6 +534,19 @@ data "aws_iam_policy_document" "test_server_shared_permissions_compute" {
       variable = "aws:ResourceTag/Project"
       values   = ["qello"]
     }
+  }
+
+  # EIP 연결·해제는 인스턴스의 기본 네트워크 인터페이스도 인가 대상으로
+  # 평가한다. 이 ENI는 RunInstances가 무태그로 만들어 aws:ResourceTag
+  # 조건을 만족할 수 없다(#266).
+  statement {
+    sid    = "ManageTestServerElasticIpOnImplicitEni"
+    effect = "Allow"
+    actions = [
+      "ec2:AssociateAddress",
+      "ec2:DisassociateAddress",
+    ]
+    resources = [local.test_server_network_interface_arn]
   }
 
   statement {
@@ -485,12 +580,22 @@ data "aws_iam_policy_document" "test_server_shared_permissions_compute" {
       "ssm:DeleteParameter",
       "ssm:GetParameter",
       "ssm:GetParameters",
-      "ssm:DescribeParameters",
       "ssm:AddTagsToResource",
       "ssm:RemoveTagsFromResource",
       "ssm:ListTagsForResource",
     ]
     resources = ["arn:aws:ssm:*:*:parameter/${var.project_prefix}/*"]
+  }
+
+  # ssm:DescribeParameters는 리소스 수준 권한을 지원하지 않아 파라미터 ARN으로
+  # 좁히면 항상 거부된다(policy_sentry로 확인). 응답은 파라미터 메타데이터만
+  # 담고 값은 포함하지 않는다. infra-plan 역할도 같은 이유로 별도
+  # statement(ReadTestServerSsmParameterMetadata)를 둔다(#266).
+  statement {
+    sid       = "DescribeSsmParameterMetadata"
+    effect    = "Allow"
+    actions   = ["ssm:DescribeParameters"]
+    resources = ["*"]
   }
 
   # 알려진 Terraform AWS Provider 제약(hashicorp/terraform-provider-aws#42849):
