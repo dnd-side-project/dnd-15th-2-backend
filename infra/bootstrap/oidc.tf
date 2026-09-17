@@ -513,6 +513,19 @@ data "aws_iam_policy_document" "test_server_shared_permissions_compute" {
     }
   }
 
+  # data "aws_kms_alias" "ssm_default"가 alias를 실제 Key로 풀 때
+  # kms:DescribeKey를 호출한다(#261). 이 Key는 계정 기본 SSM 키라
+  # Project 태그가 없어 위 ManageProjectKmsKeys의 태그 조건에 걸리지
+  # 않는다 — 이 Key ARN 하나로 한정해 별도로 허용한다. DescribeKey는
+  # kms:EncryptionContext 조건 키를 지원하지 않는다(policy_sentry
+  # 확인)ㅡ위 Decrypt statement와 달리 조건을 걸 수 없다.
+  statement {
+    sid       = "DescribeSsmDefaultKmsKey"
+    effect    = "Allow"
+    actions   = ["kms:DescribeKey"]
+    resources = [data.aws_kms_alias.ssm_default.target_key_arn]
+  }
+
   statement {
     sid    = "ManageTestServerInstanceProfiles"
     effect = "Allow"
@@ -740,6 +753,17 @@ data "aws_iam_policy_document" "infra_plan_permissions" {
     effect    = "Allow"
     actions   = ["kms:ListAliases"]
     resources = ["*"]
+  }
+
+  # 같은 data source가 alias를 실제 Key로 풀 때 kms:DescribeKey도
+  # 호출한다. 계정 기본 SSM 키는 Project 태그가 없어 위
+  # ReadProjectResources의 태그 조건에 걸리지 않으므로 이 Key ARN
+  # 하나로 한정해 별도 허용한다(#261).
+  statement {
+    sid       = "DescribeSsmDefaultKmsKey"
+    effect    = "Allow"
+    actions   = ["kms:DescribeKey"]
+    resources = [data.aws_kms_alias.ssm_default.target_key_arn]
   }
 
   # 프론트 테스트 서버 스택(D-3, #229/#233)이 계획할 EC2·VPC·ECR·SSM·
