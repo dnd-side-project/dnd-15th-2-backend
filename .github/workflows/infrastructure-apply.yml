@@ -65,7 +65,7 @@ jobs:
           --confirmation "${{ inputs.confirmation }}"
           --terraform-dir "${{ inputs.terraform_dir }}"
 
-      - name: Require exact-head approvals from both owners
+      - name: Require an exact-head approval from either owner
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: >-
