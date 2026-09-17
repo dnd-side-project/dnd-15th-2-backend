@@ -1,33 +1,35 @@
-# GitHub Issue #255 Task Contract
+# GitHub Issue #259 Task Contract
 
-> Generated at: `2026-09-17T15:54:18+09:00`
+> Generated at: `2026-09-17T17:20:37+09:00`
 >
 > 이 파일은 현재 작업 브랜치의 계약이다. 저장소 전역 정책은 `AGENTS.md`를
 > 따른다.
 
 ## Work gate
 
-- Title: `media_bucket_kms_key_arn을 secret으로 이동`
-- GitHub Issue: `#255`
-- Branch: `fix/gh-255-kms-arn-secret`
+- Title: `GitHub OIDC sub claim 신형식 대응`
+- GitHub Issue: `#259`
+- Branch: `fix/gh-259-oidc-sub-new-format`
 - Base branch: `main`
 
 ## Objective
 
-- 실제 apply 실행 중 `TF_VAR_media_bucket_kms_key_arn`(계정 ID가 포함된
-  전체 ARN)이 GitHub Actions 로그에 마스킹 없이 노출된 것을 고친다.
-  GitHub Actions는 secret만 자동으로 로그를 마스킹하고 variable은
-  마스킹하지 않는다 — Terraform의 `sensitive` 여부와는 무관하다.
+- GitHub가 2026년 7월부터 신규 저장소에 적용하는 새 OIDC `sub` 클레임
+  형식(`repo:<org>@<org-id>/<repo>@<repo-id>:...`)을 이 저장소의 모든
+  OIDC 신뢰 정책이 인식하도록 고친다. 기존 형식도 계속 허용한다.
 
 ## Scope
 
-- `.github/workflows/infrastructure-apply.yml`에서
-  `TF_VAR_media_bucket_kms_key_arn`을 `vars.MEDIA_BUCKET_KMS_KEY_ARN`
-  대신 `secrets.MEDIA_BUCKET_KMS_KEY_ARN`에서 주입한다.
+- `infra/bootstrap/variables.tf`: `github_repository_with_id` 변수를
+  추가한다.
+- `infra/bootstrap/oidc.tf`: `infra_plan_trust`, `infra_apply_trust`,
+  `test_server_deploy_trust` 세 신뢰 정책의 `sub` 조건을 기존 형식과
+  신형식 둘 다 포함하는 리스트로 바꾼다.
 
 ## Explicit exclusions
 
 - `terraform apply`, `destroy`, `import`, `state`, `force-unlock`, `taint`.
+- 권한 범위(action·resource) 변경. 신뢰 정책의 매칭 대상만 넓힌다.
 - 인프라 apply, 배포, 프로덕션 변경은 별도 승인 없이는 실행하지 않는다.
 - Secret, 계정 식별자, 토큰, `.env` 값은 기록하지 않는다.
 
@@ -35,8 +37,8 @@
 
 | Area | Owner | Required review |
 | --- | --- | --- |
-| Workflow 구현 | `tkv00` | PR 승인(1인, #251 기준) |
-| GitHub secret 값 등록/variable 삭제 | 사람/세션 | 이미 완료(2026-09-17) |
+| Terraform 구현 | `tkv00` | PR 승인(1인, #251 기준) |
+| Apply | 사람 | 로컬에서 `infra-deployer` Role로 직접 실행(D-1 예외) |
 
 ## Existing user-owned changes
 
@@ -46,9 +48,10 @@
 ## Validation
 
 ```bash
-python scripts/validate-workflows.py
-npm run hooks:validate
-actionlint .github/workflows/infrastructure-apply.yml
+terraform fmt -check -recursive infra
+terraform -chdir=infra/bootstrap init -backend=false && terraform -chdir=infra/bootstrap validate
+tflint --recursive
+checkov -d infra --framework terraform
 ./harness check
 ./harness pr-ready --project-tests
 git diff --check
@@ -56,12 +59,14 @@ git diff --check
 
 ## Completion criteria
 
-- [x] `python scripts/validate-workflows.py`, `npm run hooks:validate`가
-      통과한다.
-- [x] `actionlint`가 통과한다.
-- [x] workflow 어디에도 `vars.MEDIA_BUCKET_KMS_KEY_ARN` 참조가 남지 않는다.
+- [x] `terraform fmt`/`validate`/`tflint`/`checkov`가 통과한다.
+- [x] 세 Role 모두 기존 형식과 신형식 sub 양쪽에서 assume 가능하도록
+      신뢰 정책이 리스트를 쓴다.
+- [ ] 실제 apply로 `infra-apply` Role assume 성공을 확인한다(사람 실행).
 
 ## 참고
 
-- 발견 경위: 첫 실제 apply 실행 로그에 계정 ID가 노출됨(2026-09-17).
-- 관련 이슈: #248, #229/#233/#237.
+- 발견 경위: CloudTrail에서 실제 거부된 `AssumeRoleWithWebIdentity`
+  이벤트의 `principalId`를 확인해 신형식 sub 클레임임을 확인했다
+  (2026-09-17). 참고: GitHub 공식 변경 공지(2026-07-15부).
+- 관련 이슈: #229/#233/#237/#240.
