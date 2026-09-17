@@ -1,36 +1,37 @@
-# GitHub Issue #261 Task Contract
+# GitHub Issue #264 Task Contract
 
-> Generated at: `2026-09-17T17:44:28+09:00`
+> Generated at: `2026-09-17T18:04:45+09:00`
 >
 > 이 파일은 현재 작업 브랜치의 계약이다. 저장소 전역 정책은 `AGENTS.md`를
 > 따른다.
 
 ## Work gate
 
-- Title: `kms:ListAliases 권한 추가`
-- GitHub Issue: `#261`
-- Branch: `fix/gh-261-kms-list-aliases`
+- Title: `plan_sha256 검증을 정규화된 resource_changes 기준으로 변경`
+- GitHub Issue: `#264`
+- Branch: `fix/gh-264-plan-hash-normalize`
 - Base branch: `main`
 
 ## Objective
 
-- `infra/environments/dev/test-server`의
-  `data "aws_kms_alias" "ssm_default"`가 plan/apply 시점마다 호출하는
-  `kms:ListAliases`를 `infra-plan`/`infra-apply`/`infra-deployer` Role에
-  추가한다. 실제 apply가 `AccessDeniedException`으로 실패한 것을
+- `infrastructure-apply.yml`의 plan 해시 검증이 raw `.tfplan` 바이너리를
+  비교해 항상 불일치하는 설계 결함을 고친다. 동일한 State·설정으로
+  연달아 생성한 두 plan의 raw 해시가 서로 다름을 재현 테스트로 이미
   확인했다.
 
 ## Scope
 
-- `infra/bootstrap/oidc.tf`: `infra_plan_permissions`,
-  `infra_apply_permissions`에 `kms:ListAliases`(Resource `*`) statement
-  추가.
-- `infra/bootstrap/deployer.tf`: `infra_deployer_permissions`에 동일
-  statement 추가.
+- `.github/workflows/infrastructure-apply.yml`: "Create the plan"
+  단계에서 `terraform show -json tfplan | jq -S '.resource_changes'`로
+  정규화한 JSON을 만들고, "Require the plan to match the reviewed
+  hash" 단계가 그 정규화 파일의 SHA-256을 비교하도록 바꾼다.
+- 사람이 사전에 plan 해시를 계산할 때도 같은 정규화 절차를 쓰도록
+  안내 문구를 남긴다.
 
 ## Explicit exclusions
 
 - `terraform apply`, `destroy`, `import`, `state`, `force-unlock`, `taint`.
+- 다른 apply 게이트(승인, Environment, 확인 문구) 변경.
 - 인프라 apply, 배포, 프로덕션 변경은 별도 승인 없이는 실행하지 않는다.
 - Secret, 계정 식별자, 토큰, `.env` 값은 기록하지 않는다.
 
@@ -38,21 +39,19 @@
 
 | Area | Owner | Required review |
 | --- | --- | --- |
-| Terraform 구현 | `tkv00` | PR 승인(1인, #251 기준) |
-| Apply | 사람 | 로컬에서 `infra-deployer` Role로 직접 실행(D-1 예외) |
+| Workflow 구현 | `tkv00` | PR 승인(1인, #251 기준) |
 
 ## Existing user-owned changes
 
-- 브랜치 생성 직전 `git status --short` 결과가 비어 있었다(변경사항은
-  이전 브랜치에서 stash로 옮겨온 것). 보존할 다른 사용자 변경은 없다.
+- 브랜치 생성 직전 `git status --short` 결과가 비어 있었다. 보존할 사용자
+  변경이 없다.
 
 ## Validation
 
 ```bash
-terraform fmt -check -recursive infra
-terraform -chdir=infra/bootstrap init -backend=false && terraform -chdir=infra/bootstrap validate
-tflint --recursive
-checkov -d infra --framework terraform
+python scripts/validate-workflows.py
+npm run hooks:validate
+actionlint .github/workflows/infrastructure-apply.yml
 ./harness check
 ./harness pr-ready --project-tests
 git diff --check
@@ -60,12 +59,16 @@ git diff --check
 
 ## Completion criteria
 
-- [x] `terraform fmt`/`validate`/`tflint`/`checkov`가 통과한다.
-- [ ] 실제 apply로 `kms:ListAliases` 오류가 재발하지 않음을 확인한다
-      (사람 실행).
+- [ ] `python scripts/validate-workflows.py`, `npm run hooks:validate`가
+      통과한다.
+- [ ] `actionlint`가 통과한다.
+- [x] 동일한 diff에 대해 두 번 독립적으로 생성한 정규화 해시가
+      일치함을 재현 테스트로 확인했다(로컬에서 검증 완료,
+      2026-09-17).
 
 ## 참고
 
-- 발견 경위: 실제 apply 실행 로그의
-  `AccessDeniedException...kms:ListAliases` 오류(2026-09-17).
-- 관련 이슈: #229/#233/#237/#240/#259.
+- 발견 경위: 실제 apply를 여러 차례 재시도해도 계속
+  "Generated plan does not match the reviewed plan hash"가 발생해
+  원인을 재현 테스트로 추적했다(2026-09-17).
+- 관련 이슈: #229/#233/#237/#240.
