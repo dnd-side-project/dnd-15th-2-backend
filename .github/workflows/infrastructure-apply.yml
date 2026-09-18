@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       pr_number:
-        description: "승인된 인프라 PR 번호"
+        description: "승인 후 머지된 인프라 PR 번호"
         required: true
         type: string
       confirmation:
@@ -19,7 +19,7 @@ on:
         required: true
         type: string
       commit_sha:
-        description: "검토·승인된 commit SHA. PR head와 정확히 일치해야 한다."
+        description: "적용할 commit SHA. 위 PR의 merge commit과 정확히 일치해야 한다."
         required: true
         type: string
       plan_sha256:
@@ -65,7 +65,13 @@ jobs:
           --confirmation "${{ inputs.confirmation }}"
           --terraform-dir "${{ inputs.terraform_dir }}"
 
-      - name: Require an exact-head approval from either owner
+      # 승인 증거는 머지된 실제 인프라 PR에 있다. 예전에는 열린 임시 PR의
+      # head에 승인을 요구해서, 적용할 코드가 바뀔 때마다 rebase가 head를
+      # 바꾸고 승인이 무효가 되는 반복이 있었다(#281). commit SHA 대조도
+      # 별도 step으로 중복돼 있어 이 스크립트 하나로 합쳤다 — 머지 여부,
+      # base 브랜치, 작성자가 아닌 소유자의 승인, merge commit 일치를 모두
+      # 한곳에서 검증한다.
+      - name: Require an owner-approved merged PR for this commit
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: >-
@@ -73,21 +79,8 @@ jobs:
           --repository "${{ github.repository }}"
           --pr-number "${{ inputs.pr_number }}"
           --required-reviewers Byuntil tkv00
-
-      - name: Require the requested commit to match the approved PR head
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ inputs.pr_number }}
-          COMMIT_SHA: ${{ inputs.commit_sha }}
-          REPOSITORY: ${{ github.repository }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          head_sha="$(gh api "repos/${REPOSITORY}/pulls/${PR_NUMBER}" --jq '.head.sha')"
-          if [ "${head_sha}" != "${COMMIT_SHA}" ]; then
-            echo "Requested commit does not match the approved PR head." >&2
-            exit 1
-          fi
+          --commit-sha "${{ inputs.commit_sha }}"
+          --base-branch "${{ github.event.repository.default_branch }}"
 
       # bootstrap처럼 backend 블록이 없는 스택을 이 workflow로 적용하면 원격
       # State 대신 빈 로컬 State로 실행되어 기존 리소스를 다시 만들려 한다.

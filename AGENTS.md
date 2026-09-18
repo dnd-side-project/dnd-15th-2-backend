@@ -255,11 +255,15 @@ AI 에이전트와 Claude Code 세션은 Terraform Apply를 실행하지 않는�
 
 1. 설계와 Terraform PR이 병합되었다.
 2. GitHub Ruleset이 요구하는 PR 승인 수를 충족했다.
-3. `@Byuntil` 또는 `@tkv00` 중 최소 한 명의 승인 증거가 존재한다.
+3. `@Byuntil` 또는 `@tkv00` 중 최소 한 명의 승인 증거가 그 PR의 head에
+   존재하고, 승인자가 그 PR의 작성자가 아니다.
    PR 작성자 본인은 자신의 PR을 승인할 수 없다는 GitHub 제약 때문에
    두 명 모두를 요구하면 작성자 쪽 조건을 항상 충족할 수 없어(사용자
    결정, 2026-09-17) 최소 한 명으로 완화했다.
-4. 적용 대상 commit SHA가 승인된 commit과 일치한다.
+4. 적용 대상 commit SHA가 그 PR의 merge commit과 일치한다.
+   승인 증거는 적용을 위해 따로 열어 두는 PR이 아니라 실제 인프라 PR에
+   둔다. 열린 PR의 head에 승인을 요구하면 적용할 코드가 바뀔 때마다
+   rebase가 head를 바꿔 승인이 무효가 되는 반복이 생긴다(#281).
 5. 적용할 plan의 SHA-256이 검토된 값과 일치한다.
 6. Terraform State가 변경되어 plan이 무효화되지 않았다.
 7. `infrastructure-apply` Environment 승인을 통과했다.
