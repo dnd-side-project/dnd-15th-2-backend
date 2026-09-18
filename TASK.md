@@ -1,44 +1,43 @@
-# GitHub Issue #279 Task Contract
+# GitHub Issue #281 Task Contract
 
-> Generated at: `2026-09-18T13:40:14+09:00`
+> Generated at: `2026-09-18T13:50:12+09:00`
 >
 > 이 파일은 현재 작업 브랜치의 계약이다. 저장소 전역 정책은 `AGENTS.md`를
 > 따른다.
 
 ## Work gate
 
-- Title: `IAM Role 삭제에 필요한 권한 추가`
-- GitHub Issue: `#279`
-- Branch: `fix/gh-279-iam-role-delete-permissions`
+- Title: `apply 승인 게이트의 재승인 반복 제거`
+- GitHub Issue: `#281`
+- Branch: `fix/gh-281-approval-on-merged-pr`
 - Base branch: `main`
 
 ## Objective
 
-- #277 적용이 부분 적용 상태로 중단된 원인을 없앤다. AWS Provider가 IAM Role
-  삭제 전에 호출하는 `iam:ListInstanceProfilesForRole` 권한이 없어, 스케줄과
-  inline policy만 삭제된 채 Role 삭제에서 실패했다.
+- apply 승인 게이트의 재승인 반복을 제거한다. 통제는 유지하고, 승인 증거를
+  담는 대상만 임시 PR에서 실제 머지된 인프라 PR로 바꾼다.
 
 ## Scope
 
-- `infra/bootstrap/oidc.tf`의 `test_server_iam_management`에
-  `iam:ListInstanceProfilesForRole`, `iam:ListRoleTags`, `iam:UntagRole`을
-  `role/${project_prefix}-*`로 한정해 추가한다.
+- `scripts/verify-infra-approvals.py`: 머지 여부, base 브랜치, 작성자가 아닌
+  소유자의 head 승인, merge commit 일치를 검증하도록 교체한다.
+- `.github/workflows/infrastructure-apply.yml`: 중복된 commit SHA 비교
+  step을 제거하고 스크립트로 일원화한다. 입력 설명을 실제 의미에 맞춘다.
+- `AGENTS.md` 4.8: 바뀐 메커니즘을 반영한다.
 
 ## Explicit exclusions
 
-- `iam:RemoveRoleFromInstanceProfile`은 추가하지 않는다. 이 action은
-  instance-profile 유형만 인가 대상으로 삼아(policy_sentry 확인)
-  `ManageTestServerInstanceProfiles`로 이미 충족된다.
-- 모듈과 적용 대상 스택 코드는 바꾸지 않는다.
+- 승인 게이트를 제거하지 않는다. Environment 보호 규칙, 확인 문구,
+  kill switch, plan 해시 검증, OIDC 자격 증명은 전부 그대로 둔다.
+- `CODEOWNERS`와 GitHub Ruleset은 바꾸지 않는다.
 - `terraform apply`, `destroy`, `import`, `state`, `force-unlock`, `taint`.
-- 인프라 apply, 배포, 프로덕션 변경은 별도 승인 없이는 실행하지 않는다.
 - Secret, 계정 식별자, 토큰, `.env` 값은 기록하지 않는다.
 
 ## Ownership
 
 | Area | Owner | Required review |
 | --- | --- | --- |
-| Terraform IAM 정책 | `tkv00` | PR 승인(1인, #251 기준) |
+| 승인 게이트 | `@Byuntil` | CODEOWNERS가 두 소유자를 요구한다 |
 
 ## Existing user-owned changes
 
@@ -48,6 +47,9 @@
 ## Validation
 
 ```bash
+python3 scripts/validate-workflows.py
+actionlint .github/workflows/infrastructure-apply.yml
+npm run hooks:validate
 ./harness check
 ./harness pr-ready --project-tests
 git diff --check
@@ -55,17 +57,19 @@ git diff --check
 
 ## Completion criteria
 
-- [x] 세 action이 시뮬레이션에서 `allowed`로 바뀐다
-- [x] 범위 밖 Role에 대해서는 여전히 거부된다
-- [x] 관리형 정책이 6,144바이트 한도 안에 있다(iam-management 613)
-- [x] `terraform fmt`/`tflint`/`checkov`/`harness pr-ready` 통과
+- [x] 머지 안 됨 / base 불일치 / 승인 없음 / 승인 아님 / 옛 커밋 승인 /
+      작성자 자기 승인 / 소유자 아닌 승인 / 승인 철회 / merge commit 불일치가
+      각각 거부된다 (단위 테스트 11건 통과)
+- [x] 실제 GitHub 데이터로 확인: #277 통과, #269 거부(승인 없이 머지됨),
+      #258 거부(머지 안 됨)
+- [x] `scripts/validate-workflows.py`, `actionlint`, `npm run hooks:validate` 통과
+- [x] `AGENTS.md` 4.8이 실제 동작과 일치한다
 
 ## 참고
 
-- 발견 경위: 실행 `35246659634`(2026-09-18 01:28 KST)가 plan 해시 게이트를
-  통과하고 apply 도중 실패했다. CloudTrail로 `DeleteSchedule`이 실제
-  수행됐음을 확인했다.
-- 오탐으로 확인한 항목: `iam:RemoveRoleFromInstanceProfile`을 role ARN으로
-  시뮬레이션하면 거부로 나오지만, 이 action은 instance-profile 유형만
-  지원하므로 실제 결함이 아니다.
-- 관련 이슈: #229/#233/#266/#276/#277.
+- 배경: 승인용 임시 PR을 세 번 재생성하고(#249/#253/#257), #258 하나에
+  재승인을 세 번 받았다. rebase가 head를 바꿔 승인이 무효화되는 구조적
+  반복이었다.
+- 강화되는 항목: 승인자가 작성자가 아님을 검사한다(현재는 하지 않는다).
+  적용 대상이 임의 커밋이 아니라 머지된 PR의 merge commit으로 좁혀진다.
+- 관련 이슈: #229/#233/#251/#264/#277/#279.
