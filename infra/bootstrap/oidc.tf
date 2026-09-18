@@ -786,6 +786,27 @@ data "aws_iam_policy_document" "test_server_iam_management" {
       "arn:aws:iam::*:role/${var.project_prefix}-*",
     ]
   }
+
+  # AWS Provider는 IAM Role을 삭제하기 전에 연결된 인스턴스 프로파일이 있는지
+  # ListInstanceProfilesForRole로 확인한다. 이 권한이 없어 실제 apply가 스케줄과
+  # inline policy만 지운 채 Role 삭제에서 중단됐다(#279).
+  #
+  # Role 태그 읽기·제거도 같은 생애주기 경로에서 호출되므로 함께 둔다. 빠져
+  # 있으면 또 한 번 부분 적용으로 끊긴다.
+  #
+  # RemoveRoleFromInstanceProfile은 여기 두지 않는다. 이 action은
+  # instance-profile 유형만 인가 대상으로 삼아(policy_sentry 확인)
+  # ManageTestServerInstanceProfiles의 instance-profile ARN으로 이미 충족된다.
+  statement {
+    sid    = "ManageTestServerRoleLifecycle"
+    effect = "Allow"
+    actions = [
+      "iam:ListInstanceProfilesForRole",
+      "iam:ListRoleTags",
+      "iam:UntagRole",
+    ]
+    resources = ["arn:aws:iam::*:role/${var.project_prefix}-*"]
+  }
 }
 
 resource "aws_iam_policy" "test_server_iam_management" {
