@@ -1,75 +1,81 @@
-# GitHub Issue #281 Task Contract
+# GitHub Issue #284 Task Contract
 
-> Generated at: `2026-09-18T13:50:12+09:00`
+> Generated at: `2026-09-23T15:52:46+09:00`
 >
 > 이 파일은 현재 작업 브랜치의 계약이다. 저장소 전역 정책은 `AGENTS.md`를
 > 따른다.
 
 ## Work gate
 
-- Title: `apply 승인 게이트의 재승인 반복 제거`
-- GitHub Issue: `#281`
-- Branch: `fix/gh-281-approval-on-merged-pr`
+- Title: `공개 OpenAPI 설명의 정보 노출 최소화와 사용법 정리`
+- GitHub Issue: `#284`
+- Branch: `docs/gh-284-openapi-public-descriptions`
 - Base branch: `main`
 
 ## Objective
 
-- apply 승인 게이트의 재승인 반복을 제거한다. 통제는 유지하고, 승인 증거를
-  담는 대상만 임시 PR에서 실제 머지된 인프라 PR로 바꾼다.
+- TASK-ID: GH-284-OPENAPI-PUBLIC-DESCRIPTIONS
+- 공개 Swagger 설명에서 호출자가 필요로 하는 사용법과 응답 해석은 유지하고,
+  내부 정책 임계값·판정 순서·저장 및 운영 방식처럼 불필요한 세부 설명은 덜어낸다.
+- 관련 Issue: #189, #190. 두 이슈의 기존 문서 개선과 구분해 공개 정보량을 검토한다.
 
 ## Scope
 
-- `scripts/verify-infra-approvals.py`: 머지 여부, base 브랜치, 작성자가 아닌
-  소유자의 head 승인, merge commit 일치를 검증하도록 교체한다.
-- `.github/workflows/infrastructure-apply.yml`: 중복된 commit SHA 비교
-  step을 제거하고 스크립트로 일원화한다. 입력 설명을 실제 의미에 맞춘다.
-- `AGENTS.md` 4.8: 바뀐 메커니즘을 반영한다.
+- 아래 10개 `*ApiSpec`의 28개 operation에서 `@Tag`, `@Operation`,
+  `@Parameter`, `@ApiResponse` 문구를 실제 Controller·DTO·Service 동작과 대조해 정리한다.
+  - `direction/web/{ActiveUserPresenceApiSpec,DirectionPostApiSpec,PostReactionApiSpec}.java`
+  - `feed/web/{InboxApiSpec,SentPostApiSpec,AnswerReadApiSpec}.java`
+  - `answer/web/{AnswerSubmissionApiSpec,MediaAssetApiSpec,AnswerReactionApiSpec}.java`
+  - `notification/web/NotificationApiSpec.java`
+- 위 API의 request/response DTO `@Schema` 문구에서 같은 문제를 발견하면
+  해당 문구만 수정한다. DTO 구조나 검증 규칙은 변경하지 않는다.
+- 저장소의 모든 `*ApiSpec`에서 `@ApiResponse` 설명 안의 오류 코드 식별자를 제거한다.
+  이 전역 표기 정리는 아래 28개 operation 외의 API에도 적용한다.
+- 공통 OpenAPI 설명에서 `docs/error-codes.md`를 직접 안내하는 문구를 제거한다.
+  공통 400 설명은 오류 코드 문서 경로 없이 사용자에게 보이는 입력 오류만 설명한다.
+- 이후 검토하는 API에도 동일 기준을 적용하며, 이 기준은 개별 도메인에 한정되지 않는다.
+- 공통 문서 설명은 다음 파일만 수정한다.
+  - `src/main/java/com/dnd/qello/common/openapi/OpenApiConfiguration.java`
+  - `src/main/java/com/dnd/qello/common/openapi/OpenApiConventionCustomizer.java`
+- `docs/api/openapi.json`은 생성 테스트로 재생성하고 의도한 문구 변경만 반영한다.
+- 도메인별로 한 API씩 검토하며, 호출 순서·필수 입력·응답 해석·클라이언트가
+  처리할 오류를 남긴다.
 
 ## Explicit exclusions
 
-- 승인 게이트를 제거하지 않는다. Environment 보호 규칙, 확인 문구,
-  kill switch, plan 해시 검증, OIDC 자격 증명은 전부 그대로 둔다.
-- `CODEOWNERS`와 GitHub Ruleset은 바꾸지 않는다.
-- `terraform apply`, `destroy`, `import`, `state`, `force-unlock`, `taint`.
+- API 경로, HTTP 메서드·상태 코드, 오류 코드 값, 인증·권한 정책,
+  request/response 구조와 런타임 동작 변경.
+- Controller 구현, Service·Domain·Repository, DB·인프라, 문서 배포 방식 변경.
+- 인프라 apply, 배포, 프로덕션 변경은 별도 승인 없이는 실행하지 않는다.
 - Secret, 계정 식별자, 토큰, `.env` 값은 기록하지 않는다.
 
 ## Ownership
 
 | Area | Owner | Required review |
 | --- | --- | --- |
-| 승인 게이트 | `@Byuntil` | CODEOWNERS가 두 소유자를 요구한다 |
+| OpenAPI 애노테이션 및 산출물 | API 문서 실행 역할 | 실제 변경과 생성 스펙의 독립 검토 |
 
 ## Existing user-owned changes
 
-- 브랜치 생성 직전 `git status --short` 결과가 비어 있었다. 보존할 사용자
-  변경이 없다.
+- 브랜치 생성 전 `git status --short` 결과가 비어 있었다. 보존할 사용자 변경은 없다.
 
 ## Validation
 
 ```bash
-python3 scripts/validate-workflows.py
-actionlint .github/workflows/infrastructure-apply.yml
-npm run hooks:validate
 ./harness check
 ./harness pr-ready --project-tests
+npm run hooks:validate
+./gradlew integrationTest --tests "*OpenApiSpecificationIntegrationTest"
 git diff --check
 ```
 
 ## Completion criteria
 
-- [x] 머지 안 됨 / base 불일치 / 승인 없음 / 승인 아님 / 옛 커밋 승인 /
-      작성자 자기 승인 / 소유자 아닌 승인 / 승인 철회 / merge commit 불일치가
-      각각 거부된다 (단위 테스트 11건 통과)
-- [x] 실제 GitHub 데이터로 확인: #277 통과, #269 거부(승인 없이 머지됨),
-      #258 거부(머지 안 됨)
-- [x] `scripts/validate-workflows.py`, `actionlint`, `npm run hooks:validate` 통과
-- [x] `AGENTS.md` 4.8이 실제 동작과 일치한다
-
-## 참고
-
-- 배경: 승인용 임시 PR을 세 번 재생성하고(#249/#253/#257), #258 하나에
-  재승인을 세 번 받았다. rebase가 head를 바꿔 승인이 무효화되는 구조적
-  반복이었다.
-- 강화되는 항목: 승인자가 작성자가 아님을 검사한다(현재는 하지 않는다).
-  적용 대상이 임의 커밋이 아니라 머지된 PR의 merge commit으로 좁혀진다.
-- 관련 이슈: #229/#233/#251/#264/#277/#279.
+- [x] 28개 operation의 설명을 실제 동작과 대조했다.
+- [x] 프론트가 호출 방법과 응답·오류 처리에 필요한 정보를 찾을 수 있다.
+- [x] 호출자에게 필요 없는 내부 임계값·판정 순서·저장·운영 세부 설명을 덜어냈다.
+- [x] 모든 `*ApiSpec` 응답 설명과 공통 OpenAPI 설명에 오류 코드 식별자 및
+      `docs/error-codes.md` 안내 문구가 남지 않았다.
+- [x] API 계약과 구현 동작은 유지했다.
+- [x] `docs/api/openapi.json`을 재생성하고 의도한 문구 변경만 확인했다.
+- [x] 필수 검증을 실행하고 미실행 검증이 있으면 이유와 남은 위험을 기록했다.

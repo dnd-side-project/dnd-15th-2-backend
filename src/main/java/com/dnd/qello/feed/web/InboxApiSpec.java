@@ -29,65 +29,55 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 @SecurityRequirement(name = OpenApiConfiguration.APP_ACCESS_TOKEN_SCHEME)
 public interface InboxApiSpec {
 
-	@Operation(
-		summary = "수신함 목록 조회",
-		description = "인증 사용자의 수신 질문과 카테고리 전체 방향 칩을 조회합니다. 정확 위치와 내부 사용자 식별자는 반환하지 않습니다.")
+	@Operation(summary = "수신함 목록 조회", description = "사용자가 받은 방향 질문글들과 카테고리 방향 칩을 조회합니다.\n앱 로그인이 필요합니다. Authorization 헤더에 앱 액세스 토큰이 필요합니다.")
 	@ApiResponses({
-		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "수신함 목록을 반환합니다."),
-		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "앱 액세스 토큰이 유효하지 않습니다.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
-		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "현재 계정은 수신함을 사용할 수 없습니다. (FED-APP-002)", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
-		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "인증 사용자 계정을 찾을 수 없습니다. (FED-APP-001)", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class)))
+			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "수신함 목록을 반환합니다."),
+			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "앱 액세스 토큰이 유효하지 않습니다.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
+			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "현재 계정은 수신함을 사용할 수 없습니다.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
+			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "인증 사용자 계정을 찾을 수 없습니다.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class)))
 	})
 	@GetMapping("/inbox")
 	ResponseEntity<ApiResponse<InboxListingResponse>> list(
-		@Parameter(description = "조회할 카테고리. UNANSWERED는 아직 답변하지 않은 항목, ANSWERED는 답변을 마친 항목입니다")
-		@RequestParam(defaultValue = "UNANSWERED") InboxCategory category,
-		@Parameter(description = "결과를 좁힐 방향 구간 키. 생략하면 카테고리 전체를 봅니다. chips 집계는 이 값과 무관하게 항상 카테고리 전체 기준입니다")
-		@RequestParam(required = false) String directionSegmentKey,
-		@Parameter(hidden = true) Authentication authentication);
+			@Parameter(description = "조회할 카테고리. UNANSWERED는 아직 답변하지 않은 항목, ANSWERED는 답변을 마친 항목입니다") @RequestParam(defaultValue = "UNANSWERED") InboxCategory category,
+			@Parameter(description = "특정 방향의 가장 최근 질문글을 보고 싶을 때 사용합니다 (N, NE, E, SE, S, SW, W, NW). 생략하면 전체 방향을 기준으로 조회합니다. chips 집계는 이 값과 무관하게 항상 카테고리 전체 기준입니다") @RequestParam(required = false) String directionSegmentKey,
+			@Parameter(hidden = true) Authentication authentication);
 
-	@Operation(
-		summary = "수신함 상세 조회",
-		description = "인증 사용자가 수신 자격을 가진 질문을 조회하고 최초 열람 상태를 기록합니다.")
+	@Operation(summary = "수신함 상세 조회", description = "질문을 상세 조회합니다.\n앱 로그인이 필요합니다. Authorization 헤더에 앱 액세스 토큰이 필요합니다.")
 	@ApiResponses({
-		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "수신 질문 상세를 반환합니다."),
-		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "앱 액세스 토큰이 유효하지 않습니다.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
-		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "현재 계정은 수신함을 사용할 수 없습니다. (FED-APP-002)", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
-		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "인증 사용자 계정을 찾을 수 없거나 수신 자격이 있는 항목을 찾을 수 없습니다. (FED-APP-001, FED-DOM-001)", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
-		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "409", description = "동시 상태 변경으로 상세 열람을 적용할 수 없습니다. (FED-DOM-002)", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class)))
+			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "수신 질문 상세를 반환합니다."),
+			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "앱 액세스 토큰이 유효하지 않습니다.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
+			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "현재 계정은 수신함을 사용할 수 없습니다.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
+			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "인증 사용자 계정을 찾을 수 없거나 수신 자격이 있는 항목을 찾을 수 없습니다.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
+			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "409", description = "동시 상태 변경으로 상세 열람을 적용할 수 없습니다.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class)))
 	})
 	@GetMapping("/inbox/{postRecipientId}")
 	ResponseEntity<ApiResponse<InboxDetailResponse>> detail(
-		@Parameter(description = "수신함 항목 식별자", example = "101") @PathVariable long postRecipientId,
-		@Parameter(hidden = true) Authentication authentication);
+			@Parameter(description = "수신함 항목 식별자", example = "101") @PathVariable long postRecipientId,
+			@Parameter(hidden = true) Authentication authentication);
 
-	@Operation(
-		summary = "수신 질문 넘김 요청",
-		description = "수신 질문의 넘김을 요청하고 서버 정책으로 계산한 되돌리기 마감을 반환합니다. 반복 요청은 최초 마감을 연장하지 않습니다.")
+	@Operation(summary = "받은 질문 넘김 대기 요청", description = "받은 질문을 넘기겠다고 대기 하는 요청(유예시간 존재)\n앱 로그인 필요(Authorization 헤더에 앱 액세스 토큰이 필요)\n일정 시간 지나면 넘김 확정됨")
 	@ApiResponses({
-		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "넘김 요청 상태를 반환합니다."),
-		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "앱 액세스 토큰이 유효하지 않습니다.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
-		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "현재 계정은 수신함을 사용할 수 없습니다. (FED-APP-002)", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
-		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "인증 사용자 계정을 찾을 수 없거나 변경할 수신함 항목을 찾을 수 없습니다. (FED-APP-001, FED-DOM-001)", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
-		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "409", description = "현재 상태에서는 넘김을 요청할 수 없습니다. (FED-DOM-002)", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class)))
+			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "넘김 요청 상태를 반환합니다."),
+			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "앱 액세스 토큰이 유효하지 않습니다.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
+			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "현재 계정은 수신함을 사용할 수 없습니다.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
+			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "인증 사용자 계정을 찾을 수 없거나 변경할 수신함 항목을 찾을 수 없습니다.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
+			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "409", description = "현재 상태에서는 넘김을 요청할 수 없습니다.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class)))
 	})
 	@PutMapping("/inbox/{postRecipientId}/skip")
 	ResponseEntity<ApiResponse<InboxCommandResponse>> skip(
-		@Parameter(description = "수신함 항목 식별자", example = "101") @PathVariable long postRecipientId,
-		@Parameter(hidden = true) Authentication authentication);
+			@Parameter(description = "수신함 항목 식별자", example = "101") @PathVariable long postRecipientId,
+			@Parameter(hidden = true) Authentication authentication);
 
-	@Operation(
-		summary = "수신 질문 넘김 되돌리기",
-		description = "서버가 정한 유예 마감 전에 넘김 요청을 이전 상태로 되돌립니다.")
+	@Operation(summary = "받은 질문 넘김 대기 요청 취소", description = "질문 넘김 대기 유예 시간 전에 대기 요청을 취소\n앱 로그인 필요(Authorization 헤더에 앱 액세스 토큰이 필요)")
 	@ApiResponses({
-		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "복원된 수신 상태를 반환합니다."),
-		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "앱 액세스 토큰이 유효하지 않습니다.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
-		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "현재 계정은 수신함을 사용할 수 없습니다. (FED-APP-002)", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
-		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "인증 사용자 계정을 찾을 수 없거나 변경할 수신함 항목을 찾을 수 없습니다. (FED-APP-001, FED-DOM-001)", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
-		@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "409", description = "되돌리기 유예가 끝났거나 현재 상태에서는 되돌릴 수 없습니다. (FED-DOM-002)", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class)))
+			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "복원된 수신 상태를 반환합니다."),
+			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "앱 액세스 토큰이 유효하지 않습니다.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
+			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "현재 계정은 수신함을 사용할 수 없습니다.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
+			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "인증 사용자 계정을 찾을 수 없거나 변경할 수신함 항목을 찾을 수 없습니다.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
+			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "409", description = "되돌리기 유예가 끝났거나 현재 상태에서는 되돌릴 수 없습니다.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class)))
 	})
 	@DeleteMapping("/inbox/{postRecipientId}/skip")
 	ResponseEntity<ApiResponse<InboxCommandResponse>> revertSkip(
-		@Parameter(description = "수신함 항목 식별자", example = "101") @PathVariable long postRecipientId,
-		@Parameter(hidden = true) Authentication authentication);
+			@Parameter(description = "수신함 항목 식별자", example = "101") @PathVariable long postRecipientId,
+			@Parameter(hidden = true) Authentication authentication);
 }

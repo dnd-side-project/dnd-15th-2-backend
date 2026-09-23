@@ -1,5 +1,9 @@
 package com.dnd.qello.auth.web;
 
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import jakarta.validation.Valid;
+
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -14,9 +18,6 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
-import jakarta.validation.Valid;
 
 // OperatorLoginController의 문서 계약.
 //
@@ -31,9 +32,7 @@ import jakarta.validation.Valid;
 @Tag(name = "백오피스 인증", description = "운영자 세션 로그인과 로그아웃")
 public interface OperatorLoginApiSpec {
 
-	@Operation(
-		summary = "운영자 로그인",
-		description = """
+	@Operation(summary = "운영자 로그인", description = """
 			운영자 자격증명을 확인하고 세션 쿠키를 발급합니다.
 
 			로그인 자체에는 운영자 세션이 필요하지 않지만, CSRF 보호가 켜져 있으므로
@@ -47,47 +46,22 @@ public interface OperatorLoginApiSpec {
 			로그인 응답 본문에는 비밀번호나 액세스 토큰을 담지 않습니다. 이후 백오피스 요청은
 			발급된 세션 쿠키를 사용합니다.""")
 	@ApiResponses({
-		// content를 비워 두면 springdoc이 반환 타입으로 채운다. 200을 아예 적지 않으면
-		// 선언한 오류 응답만 남고 성공 응답이 통째로 빠진다.
-		@io.swagger.v3.oas.annotations.responses.ApiResponse(
-			responseCode = "200",
-			description = "로그인에 성공했습니다. 세션 쿠키가 발급됩니다."),
-		@io.swagger.v3.oas.annotations.responses.ApiResponse(
-			responseCode = "400",
-			description = "loginId 또는 password가 비어 있거나 loginId 길이가 허용 범위를 벗어났습니다. "
-				+ "(CMN-VAL-001, AUT-VAL-001, AUT-VAL-002)",
-			content = @Content(
-				mediaType = MediaType.APPLICATION_JSON_VALUE,
-				schema = @Schema(implementation = ApiErrorResponse.class))),
-		@io.swagger.v3.oas.annotations.responses.ApiResponse(
-			responseCode = "401",
-			description = "로그인 정보가 올바르지 않습니다. (AUT-APP-001)",
-			content = @Content(
-				mediaType = MediaType.APPLICATION_JSON_VALUE,
-				schema = @Schema(implementation = ApiErrorResponse.class))),
-		@io.swagger.v3.oas.annotations.responses.ApiResponse(
-			responseCode = "403",
-			description = "사용할 수 없는 계정이거나 CSRF 토큰이 유효하지 않습니다. (AUT-APP-003, CMN-DOM-001)",
-			content = @Content(
-				mediaType = MediaType.APPLICATION_JSON_VALUE,
-				schema = @Schema(implementation = ApiErrorResponse.class))),
-		@io.swagger.v3.oas.annotations.responses.ApiResponse(
-			responseCode = "423",
-			description = "연속 실패로 잠긴 계정입니다. 잠금이 풀리면 해소됩니다. (AUT-APP-002)",
-			content = @Content(
-				mediaType = MediaType.APPLICATION_JSON_VALUE,
-				schema = @Schema(implementation = ApiErrorResponse.class)))
+			// content를 비워 두면 springdoc이 반환 타입으로 채운다. 200을 아예 적지 않으면
+			// 선언한 오류 응답만 남고 성공 응답이 통째로 빠진다.
+			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "로그인에 성공했습니다. 세션 쿠키가 발급됩니다."),
+			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "loginId 또는 password가 비어 있거나 loginId 길이가 허용 범위를 벗어났습니다. "
+					+ "", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
+			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "로그인 정보가 올바르지 않습니다.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
+			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "사용할 수 없는 계정이거나 CSRF 토큰이 유효하지 않습니다.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
+			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "423", description = "연속 실패로 잠긴 계정입니다. 잠금이 풀리면 해소됩니다.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class)))
 	})
 	@PostMapping("/login")
 	ResponseEntity<ApiResponse<OperatorSessionResponse>> login(
-		@RequestBody @Valid OperatorLoginRequest request,
-		HttpServletRequest httpRequest,
-		HttpServletResponse httpResponse
-	);
+			@RequestBody @Valid OperatorLoginRequest request,
+			HttpServletRequest httpRequest,
+			HttpServletResponse httpResponse);
 
-	@Operation(
-		summary = "운영자 로그아웃",
-		description = """
+	@Operation(summary = "운영자 로그아웃", description = """
 			현재 운영자 세션을 무효화합니다.
 
 			운영자 세션과 CSRF 토큰이 필요합니다. 토큰은 GET /admin/csrf에서 받을 수 있습니다.
@@ -100,21 +74,9 @@ public interface OperatorLoginApiSpec {
 			이 요청은 운영자 세션만 무효화하며 앱 기기 자격증명과 액세스 토큰에는 영향을 주지 않습니다.""")
 	@SecurityRequirement(name = "operatorSession")
 	@ApiResponses({
-		@io.swagger.v3.oas.annotations.responses.ApiResponse(
-			responseCode = "200",
-			description = "로그아웃했습니다. 세션이 무효화됩니다."),
-		@io.swagger.v3.oas.annotations.responses.ApiResponse(
-			responseCode = "401",
-			description = "세션이 없거나 만료되었습니다. (CMN-VAL-003)",
-			content = @Content(
-				mediaType = MediaType.APPLICATION_JSON_VALUE,
-				schema = @Schema(implementation = ApiErrorResponse.class))),
-		@io.swagger.v3.oas.annotations.responses.ApiResponse(
-			responseCode = "403",
-			description = "운영자 권한이 없거나 CSRF 토큰이 유효하지 않습니다. (CMN-DOM-001)",
-			content = @Content(
-				mediaType = MediaType.APPLICATION_JSON_VALUE,
-				schema = @Schema(implementation = ApiErrorResponse.class)))
+			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "로그아웃했습니다. 세션이 무효화됩니다."),
+			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "세션이 없거나 만료되었습니다.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
+			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "운영자 권한이 없거나 CSRF 토큰이 유효하지 않습니다.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class)))
 	})
 	@PostMapping("/logout")
 	ResponseEntity<ApiResponse<Void>> logout(HttpServletRequest httpRequest);
