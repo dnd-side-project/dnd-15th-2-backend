@@ -29,17 +29,11 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 public interface ProfileApiSpec {
 
 	@Operation(summary = "본인 프로필 조회", description = """
-			인증된 사용자의 닉네임과 프로필 이미지 정보를 조회합니다.
+			내 닉네임과 프로필 이미지를 조회합니다.
 
-			앱 액세스 토큰이 필요하며, 현재 계정이 존재해야 합니다.
+			앱 로그인이 필요합니다. Authorization 헤더에 앱 액세스 토큰이 필요합니다.
 
-			성공하면 프로필 이미지 조회 URL과 만료 시각, 기본 이미지 사용 여부를 함께 반환합니다.
-
-			프로필 이미지가 없거나 참조한 이미지가 더 이상 READY 상태가 아니면 기본 이미지 URL을
-			반환합니다. 외부 저장소에서 조회 URL을 만들 수 없으면 조회에 실패할 수 있습니다.
-
-			조회 URL은 일정 시간이 지나면 만료됩니다. 버킷 이름과 내부 storage key는 반환하지
-			않습니다.""")
+			설정한 이미지가 없으면 기본 이미지 주소를 반환합니다. 이미지 주소는 만료 시각이 지나면 쓸 수 없으니 다시 조회해야 합니다.""")
 	@ApiResponses({
 			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "프로필을 조회했습니다."),
 			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "앱 액세스 토큰이 유효하지 않습니다.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
@@ -51,18 +45,11 @@ public interface ProfileApiSpec {
 			@Parameter(hidden = true) Authentication authentication);
 
 	@Operation(summary = "프로필 이미지 변경", description = """
-			인증된 사용자의 프로필 이미지로 업로드한 미디어를 지정합니다.
+			업로드를 마친 내 이미지를 프로필 이미지로 지정합니다.
 
-			앱 액세스 토큰이 필요합니다. 요청한 미디어는 현재 사용자 본인의 것이어야 하고,
-			업로드 확인이 끝난 상태여야 합니다.
+			앱 로그인이 필요합니다. Authorization 헤더에 앱 액세스 토큰이 필요합니다.
 
-			성공하면 변경된 프로필과 새 이미지 조회 URL을 반환합니다.
-
-			미디어 식별자가 없거나 양수가 아니면 요청을 처리하지 않습니다. 미디어가 없거나 다른
-			사용자의 것이면 같은 404로 응답하고, 업로드 확인이 끝나지 않았거나 사용할 수 없는
-			상태이면 409로 응답합니다.
-
-			이 요청은 계정의 프로필 이미지 참조만 바꾸며, 업로드한 미디어 자체를 삭제하지 않습니다.""")
+			업로드 확인이 끝난 이미지만 지정할 수 있습니다.""")
 	@ApiResponses({
 			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "프로필 이미지를 변경했습니다."),
 			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "mediaId가 없거나 양수가 아닙니다.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
@@ -76,15 +63,9 @@ public interface ProfileApiSpec {
 			@Parameter(hidden = true) Authentication authentication);
 
 	@Operation(summary = "프로필 이미지 삭제", description = """
-			인증된 사용자의 프로필 이미지 설정을 해제하고 기본 이미지 상태로 되돌립니다.
+			프로필 이미지를 기본 이미지로 되돌립니다. 업로드한 이미지 파일은 지우지 않습니다.
 
-			앱 액세스 토큰이 필요하며, 현재 계정이 존재해야 합니다.
-
-			성공하면 기본 이미지가 적용된 프로필을 반환합니다.
-
-			프로필 이미지 설정을 해제할 계정을 찾을 수 없으면 요청을 처리하지 않습니다.
-
-			계정에서 이미지 참조만 제거하며, 업로드한 미디어와 저장소 객체는 삭제하지 않습니다.""")
+			앱 로그인이 필요합니다. Authorization 헤더에 앱 액세스 토큰이 필요합니다.""")
 	@ApiResponses({
 			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "프로필 이미지를 삭제했습니다."),
 			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "앱 액세스 토큰이 유효하지 않습니다.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
