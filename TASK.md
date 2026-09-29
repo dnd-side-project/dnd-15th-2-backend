@@ -79,3 +79,25 @@ git diff --check
 - [x] API 계약과 구현 동작은 유지했다.
 - [x] `docs/api/openapi.json`을 재생성하고 의도한 문구 변경만 확인했다.
 - [x] 필수 검증을 실행하고 미실행 검증이 있으면 이유와 남은 위험을 기록했다.
+
+## 추가 범위: GitHub Issue #286
+
+사용자 결정(2026-09-29)에 따라 #286 작업을 새 PR로 나누지 않고 이 브랜치와 PR에
+누적한다. 커밋은 브랜치 규칙에 맞춰 `(#284)`로 남기고, PR 본문에 `Closes #286`을
+함께 적는다. 위 기준(내부 세부정보 제외, 호출에 필요한 정보만 유지)을 그대로 적용한다.
+
+- 대상: 위 28개 operation에서 문구를 검토하지 않은 14개 `*ApiSpec`의 43개 operation
+  - `account/web/{AccountApiSpec,ProfileApiSpec}.java`
+  - `auth/web/{CsrfTokenApiSpec,DeviceAuthApiSpec,OperatorLoginApiSpec}.java`
+  - `filtering/web/{AppealApiSpec,AppealCaseApiSpec,FilterReleaseApiSpec,ManualReviewCaseApiSpec,SnapshotHealthApiSpec}.java`
+  - `question/web/{QuestionProposalApiSpec,OperatorQuestionProposalApiSpec}.java`
+  - `safety/web/{SafetyApiSpec,OperatorReportCaseApiSpec}.java`
+- 같은 용어를 쓰는 DTO `@Schema` 문구만 함께 맞춘다(구조·검증 규칙 변경 없음).
+- 운영자 전용 API는 상태값과 처리 흐름을 유지한다.
+- 제외 항목은 위 `Explicit exclusions`와 같다.
+
+- [x] 43개 operation의 문구를 Controller·요청/응답 모델·Service 예외와 대조했다.
+- [x] 이슈 번호, 저장·해시 방식, 정책 기간, 내부 모델·서비스 용어를 설명에서 제외했다.
+- [x] API 계약과 런타임 동작은 유지했다.
+- [x] `docs/api/openapi.json`을 재생성하고 문구와 태그 순서 외의 변경이 없음을 확인했다.
+- [x] 필수 검증(`./harness pr-ready --project-tests` 포함)을 실행했다.
