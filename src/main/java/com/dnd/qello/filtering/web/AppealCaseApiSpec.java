@@ -31,16 +31,9 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 public interface AppealCaseApiSpec {
 
 	@Operation(summary = "이의제기 검토 큐 조회", description = """
-			운영자가 검토할 이의제기 큐를 조회합니다. 아직 종결되지 않은 이의제기만 포함합니다.
+			아직 종결되지 않은 이의제기를 먼저 접수된 순으로 조회합니다.
 
-			운영자 세션이 필요합니다. 조회 요청은 CSRF 토큰 없이 호출할 수 있으며, limit으로 한 번에
-			받을 최대 항목 수를 지정합니다.
-
-			접수 시각이 빠른 이의제기부터 반환합니다. 검토할 항목이 없으면 빈 목록을 반환합니다.
-
-			운영자 세션이 없거나 운영자 권한이 없으면 조회할 수 없습니다.
-
-			이 API는 큐의 상태를 바꾸지 않으며, 결정 적용은 별도의 결정 API에서 수행합니다.""")
+			운영자 로그인이 필요합니다.""")
 	@ApiResponses({
 			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "이의제기 검토 큐를 조회했습니다."),
 			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "운영자 세션이 없거나 유효하지 않습니다.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
@@ -51,19 +44,11 @@ public interface AppealCaseApiSpec {
 			@Parameter(description = "한 번에 반환할 최대 이의제기 수입니다.") @RequestParam(defaultValue = "50") int limit);
 
 	@Operation(summary = "이의제기 결정 적용", description = """
-			운영자가 이의제기를 비공개 유지(UPHOLD_HIDDEN) 또는 비공개 취소(OVERTURN_HIDDEN)로
-			종결하고 결정 사유를 기록합니다.
+			이의제기를 비공개 유지(UPHOLD_HIDDEN) 또는 비공개 취소(OVERTURN_HIDDEN)로 종결합니다.
 
-			운영자 세션과 CSRF 토큰이 필요하며, 아직 종결되지 않은 이의제기만 결정할 수 있습니다.
+			운영자 로그인과 CSRF 토큰이 필요하고 결정 사유(reason)를 함께 보내야 합니다.
 
-			결정에 성공하면 이의제기가 RESOLVED 상태로 반환됩니다. 비공개 취소 결정이고 다른 공개
-			금지 사유가 없으면 답변 복원을 요청하는 이벤트를 발행합니다.
-
-			존재하지 않는 이의제기이거나 이미 종결된 이의제기면 결정할 수 없습니다. 다른 공개 금지
-			사유가 남아 있으면 결정은 저장하지만 답변 복원 요청은 발행하지 않습니다.
-
-			답변의 공개 상태를 실제로 바꾸는 작업은 이 API가 아니라 복원 요청을 처리하는 답변 기능이
-			수행합니다.""")
+			비공개 취소로 결정해도 답변에 다른 비공개 사유가 남아 있으면 답변은 공개되지 않습니다.""")
 	@ApiResponses({
 			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "이의제기를 종결했습니다."),
 			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "운영자 세션이 없거나 유효하지 않습니다.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
@@ -78,16 +63,11 @@ public interface AppealCaseApiSpec {
 			@Parameter(hidden = true) Authentication authentication);
 
 	@Operation(summary = "이의제기 접수 기간 연장", description = """
-			운영자가 이의제기의 접수 만료 시각을 뒤로 미룹니다. 연장 사유도 함께 기록합니다.
+			이의제기 접수 만료 시각을 늦춥니다.
 
-			운영자 세션과 CSRF 토큰이 필요합니다. 현재 만료 시각을 확인한 뒤 그보다 늦은 시각을
-			지정해야 합니다.
+			운영자 로그인과 CSRF 토큰이 필요하고 연장 사유(reason)를 함께 보내야 합니다.
 
-			연장에 성공하면 변경된 만료 시각을 포함한 이의제기를 반환합니다.
-
-			존재하지 않는 이의제기이거나 현재 만료 시각과 같거나 이른 시각을 보내면 연장할 수 없습니다.
-
-			이 API는 접수 기간을 줄이지 않고 뒤로 미루기만 합니다. 연장 사유는 운영 기록으로 남습니다.""")
+			expiresAt은 현재 만료 시각보다 늦어야 합니다.""")
 	@ApiResponses({
 			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "접수 기간을 연장했습니다."),
 			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "운영자 세션이 없거나 유효하지 않습니다.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
