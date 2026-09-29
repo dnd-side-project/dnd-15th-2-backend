@@ -25,24 +25,16 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 
-@Tag(name = "질문 제안", description = "사용자가 질문 문구를 제안하고 자신의 제안 이력을 조회")
+@Tag(name = "질문 제안", description = "질문 문구 제안과 내 제안 목록 조회")
 @SecurityRequirement(name = OpenApiConfiguration.APP_ACCESS_TOKEN_SCHEME)
 public interface QuestionProposalApiSpec {
 
 	@Operation(summary = "질문 제안 제출", description = """
-			사용자가 질문 문구를 제안하고 즉시 제출합니다. 임시저장은 만들지 않습니다.
+			질문 문구를 제안합니다. 임시저장 없이 바로 제출됩니다.
 
-			앱 액세스 토큰이 필요합니다. 토큰의 계정은 ACTIVE 상태의 USER여야 하며, 제안 문구는
-			요청 본문으로 보냅니다.
+			앱 로그인이 필요합니다. Authorization 헤더에 앱 액세스 토큰이 필요합니다.
 
-			성공하면 SUBMITTED 상태의 제안과 제출 시각을 반환합니다. 운영자 검수가 끝나야 승인 또는
-			반려 상태로 바뀝니다.
-
-			문구가 비어 있거나 2,000자를 초과하면 제출하지 않습니다. 계정을 찾을 수 없거나 질문
-			제안을 사용할 수 없는 계정이면 거절합니다.
-
-			이 호출만으로 질문이 앱에 배정되지는 않습니다. 운영자가 검수하고 승인해야 승인 질문
-			풀에 추가됩니다.""")
+			운영자가 승인해야 실제 질문으로 쓰입니다.""")
 	@ApiResponses({
 			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "201", description = "제안을 제출했습니다."),
 			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "제안 문구가 비어 있거나 2,000자를 초과했습니다.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
@@ -56,17 +48,11 @@ public interface QuestionProposalApiSpec {
 			@Parameter(hidden = true) Authentication authentication);
 
 	@Operation(summary = "내가 제안한 질문 목록 조회", description = """
-			인증 사용자가 제출한 질문 제안 목록을 최신 생성 순으로 조회합니다.
+			내가 제안한 질문 목록을 최근 제출한 순으로 조회합니다.
 
-			앱 액세스 토큰이 필요합니다. 토큰의 계정은 ACTIVE 상태의 USER여야 합니다.
+			앱 로그인이 필요합니다. Authorization 헤더에 앱 액세스 토큰이 필요합니다.
 
-			성공하면 본인이 제출한 제안을 createdAt 기준 내림차순으로 반환합니다. 제안이 없으면
-			빈 목록을 반환합니다.
-
-			계정을 찾을 수 없거나 질문 제안을 사용할 수 없는 계정이면 목록을 조회할 수 없습니다.
-
-			다른 사용자의 제안은 포함하지 않습니다. 각 항목의 decisionReason은 반려된 제안에서만
-			값이 있을 수 있습니다.""")
+			decisionReason은 반려된 제안에만 값이 있을 수 있습니다.""")
 	@ApiResponses({
 			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "제안 목록을 반환합니다."),
 			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "앱 액세스 토큰이 없거나 유효하지 않습니다.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
