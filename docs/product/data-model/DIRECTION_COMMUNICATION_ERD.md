@@ -1,31 +1,160 @@
-# 방향으로 연결되는 소통 — MVP 데이터 모델·ERD
+# 방향으로 연결되는 소통 — 데이터 모델·ERD
 
-## 0. 문서 상태와 기준
+## 현재 기준과 권위
 
-- 상태: 구현 전 논리·물리 데이터 모델 초안.
-- 작성일: 2026-08-02. 최종 갱신: **2026-08-07**.
-- DB 기준: PostgreSQL 16+ / PostGIS 3+.
-- 제품 정본: `.omx/plans/prd-direction-connected-communication.md`.
-- 기능 정본: **`docs/2. 기능-명세서.md` (2026-08-07 개정)**.
-- 용어 정본: **`CONTEXT.md`**.
-- 정책 정본: `.omx/plans/policy-decision-register-direction-connected-communication.md`.
-- 매칭 설계: `docs/설계/1. 방향-기반-수신자-매칭-백엔드-설계.md`.
-- 이 문서는 현재 MVP인 `질문 추천 → 질문글 발송 → 수신자 확정 → 답변/공감/만료 → 신고·차단·알림`을 모델링한다.
-- 현재 저장소에는 실제 Spring/PostgreSQL 백엔드가 없다. 아래 내용은 구현 완료 상태가 아니라 구현 계약 제안이다.
+- 기준: Git commit `b7118f7628813bed86a15f9eb5b46063b4400a1d`의 Flyway V1~V28. 문서 갱신: **2026-09-29** (Issue #288, `TASK-GH-288-ERD-DBML-REFRESH`). 아래의 카탈로그 수치는 이 migration들을 빈 PostgreSQL 16/PostGIS 3.5에 적용한 로컬 검증 결과다. 운영 DB의 현재 상태를 뜻하지 않는다.
+- [ADR-0001](../../adr/0001-database-schema-ownership.md)에 따라 **실행 스키마의 권위는 [Flyway migration](../../../src/main/resources/db/migration/)**에 있다. [DBML](direction_communication.dbml)은 현재 백엔드가 유지하는 논리 설계, 이 ERD는 관계와 동작의 설명, [manifest](schema-manifest.md)는 인벤토리와 검증 기록이다. 충돌 시 적용된 migration을 고치지 않고 차이를 검토해 새 migration으로 해결한다.
+- 제품·백엔드 테이블 **52개**, Spring Session 프레임워크 테이블 **2개**를 구분한다. DBML은 앞의 52개를 표현하며, 전체 54개 카탈로그와의 대조 결과는 manifest에 기록했다. 이전 vault DBML/독립 DDL은 역사적 외부 출처이며 현행 실행 기준이 아니다.
+- 관계도는 핵심 FK만 도메인별로 나눈다. 선의 선택성·최대 개수는 DB의 FK nullable·PK·UNIQUE 기준이며, 서비스가 생성하는 필수 짝은 본문에서 구분한다. 모든 컬럼·제약·부분/표현식 인덱스·트리거의 실행 정의는 migration과 DBML Note, 정량 인벤토리는 manifest를 본다.
 
-> **2026-08-07 개정의 핵심**: 답변은 **그 질문글의 수신 자격자와 질문자 전원**에게 보인다. 근거는 `docs/adr/0002-답변은-질문글을-받은-사람-모두에게-공개된다.md`다. 열람 범위는 DB 제약이 아니라 **조회 계층에서 강제**하므로, 스키마만 보고 열람 범위를 추론하면 안 된다.
->
-> ~~**2026-08-04 개정의 핵심**: 답변은 질문글 작성자 한 명에게만 도달한다.~~ (`docs/adr/0001` — superseded)
+## 전체 구조
 
-### 스키마 기준 파일
+```mermaid
+flowchart LR
+  A[계정·지역·인증] --> Q[질문 공급]
+  A --> D[방향 발송·수신·답변]
+  Q --> D
+  D --> F[자동 필터링·검토·이의제기]
+  D --> S[신고·사건·증거]
+  F --> O[운영 감사]
+  S --> O
+  D --> N[알림함·푸시·Outbox]
+  F --> N
+  S --> N
+```
 
-**스키마의 단일 기준(source of truth)은 `docs/dbml/direction_communication.dbml`이다.** 스키마를 바꿀 때는 DBML을 먼저 고치고, 아래 DDL과 이 문서를 거기에 맞춘다.
+정확 좌표의 TTL 읽기 모델은 `active_user_presence`다. 발송 순간의 방향·거리·지역은 `post_audience`, `post_recipient`, `answer`의 필요한 스냅샷으로 남는다. 사용자별 노출과 새 답변 표시는 FK만으로 정해지지 않으며 조회 SQL의 현재 상태·차단·만료 술어를 따른다.
 
-| 파일 | 역할 | 상태 |
-|---|---|---|
-| `dbml/direction_communication.dbml` | 스키마 기준. 제품 논리 테이블 **28개** + 백엔드 인증 부록 **2개**(`operator_credential`, `device_credential`) | 기준 |
-| `sql/direction_communication_ddl.sql` | DBML에서 파생한 독립 실행형 기준 DDL | 기준과 동기화됨 |
-| `sql/001~004_*.sql` | 이전 증분 계보. 아래 "폐기된 계보" 참고 | **더 이상 기준이 아님** |
+## 계정·질문 공급
+
+```mermaid
+erDiagram
+  region_code ||--o{ user_account : region
+  user_account ||--o| user_private_attribute : private
+  user_account ||--o| active_user_presence : presence
+  user_account ||--o| recipient_receive_state : capacity
+  user_account ||--o| operator_credential : operator_login
+  user_account ||--o{ device_credential : device_login
+  user_account ||--o{ question_proposal : proposes
+  question_proposal ||--o{ question_proposal_review : reviewed
+  question_proposal o|--o| approved_question : approved_source
+  user_account ||--o{ question_assignment_cycle : receives
+  question_assignment_cycle ||--o{ question_assignment : contains
+  approved_question ||--o{ question_assignment : assigned
+```
+
+`region_code`는 계층 지역 코드와 국가 복합 FK의 기준이다. `user_account`는 공개 계정 상태, `user_private_attribute`는 분리된 민감 속성, `active_user_presence`는 만료 시각을 가진 위치 후보, `recipient_receive_state`는 활성 수신 수를 담는다. 운영자 로그인과 앱 기기 인증은 각각 `operator_credential`, `device_credential`에 분리된다. 제안·검토·승인 질문·배정 cycle은 질문 공급의 연속 단계다. 승인 질문 문구와 제출된 제안 문구의 불변성은 트리거로 보강된다.
+
+## 방향 발송·수신·답변
+
+```mermaid
+erDiagram
+  direction_scheme ||--o{ direction_segment : defines
+  approved_question ||--o{ direction_post : question
+  user_account ||--o{ direction_post : sends
+  direction_post ||--o| post_audience : snapshots
+  direction_post ||--o{ post_recipient : matches
+  post_recipient ||--o{ answer : authorizes
+  post_recipient ||--o| post_reaction : reacts
+  answer ||--o{ answer_reaction : reacts
+  media_asset ||--o| media_attachment : attached
+  direction_post o|--o{ media_attachment : post_media
+  answer o|--o{ media_attachment : answer_media
+```
+
+`direction_scheme`/`direction_segment`는 방향 정책이며 `post_audience`는 선택 구간의 발송 시점 스냅샷이다. DB는 글마다 audience를 최대 하나만 허용하고, 현재 [발송 서비스](../../../src/main/java/com/dnd/qello/direction/service/DirectionPostService.java)가 새 글과 audience를 같은 트랜잭션에서 생성한다. `direction_post`는 본문·상태·만료 시각과 멱등 fingerprint를, `post_recipient`는 확정된 수신 자격과 방향·거리·용량 전이 정보를 보관한다. `answer`는 수신 권한을 통해 질문글에 귀속된다. `post_reaction`은 수신 관계를 복합 FK로 참조하고, `answer_reaction`은 답변별 사용자 반응이다. `media_attachment.media_id`가 PK라 하나의 asset은 최대 한 번 첨부되며, nullable `post_id`/`answer_id` 중 정확히 하나만 채우는 CHECK가 글·답변 대상을 구분한다. READY 미디어 또는 본문이 있어야 공개 가능한 조건은 지연 제약 트리거가 검사한다.
+
+[DirectionPostService.sendInTransaction](../../../src/main/java/com/dnd/qello/direction/service/DirectionPostService.java)은 활성 질문·발신 위치·방향 구간을 확인하고 글, audience, 첨부와 `RECIPIENT_MATCH_REQUESTED` Outbox 작업을 한 트랜잭션에 저장한다. 요청 fingerprint에는 본문과 media ID도 반영되며 매칭 payload에는 정확 좌표를 넣지 않는다. 이후 [DirectionMatchingWorker](../../../src/main/java/com/dnd/qello/direction/matching/DirectionMatchingWorker.java)가 due 작업을 claim해 moderation·만료 상태를 확인하고, 후보의 수신 용량을 잠금·예약한 뒤 `post_recipient`, 수신 확정 이벤트, 글 활성화와 claim 완료를 작업별 트랜잭션에서 확정한다. 따라서 글 제출 직후의 수신자 목록이 비어 있을 수 있다.
+
+답변 제출은 [AnswerSubmissionService](../../../src/main/java/com/dnd/qello/answer/service/AnswerSubmissionService.java)가 수신 항목을 잠근 뒤 답변·첨부·moderation intake를 한 트랜잭션에 저장한다. 이 시점에는 수신 용량을 반환하지 않는다. 허용 판정의 공개는 [AnswerNotificationService](../../../src/main/java/com/dnd/qello/answer/service/AnswerNotificationService.java)가 `post_recipient`의 `ANSWERED` 전이와 `recipient_receive_state` 감소를 같은 트랜잭션에서 먼저 확정한 뒤 `answer`를 `PUBLISHED`로 만들고 Outbox를 기록한다. `EXPIRED`·`SKIPPED`·`BLOCKED`가 선점하면 공개하지 않는다. BLOCK 판정은 답변을 거절하되 수신 자격/용량을 건드리지 않는다. [판정 worker](../../../src/main/java/com/dnd/qello/filtering/moderation/AnswerModerationVerdictWorker.java)는 판정 적용과 Outbox claim 완료를 별도 트랜잭션으로 처리하며, [deadline worker](../../../src/main/java/com/dnd/qello/filtering/moderation/AnswerModerationDeadlineWorker.java)는 deadline 이벤트만 발행하고 수신 상태를 직접 바꾸지 않는다. 만료·넘김 확정에서도 상태 전이와 용량 카운터 감소의 원자성은 서비스 트랜잭션이 맡는다. [V1의 `ct_post_recipient_capacity_release`](../../../src/main/resources/db/migration/V1__create_direction_communication_schema.sql)는 커밋 시 `post_recipient`의 종결 상태와 `capacity_released_at` 존재 여부만 대조하며 `recipient_receive_state` 카운터는 검사하지 않는다.
+
+답변 열람은 [PostAnswerQuerySql](../../../src/main/java/com/dnd/qello/feed/repository/jdbc/sql/PostAnswerQuerySql.java)과 [FeedScopeSql](../../../src/main/java/com/dnd/qello/feed/repository/jdbc/sql/FeedScopeSql.java)이 판정한다. 질문 작성자와 현재 자격이 있는 수신자가 볼 수 있다. `ANSWERED` 수신자는 만료 뒤에도 자격을 유지하며, 다른 시간 제한 상태는 만료 전까지만 가능하다. 삭제·양방향 차단은 차단되고, 목록은 `PUBLISHED`이며 삭제되지 않은 답변만 반환한다. 화면의 거리는 답변 작성자의 저장 거리 대신 현재 조회자의 수신 스냅샷을 사용한다. 이 정책은 단순 FK로 보장되지 않는다.
+
+## 자동 필터링·수동 검토·이의제기
+
+```mermaid
+erDiagram
+  filter_release ||--o{ filter_job : governs
+  filter_job ||--o{ filter_job_status_history : transitions
+  filter_job ||--o{ filter_decision : decisions
+  filter_job ||--o{ manual_review_case : escalates
+  manual_review_case ||--o{ manual_review_priority_evaluation : priority
+  filter_decision ||--o{ appeal_case : appealed
+  filter_release ||--o{ release_promotion_history : promoted
+  filter_release ||--o| filter_release_retry_gate : retry_gate
+  snapshot_health ||--o{ snapshot_health_probe_result : probes
+  snapshot_health ||--o{ snapshot_emergency_migration_history : emergency_history
+  manual_review_case ||--o| notification_event : admin_notice
+```
+
+`filter_release`는 적용할 정책/스냅샷의 release 경계, `filter_job`은 대상 버전별 처리 단위다. `filter_decision`과 `filter_job_status_history`는 판정과 상태 이력, `manual_review_case`와 우선순위 평가는 사람에게 넘긴 작업, `appeal_case`는 이의제기다. release 승격·재시도 게이트와 snapshot health·probe·긴급 migration 이력은 운영 상태를 분리해 남긴다. 위 관계도의 선은 실제 FK를 나타낸다. 별도로 대상 유형/ID를 사용하는 논리 참조도 있으며, 이는 FK 관계선에 포함하지 않았다. [ManualReviewDecisionService](../../../src/main/java/com/dnd/qello/filtering/moderation/ManualReviewDecisionService.java)는 작업 행을 잠그고 이미 자동 판정된 경우 그 판정을 유지한 채 case를 닫는다. 수동 판정 시 상태 이력·Outbox를 기록한다.
+
+## 신고·사건·감사
+
+```mermaid
+erDiagram
+  user_account ||--o{ user_block : blocks
+  report_case o|--o{ report : groups
+  report ||--o| report_content_snapshot : captures
+  report_case ||--o{ report_case_event : events
+  report ||--o{ moderation_review : reviews
+```
+
+`report`는 사용자·질문글·답변 중 한 대상을 가리키는 신고이고, `report_case`는 같은 대상의 열린 신고를 묶는 운영 처리 단위다. `report.case_id`는 legacy 행을 위해 nullable이다. `report_content_snapshot`은 신고 시점 증거이며 DB는 신고당 최대 한 행을 허용한다. `report_case_event`는 사건 이력, `moderation_review`는 신고별 운영 판정 기록이다. 증거·이력의 제한된 변경은 DB 트리거가 강제한다. `user_block`은 사용자 간 활성 차단을 별도 보관한다. `operator_action_audit`은 filtering 권한 변경·수동 결정의 운영 감사 원장으로, 일반 `moderation_review`와 역할이 다르다. 이 감사 행의 운영자 ID에는 사용자 FK가 없다.
+
+[SafetyReportService](../../../src/main/java/com/dnd/qello/safety/service/SafetyReportService.java)는 신고자 잠금, 열린 신고/종결 중복 검사, 사건 병합, 증거 스냅샷을 한 접수 흐름에서 처리한다. 새 접수에서는 case를 연결하고 snapshot을 생성한다. [OperatorReportCaseService](../../../src/main/java/com/dnd/qello/safety/service/OperatorReportCaseService.java)는 사건 잠금·판정과 소속 신고별 review를 기록한다. `report_case`와 filtering의 `manual_review_case`는 서로 다른 대기열이다. [V25 migration](../../../src/main/resources/db/migration/V25__add_report_case_sla_and_manual_review_link.sql)의 `report_case.linked_manual_review_case_id`는 둘을 합치거나 FK로 묶지 않는 nullable opaque ID다. 접수 후 [ReportCaseAutoSuppressionEvaluator](../../../src/main/java/com/dnd/qello/safety/service/ReportCaseAutoSuppressionEvaluator.java)는 설정된 긴급 신고·서로 다른 신고자 임계 경로를 먼저 평가하고, 답변 신고일 때만 해당 답변 대상의 최신 수동 검토 case를 조회한 뒤, 그 항목이 OPEN 또는 RESOLVED+BLOCK인지 확인한다. 해당 항목이 있고 신고 사건이 아직 열려 있으면 ID를 기록하고 사건을 ACTIONED로 종결할 수 있다. RESOLVED+ALLOW는 해당하지 않으며, 모든 신고가 수동 검토 case를 만들거나 연결하는 것은 아니다. [제품 신고 설계](../ANSWER_REPORT_DESIGN.md)는 작성 당시의 계획·미결 판단도 포함하므로 현행 동작은 서비스/SQL과 migration으로 확인한다.
+
+## 알림함·Outbox·푸시
+
+```mermaid
+erDiagram
+  user_account ||--o{ notification : receives
+  user_account ||--o| notification_seen_state : seen
+  user_account ||--o{ notification_preference : type_setting
+  user_account ||--o| notification_user_setting : quiet_hours
+  user_account ||--o{ push_device : devices
+  outbox_event ||--o{ notification : fans_out
+  notification ||--o{ notification_delivery : delivers
+  push_device ||--o{ notification_delivery : target_device
+  push_dispatch_group ||--o{ push_dispatch_group_member : members
+  notification ||--o| push_dispatch_group_member : grouped
+  user_account ||--o{ push_daily_budget : budget
+```
+
+`outbox_event`는 매칭·moderation·알림 fan-out 등 비동기 경계의 멱등 작업이다. `notification`은 알림함의 개별 기록이다. 별도 `notification_event`는 `manual_review_case`가 생겼을 때 관리자 채널에 전달할 작업이며 알림함 `notification`의 이력이 아니다. `notification_delivery`는 기기별 푸시 시도, `push_device`는 기기 등록, `notification_preference`/`notification_user_setting`은 종별·시간 설정이다. `push_dispatch_group`과 member는 여러 **푸시 호출**을 묶지만 알림함의 개별 `notification` 행을 합치지 않는다. `push_daily_budget`은 발송 예산 원장이다.
+
+[NotificationInboxService](../../../src/main/java/com/dnd/qello/notification/service/NotificationInboxService.java)의 `markSeen`은 서버 시각으로 `notification_seen_state.seen_at`을 전진시킨다. [JDBC upsert](../../../src/main/java/com/dnd/qello/notification/repository/jdbc/JdbcNotificationSeenStateRepository.java)는 `GREATEST`로 역전을 막는다. 한 줄의 `markRead`는 별도로 `notification.status`/`read_at`을 바꾸며 반복 호출은 멱등이다. [목록 SQL](../../../src/main/java/com/dnd/qello/notification/repository/jdbc/sql/NotificationInboxQuerySql.java)은 `UNREAD`/`READ`만 (created_at,id) 역순 cursor로 보여주고, 버튼 점은 unseen 존재, 미읽음 수는 `UNREAD` 개수로 계산한다. 진입 시 대상 생존 상태를 다시 판정한다. [알림함 설계](../NOTIFICATION_INBOX_DESIGN.md)의 날짜가 붙은 단계별 상태 표는 그 시점의 이력이다.
+
+[PushDeliveryDispatchWorker](../../../src/main/java/com/dnd/qello/notification/service/PushDeliveryDispatchWorker.java)는 due group을 claim한 뒤 member 자격과 suppression/quiet hours를 재평가한다. defer·cancel 후 전송 가능한 기기만 claim하고 group 예산을 예약한 뒤 provider에 보낸다. 예산은 첫 전송 시도 기준으로 소비되며 retry가 다시 소비하지 않도록 group/예산 원장이 연결된다. 기기별 terminal·재시도 결과에는 generation/lease fencing을 사용한다. 알림함 생성과 푸시 성공은 독립이다. 워커의 자동 주기 실행과 실제 provider/운영 설정은 이 ERD의 스키마 검증으로 입증되지 않는다.
+
+## 테이블 범위
+
+아래의 그룹은 DBML의 TableGroup과 같고, 괄호는 빈 DB V1~V28 카탈로그의 열 수다. 총합은 **52개 테이블/444개 컬럼**이다. Spring Session은 뒤에 따로 센다.
+
+| DBML 그룹 | 테이블 (컬럼 수) | 테이블 수 / 컬럼 수 |
+| --- | --- | ---: |
+| 계정·지역·위치·수신 용량 | `region_code` (5), `user_account` (14), `user_private_attribute` (4), `active_user_presence` (8), `recipient_receive_state` (6) | 5 / 37 |
+| 백엔드 인증 | `operator_credential` (10), `device_credential` (9) | 2 / 19 |
+| 질문 공급 | `question_proposal` (8), `question_proposal_review` (6), `approved_question` (11), `question_assignment_cycle` (8), `question_assignment` (7) | 5 / 40 |
+| 방향 소통 | `direction_scheme` (7), `direction_segment` (7), `media_asset` (11), `direction_post` (14), `post_audience` (10), `media_attachment` (5), `post_recipient` (18), `answer` (16), `post_reaction` (3), `answer_reaction` (3) | 10 / 94 |
+| 자동 필터링·검토 | `filter_release` (8), `filter_job` (14), `filter_job_status_history` (6), `filter_decision` (8), `manual_review_case` (15), `manual_review_priority_evaluation` (6), `appeal_case` (14), `release_promotion_history` (6), `filter_release_retry_gate` (6), `snapshot_health` (9), `snapshot_health_probe_result` (5), `snapshot_emergency_migration_history` (7) | 12 / 104 |
+| 신고·안전 | `user_block` (4), `report` (12), `report_case` (12), `report_content_snapshot` (12), `report_case_event` (5), `moderation_review` (7) | 6 / 52 |
+| 운영 감사 | `operator_action_audit` (9) | 1 / 9 |
+| 알림·푸시·Outbox | `push_device` (8), `notification_user_setting` (6), `notification_preference` (4), `outbox_event` (15), `notification` (11), `notification_seen_state` (2), `notification_event` (11), `notification_delivery` (9), `push_dispatch_group` (15), `push_dispatch_group_member` (3), `push_daily_budget` (5) | 11 / 89 |
+| 프레임워크 (DBML 밖) | `spring_session` (7), `spring_session_attributes` (3) | 2 / 10 |
+
+## DBML 표현 경계와 검증
+
+DBML은 `@dbml/core` **10.2.0**이 파싱할 수 있는 논리 설계다. 이 파서가 지원하지 않는 `checks {}`와 TableGroup 속성은 쓰지 않는다. CHECK의 정확한 SQL 식은 각 Table/column의 Note에 보존하고 그룹 색상은 주석이다. 실제 DB의 generated column, GiST, partial/expression index, 지연 constraint trigger 및 그 실행 순서는 DBML의 단순 도형만으로 재현되지 않는다. [Flyway migration](../../../src/main/resources/db/migration/)과 [manifest의 카탈로그 인벤토리](schema-manifest.md)가 실행 정의와 차이 판정의 기준이다.
+
+2026-09-29 로컬 검증에서는 V1~V28을 새 임시 PostgreSQL 16/PostGIS 3.5에 적용해 54개 테이블·454개 컬럼을 확인했다. 제품/백엔드 52개와 Spring Session 2개를 분리했고, 전체 354 `pg_constraint` 행 중 8개는 사용자 constraint trigger다. 파서/카탈로그 대조와 테스트 실행 범위·체크섬은 manifest에 기록한다. 외부 vault 동기화나 운영 DB와의 일치는 확인하지 않았다.
+
+## 과거 설계·검증 기록 (현행 지침 아님)
+
+아래 접힌 기록은 2026-08-03~08-11 당시의 설계 변경, 독립 DDL 검증, 폐기된 `sql/001`~`004` 설명을 보존한다. 당시의 "현재", 파일 경로, 미완료 상태, 표의 개수는 **해당 날짜의 기록**이며 위 V28 기준에 적용하지 않는다.
+
+<details>
+<summary>2026-08 변경 기록과 이전 검증 기록 펼치기</summary>
 
 #### 폐기된 계보 (`sql/001`~`004`)
 
@@ -246,1248 +375,7 @@ Issue #115는 방향글 제출과 수신자 매칭 사이의 경계를 transacti
 - 승인 질문은 다국어를 구분하지 않는다(`language_code` 제거). 다국어가 확정되면 컬럼을 추가한다.
 - 버전 참조가 사라져 "비활성 질문으로 새 글을 쓰는" 경로가 열리므로, `direction_post` 생성 시 `approved_question.status = 'ACTIVE'`를 확인하는 제약 트리거를 추가했다.
 
-## 1. 애그리거트와 데이터 소유권
 
-| 애그리거트 | 루트                                          | 함께 일관성을 지키는 데이터                     | 다른 애그리거트와의 연결                  |
-| ----- | ------------------------------------------- | ----------------------------------- | ------------------------------ |
-| 계정    | `user_account`                              | 닉네임, 계정 상태, 알림 설정, 푸시 기기, 수신 용량 투영값 | 다른 도메인은 `user_id`만 참조          |
-| 인증(2026-08-08) | `operator_credential`, `device_credential` | 운영자 로그인 자격증명, 기기 인증 자격증명 | 둘 다 `user_id`로 계정을 참조하되 생명주기가 계정과 독립적이라 분리 |
-| 질문 제안 | `question_proposal`                         | 제안 문구, 현재 상태, 검토 이력        | 승인 시 별도 `approved_question` 생성 |
-| 질문 풀  | `approved_question`                         | 승인 질문 문구, 활성 기간            | 배정은 승인 질문 ID를 참조              |
-| 질문 추천 | `question_assignment_cycle`                 | 사용자·주기별 고정 질문 목록                    | 승인 질문을 읽어 추천 스냅샷 생성              |
-| 질문글  | `direction_post`                            | 본문, 방향·거리 스냅샷, 만료 시각, 미디어, 답변 읽음 기준선           | 수신자 확정은 별도 트랜잭션                |
-| 수신·답변 | `post_recipient`                            | 수신 상태, 발견·열람·넘김 유예 상태, 답변                 | 답변은 유효 수신자만 작성. **답변 열람은 질문자 + 그 질문글의 수신 자격자 전원**(ADR 0002, 조회 계층에서 강제) |
-| 공감 | `post_reaction`, `answer_reaction` | 질문글 공감과 답변 공감 | 질문글 공감은 수신자만, **답변 공감은 그 답변을 볼 수 있는 사람(질문자+수신 자격자, 자기 답변 제외)** |
-| 안전    | `user_block`, `report`, `moderation_review` | 차단 관계, 신고 사건, 운영 판정                 | 조회·매칭·알림에서 현재 상태 재확인           |
-| 알림    | `notification`, `outbox_event`              | 앱 내 알림과 외부 전달 작업                    | 푸시는 접근 권한의 진실의 원천이 아님          |
-
-## 2. 전체 관계 요약
-
-```mermaid
-erDiagram
-    REGION_CODE ||--o{ REGION_CODE : parent_of
-    REGION_CODE ||--o{ USER_ACCOUNT : locates
-    USER_ACCOUNT ||--o| USER_PRIVATE_ATTRIBUTE : optionally_declares
-    USER_ACCOUNT ||--o| ACTIVE_USER_PRESENCE : publishes
-    USER_ACCOUNT ||--|| RECIPIENT_RECEIVE_STATE : controls_capacity
-    USER_ACCOUNT ||--o{ PUSH_DEVICE : owns
-    USER_ACCOUNT ||--o| NOTIFICATION_USER_SETTING : configures
-    USER_ACCOUNT ||--o{ NOTIFICATION_PREFERENCE : configures
-
-    USER_ACCOUNT ||--o{ QUESTION_PROPOSAL : proposes
-    QUESTION_PROPOSAL ||--o{ QUESTION_PROPOSAL_REVIEW : reviewed_by
-    QUESTION_PROPOSAL o|--o| APPROVED_QUESTION : becomes
-
-    USER_ACCOUNT ||--o{ QUESTION_ASSIGNMENT_CYCLE : receives
-    QUESTION_ASSIGNMENT_CYCLE ||--|{ QUESTION_ASSIGNMENT : contains
-    APPROVED_QUESTION ||--o{ QUESTION_ASSIGNMENT : assigned
-
-    DIRECTION_SCHEME ||--|{ DIRECTION_SEGMENT : contains
-    USER_ACCOUNT ||--o{ DIRECTION_POST : sends
-    APPROVED_QUESTION ||--o{ DIRECTION_POST : prompts
-    DIRECTION_POST ||--|| POST_AUDIENCE : snapshots
-    DIRECTION_SEGMENT ||--o{ POST_AUDIENCE : based_on
-    DIRECTION_POST ||--o{ MEDIA_ATTACHMENT : contains
-    MEDIA_ASSET ||--o| MEDIA_ATTACHMENT : attached_once
-
-    DIRECTION_POST ||--o{ POST_RECIPIENT : grants_access
-    USER_ACCOUNT ||--o{ POST_RECIPIENT : receives
-    POST_RECIPIENT ||--o| ANSWER : permits_one
-    ANSWER ||--o{ MEDIA_ATTACHMENT : contains
-
-    POST_RECIPIENT ||--o| POST_REACTION : may_react
-    ANSWER ||--o| ANSWER_REACTION : may_be_praised
-    USER_ACCOUNT ||--o{ ANSWER_REACTION : praises
-
-    USER_ACCOUNT ||--o{ USER_BLOCK : blocker
-    USER_ACCOUNT ||--o{ USER_BLOCK : blocked
-    USER_ACCOUNT ||--o{ REPORT : reports
-    REPORT ||--o{ MODERATION_REVIEW : reviewed
-
-    USER_ACCOUNT ||--o{ NOTIFICATION : receives
-    OUTBOX_EVENT ||--o{ NOTIFICATION : materializes
-    NOTIFICATION ||--o{ NOTIFICATION_DELIVERY : delivers
-    PUSH_DEVICE ||--o{ NOTIFICATION_DELIVERY : targets
-```
-
-복수 FK 역할 때문에 Mermaid 선만으로 드러나지 않는 관계는 다음과 같다.
-
-- `question_proposal_review.reviewer_id → user_account.id`: 운영자 계정.
-- `approved_question.approved_by → user_account.id`: 승인을 수행한 운영자.
-- `region_code`는 `user_account`, `active_user_presence`, `direction_post`, `answer`, `post_recipient` 다섯 곳의 지역 컬럼이 참조한다.
-- `media_attachment`는 `post_id`와 `answer_id` 중 정확히 하나만 값을 갖는다. `media_id`가 PK이므로 한 미디어는 최대 한 콘텐츠에만 붙는다.
-- `media_attachment`는 소유권 검증을 위해 복합 FK 세 개를 갖는다. `(media_id, owner_id) → media_asset(id, owner_id)`, `(post_id, owner_id) → direction_post(id, sender_id)`, `(answer_id, owner_id) → answer(id, author_id)`.
-- `answer`는 `(post_recipient_id, author_id) → post_recipient(id, recipient_id)` 복합 FK로 "답변 작성자 = 수신자"를 강제한다. 한 수신 권한당 답변은 `uq_answer_one_per_recipient` partial unique로 1건이다.
-- `post_reaction`은 `(post_id, reactor_id) → post_recipient(post_id, recipient_id)` 복합 FK로 "질문글 공감은 수신자만"을 강제한다. 별도 트리거가 없다.
-- `answer_reaction`은 `(answer_id, reactor_id)` 복합 PK다. "한 사람이 한 답변에 한 번만"은 키가 보장하고, "누른 사람이 그 답변을 볼 수 있는가(질문자 또는 수신 자격자) + 자기 답변이 아닌가"는 `ct_answer_reaction_reactor_can_view` 트리거가 판정한다. `answer`가 `post_id`를 직접 갖지 않아 복합 FK로 표현할 수 없기 때문이다.
-- `report`는 `direction_post`, `answer`, `user_account` 중 정확히 하나를 신고 대상으로 갖는다. 질문 제안은 현재 신고 대상이 아니다.
-- `moderation_review`는 신고 사건과 연결되며 조치 대상의 현재 상태를 갱신한다.
-- `notification`은 대상 종류에 따라 질문글 또는 답변을 가리킬 수 있고, 둘 다 없을 수도 있다.
-
-## 3. 계정·질문 공급 ERD
-
-```mermaid
-erDiagram
-    REGION_CODE {
-        varchar code PK
-        varchar parent_code FK
-        text display_name
-        varchar level "COUNTRY REGION CITY DISTRICT"
-        timestamptz created_at
-    }
-
-    USER_ACCOUNT {
-        bigint id PK
-        varchar role "USER or OPERATOR"
-        varchar status "ACTIVE BLOCKED DELETED"
-        varchar country_code "ISO alpha-2. USER 필수, OPERATOR NULL 허용"
-        varchar country_level "생성 컬럼. 항상 COUNTRY"
-        varchar coarse_region_code FK
-        varchar locale
-        varchar timezone
-        varchar nickname "익명 닉네임. 유일 제약 없음"
-        timestamptz created_at
-        timestamptz updated_at
-        bigint version "2026-08-08 반영(V4). JPA 낙관적 잠금용 행 버전"
-        timestamptz deleted_at
-    }
-
-    OPERATOR_CREDENTIAL {
-        bigint user_id PK,FK
-        varchar role "항상 OPERATOR. (user_id,role) 복합 FK로 USER 계정엔 못 붙는다"
-        varchar login_id "소문자만"
-        varchar password_hash
-        smallint failed_attempt_count
-        timestamptz locked_until
-        timestamptz password_updated_at
-        timestamptz last_login_at
-        timestamptz created_at
-        timestamptz updated_at
-    }
-
-    DEVICE_CREDENTIAL {
-        bigint id PK
-        bigint user_id FK
-        varchar installation_id "ACTIVE 행에만 적용되는 partial unique"
-        char secret_hash "device_secret의 SHA-256. 전역 unique"
-        varchar platform "IOS or ANDROID"
-        varchar credential_status "ACTIVE or REVOKED"
-        timestamptz last_used_at
-        timestamptz created_at
-        timestamptz revoked_at
-    }
-
-    USER_PRIVATE_ATTRIBUTE {
-        bigint user_id PK,FK
-        varchar gender "선택 입력"
-        varchar age_band "P10 승인 전 수집 금지"
-        timestamptz updated_at
-    }
-
-    ACTIVE_USER_PRESENCE {
-        bigint user_id PK,FK
-        geography position "P06 1안. 실제 좌표 운영 컬럼"
-        varchar coarse_cell_id "보조. 선택 입력"
-        varchar coarse_region_code FK
-        numeric accuracy_m
-        boolean receive_allowed
-        timestamptz location_at
-        timestamptz expires_at
-    }
-
-    RECIPIENT_RECEIVE_STATE {
-        bigint user_id PK,FK
-        smallint active_unhandled_count
-        int recent_received_count
-        timestamptz recent_window_started_at
-        timestamptz last_received_at
-        timestamptz updated_at
-    }
-
-    QUESTION_PROPOSAL {
-        bigint id PK
-        bigint proposer_id FK
-        varchar status
-        text proposed_text
-        text decision_reason
-        timestamptz submitted_at
-        timestamptz created_at
-        timestamptz updated_at
-    }
-
-    QUESTION_PROPOSAL_REVIEW {
-        bigint id PK
-        bigint proposal_id FK
-        bigint reviewer_id FK
-        varchar decision
-        text reason
-        timestamptz reviewed_at
-    }
-
-    APPROVED_QUESTION {
-        bigint id PK
-        bigint source_proposal_id FK,UK
-        varchar source_type
-        varchar status
-        text question_text
-        varchar answer_format
-        timestamptz active_from
-        timestamptz active_until
-        timestamptz approved_at
-        bigint approved_by FK
-        timestamptz created_at
-    }
-
-    QUESTION_ASSIGNMENT_CYCLE {
-        bigint id PK
-        bigint user_id FK
-        varchar cycle_key
-        varchar pool_version
-        varchar status
-        timestamptz starts_at
-        timestamptz ends_at
-        timestamptz created_at
-    }
-
-    QUESTION_ASSIGNMENT {
-        bigint id PK
-        bigint cycle_id FK
-        bigint approved_question_id FK
-        int display_order
-        timestamptz assigned_at
-        timestamptz first_viewed_at
-        timestamptz used_at
-    }
-
-    REGION_CODE ||--o{ REGION_CODE : parent_of
-    REGION_CODE ||--o{ USER_ACCOUNT : locates
-    REGION_CODE ||--o{ ACTIVE_USER_PRESENCE : locates
-    USER_ACCOUNT ||--o| OPERATOR_CREDENTIAL : may_authenticate_as_operator
-    USER_ACCOUNT ||--o{ DEVICE_CREDENTIAL : authenticates_via
-    USER_ACCOUNT ||--o| USER_PRIVATE_ATTRIBUTE : optionally_declares
-    USER_ACCOUNT ||--o| ACTIVE_USER_PRESENCE : publishes
-    USER_ACCOUNT ||--|| RECIPIENT_RECEIVE_STATE : controls_capacity
-    USER_ACCOUNT ||--o{ QUESTION_PROPOSAL : proposes
-    QUESTION_PROPOSAL ||--o{ QUESTION_PROPOSAL_REVIEW : reviewed
-    USER_ACCOUNT ||--o{ QUESTION_PROPOSAL_REVIEW : reviews
-    QUESTION_PROPOSAL o|--o| APPROVED_QUESTION : approved_as
-    USER_ACCOUNT ||--o{ APPROVED_QUESTION : approves
-    USER_ACCOUNT ||--o{ QUESTION_ASSIGNMENT_CYCLE : owns
-    QUESTION_ASSIGNMENT_CYCLE ||--|{ QUESTION_ASSIGNMENT : contains
-    APPROVED_QUESTION ||--o{ QUESTION_ASSIGNMENT : assigned
-```
-
-**인증(2026-08-08 반영, 백엔드 인증 부록)**: `operator_credential`은 `(user_id, role)` 복합 FK로 `user_account(id, role)`을 참조한다. `role`이 항상 `'OPERATOR'`로 고정된 쪽과 `user_account.role`이 실제로 `OPERATOR`인 행만 매칭되므로, `USER` 역할 계정에는 이 자격증명이 붙을 수 없다는 규칙이 트리거 없이 키로 성립한다 — `answer`가 `(post_recipient_id, author_id)` 복합 FK로 "답변 작성자 = 수신자"를 강제하는 것과 같은 패턴이다. `login_id`에는 별도로 `uq_operator_credential_login_id` 유니크 인덱스를 건다. 원래 `user_account.password_hash`(V3)로 계정에 직접 붙어 있던 것을 V5에서 분리했다. `device_credential`은 클라이언트가 만든 `installation_id`를 인증에 쓰지 않는다 — 서버가 발급한 32바이트 랜덤 `device_secret`의 SHA-256 해시(`secret_hash`)만 전역 unique로 걸어, 그 해시를 아는 클라이언트만 재인증할 수 있게 한다. salt 없는 SHA-256을 쓰는 이유는 이 값이 조회 경로이기 때문이다 — 256bit 랜덤 값이라 무차별 대입이 성립하지 않아 salt 없이도 안전하다. `installation_id`는 `credential_status = 'ACTIVE'`인 행에만 적용되는 partial unique라 해지된 자격증명은 같은 기기 식별자를 다시 쓸 수 있다. `push_device`와 물리적으로 같은 기기를 가리키지만, 푸시 토큰은 FCM/APNs가 소유하고 수시로 갱신되는 반면 이 자격증명은 서버가 발급·해지하는 값이라 생명주기가 독립적이라 테이블을 나눴다.
-
-### 질문 공급 상태
-
-```text
-question_proposal
-DRAFT → SUBMITTED → UNDER_REVIEW
-                    ├→ APPROVED
-                    └→ REJECTED
-APPROVED → ARCHIVED
-
-approved_question
-PENDING_REVIEW → ACTIVE → INACTIVE → ARCHIVED
-```
-
-- 제안 승인과 승인 질문 생성은 같은 트랜잭션에서 처리한다.
-- `APPROVED` 제안 한 건은 최대 하나의 `approved_question`만 만든다.
-- 제출된 `question_proposal.proposed_text`는 수정하지 않는다. 다른 문구가 필요하면 새 제안을 만든다.
-- `approved_question.question_text`도 수정하지 않는다. 문구를 바꾸려면 기존 질문을 `INACTIVE`로 내리고 새 질문을 만든다. 이미 발송된 글은 원래 질문 행을 계속 참조한다.
-- `REVISION_REQUESTED`는 상태 집합에 없다. 재제출 경로가 없으므로 반려는 `REJECTED` 하나로 표현하고 사유는 `decision_reason`에 남긴다.
-- 배정 주기 길이와 한 번에 보여줄 개수는 P15 미정이므로 `starts_at`, `ends_at`, 행 개수로 표현하고 숫자를 고정하지 않는다.
-
-## 4. 방향 발송·수신·답변 ERD
-
-```mermaid
-erDiagram
-    DIRECTION_SCHEME {
-        bigint id PK
-        varchar code
-        int version
-        varchar type
-        int segment_count
-        numeric start_offset_deg
-        varchar status
-    }
-
-    DIRECTION_SEGMENT {
-        bigint id PK
-        bigint scheme_id FK
-        varchar segment_key
-        varchar display_name
-        numeric center_bearing_deg
-        numeric angular_width_deg
-        int sort_order
-    }
-
-    DIRECTION_POST {
-        bigint id PK
-        bigint sender_id FK
-        bigint approved_question_id FK
-        varchar status
-        varchar idempotency_key
-        text body_text
-        varchar coarse_region_code
-        varchar moderation_status
-        timestamptz submitted_at
-        timestamptz published_at
-        timestamptz expires_at
-        timestamptz deleted_at
-    }
-
-    POST_AUDIENCE {
-        bigint post_id PK,FK
-        bigint direction_scheme_id FK
-        varchar selected_segment_key
-        numeric center_bearing_deg
-        numeric angular_width_deg
-        bigint min_distance_m
-        bigint max_distance_m
-        geography origin_position "P06 1안. 실제 좌표 운영 컬럼"
-        varchar origin_cell_id "보조. 선택 입력"
-        timestamptz snapshotted_at
-    }
-
-    POST_RECIPIENT {
-        bigint id PK
-        bigint post_id FK
-        bigint recipient_id FK
-        varchar status
-        bigint distance_m "2026-08-07 추가. 정확 거리 스냅샷"
-        varchar distance_band
-        numeric matched_bearing_deg
-        numeric inbound_bearing_deg "2026-08-07 추가. 수신자 기준 역방위 스냅샷. 목록·카드 표시는 이 값을 쓴다"
-        varchar matched_region_code
-        timestamptz matched_at
-        timestamptz discovered_at
-        timestamptz opened_at
-        timestamptz answers_read_at "2026-08-07 추가. 이 수신자의 답변 목록 마지막 확인 시각. 답변한 카테고리의 새 답변 n개 배지 기준선"
-        timestamptz skip_requested_at
-        timestamptz skipped_at
-        timestamptz capacity_released_at
-        timestamptz expired_at
-        timestamptz blocked_at
-    }
-
-    ANSWER {
-        bigint id PK
-        bigint post_recipient_id FK
-        bigint author_id FK
-        varchar status
-        varchar idempotency_key
-        text body_text
-        varchar coarse_region_code
-        numeric bearing_from_sender_deg
-        bigint distance_m "2026-08-07 추가. 정확 거리 스냅샷"
-        varchar distance_band
-        varchar moderation_status
-        timestamptz submitted_at
-        timestamptz published_at
-        timestamptz edited_at "2026-08-07 추가. 수정이 검토를 통과해 반영된 시각. 값이 있으면 수정됨 표시"
-        int edit_count "2026-08-07 추가. 반영된 수정 횟수. 안전 상한 10, 실효 상한은 운영 설정값(초기값 3)"
-        timestamptz deleted_at
-    }
-
-    MEDIA_ASSET {
-        bigint id PK
-        bigint owner_id FK
-        varchar status
-        varchar storage_key
-        varchar mime_type
-        bigint byte_size
-        varchar checksum
-        boolean exif_stripped
-        varchar moderation_status
-        timestamptz created_at
-        timestamptz deleted_at
-    }
-
-    MEDIA_ATTACHMENT {
-        bigint media_id PK,FK "PK가 곧 단일 첨부 불변식"
-        bigint owner_id FK
-        bigint post_id FK "post_id와 answer_id 중 정확히 하나"
-        bigint answer_id FK
-        int display_order
-    }
-
-    DIRECTION_SCHEME ||--|{ DIRECTION_SEGMENT : contains
-    DIRECTION_SEGMENT ||--o{ POST_AUDIENCE : versions
-    USER_ACCOUNT ||--o{ DIRECTION_POST : sends
-    APPROVED_QUESTION ||--o{ DIRECTION_POST : prompts
-    DIRECTION_POST ||--|| POST_AUDIENCE : snapshots
-    DIRECTION_POST ||--o{ POST_RECIPIENT : grants
-    USER_ACCOUNT ||--o{ POST_RECIPIENT : receives
-    POST_RECIPIENT ||--o{ ANSWER : permits
-    DIRECTION_POST ||--o{ MEDIA_ATTACHMENT : has
-    ANSWER ||--o{ MEDIA_ATTACHMENT : has
-    MEDIA_ASSET ||--o| MEDIA_ATTACHMENT : attached_once
-```
-
-`media_attachment`는 질문글과 답변의 첨부를 함께 담는다. `media_id`가 기본키이므로 "한 미디어는 한 콘텐츠에만 붙는다"는 불변식이 트리거 없이 성립하고, 동시에 서로 다른 콘텐츠에 붙이려는 두 트랜잭션 중 하나는 기본키 충돌로 실패한다. `answer`의 작성자는 `(post_recipient_id, author_id)` 복합 FK로 수신자와 같음이 강제되므로, 별도의 `user_account → answer` 선은 그리지 않는다.
-
-### 상태 전이
-
-```text
-direction_post
-SUBMITTED → SAFETY_CHECKING → MATCHING → ACTIVE → EXPIRED
-                          ├→ REVIEW_HELD
-                          ├→ REJECTED
-                          └→ MATCH_FAILED → MATCHING
-ACTIVE → HIDDEN | DELETED
-
-post_recipient
-AVAILABLE → DISCOVERED → OPENED
-AVAILABLE | DISCOVERED | OPENED → ANSWERED | EXPIRED | BLOCKED
-AVAILABLE | DISCOVERED | OPENED → SKIP_PENDING → SKIPPED
-SKIP_PENDING → AVAILABLE | DISCOVERED | OPENED     (되돌리기)
-
-answer
-SUBMITTED → SAFETY_CHECKING → PUBLISHED
-                          ├→ REVIEW_HELD
-                          └→ REJECTED
-PUBLISHED → HIDDEN | DELETED
-```
-
-`ANSWERED`, `SKIPPED`, `EXPIRED`, `BLOCKED` 네 개가 종결 상태이며, 이 네 상태와 `capacity_released_at`이 채워진 것은 서로 동치다. 이 동치는 `ct_post_recipient_capacity_release` 지연 제약 트리거가 커밋 시점에 강제한다.
-
-슬롯을 해제하지 **않는** 것이 둘 있다.
-
-| 행동 | 상태 | 슬롯 | 왜 |
-|---|---|---|---|
-| 열람만 함 | `OPENED` | 유지 | 열어봤다고 처리한 것은 아니다 (불변식 19) |
-| **공감만 남김** | `OPENED` 유지 + `post_reaction` 행 생성 | **유지** | 어쨌든 답변을 한 것은 아니다 (불변식 19-1) |
-| **넘김 유예 중** | `SKIP_PENDING` | **유지** | 되돌릴 수 있는 동안 자리를 비우면 그 사이 새 질문글이 들어와 상한을 넘는다 |
-
-`SKIP_PENDING`이 종결 상태 목록에 없다는 사실 자체가 유예 중 용량 점유를 만든다. 트리거를 따로 고치지 않았다.
-
-상태별 타임스탬프 대응은 `ck_post_recipient_status_timestamps`가 즉시 검사한다.
-
-| 규칙 | 내용 |
-|---|---|
-| `SKIP_PENDING` ⟺ (`skip_requested_at` 있음 AND `skipped_at` 없음) | 넘김을 요청했지만 아직 확정되지 않은 상태. `ck_post_recipient_skip_pending`이 검사한다 |
-| `SKIPPED` ⟺ `skipped_at` | 넘김 확정은 시각 기록과 동치. 확정된 행은 두 시각을 모두 갖는다 |
-| `skipped_at` ≥ `skip_requested_at` | 확정은 요청보다 앞설 수 없다 |
-| `EXPIRED` ⟺ `expired_at` | 만료도 마찬가지 |
-| `BLOCKED` ⟺ `blocked_at` | 차단도 마찬가지 |
-| `DISCOVERED` → `discovered_at` 필수 | 이후 상태에서도 값은 남는다 |
-| `OPENED` → `opened_at` 필수 | 이후 상태에서도 값은 남는다 |
-| `AVAILABLE` → `discovered_at`·`opened_at` 모두 비어 있어야 함 | 아직 열람 흔적이 없는 상태 |
-
-`ANSWERED`에는 `opened_at`을 요구하지 않는다. 알림에서 바로 답변으로 들어오는 경로가 있을 수 있기 때문이다.
-
-**한 수신자당 답변 개수는 1개로 확정됐다(2026-08-04).** 이 문서가 예고해둔 `UNIQUE(post_recipient_id) WHERE status NOT IN ('REJECTED','DELETED')`를 `uq_answer_one_per_recipient`라는 이름으로 실제로 걸었다. 거절되거나 삭제된 답변은 자리를 비켜주므로 다시 쓸 수 있다.
-
-되돌리기 되돌림 경로에는 별도 컬럼을 두지 않는다. `SKIP_PENDING`에서 되돌릴 때의 복귀 상태는 `opened_at`이 있으면 `OPENED`, `discovered_at`만 있으면 `DISCOVERED`, 둘 다 없으면 `AVAILABLE`로 **유도**한다. 이전 상태를 저장하는 컬럼은 되돌리기 창이 5초뿐이라 값을 유지할 이유가 없다.
-
-### 발송 시점 스냅샷
-
-발송 후 다음 값은 수정하지 않는다.
-
-- 승인 질문(`approved_question_id`). 승인 질문 문구가 불변이므로 버전 참조 없이 ID 고정만으로 원문이 보존된다.
-- 방향 정책 버전과 선택 구간.
-- 중심 방위, 각도 폭, 최소·최대 거리.
-- 서버가 확정한 `expires_at`.
-- 발송 시점에 확정한 수신자 집합.
-
-사용자가 이동해도 기존 `post_recipient`를 다시 계산하지 않는다. 차단·계정 정지·운영 숨김은 별도의 현재 접근 조건으로 다시 확인한다.
-
-## 5. 안전·알림 ERD
-
-```mermaid
-erDiagram
-    USER_BLOCK {
-        bigint blocker_id PK,FK
-        bigint blocked_id PK,FK
-        timestamptz created_at
-        timestamptz released_at
-    }
-
-    REPORT {
-        bigint id PK
-        bigint reporter_id FK
-        bigint target_user_id FK "셋 중 정확히 하나"
-        bigint direction_post_id FK
-        bigint answer_id FK
-        varchar reason_code
-        text detail
-        varchar status
-        timestamptz created_at
-        timestamptz resolved_at
-    }
-
-    MODERATION_REVIEW {
-        bigint id PK
-        bigint report_id FK
-        bigint reviewer_id FK
-        varchar decision
-        varchar action_type
-        text internal_note
-        timestamptz reviewed_at
-    }
-
-    PUSH_DEVICE {
-        bigint id PK
-        bigint user_id FK
-        varchar platform
-        bytea token_ciphertext
-        varchar token_fingerprint UK "ACTIVE 행에만 적용되는 partial unique"
-        varchar device_status
-        timestamptz last_seen_at
-        timestamptz revoked_at
-    }
-
-    NOTIFICATION_USER_SETTING {
-        bigint user_id PK,FK
-        boolean push_enabled
-        time quiet_start
-        time quiet_end
-        varchar quiet_zone_id
-        timestamptz updated_at
-    }
-
-    NOTIFICATION_PREFERENCE {
-        bigint user_id PK,FK
-        varchar notification_type PK
-        boolean enabled
-        timestamptz updated_at
-    }
-
-    OUTBOX_EVENT {
-        bigint id PK
-        varchar aggregate_type
-        bigint aggregate_id
-        varchar event_type
-        varchar dedup_key UK
-        jsonb payload
-        varchar status
-        int attempt_count
-        timestamptz next_attempt_at
-        timestamptz created_at
-        timestamptz processed_at
-    }
-
-    NOTIFICATION {
-        bigint id PK
-        bigint recipient_id FK
-        bigint outbox_event_id FK
-        varchar notification_type
-        varchar dedup_key
-        bigint direction_post_id FK "둘 중 최대 하나"
-        bigint answer_id FK
-        varchar status
-        timestamptz created_at
-        timestamptz read_at
-    }
-
-    NOTIFICATION_DELIVERY {
-        bigint id PK
-        bigint notification_id FK
-        bigint push_device_id FK
-        varchar status
-        int attempt_count
-        timestamptz next_attempt_at
-        timestamptz created_at
-        timestamptz sent_at
-        varchar provider_message_id
-    }
-
-    USER_ACCOUNT ||--o{ USER_BLOCK : blocks
-    USER_ACCOUNT ||--o{ USER_BLOCK : is_blocked
-    USER_ACCOUNT ||--o{ REPORT : files
-    REPORT ||--o{ MODERATION_REVIEW : reviewed
-    USER_ACCOUNT ||--o{ MODERATION_REVIEW : operates
-    USER_ACCOUNT ||--o{ PUSH_DEVICE : owns
-    USER_ACCOUNT ||--o| NOTIFICATION_USER_SETTING : configures
-    USER_ACCOUNT ||--o{ NOTIFICATION_PREFERENCE : configures
-    OUTBOX_EVENT ||--o{ NOTIFICATION : creates
-    USER_ACCOUNT ||--o{ NOTIFICATION : receives
-    NOTIFICATION ||--o{ NOTIFICATION_DELIVERY : delivers
-    PUSH_DEVICE ||--o{ NOTIFICATION_DELIVERY : targets
-```
-
-- 차단은 삭제하지 않고 `released_at`으로 해제 이력을 남길 수 있다. 현재 차단 여부는 `released_at IS NULL`이다.
-- 신고 대상 FK인 `direction_post_id`, `answer_id`, `target_user_id` 중 정확히 하나만 값이 있어야 한다. 질문 제안은 현재 신고 대상이 아니다.
-- `notification`의 이동 대상은 `direction_post_id`와 `answer_id` 중 **최대** 하나다. `QUESTION_RECOMMENDED`처럼 이동 대상이 없는 종류가 있어 "정확히 하나"가 아니다.
-- `notification_user_setting`은 사용자 공통 push master와 quiet schedule을 저장하고, `notification_preference`는 알림 종류별 `enabled` override만 저장한다.
-
-알림 종류는 여섯이다(2026-08-04 기준).
-
-| `notification_type` | 받는 사람 | 이동 대상 |
-|---|---|---|
-| `QUESTION_RECOMMENDED` | 추천을 받은 사용자 | 없음 (추천 질문 시트) |
-| `DIRECTION_POST_RECEIVED` | 수신 자격이 생긴 사용자 | `direction_post_id` |
-| `ANSWER_RECEIVED` | **질문글 작성자만** | `direction_post_id` + `answer_id` |
-| `ANSWER_REACTED` | **답변 작성자** | `answer_id` |
-| `QUESTION_PROPOSAL_REVIEWED` | 제안자 | 없음 |
-| `REPORT_RESOLVED` | 신고자 | 없음 |
-
-`ANSWER_REACTED`는 답변자가 받는 **유일한 반응 신호**다. 이것이 없으면 답변자는 자기 답변이 읽혔는지조차 알 수 없다. 이제 공감을 줄 수 있는 사람이 질문자와 수신 자격자 전원으로 늘었고, 그중 누구든 만료 뒤에 처음 열어볼 수 있으므로 **답변한 지 하루가 지나 도착할 수 있다.** 이는 지연이 아니라 정상 동작이므로 "오래된 이벤트는 버린다" 같은 TTL을 이 종류에 적용하면 안 된다.
-
-`ANSWER_RECEIVED`의 수신자는 질문글 작성자 한 명뿐이다. 답변을 **볼 수 있는** 사람은 2026-08-07 개정으로 수신 자격자 전원까지 늘었지만, 그들 모두에게 푸시를 보내지는 않는다 — 수신자 M명 × 답변 N개만큼 알림이 불어나기 때문이다(ADR 0002). 다른 수신자는 대신 `post_recipient.answers_read_at` 기준의 인앱 `새 답변 n개` 배지로만 새 답변을 안다.
-- Outbox payload에는 정확 좌표, 푸시 토큰 원문, 신고 상세 같은 민감 정보를 넣지 않는다.
-- `notification`은 앱 내 알림의 진실의 원천이다. 푸시 실패가 수신 권한이나 알림 행을 지우지 않는다.
-- 푸시 토큰은 복호화 가능한 암호문으로 제한 저장하고, 중복 확인에는 비가역 fingerprint를 사용한다. 단순 해시만 저장하면 실제 푸시 발송에 사용할 수 없다.
-
-## 6. PK·FK·유일 제약·CHECK
-
-### 계정과 질문 공급
-
-아래는 설계 의도를 설명하기 위한 발췌다. 실행 가능한 정본은 `sql/direction_communication_ddl.sql`이며, 제약 이름과 정확한 표현은 그쪽을 따른다.
-
-```sql
-ALTER TABLE approved_question
-    ADD CONSTRAINT uq_approved_question_source_proposal
-    UNIQUE (source_proposal_id),
-    ADD CONSTRAINT ck_approved_question_approval
-    CHECK (
-        status <> 'ACTIVE'
-        OR (approved_at IS NOT NULL AND approved_by IS NOT NULL AND active_from IS NOT NULL)
-    );
-
-ALTER TABLE question_proposal
-    ADD CONSTRAINT ck_question_proposal_submitted_at
-    CHECK (status = 'DRAFT' OR submitted_at IS NOT NULL);
-
-ALTER TABLE question_assignment_cycle
-    ADD CONSTRAINT uq_assignment_cycle_user_key
-    UNIQUE (user_id, cycle_key);
-
-ALTER TABLE question_assignment
-    ADD CONSTRAINT uq_assignment_cycle_question
-    UNIQUE (cycle_id, approved_question_id),
-    ADD CONSTRAINT uq_assignment_cycle_order
-    UNIQUE (cycle_id, display_order);
-```
-
-- 닉네임은 `user_account.nickname`에 직접 두고 유일 제약을 걸지 않는다. P09가 익명 닉네임으로 확정됐고 같은 닉네임이 겹쳐도 문제가 없기 때문이다. 정규화 규칙과 변경 주기는 §12의 미결 항목으로 남아 있다.
-- `approved_question.source_proposal_id`는 운영자 작성 질문이면 `NULL`일 수 있다. PostgreSQL의 일반 `UNIQUE`는 여러 `NULL`을 허용한다.
-- 승인 처리 시 `question_proposal.status = 'APPROVED'`와 해당 승인 질문 생성을 한 트랜잭션으로 묶는다.
-- `approved_question.status = 'ACTIVE'`인 질문만 새 질문글의 주제로 쓸 수 있다. 다른 테이블을 읽어야 하므로 `CHECK`가 아니라 지연 제약 트리거(`ct_direction_post_question_active`)로 강제한다.
-
-### 방향과 발송
-
-```sql
-ALTER TABLE direction_scheme
-    ADD CONSTRAINT uq_direction_scheme_code_version
-    UNIQUE (code, version),
-    ADD CONSTRAINT ck_direction_scheme_segment_count
-    CHECK (
-        (type = 'EQUAL_SEGMENTS' AND segment_count > 0)
-        OR (type = 'CONTINUOUS' AND segment_count IS NULL)
-    );
-
--- 같은 code의 두 버전이 동시에 ACTIVE가 되면 애플리케이션이 현재 방향 정책을
--- 모호하지 않게 고를 수 없다. INACTIVE·ARCHIVED 버전은 code가 겹쳐도 된다.
-CREATE UNIQUE INDEX uq_direction_scheme_active
-    ON direction_scheme (code) WHERE status = 'ACTIVE';
-
-ALTER TABLE direction_segment
-    ADD CONSTRAINT uq_direction_segment_key
-    UNIQUE (scheme_id, segment_key),
-    ADD CONSTRAINT uq_direction_segment_order
-    UNIQUE (scheme_id, sort_order),
-    ADD CONSTRAINT ck_direction_segment_center
-    CHECK (center_bearing_deg >= 0 AND center_bearing_deg < 360),
-    ADD CONSTRAINT ck_direction_segment_width
-    CHECK (angular_width_deg > 0 AND angular_width_deg <= 360);
-
-ALTER TABLE direction_post
-    ADD CONSTRAINT uq_direction_post_idempotency
-    UNIQUE (sender_id, idempotency_key);
-
-ALTER TABLE post_audience
-    ADD CONSTRAINT fk_post_audience_segment
-    FOREIGN KEY (direction_scheme_id, selected_segment_key)
-    REFERENCES direction_segment (scheme_id, segment_key),
-    ADD CONSTRAINT ck_post_audience_distance
-    CHECK (
-        min_distance_m >= 0
-        AND max_distance_m > min_distance_m
-    );
-
-ALTER TABLE post_recipient
-    ADD CONSTRAINT uq_post_recipient
-    UNIQUE (post_id, recipient_id),
-    ADD CONSTRAINT uq_post_recipient_id_user
-    UNIQUE (id, recipient_id),
-    -- 상태와 그 상태의 타임스탬프는 같은 UPDATE 문으로 기록하므로 즉시 검사한다.
-    ADD CONSTRAINT ck_post_recipient_status_timestamps
-    CHECK (
-        (status = 'SKIPPED') = (skipped_at IS NOT NULL)
-        AND (status = 'EXPIRED') = (expired_at IS NOT NULL)
-        AND (status = 'BLOCKED') = (blocked_at IS NOT NULL)
-        AND (status <> 'DISCOVERED' OR discovered_at IS NOT NULL)
-        AND (status <> 'OPENED' OR opened_at IS NOT NULL)
-        AND (status <> 'AVAILABLE' OR (discovered_at IS NULL AND opened_at IS NULL))
-    );
-
--- 미디어 첨부. media_id가 PK인 것이 "한 미디어는 한 콘텐츠에만" 불변식 자체다.
-ALTER TABLE media_attachment
-    ADD CONSTRAINT ck_media_attachment_exactly_one_target
-    CHECK (num_nonnulls(post_id, answer_id) = 1),
-    ADD CONSTRAINT fk_media_attachment_asset_owner
-    FOREIGN KEY (media_id, owner_id) REFERENCES media_asset (id, owner_id),
-    ADD CONSTRAINT fk_media_attachment_post_owner
-    FOREIGN KEY (post_id, owner_id) REFERENCES direction_post (id, sender_id),
-    ADD CONSTRAINT fk_media_attachment_answer_owner
-    FOREIGN KEY (answer_id, owner_id) REFERENCES answer (id, author_id);
-
-ALTER TABLE recipient_receive_state
-    ADD CONSTRAINT ck_receive_state_active_unhandled
-    CHECK (active_unhandled_count BETWEEN 0 AND 5),
-    ADD CONSTRAINT ck_receive_state_recent_count
-    CHECK (recent_received_count >= 0);
-
-ALTER TABLE answer
-    ADD CONSTRAINT uq_answer_idempotency
-    UNIQUE (author_id, idempotency_key),
-    ADD CONSTRAINT fk_answer_recipient_author
-    FOREIGN KEY (post_recipient_id, author_id)
-    REFERENCES post_recipient (id, recipient_id);
-```
-
-`direction_post`와 `answer`의 “본문 또는 미디어 중 하나 이상” 규칙은 다른 테이블을 조회해야 하므로 단순 `CHECK`로 표현할 수 없다. 기준 DDL은 지연 제약 트리거로 강제한다.
-
-- `ct_direction_post_has_content`: `status = 'ACTIVE'`인 글에 `body_text` 또는 `status = 'READY'`인 첨부 미디어가 최소 하나 있어야 커밋된다.
-- `ct_answer_has_content`: `status = 'PUBLISHED'`인 답변에 같은 조건을 적용한다.
-- `ct_media_attachment_preserves_content`: 첨부를 붙이거나 떼어낸 뒤에도 위 조건이 유지되는지 재검사한다. 대상이 바뀐 `UPDATE`는 원래 대상도 다시 확인한다.
-- `ct_media_status_preserves_content`: 미디어 `status` 변경으로 붙어 있던 글·답변이 콘텐츠 없는 상태가 되는 것을 막는다.
-
-넷 다 `DEFERRABLE INITIALLY DEFERRED`라 트랜잭션 커밋 시점에 검사한다. 덕분에 "글 삽입 → 미디어 첨부"처럼 중간 상태를 거치는 순서도 한 트랜잭션 안에서 자유롭게 쓸 수 있다.
-
-### 공감 (2026-08-04 추가)
-
-```sql
--- 질문글 공감: 수신 자격이 곧 공감 자격이다. 복합 FK 하나가 전부를 강제한다.
-ALTER TABLE post_reaction
-    ADD CONSTRAINT pk_post_reaction
-    PRIMARY KEY (post_id, reactor_id),
-    ADD CONSTRAINT fk_post_reaction_recipient
-    FOREIGN KEY (post_id, reactor_id)
-    REFERENCES post_recipient (post_id, recipient_id) ON DELETE CASCADE;
-
--- 답변 공감: (answer_id, reactor_id) 복합 PK라 "사용자당 답변 하나에 1건"이 키로 성립한다.
--- 2026-08-07: answer_id 단독 PK였다. 공감할 수 있는 사람이 질문자 한 명뿐이라는 전제로
--- 걸었던 키인데, ADR 0002로 답변이 수신 자격자 전원에게 공개되면서 두 번째 사람의
--- 공감이 PK 충돌로 실패하게 되어 복합 키로 바꿨다.
-ALTER TABLE answer_reaction
-    ADD CONSTRAINT pk_answer_reaction
-    PRIMARY KEY (answer_id, reactor_id),
-    ADD CONSTRAINT fk_answer_reaction_answer
-    FOREIGN KEY (answer_id) REFERENCES answer (id) ON DELETE CASCADE,
-    ADD CONSTRAINT fk_answer_reaction_user
-    FOREIGN KEY (reactor_id) REFERENCES user_account (id) ON DELETE CASCADE;
-```
-
-두 테이블이 강제하는 것과 강제하지 못하는 것을 구분해야 한다.
-
-| 규칙 | 무엇이 강제하나 |
-|---|---|
-| 질문글 공감은 수신자만 | `fk_post_reaction_recipient` 복합 FK |
-| 질문자는 자기 질문글에 공감 불가 | 위 FK + `ct_post_recipient_not_sender` (발신자는 수신자가 될 수 없으므로 참조할 행이 없다) |
-| 같은 사람이 같은 질문글에 두 번 공감 불가 | `pk_post_reaction` |
-| 한 사람은 한 답변에 한 번만 공감 | `pk_answer_reaction` (복합 PK) |
-| **답변 공감은 그 답변을 볼 수 있는 사람(질문자 또는 그 질문글의 수신 자격자)만, 자기 답변은 불가** | `ct_answer_reaction_reactor_can_view` **트리거** |
-| **질문글 공감 수를 볼 수 있는 사람 전원에게 노출**(2026-08-07 개정) | **아무것도 강제하지 않는다. 조회 계층의 책임이다** |
-| **답변을 질문자와 수신 자격자 전원에게 노출**(ADR 0002) | **아무것도 강제하지 않는다. 조회 계층의 책임이다** |
-
-마지막 두 줄이 중요하다. 이 제품에서 가장 중요한 규칙 두 개가 DB 제약으로 표현되지 않는다. 스키마만 보고 구현하면 어긴다.
-
-답변 공감만 트리거를 쓰는 이유는 `answer`가 `post_id`를 직접 갖지 않고 `post_recipient`를 거쳐 도달하기 때문이다. 복합 FK로 표현하려면 `answer`에 `post_id`를 비정규화해야 하는데, 그 대가가 트리거 하나보다 크다. 게다가 넘김·만료로 인한 열람 자격 상실은 시간에 따라 변하므로, 이 트리거는 "수신자 집합에 속하는가"까지만 판정하고 현재 열람 가능 여부는 조회 계층이 강제한다.
-
-### 미디어 단일 첨부를 트리거가 아니라 키로 강제하는 이유
-
-2026-08-03 이전에는 `post_media`와 `answer_media` 두 테이블을 두고, "한 미디어는 한 콘텐츠에만"을 두 테이블의 행 수를 세는 지연 제약 트리거로 검사했다. **이 방식은 동시성 아래에서 성립하지 않는다.** 두 트랜잭션이 같은 미디어를 각각 다른 콘텐츠에 붙이면, 각자 커밋 시점에 상대의 미커밋 행을 볼 수 없어 둘 다 `count = 1`로 통과한다.
-
-PostgreSQL 16.4에서 두 세션의 커밋 시각을 맞춰 25쌍을 시도한 결과 **25쌍 전부가 불변식을 위반**했다. 지연 트리거는 실행 시점을 커밋으로 미룰 뿐 스냅샷 격리를 넘어서지 못한다.
-
-`media_attachment` 한 테이블로 합치고 `media_id`를 기본키로 두면 이 불변식이 곧 기본키 제약이 되어 DB가 원자적으로 강제한다. 같은 조건으로 25쌍을 다시 시도했을 때 위반 0건, 각 쌍마다 정확히 하나만 성공했다.
-
-일반화하면, **읽은 값을 근거로 판정하는 제약은 그 값을 잠그지 않는 한 동시성 아래에서 신뢰할 수 없다.** 유일성으로 표현할 수 있는 불변식은 트리거가 아니라 키로 표현한다.
-
-### 신고·차단·알림
-
-```sql
-ALTER TABLE user_block
-    ADD CONSTRAINT pk_user_block
-    PRIMARY KEY (blocker_id, blocked_id),
-    ADD CONSTRAINT ck_user_block_not_self
-    CHECK (blocker_id <> blocked_id);
-
-ALTER TABLE report
-    ADD CONSTRAINT ck_report_exactly_one_target
-    CHECK (num_nonnulls(
-        target_user_id,
-        direction_post_id,
-        answer_id
-    ) = 1);
-
-ALTER TABLE notification
-    ADD CONSTRAINT uq_notification_recipient_dedup
-    UNIQUE (recipient_id, dedup_key),
-    ADD CONSTRAINT ck_notification_target
-    CHECK (num_nonnulls(direction_post_id, answer_id) <= 1);
-
-ALTER TABLE notification_preference
-    ADD CONSTRAINT pk_notification_preference
-    PRIMARY KEY (notification_type, user_id);
-
-ALTER TABLE notification_user_setting
-    ADD CONSTRAINT fk_notification_user_setting_user
-    FOREIGN KEY (user_id) REFERENCES user_account (id) ON DELETE CASCADE;
-```
-
-동일 신고자의 같은 대상에 대한 미처리 신고 중복 방지는 대상별 partial unique index로 강제한다.
-
-```sql
-CREATE UNIQUE INDEX uq_open_report_user
-    ON report (reporter_id, target_user_id)
-    WHERE target_user_id IS NOT NULL
-      AND status IN ('RECEIVED', 'AUTO_HIDDEN', 'UNDER_REVIEW');
-
-CREATE UNIQUE INDEX uq_open_report_post
-    ON report (reporter_id, direction_post_id)
-    WHERE direction_post_id IS NOT NULL
-      AND status IN ('RECEIVED', 'AUTO_HIDDEN', 'UNDER_REVIEW');
-
-CREATE UNIQUE INDEX uq_open_report_answer
-    ON report (reporter_id, answer_id)
-    WHERE answer_id IS NOT NULL
-      AND status IN ('RECEIVED', 'AUTO_HIDDEN', 'UNDER_REVIEW');
-```
-
-`AUTO_HIDDEN`도 미처리 상태에 포함한다. 자동 숨김만으로는 운영 판정이 끝난 것이 아니므로 중복 신고를 계속 막아야 한다.
-
-## 7. 주요 인덱스
-
-### 조회·작업자 인덱스
-
-```sql
--- 매칭 쿼리는 항상 receive_allowed 후보만 본다. 부분 인덱스로 두면
--- 수신을 끈 사용자의 좌표가 인덱스에 들어가지 않는다.
-CREATE INDEX active_user_presence_position_gix
-    ON active_user_presence USING GIST (position)
-    WHERE receive_allowed = true;
-
-CREATE INDEX active_user_presence_expiry_idx
-    ON active_user_presence (expires_at)
-    WHERE receive_allowed = true;
-
-CREATE INDEX approved_question_active_idx
-    ON approved_question (active_from, active_until)
-    WHERE status = 'ACTIVE';
-
-CREATE INDEX question_assignment_history_idx
-    ON question_assignment (approved_question_id, assigned_at DESC);
-
-CREATE INDEX question_proposal_review_proposal_idx
-    ON question_proposal_review (proposal_id, reviewed_at DESC);
-
-CREATE INDEX question_proposal_review_queue_idx
-    ON question_proposal (status, updated_at)
-    WHERE status IN ('SUBMITTED', 'UNDER_REVIEW');
-
-CREATE INDEX direction_post_sender_idx
-    ON direction_post (sender_id, submitted_at DESC);
-
-CREATE INDEX direction_post_expiry_idx
-    ON direction_post (expires_at, id)
-    WHERE status IN ('MATCHING', 'ACTIVE');
-
-CREATE INDEX post_recipient_inbox_idx
-    ON post_recipient (recipient_id, status, matched_at DESC);
-
-CREATE INDEX post_recipient_active_capacity_idx
-    ON post_recipient (recipient_id, matched_at DESC)
-    WHERE capacity_released_at IS NULL;
-
-CREATE INDEX recipient_receive_selection_idx
-    ON recipient_receive_state (
-        active_unhandled_count,
-        recent_received_count,
-        last_received_at
-    );
-
-CREATE INDEX answer_post_recipient_idx
-    ON answer (post_recipient_id, published_at);
-
-CREATE INDEX user_block_reverse_idx
-    ON user_block (blocked_id, blocker_id)
-    WHERE released_at IS NULL;
-
-CREATE INDEX outbox_dispatch_idx
-    ON outbox_event (status, next_attempt_at, id)
-    WHERE status IN ('PENDING', 'FAILED');
-
-CREATE INDEX notification_inbox_idx
-    ON notification (recipient_id, read_at, created_at DESC);
-
-CREATE INDEX notification_delivery_dispatch_idx
-    ON notification_delivery (status, next_attempt_at, id)
-    WHERE status IN ('PENDING', 'FAILED');
-
-CREATE UNIQUE INDEX uq_active_push_token
-    ON push_device (token_fingerprint)
-    WHERE device_status = 'ACTIVE';
-```
-
-### FK 컬럼 인덱스
-
-PostgreSQL은 FK에 인덱스를 자동 생성하지 않는다. 아래는 기존 PK·UNIQUE·부분 인덱스의 **선두 컬럼으로 커버되지 않아** `RESTRICT`·`CASCADE`·`SET NULL` 검사와 역방향 조회가 순차 스캔이 되는 FK다. 정확한 목록은 기준 DDL의 "FK 컬럼 인덱스" 절을 따른다.
-
-| 테이블 | 컬럼 | 커버되지 않는 이유 |
-|---|---|---|
-| `media_asset` | `owner_id` | `uq(id, owner_id)`의 선두가 `id` |
-| `notification_delivery` | `push_device_id` | `uq(notification_id, push_device_id)`의 선두가 다름 |
-| `notification_preference` | `user_id` | PK 선두가 `notification_type` |
-| `notification` | `outbox_event_id`, `direction_post_id`, `answer_id` | 인덱스 없음. 뒤 둘은 `SET NULL` 갱신 대상 탐색에 필요 |
-| `moderation_review` | `report_id`, `reviewer_id` | 인덱스 없음 |
-| `direction_post` | `approved_question_id`, `coarse_region_code` | 인덱스 없음 |
-| `post_audience` | `(direction_scheme_id, selected_segment_key)` | PK가 `post_id` |
-| `report` | `target_user_id`, `direction_post_id`, `answer_id` | 부분 유니크의 선두가 `reporter_id` |
-| `question_proposal` | `proposer_id` | 인덱스 없음 |
-| `question_proposal_review` | `reviewer_id` | 인덱스 선두가 `proposal_id` |
-| `approved_question` | `approved_by` | 인덱스 없음 |
-| `push_device` | `user_id` | 유니크 인덱스가 `token_fingerprint` 단독 |
-| `user_account`, `active_user_presence`, `post_recipient`, `answer` | 각 지역 코드 컬럼 | `region_code` 삭제 시 `RESTRICT` 검사용 |
-
-| `post_reaction` | `reactor_id` | PK 선두가 `post_id`. 사용자 삭제 시 `CASCADE` 검사와 "내가 공감한 것" 조회에 필요 |
-| `answer_reaction` | `reactor_id` | 복합 PK `(answer_id, reactor_id)`의 두 번째 컬럼이라 선두로 커버되지 않음 |
-
-`media_attachment`의 `post_id`·`answer_id`는 `uq_media_attachment_post_order`와 `uq_media_attachment_answer_order`가 선두 컬럼으로 커버하므로 별도 인덱스를 만들지 않는다. `post_reaction.post_id`와 `answer_reaction.answer_id`도 각각 PK 선두라 별도 인덱스가 필요 없다 — 공감 수를 세는 조회(`WHERE post_id = ?`, 볼 수 있는 사람 누구나 요청)가 PK를 그대로 탄다.
-
-### 만들지 않기로 한 인덱스
-
-`recipient_receive_selection_idx`는 현재 기준 DDL에 남아 있지만 실효성이 의심스럽다. 매칭 쿼리는 `active_user_presence`의 GiST로 공간 후보를 먼저 뽑고 `recipient_receive_state`를 조인해 정렬하는데, 이 인덱스의 선두 컬럼 `active_unhandled_count`는 카디널리티가 6이고 공간 술어와 무관하다. 조인 후 정렬은 어차피 sort 노드로 처리된다. `question_assignment_history_idx`도 실제 쿼리가 `cycle → user` 조인으로 충분하면 생략할 수 있다.
-
-구현 후 `EXPLAIN ANALYZE` 근거 없이 중복 인덱스를 유지하지 않는다.
-
-## 8. 트랜잭션 경계와 잠금 대상
-
-### T0. 계정과 수신 용량 상태 생성
-
-```text
-user_account 생성(nickname 포함)
-→ recipient_receive_state(active_unhandled_count = 0) 생성
-→ COMMIT
-```
-
-- 활성 계정과 수신 용량 상태는 1:1이다.
-- 기존 계정 backfill과 재시도는 `user_id` PK를 기준으로 멱등 처리한다.
-
-### T1. 질문 제안 제출
-
-```text
-question_proposal 생성(proposed_text 포함) 또는 DRAFT → SUBMITTED 전이
-→ submitted_at 기록
-→ ProposalSubmitted outbox_event
-→ COMMIT
-```
-
-- 잠금: 대상 `question_proposal` 한 행 `FOR UPDATE`.
-- 제출 후 `proposed_text`를 수정하지 않는다. 다른 문구가 필요하면 새 제안을 만든다.
-
-### T2. 질문 제안 승인
-
-```text
-question_proposal 행 잠금
-→ 상태가 UNDER_REVIEW인지 확인
-→ question_proposal_review 생성
-→ approved_question 생성(제안 문구를 복사, status = PENDING_REVIEW 또는 ACTIVE)
-→ proposal APPROVED
-→ ProposalReviewed outbox_event
-→ COMMIT
-```
-
-- 잠금: 대상 `question_proposal` 한 행.
-- 중복 승인: `UNIQUE(source_proposal_id)`가 두 번째 승인 질문 생성을 차단한다.
-- `ACTIVE`로 바로 올리려면 같은 트랜잭션에서 `approved_at`, `approved_by`, `active_from`을 함께 채워야 한다. `ck_approved_question_approval`이 이를 강제한다.
-
-### T3. 사용자 질문 세트 배정
-
-```text
-question_assignment_cycle INSERT
-→ 활성 질문 풀에서 후보 선택
-→ question_assignment 일괄 INSERT
-→ COMMIT
-```
-
-- `(user_id, cycle_key)` 유일 제약을 멱등성 기준으로 사용한다.
-- 동시에 두 요청이 와도 한 cycle만 남고 패자는 기존 세트를 다시 조회한다.
-- 질문 풀 전체를 잠그지 않는다. 배정 당시 `pool_version`을 스냅샷으로 남긴다.
-
-### T4. 질문글 제출
-
-```text
-approved_question.status = 'ACTIVE' 확인
-→ 정규화된 발송 입력으로 request_fingerprint 생성
-→ direction_post 생성(request_fingerprint 포함)
-→ post_audience 스냅샷 생성
-→ RECIPIENT_MATCH_REQUESTED outbox_event(match_round = 1)
-→ COMMIT
-```
-
-- 잠금: 새 행 외 별도 잠금 없음.
-- 멱등 기준: `UNIQUE(sender_id, idempotency_key)`.
-- fingerprint는 동일 `(sender_id, idempotency_key)` 재시도에서 기존 결과와 비교한다. 동일하면 기존 결과를 반환하고 새 outbox를 만들지 않으며, 다르면 `IDEMPOTENCY_KEY_REUSED` 충돌로 거절한다. fingerprint 계산에서 sender, idempotency key와 서버 소유 시각은 제외한다.
-- matching event의 `dedup_key`는 `direction-match:{postId}:{matchRound}:{eventType}`로 서버가 파생한다. 매칭 payload에는 정확 좌표를 복사하지 않는다.
-- 외부 안전 검사, 매칭, 푸시를 요청 트랜잭션 안에서 호출하지 않는다.
-
-### T5. 수신자 확정
-
-```text
-RECIPIENT_MATCH_REQUESTED 작업 claim
-→ lease_owner·lease_expires_at·lease_generation을 원자적으로 갱신
-→ lease가 유효한 PROCESSING 행과 terminal 행은 제외
-→ 현재 presence·차단·계정 상태로 후보 계산
-→ active_unhandled_count < 5 후보만 남김
-→ recent_received_count, last_received_at 기준 공정 정렬
-→ recipient_receive_state 슬롯 조건부 예약
-→ 예약 성공 대상만 post_recipient INSERT
-→ 수신자별 NotificationRequested outbox_event 생성
-→ direction_post MATCHING → ACTIVE
-→ COMMIT
-```
-
-- 잠금: Outbox 작업 행, 대상 `direction_post` 한 행, 슬롯 예약에 성공한 `recipient_receive_state` 행.
-- claim/reclaim은 due `PENDING`/`FAILED`와 만료된 `PROCESSING`을 대상으로 하며, retry/reclaim에서는 `match_round`를 증가시키지 않는다. claim 성공 때마다 `lease_generation`을 증가시킨다.
-- 완료·실패·dead 전이는 `id + status = PROCESSING + lease_owner + lease_generation + lease_expires_at > now` 조건을 모두 사용한다. stale worker의 갱신이 0행이면 새 소유자의 결과를 덮어쓰지 않고 작업을 다시 읽는다.
-- lease duration과 retry backoff의 숫자값은 application configuration으로 주입하며 이 문서와 DB 스키마에는 고정하지 않는다.
-- 잠그지 않는 대상: `active_user_presence` 전체와 `user_account` 전체.
-- 재실행 안전성: `UNIQUE(post_id, recipient_id)`, `capacity_released_at`, Outbox `dedup_key`.
-- `post_recipient` 유일 제약 충돌로 삽입되지 않으면 같은 트랜잭션에서 해당 슬롯 예약도 되돌린다.
-- 발송별 최대 수신자는 MVP 설정 기본값 10명으로 시작하고, 공정성 순으로 예약 성공자를 최대값까지 확정한다. 후보 전체 일괄 삽입 금지와 활성 미처리 5개 상한은 반드시 적용한다.
-
-### T6. 답변 제출과 만료 경합
-
-한 트랜잭션에서 다음 조건을 다시 확인한다.
-
-```sql
-SELECT pr.id
-FROM post_recipient pr
-JOIN direction_post p ON p.id = pr.post_id
-WHERE pr.id = :post_recipient_id
-  AND pr.recipient_id = :author_id
-  AND pr.status IN ('AVAILABLE', 'DISCOVERED', 'OPENED')
-  AND p.status = 'ACTIVE'
-  AND p.expires_at > clock_timestamp()
-FOR UPDATE OF pr, p;
-```
-
-조건을 통과하면 `answer`(`SUBMITTED`)와 첨부, 안전 검사 job·Outbox를 저장한다(GitHub #125). 이 transaction은
-`post_recipient.status`를 바꾸지 않는다 — `ANSWERED` 전이와 슬롯 해제는 **제출이 아니라 비동기 안전 검사가
-ALLOW를 반환한 시점**에 일어난다(아래 T6-PUBLISH). 통과하지 못하면 `EXPIRED`, `BLOCKED`, `FORBIDDEN` 중 현재
-서버 상태에 맞는 도메인 오류를 반환한다.
-
-- 잠금: 대상 `post_recipient`, `direction_post` 각 한 행.
-- 클라이언트 시각을 사용하지 않는다.
-- 한 수신자당 활성(`REJECTED`가 아닌) 답변은 `uq_answer_one_per_recipient` partial unique index가 강제한다.
-- 만료 전에 제출된 검사 중(`SUBMITTED`/`SAFETY_CHECKING`) 답변이 있는 수신 항목은 만료 sweep 후보에서
-  제외된다 — 늦게 도착한 ALLOW도 공개할 수 있어야 하기 때문이다.
-
-**T6-PUBLISH. 안전 검사 ALLOW 반영 (비동기)**
-
-`MODERATION_VERDICT_READY`(ALLOW)를 소비하는 시점에 별도 transaction에서 `post_recipient.status`를
-`ANSWERED`로 바꾸고, `capacity_released_at IS NULL`인 경우에만 이를 설정하고
-`recipient_receive_state.active_unhandled_count`를 1 감소시킨 뒤 답변을 `PUBLISHED`로 전환한다.
-그 사이 `post_recipient`가 이미 다른 경로(만료·차단·넘김확정)로 종결됐으면 슬롯을 다시 해제하지
-않고 답변도 공개하지 않는다. BLOCK과 `MODERATION_DEADLINE_ELAPSED`는 `post_recipient` 상태를
-바꾸지 않는다.
-
-- **`status = 'ANSWERED'` 전이를 빠뜨리면 안 된다.** `ct_post_recipient_capacity_release`가 종결 상태와 `capacity_released_at`의 동치를 커밋 시점에 검사하므로, 해제만 하고 상태를 그대로 두면 트랜잭션이 커밋되지 않는다. 두 갱신을 서로 다른 문장으로 나누는 것은 괜찮다. 트리거는 지연 실행되고 최종 상태를 다시 읽어 판정한다.
-
-### T6A. 스와이프 넘김 (요청 → 유예 → 확정)
-
-넘김은 한 트랜잭션이 아니라 **세 단계**다. 5초 되돌리기가 생기면서 "넘김 요청"과 "넘김 확정"이 분리됐다.
-
-**T6A-1. 넘김 요청 (스와이프 직후)**
-
-```text
-대상 post_recipient FOR UPDATE
-→ 소유자·참여 가능 상태 확인
-→ status = SKIP_PENDING, skip_requested_at 기록
-→ capacity_released_at 은 건드리지 않는다        ← 핵심
-→ SKIP_CONFIRMATION_DUE outbox_event 예약
-→ COMMIT
-```
-
-**T6A-2. 되돌리기 (5초 안에 사용자가 취소)**
-
-```text
-대상 post_recipient FOR UPDATE
-→ status = SKIP_PENDING 인지 확인. 아니면 이미 확정된 것이므로 거부
-→ skip_requested_at = NULL
-→ status = opened_at 있으면 OPENED, discovered_at 있으면 DISCOVERED, 아니면 AVAILABLE
-→ 예약된 SKIP_CONFIRMATION_DUE 취소
-→ COMMIT
-```
-
-**T6A-3. 넘김 확정 (되돌리기 시간 경과 후 워커)**
-
-```text
-대상 post_recipient FOR UPDATE
-→ status = SKIP_PENDING 이고 skip_requested_at + 되돌리기 시간 <= now() 확인
-→ status = SKIPPED, skipped_at 기록
-→ capacity_released_at IS NULL일 때만 설정
-→ recipient_receive_state.active_unhandled_count - 1
-→ COMMIT
-```
-
-- **유예 중에는 슬롯이 해제되지 않는다.** 해제하면 되돌리는 사이 새 질문글이 들어와 상한을 넘는다.
-- 열람만으로는, **공감만으로도** 이 트랜잭션을 호출하지 않는다.
-- 재시도해도 슬롯은 한 번만 해제한다.
-- 넘김 이력은 발송 권한 제한이나 이후 매칭 우선순위 하락에 사용하지 않는다.
-- **질문자에게는 넘김이 전달되지 않는다.** 방치와 구별되지 않아야 거절당한 느낌을 주지 않는다.
-
-### T6C. 공감 남기기와 취소
-
-```text
-질문글 공감:  INSERT INTO post_reaction (post_id, reactor_id)
-              → FK가 수신 자격을 검사한다. 별도 조회 불필요
-              → 슬롯은 건드리지 않는다
-              → 취소는 DELETE
-
-답변 공감:    INSERT INTO answer_reaction (answer_id, reactor_id)
-              → 복합 PK가 "사용자당 답변 하나에 1건",
-                트리거가 "누른 사람이 볼 수 있는 사람인가(질문자·수신 자격자) + 자기 답변 아닌가"를 검사한다
-              → ANSWER_REACTED outbox_event
-              → 취소는 DELETE. 이때 예약된 알림도 함께 취소한다
-```
-
-- 만료된 질문글의 답변에도 공감할 수 있다. 만료는 새 답변만 차단한다.
-- 반복 탭은 같은 키에 대한 INSERT/DELETE이므로 결과가 누적되지 않는다.
-- 질문글 공감 수는 볼 수 있는 사람 전원(질문자+수신 자격자)에게 집계해 내려보낸다(2026-08-07 개정).
-
-### T6B. 만료 슬롯 해제
-
-```text
-만료 direction_post 배치 점유
-→ capacity_released_at IS NULL인 post_recipient를
-   status = EXPIRED, expired_at, capacity_released_at 을 함께 설정
-→ 사용자별 해제 건수를 집계해 recipient_receive_state 감소
-→ direction_post EXPIRED
-→ COMMIT
-```
-
-- 답변·넘기기와 경합하면 `capacity_released_at IS NULL` 조건을 먼저 성공시킨 트랜잭션만 카운터를 감소시킨다.
-- 카운터는 0보다 작아질 수 없고, 실패한 배치는 동일 조건으로 안전하게 재시도한다.
-- `status = 'EXPIRED'`와 `expired_at`은 `ck_post_recipient_status_timestamps`가 동치로 묶으므로 **같은 `UPDATE` 문에서 함께** 설정해야 한다. 이 CHECK는 지연되지 않는다.
-- 이미 `ANSWERED`·`SKIPPED`인 행은 `capacity_released_at`이 채워져 있어 이 배치의 대상이 아니다. 답변한 글이 만료돼도 수신자 행은 `ANSWERED`로 남는다.
-
-### T7. 차단과 알림 경합
-
-```text
-user_block upsert
-→ 아직 점유 중인(capacity_released_at IS NULL) 양방향 post_recipient를
-   status = BLOCKED, blocked_at, capacity_released_at 을 함께 설정
-→ 해제 건수를 사용자별로 집계해 recipient_receive_state 감소
-→ 예약된 상대방 알림 취소
-→ BlockCreated outbox_event
-→ COMMIT
-```
-
-- 잠금 순서: 사용자 ID가 작은 쪽부터 관련 계정 또는 pair advisory lock을 잡아 교착을 예방한다.
-- 알림 워커는 전송 직전 현재 차단 관계와 수신 허용 상태를 다시 확인한다.
-- 수신함 조회도 현재 차단 관계를 재확인하므로 이미 큐에 들어간 푸시가 접근권을 복원하지 못한다.
-
-## 9. 핵심 불변식
-
-1. 승인 전 질문 제안은 질문 추천이나 질문글 작성에 사용할 수 없다.
-2. 질문글은 `ACTIVE` 상태의 승인 질문을 반드시 참조한다. `ct_direction_post_question_active` 트리거가 강제한다.
-3. 질문글과 답변은 각각 텍스트와 공개 가능한 미디어 중 하나 이상을 가져야 한다.
-4. 한 질문글의 방향·거리·만료 스냅샷은 발송 후 수정하지 않는다. 만료 시각은 서버가 정하며 사용자가 고르지 않는다.
-5. 발신자는 자기 질문글의 수신자가 될 수 없다. 따라서 자기 질문글에 공감할 수도 없다.
-6. 한 질문글과 한 사용자 사이에는 최대 하나의 수신자 행만 존재한다.
-7. 수신자의 발송자 기준 방위는 `[시작각, 종료각)` 규칙으로 정확히 한 구간에만 포함된다. **현재 DB는 이를 강제하지 않는다.** `direction_segment`가 원을 빈틈·겹침 없이 덮는지, `segment_count`가 실제 행 수와 맞는지 검사하는 제약이 없다. §12의 미결 항목이다.
-8. 수신자가 적어도 인접 방향 구간을 자동 확장하지 않는다.
-9. 답변 작성자는 반드시 해당 `post_recipient.recipient_id`와 같아야 한다. 한 수신 권한당 답변은 1건이다(`uq_answer_one_per_recipient`).
-10. 서버 시각의 `expires_at` 이후에는 새 답변을 만들 수 없다. **공감은 만료 후에도 가능하다.**
-10-1. **답변을 조회할 수 있는 주체는 질문글 작성자와 그 질문글의 수신 자격자 전원이다.** 수신 자격이 없는 사용자에게는 답변 내용도, 답변 개수도 노출하지 않으며, 넘겼거나(SKIPPED) 답변 없이 만료된 수신자는 열람 자격을 잃는다. DB 제약이 아니라 조회 계층에서 강제한다(ADR 0002, 2026-08-07 개정 — 이전에는 질문자와 답변 작성자 본인뿐이었다, ADR 0001 superseded).
-10-2. **질문글 공감 수는 볼 수 있는 사람 전원(질문자+수신 자격자)에게 노출한다**(2026-08-07 개정 — 8/4 판까지는 질문자에게만 노출하고 수신자 응답에는 "내가 눌렀는지" 여부만 담았다).
-10-3. **답변 공감을 남길 수 있는 사람은 그 답변을 볼 수 있는 사람(질문글 작성자 또는 그 질문글의 수신 자격자)이며, 자기 답변에는 남길 수 없다. 사용자당 같은 답변에 최대 1건이다.**
-11. 차단 관계가 어느 방향으로든 활성 상태면 매칭·수신함·알림·재회에서 제외한다.
-12. 푸시 성공 여부는 수신 자격이나 앱 내 알림의 진실의 원천이 아니다.
-13. 정확 좌표는 API 응답, 로그, 분석 이벤트, Outbox payload에 포함하지 않는다.
-14. 질문·글·답변·알림 생성 재시도는 각각의 멱등 키로 결과가 증가하지 않는다.
-15. 방향 정책이 바뀌어도 이미 발송된 질문글의 의미와 수신자를 재해석하지 않는다. 질문 문구는 애초에 수정되지 않으므로(`question_text` 불변) 발송 글의 주제도 바뀌지 않는다.
-16. 미디어 소유자는 해당 질문글 작성자 또는 답변 작성자와 같아야 하며, 한 미디어는 하나의 콘텐츠에만 연결한다. 소유권은 `media_attachment`의 복합 FK 세 개가, 단일 첨부는 `media_id` 기본키가 강제한다. §6의 "미디어 단일 첨부를 트리거가 아니라 키로 강제하는 이유" 참고.
-17. 사용자별 `active_unhandled_count`는 **설정된 수신 상한** 이하이며, 상한에 도달한 사용자는 신규 수신자로 확정할 수 없다. 상한은 고정 상수가 아니라 운영 설정값이며(초기값 5) DB CHECK는 안전 상한 50만 강제한다.
-18. 활성 사용자 계정은 정확히 하나의 `recipient_receive_state`를 가지며 상태 행 부재를 무제한 수신으로 해석하지 않는다.
-19. `OPENED`는 활성 미처리 슬롯을 해제하지 않는다.
-19-1. **공감만 남겨도 슬롯은 해제되지 않는다.** 답변을 한 것이 아니기 때문이다.
-19-2. **`SKIP_PENDING`은 슬롯을 해제하지 않는다.** 되돌릴 수 있는 동안 자리를 비우면 그 사이 새 질문글이 들어와 상한을 넘는다. `SKIP_PENDING`이 종결 상태 목록에 없다는 사실이 이 성질을 만든다.
-20. `ANSWERED`, `SKIPPED`, `EXPIRED`, `BLOCKED`는 `capacity_released_at`을 조건부 설정해 슬롯을 정확히 한 번 해제한다. 이 네 상태와 `capacity_released_at`이 채워진 것은 동치이며 `ct_post_recipient_capacity_release`가 강제한다. 따라서 `active_unhandled_count`는 언제든 `count(post_recipient WHERE capacity_released_at IS NULL)`로 재계산할 수 있다.
-21. 방향·거리 후보 전체를 `post_recipient`로 일괄 삽입하지 않고 최근 수신이 적은 사용자부터 설정된 최대 인원(초기값 10명)을 선정한다.
-22. 푸시 전달·묶음·억제 결과는 `post_recipient` 수신 자격과 활성 슬롯 점유를 변경하지 않는다.
-23. 같은 `(sender_id, idempotency_key)`의 동일 fingerprint 재시도는 기존 결과를 반환하고 post·matching event를 증가시키지 않는다. 다른 fingerprint는 `IDEMPOTENCY_KEY_REUSED`로 거절한다.
-24. `RECIPIENT_MATCH_REQUESTED`는 별도 matching job row 없이 outbox row 자체가 작업이며, 같은 `(aggregate_id, match_round, event_type)`는 partial unique index로 한 번만 생성된다. retry/reclaim은 round를 증가시키지 않는다.
-25. `PROCESSING` outbox row는 `lease_owner`와 `lease_expires_at`을 함께 가지며, 그 외 상태에서는 둘 다 NULL이다. `lease_generation`은 claim/reclaim마다 증가하는 fencing token이다.
-26. outbox payload에는 정확 좌표 또는 좌표를 복원할 수 있는 값이 없다. 매칭에는 post·round·event·fingerprint와 coarse 식별자만 전달하고 정확 좌표는 worker가 보호된 저장소에서 재조회한다.
-
-## 10. 정책 미정이 스키마에 미치는 영향
-
-| 정책 | 현재 확정 범위 | ERD 처리 | 결정 후 변경 가능성 |
-|---|---|---|---|
-| P02 거리 | 8×45° 및 인접 구간 미확장만 확정 | `min_distance_m`, `max_distance_m` 스냅샷 필드만 둠 | 기본값·확장 단계 설정 필요 |
-| P03 수신자 수 | 전체 후보 일괄 전달 금지·발송별 최대 10명 제한·공정 선정 확정 | `post_recipient` 1:N과 공정 정렬 | 최대값은 `qello.direction.max-recipients-per-post` 설정으로 운영 조정. 단계적 추가 선정 대기 시간 필요 |
-| P04 만료 | 만료 존재, 만료 후 새 답변 차단, **만료 시각은 서버 지정**, **만료 후에도 공감 가능** 확정 | `direction_post.expires_at` 필수 | 기간·임박 알림 값 필요 |
-| P05 수신 용량·알림 | 상한은 **운영 설정값**(초기값 5), 열람·**공감** 유지, 답변·넘김 확정·만료 해제, 넘김에 **5초 되돌리기**, 수신·푸시 분리 확정 | `recipient_receive_state`(안전 상한 50), `capacity_released_at`, `SKIP_PENDING`/`SKIPPED` | 상한 초기값, 되돌리기 시간, 즉시 푸시 상한·묶음 주기·조용한 시간대 필요 |
-| ~~P06 위치~~ | **확정 (2026-08-03, 1안)** | `position`은 운영 컬럼. §0 참고 | 보존 기간은 P07에 위임 |
-| P07 보관 | **현재 결정: 만료된 질문글과 답변은 질문자에게 영구 보관.** 단 바뀔 수 있는 정책이다 | soft delete와 상태 필드는 준비 | **보관 기간을 설정값으로 분리해 구현**할 것. 코드에 영구를 고정하지 않는다. 삭제·익명화·파티션 정리 작업 필요 |
-| P09 닉네임 | 익명 닉네임 사용 | `user_account.nickname`. 유일 제약 없음 | 만남 단위 가명 확정 시 `encounter_alias` 추가 |
-| P15 질문 추천 | 사용자별·동일 주기 안정성 확정. **강제 배정이 아니라 추천이며 고르지 않아도 된다** | cycle과 assignment 행으로 표현 | 주기·개수·반복 제외 규칙 설정 |
-| P16 제안 검토 | 사람 검토·승인 전 비공개 확정 | 제안과 검토 이력 분리. 문구 수정 재제출 없음 | SLA·사유 공개 범위·승인 배정 범위 설정 |
-
-P06은 확정됐다. P07, P10, P11, P12가 승인되기 전에는 실제 사용자 사진·신고 운영 데이터를 수집하는 Stage 3 구현에 들어가면 안 된다. 위치는 저장 **방식**이 정해졌을 뿐이므로, 실제 좌표 수집 전에 데이터 흐름·접근 권한·로그 제외·암호화·삭제 작업에 대한 Security/Privacy 승인이 여전히 필요하다.
-
-## 11. MVP에서 제외하거나 별도 결정할 모델
-
-정본 PRD의 Non-goal과 충돌하므로 다음 테이블은 현재 ERD에 넣지 않는다.
-
-- ~~`like`~~: **2026-08-04에 이 제외를 철회했다.** 공감은 확정 MVP 기능이며 `post_reaction`, `answer_reaction`으로 모델링했다. 다만 무제한 공개 좋아요는 아니다 — 질문글 공감이든 답변 공감이든 그 개수는 그 질문글을 **볼 수 있는 사람 전원**(질문자·수신 자격자)에게만 보이고, 그 밖의 사람에게는 보이지 않는다(2026-08-07 개정). 공개 인기 점수와 순위는 여전히 만들지 않는다.
-- `comment`: **만들지 않는다.** 이전에는 정본 PRD의 Non-goal이라 제외했고, 답변을 볼 수 있는 사람이 질문자 한 명뿐이던 시절에는 애초에 댓글이 놓일 자리 자체가 없었다(ADR 0001). 2026-08-07 개정으로 답변이 수신 자격자 전원에게 공개되면서 "자리가 없다"는 논리는 성립하지 않게 됐지만, 여전히 만들지 않는다 — 이제는 구조적 불가능이 아니라 **제품 결정**이다(ADR 0002: "답변에 답변할 수 없다", 대화가 두 겹의 스레드가 되는 것을 막는다). 질문자가 답변자에게 텍스트를 되보내는 통로는 자유 DM과 구별할 수 없어 열지 않는다.
-- 공개 인기 점수: 제외한다. 공감 수를 노출 순위나 사용자 등급에 사용하지 않는다.
-- `follow`, `direct_message`, `user_search_index`: 팔로우·DM·사용자 검색은 제품 Non-goal이다.
-- `public_profile_feed`: 공개 프로필 피드를 만들지 않는다.
-- 장기 `encounter_history`: 우연한 재회 표시는 필요하지만 P07 보관 정책과 “만남”의 집계 기준이 미정이다. MVP에서는 보관이 허용된 `direction_post → post_recipient → answer` 관계로 계산하고, 성능 증거가 생기면 비식별 pair read model을 추가한다.
-- 실시간 자동 질문 생성 테이블: 자동 생성 후보는 향후 확장이고 MVP에서는 검토된 소규모 질문 풀을 사용한다. 다만 팀이 설계한 생성 파이프라인 스키마가 `sql/002`에 별도 파일로 존재한다. 적용 여부는 아직 결정되지 않았다. §13 참고.
-
-## 12. 구현 시작 전 확인 목록
-
-- [x] P06 위치 **저장 방식**을 결정했다 (2026-08-03, 1안). §0 참고.
-- [ ] P06 1안의 실제 데이터 흐름·접근 권한·로그 제외·암호화·삭제 작업을 Security/Privacy가 승인했다.
-- [ ] P04 만료 시간과 P07 보관·삭제 범위를 제품이 결정했다.
-- [ ] P10 연령, P11 얼굴, P12 신고 운영 정책이 승인됐다.
-- [x] **인증·신원 수단을 결정했다.** `operator_credential`(운영자 로그인)과 `device_credential`(기기 인증)로 반영했다(2026-08-08). 아래 "인증" 참고.
-- [ ] `device_credential` 재발급 절차를 정했다. 기기 분실·재설치 시 새 `device_secret`을 어떻게 발급하고 이전 자격증명을 어떻게 처리할지 미정이다.
-- [ ] 닉네임 정규화 규칙과 변경 주기를 결정했다.
-- [ ] 답변을 수신자당 한 개로 제한할지 결정했다.
-- [ ] 질문 제안 승인 주체와 운영자 계정 권한을 결정했다.
-- [ ] 주제 자동 생성 라인(`sql/002`)을 MVP 범위에 포함할지 결정했다.
-- [ ] `region_code`의 초기 데이터 출처와 적재 시점을 결정했다.
-- [ ] 최근 제품 변경("답변을 댓글로")을 데이터 모델에 반영할지 결정했다. 현재 스키마에는 댓글 테이블이 없다.
-- [x] `distance_band`의 표시값을 확정했다. 10km 미만은 `10km 이내`, 10km 이상 저장값은 외부에 노출하지 않는 `EXACT_DISTANCE` 내부 표식이다.
-- [ ] `direction_segment`가 원을 빈틈·겹침 없이 덮는지 검증하는 수단을 정했다. 불변식 7이 현재 DB로도 애플리케이션으로도 강제되지 않는다.
-- [ ] `updated_at` 자동 갱신 방법을 정했다. 특히 `question_proposal_review_queue_idx`가 `updated_at` 정렬에 의존한다.
-- [ ] `outbox_event`의 `PROCESSED` 행 정리 주기를 정했다. P07과 무관하게 필요하다.
-- [ ] PostGIS로 8개 경계값과 대척점 근방을 검증했다.
-- [ ] 답변-만료, 차단-알림, 중복 발송, 중복 승인 경쟁 조건 테스트를 작성했다.
-- [ ] FK 삭제 정책을 정리했다. `direction_post → post_recipient`는 `CASCADE`인데 `post_recipient → answer`는 `RESTRICT`라, 답변이 달린 글은 하드 삭제가 중간에서 막힌다.
-
-### 인증
-
-2026-08-08 이전에는 `user_account`에 로그인 식별자가 없어 **재방문 사용자를 식별할 방법이 스키마에 존재하지 않았다.** 팀원이 DBML에 두 테이블을 추가해 이 공백을 채웠고, 이번에 DDL과 이 문서에도 반영했다.
-
-- **`device_credential`(V7 migration)**: 일반 사용자의 재방문 식별 수단이다. 이메일·전화번호·OAuth 없이, 클라이언트가 만든 `installation_id`가 아니라 **서버가 발급한 고엔트로피 `device_secret`의 SHA-256 해시**(`secret_hash`)로만 기기를 인증한다 — 이 제품이 익명 닉네임(P09) 기반이라는 것과 정합적인 선택이다. `push_device`와 물리적으로 같은 기기를 가리키지만 발급·해지 주체가 다르고 생명주기가 독립적이라 분리했다. `installation_id`는 `credential_status = 'ACTIVE'`인 행에만 적용되는 partial unique라, 해지된 자격증명은 같은 기기 식별자를 다시 쓸 수 있다.
-- **`operator_credential`(V5 migration)**: 백오피스 운영자 전용 로그인(`login_id` + `password_hash`)과 잠금 상태다. 원래는 `user_account.password_hash`(V3)로 계정에 직접 붙어 있었으나, 일반 사용자가 운영자 때문에 존재하는 NULL 컬럼을 들고 다니는 구조라 V5에서 분리했다 — 분리하며 `user_account.password_hash`와 그 CHECK는 제거됐다. `(user_id, role)` 복합 FK가 `user_account(id, role)`을 참조하므로, `role`이 `OPERATOR`가 아닌 계정에는 이 자격증명이 붙을 수 없다 — DB가 키로 거절한다. `login_id`에는 `uq_operator_credential_login_id` 유니크 인덱스를 건다.
-- **`user_account.version`(V4 migration)**: JPA 낙관적 잠금용 행 버전. 인증과 직접 관련은 없지만 같은 출처(팀원이 DBML에 먼저 추가하고 DDL 반영이 늦었던 항목)라 함께 정리했다.
-
-**기기가 바뀌는 경우(분실·재설치)의 재인증 경로는 아직 이 문서에 없다.** `device_secret`을 다시 발급하는 절차와, 그 사이 이전 자격증명을 어떻게 처리할지가 §12 미결 목록에 남아 있다.
-
-`spring_session` / `spring_session_attributes`(V6 migration)는 이 목록에 없다. Spring Session이 소유하는 프레임워크 테이블이라 애초에 이 스키마 문서의 범위 밖이며, 실제 DB에는 존재하지만 백엔드 저장소의 `docs/product/data-model/schema-manifest.md` §6에서 별도로 센다.
 
 ## 13. 폐기된 증분 계보 (`sql/001`~`004`)
 
@@ -1646,3 +534,6 @@ R6과 R9는 1차 시도에서 각각 PK 중복과 identity 시퀀스 충돌에 *
 ### 트리거 정정 기록
 
 `ct_post_recipient_capacity_release`의 첫 구현은 `NEW`로 판정했고, 그 결과 정상 경로가 실패했다. **지연 `AFTER ROW` 트리거는 실행 시점만 커밋으로 미룰 뿐, 전달받는 튜플은 자신을 큐에 넣은 문장 당시의 버전이다.** 상태 전이 문장이 큐에 넣은 이벤트는 "해제 전" 중간 상태를 그대로 들고 커밋 시점에 실행된다. `post_recipient`를 다시 조회해 최종 상태로 판정하도록 고쳤고, 이는 `assert_post_has_content`가 이미 쓰던 방식과 같다.
+
+
+</details>
