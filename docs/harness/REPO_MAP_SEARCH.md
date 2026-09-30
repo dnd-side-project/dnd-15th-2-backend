@@ -1,30 +1,28 @@
-# Optional B repository search guidance
+# 선택형 B 저장소 검색 지침
 
-B must be selected explicitly for the current task or session. Merging these tools
-or linking this document does not activate B or change common repository policies.
-Preserve all mandatory repository instructions, including the Issue/branch/TASK
-implementation gates. Search guidance grants no implementation authorization.
+B는 현재 작업이나 세션에서 명시적으로 선택해야 한다. 이 도구를 병합하거나
+이 문서를 연결하는 것만으로 B가 활성화되거나 저장소 공통 정책이 바뀌지는 않는다.
+Issue·브랜치·TASK의 구현 시작 조건을 포함한 저장소의 모든 필수 지침을 준수한다.
+이 검색 지침 자체가 구현을 승인하는 것은 아니다.
 
-This repository provides Repo Map generation, freshness checks, queries and this
-reusable search procedure. Experiment task registration, A/B assignment, session
-linkage and measurement belong to harness-delta. Product execution and version
-policy are outside the backend's responsibility.
+이 저장소는 Repo Map 생성·최신 상태 검사·조회와 재사용 가능한 검색 절차를 제공한다.
+실험 작업 등록, A/B 배정, 세션 연결과 측정은 harness-delta의 책임이다.
+제품 실행과 버전 정책은 backend의 책임 범위 밖이다.
 
-## Search procedure
+## 검색 절차
 
-1. Use `rg`, file and symbol search to narrow candidates before reading the
-   necessary sources and authoritative documents.
-2. Use an existing LSP when useful; do not install one for this procedure.
-3. Widen searches as needed. There is no reading quota.
-4. Use bounded map queries as navigation evidence. Never inject the full map.
-5. Verify relevant source evidence before drawing conclusions. The map is
-   syntax-only, not a resolved dependency or call graph.
+1. `rg`, 파일 검색과 심볼 검색으로 후보를 좁힌 뒤 필요한 소스와 기준 문서를 읽는다.
+2. 도움이 되면 기존 LSP를 사용하되, 이 절차를 위해 새로 설치하지 않는다.
+3. 필요에 따라 검색 범위를 넓힌다. 읽기 분량에는 제한을 두지 않는다.
+4. 결과 수를 제한한 맵 조회를 탐색 근거로 사용한다. 전체 맵을 컨텍스트에 주입하지 않는다.
+5. 결론을 내리기 전에 관련 소스의 근거를 확인한다. 맵은 구문 정보만 제공하며,
+   의미 분석으로 확정한 의존성이나 호출 그래프가 아니다.
 
-## Local map use
+## 로컬 맵 사용
 
-Run the following from the target repository root with JDK 21 and Python 3.9+.
-The [tool reference](../../scripts/repo-map/README.md) describes output constraints,
-query formats and indexing limits. Generation and queries make no model calls.
+JDK 21과 Python 3.9 이상을 준비하고 대상 저장소의 루트에서 다음 명령을 실행한다.
+출력 제약, 조회 형식과 인덱싱 한계는 [도구 설명서](../../scripts/repo-map/README.md)에
+기술되어 있다. 생성과 조회는 모델을 호출하지 않는다.
 
 ```sh
 python3 scripts/repo-map/run.py generate --root .
@@ -32,25 +30,26 @@ python3 scripts/repo-map/run.py check --root .
 python3 scripts/repo-map/run.py query --root . --symbol 'SYMBOL' --limit 20
 ```
 
-Replace `SYMBOL` with the search term. The default index is the local ignored
-`build/repo-map/index.json`. Check freshness before use; regenerate after changes
-to indexed sources, HEAD, tools or the Java/Python runtime. Queries also reject
-stale indexes. Keep generated indexes local and out of measurement records.
+`SYMBOL`을 검색어로 바꾼다. 기본 인덱스는 Git 추적에서 제외된 로컬 파일
+`build/repo-map/index.json`이다. 사용 전에 최신 상태인지 검사하고, 인덱싱 대상 소스,
+HEAD, 도구 또는 Java/Python 런타임이 바뀌면 다시 생성한다. 조회 명령도 오래된
+인덱스를 거부한다. 생성한 인덱스는 로컬에만 보관하고 측정 기록에 포함하지 않는다.
 
-For grouped class symbols and declared field/explicit-constructor type references:
+클래스별 심볼과 필드·명시적 생성자에 선언된 타입 참조를 묶어서 조회하려면 다음 명령을 사용한다.
 
 ```sh
 python3 scripts/repo-map/run.py query --root . --symbol 'SYMBOL' --format classes --limit 5
 ```
 
-Declared references do not resolve imports, runtime injection or method calls.
-The class limit bounds group count, not the size of every group's contents.
+선언된 타입 참조만으로는 import의 실제 대상, 런타임 의존성 주입이나 메서드 호출을
+확정할 수 없다. 클래스 조회의 제한은 그룹 수에 적용되며, 각 그룹에 포함된 내용의
+크기를 제한하지는 않는다.
 
-## Historical evidence
+## 과거 검증 기록
 
-Existing test plans/reports and Git history retain the removed experimental
-runner's original behavior and checks; they are not current runner instructions.
-Existing private local experiment records remain outside this repository.
-A prior manual Docker check completed four exploration sessions with partial
-usage collection. Human answer-quality assessment remains incomplete, and that
-operational observation does not establish B superiority or justify adoption.
+기존 테스트 계획·보고서와 Git 이력에는 제거된 실험용 실행기의 당시 동작과 검증 결과가
+남아 있다. 이를 현재 실행기의 사용 지침으로 해석하지 않는다.
+기존 비공개 로컬 실험 기록은 이 저장소 밖에 보존한다.
+과거 수동 Docker 점검에서는 탐색 세션 4개를 완료하고 사용량을 부분적으로 수집했다.
+사람의 응답 품질 평가는 아직 끝나지 않았으며, 해당 운영 점검 결과만으로 B의 우수성을
+입증하거나 채택을 정당화할 수 없다.
