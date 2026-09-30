@@ -1,97 +1,87 @@
-# Mechanical Java Repo Map
+# Java 구문 기반 Repo Map
 
-Requires Git, Python 3.9+ and **JDK 21** (`JAVA_HOME` selects Java; otherwise PATH).
-No dependencies are downloaded and no model/service is called.
+Repo Map은 Java 소스의 선언과 위치를 인덱스로 만들어 필요한 코드를 찾는 로컬 도구다.
+Git, Python 3.9 이상과 **JDK 21**이 필요하다. Java는 `JAVA_HOME`으로 선택하고,
+설정되어 있지 않으면 PATH에서 찾는다. 의존성을 다운로드하거나 모델·서비스를 호출하지 않는다.
 
 ```sh
-export JAVA_HOME=$(/usr/libexec/java_home -v 21) # macOS example
+export JAVA_HOME=$(/usr/libexec/java_home -v 21) # macOS 예시
 python3 scripts/repo-map/run.py generate --root .
 python3 scripts/repo-map/run.py check --root .
 python3 scripts/repo-map/run.py query --root . --symbol ProfileService --limit 10
 python3 scripts/repo-map/run.py query --root . --format classes --symbol ProfileService --limit 5
 ```
 
-All commands accept `--output build/repo-map/index.json` (the default). Relative
-output paths are relative to `--root`, which must be the Git repository root.
-Outputs must be untracked, Git-ignored `.json` files under `build/repo-map/`.
-Source/output/root symlinks are rejected, including symlinks within source trees.
+모든 명령은 `--output build/repo-map/index.json`을 지원하며 이 경로가 기본값이다.
+상대 출력 경로의 기준은 `--root`이며, `--root`는 Git 저장소 루트여야 한다.
+출력은 `build/repo-map/` 아래의 Git 추적 대상이 아니면서 Git 무시 규칙이 적용된
+`.json` 파일이어야 한다. 소스 트리 내부를 포함해 소스·출력·루트 경로의 심볼릭 링크는 거부한다.
 
-The index is one compact JSON object, not JSONL. Schema 2 adds type metadata;
-old schema 1 maps must be regenerated. `schema`, `tool` (SHA-256 of
-both implementation files), `runtime` (Java and Python versions), `head` and `sources`
-(repository-relative path → content SHA-256) identify its inputs. `rows` is
-sorted by file, line, kind, type and signature. Generation uses tracked files
-and nonignored untracked Java files under `src/main/java`, `src/test/java` and
-`src/integrationTest/java`. Deleted files disappear from the snapshot. Ignored
-new/generated files and other source roots are excluded.
+인덱스는 JSONL이 아닌, 불필요한 공백을 생략한 하나의 JSON 객체다. 스키마 2에는 타입 메타데이터가 추가되었으므로
+기존 스키마 1 맵은 다시 생성해야 한다. `schema`, `tool`(구현 파일 두 개의 SHA-256),
+`runtime`(Java·Python 버전), `head`, `sources`(저장소 상대 경로 → 내용의 SHA-256)로
+생성에 사용한 입력을 식별한다. `rows`는 파일, 줄 번호, 종류, 타입, 시그니처 순으로 정렬한다.
+생성 대상은 `src/main/java`, `src/test/java`, `src/integrationTest/java` 아래의
+Git 추적 파일과 Git 무시 규칙이 적용되지 않은 미추적 Java 파일이다. 삭제된 파일은
+스냅샷에서 사라진다. 무시 규칙이 적용된 신규·생성 파일과 다른 소스 루트는 제외한다.
 
-File rows contain package/import syntax. Type rows contain qualified nested
-names, type parameters and syntactic extends/implements/permits. Method rows
-contain owner, name, parameter types, return type and throws syntax. All rows
-have repository-relative `file`, 1-based `line`, `kind`, `symbol`, `type` and
-`signature`, plus `source_root` and `source_path` relative within that root.
-Type annotations and their values are stripped. Field/record-component type
-references are metadata on the owning type row; they do not add rows. Implicit
-constructors/accessors, local/anonymous classes, method bodies, initializers,
-annotation values, comments and literal values are not indexed. Explicit
-constructors remain method rows. Varargs use the AST array representation.
+파일 행에는 package·import 구문을 담는다. 타입 행에는 한정된 중첩 이름, 타입 매개변수와
+extends·implements·permits 구문을 담는다. 메서드 행에는 소유 타입, 이름, 매개변수 타입,
+반환 타입과 throws 구문을 담는다. 모든 행에는 저장소 상대 경로인 `file`, 1부터 시작하는
+`line`, `kind`, `symbol`, `type`, `signature`, 그리고 `source_root`와 해당 루트 기준의
+상대 경로인 `source_path`가 있다. 타입 애노테이션과 그 값은 제거한다.
+필드·레코드 컴포넌트의 타입 참조는 소유 타입 행의 메타데이터이며 별도 행을 추가하지 않는다.
+암시적 생성자·접근자, 지역·익명 클래스, 메서드 본문, 초기화 코드, 애노테이션 값, 주석과
+리터럴 값은 인덱싱하지 않는다. 명시적 생성자는 메서드 행으로 남고, 가변 인자는 AST의 배열 표현을 사용한다.
 
-`JavacTask.parse()` with `-proc:none --release 21` performs **syntax only**:
-no annotation processing, type resolution, dependency loading, generated code,
-call graph or behavioral summary. Missing symbols and semantic type errors do
-not prevent indexing; parse errors do. Unknown type syntax fails closed.
+`JavacTask.parse()`에 `-proc:none --release 21`을 적용해 **구문만 분석**한다.
+애노테이션 처리, 타입 해석, 의존성 로딩, 코드 생성, 호출 그래프 구성이나 동작 요약은 수행하지 않는다.
+찾을 수 없는 심볼이나 의미 분석 단계의 타입 오류는 인덱싱을 막지 않지만, 구문 분석 오류는 생성을 중단한다.
+지원하지 않는 타입 구문을 만나면 결과를 생성하지 않고 실패한다.
 
-`check` and `query` reject changed source lists/content, HEAD, tool, schema or
-Java/Python runtime. The default `--format rows` searches symbol/type/signature/file case-insensitively; result
-JSON includes total matches, `truncated`, and at most `--limit` rows (1–200).
-No match is an empty array with total zero. This map gives navigation evidence,
-not proof that a declaration is semantically resolved or behavior is correct.
+`check`와 `query`는 소스 목록·내용, HEAD, 도구, 스키마 또는 Java/Python 런타임이
+달라진 인덱스를 거부한다. 기본값인 `--format rows`는 symbol·type·signature·file을
+대소문자 구분 없이 검색한다. 결과 JSON에는 전체 일치 수, `truncated`와 최대 `--limit`개
+행이 포함된다. 행 제한 범위는 1~200이다. 일치하는 결과가 없으면 전체 수는 0이고 배열은 비어 있다.
+이 맵은 코드 탐색의 근거를 제공하며, 선언의 의미가 해석되었거나 동작이 올바르다는 증거는 아니다.
 
-Generation compares snapshots before and after parsing, then publishes through
-an atomic same-directory replacement. Failed parsing leaves an old index
-untouched. Error output withholds compiler/source diagnostics. This is local
-trusted-workspace tooling, not an adversarial filesystem sandbox: concurrent
-writers and changes in the small interval after the final snapshot are not
-locked out. Run check again after edits and avoid simultaneous generation.
-Generated maps contain code identifiers and remain local ignored artifacts;
-do not include them in measurement records.
+생성 시 구문 분석 전후의 스냅샷을 비교한 뒤 같은 디렉터리 안에서 파일을 원자적으로 교체한다.
+구문 분석에 실패하면 기존 인덱스는 그대로 둔다. 오류 출력에는 컴파일러·소스 진단 내용을 노출하지 않는다.
+이 도구는 신뢰할 수 있는 로컬 작업 공간을 위한 것이며, 악의적인 파일시스템 변경을 차단하는 샌드박스가 아니다.
+동시 쓰기나 최종 스냅샷 확인 직후의 짧은 구간에 발생하는 변경을 잠금으로 막지는 않는다.
+소스를 수정한 뒤에는 다시 검사하고, 동시에 여러 생성 작업을 실행하지 않는다.
+생성된 맵에는 코드 식별자가 포함되므로 Git 추적에서 제외한 로컬 산출물로 보관하고 측정 기록에는 넣지 않는다.
 
-## Class groups
+## 클래스별 조회
 
-`query --format classes` returns `{total, truncated, classes: [...]}`. Each group
-contains `file` (repository-relative), `path` (source-root-relative),
-`source_root`, fully qualified nested `type`, `kind`, `line`, `symbols`,
-`dependencies`, and `dependency_evidence`. The list retains declarations from
-different files/source roots even when fully qualified names coincide. Groups
-sort by file, type and line. `--symbol` matches class name, file path, declared
-method name or dependency case-insensitively; `--limit` counts complete matching
-groups, so methods/dependencies inside a returned group are never silently cut.
-The limit bounds group count, not the byte size of an unusually large class.
+`query --format classes`는 `{total, truncated, classes: [...]}`를 반환한다.
+각 그룹에는 `file`(저장소 상대 경로), `path`(소스 루트 상대 경로), `source_root`,
+완전히 한정된 중첩 타입 이름인 `type`, `kind`, `line`, `symbols`, `dependencies`,
+`dependency_evidence`가 포함된다. 완전히 한정된 이름이 같아도 파일이나 소스 루트가 다르면
+각 선언을 별도로 유지한다. 그룹은 파일, 타입, 줄 번호 순으로 정렬한다.
+`--symbol`은 클래스 이름, 파일 경로, 선언된 메서드 이름 또는 의존성을 대소문자 구분 없이 검색한다.
+`--limit`은 일치하는 그룹 전체의 개수를 제한하므로 반환된 그룹 안의 메서드·의존성을 임의로 잘라내지 않는다.
+이 제한은 그룹 수에 적용되며, 큰 클래스 하나의 바이트 크기를 제한하지는 않는다.
 
-`symbols` contains sorted, unique directly declared method names; overloads
-collapse to one name. Constructors are excluded from these names. `dependencies`
-is a sorted unique set of named type references written in direct fields and
-explicit constructor parameters. Every reference has evidence shaped as
-`{dependency, source, name, line}`, where source is `field` or
-`constructor_parameter`, name identifies that declaration and line is its
-1-based starting line (including attached annotations). Repeated evidence is
-deduplicated and sorted by dependency, source, name and line.
+`symbols`에는 직접 선언된 메서드 이름을 중복 없이 정렬해 담는다. 오버로드된 메서드는 이름 하나로
+합치며 생성자는 제외한다. `dependencies`에는 직접 선언한 필드와 명시적 생성자의 매개변수에
+작성된 이름 있는 타입 참조를 중복 없이 정렬해 담는다. 각 참조의 근거는
+`{dependency, source, name, line}` 형식이다. `source`는 `field` 또는
+`constructor_parameter`이고, `name`은 해당 선언의 이름이며, `line`은 애노테이션을 포함한
+선언의 시작 줄 번호로 1부터 센다. 중복 근거는 제거하고 dependency, source, name, line 순으로 정렬한다.
 
-Static fields are included. Record header components are represented by javac
-as field declarations and use `field` evidence; compact constructor implicit
-parameters add no evidence. Enum constants' implicit self types are excluded,
-while explicitly typed enum fields are included. Nested type fields belong only
-to their own group. Generic/array/wildcard types contribute named raw types and
-named arguments/bounds, excluding primitives and in-scope generic parameter
-names. Qualified names retain their written qualification; imports are not
-resolved. Generic owner syntax such as `Outer<Value>.Inner<Port>` contributes
-`Outer.Inner`, `Value` and `Port`.
+정적 필드도 포함한다. javac은 레코드 헤더의 컴포넌트를 필드 선언으로 표현하므로 `field` 근거를 사용한다.
+축약 생성자의 암시적 매개변수는 별도 근거를 추가하지 않는다. 열거형 상수의 암시적인 자기 타입은
+제외하지만, 타입을 명시한 열거형 필드는 포함한다. 중첩 타입의 필드는 해당 타입의 그룹에만 속한다.
+제네릭·배열·와일드카드 타입에서는 이름 있는 원시 타입(raw type), 타입 인자와 경계 타입을 추출하되,
+기본형과 현재 범위의 제네릭 매개변수 이름은 제외한다. 한정된 이름은 소스에 작성된 형태를 유지하고
+import의 실제 대상은 해석하지 않는다. `Outer<Value>.Inner<Port>`처럼 소유 타입에 제네릭이 있는
+구문에서는 `Outer.Inner`, `Value`, `Port`를 추출한다.
 
-These are declared type references, including value types such as `String`.
-They do not establish dependency injection, Spring bindings, runtime calls,
-instantiation, generated Lombok constructors or resolved semantic dependencies.
-Method parameter/return types, inheritance and generic declaration bounds remain
-available in regular signatures but are not dependency evidence in this view.
+이는 `String` 같은 값 타입도 포함하는 선언상의 타입 참조다. 의존성 주입, Spring 바인딩,
+런타임 호출, 인스턴스 생성, Lombok이 생성하는 생성자나 의미 분석으로 확정한 의존성을 나타내지는 않는다.
+메서드 매개변수·반환 타입, 상속과 제네릭 선언의 경계는 일반 시그니처에서 확인할 수 있지만,
+이 조회 형식에서는 의존성 근거에 포함하지 않는다.
 
-Optional [B search guidance](../../docs/harness/REPO_MAP_SEARCH.md) is available
-for explicitly selected tasks or sessions; ordinary map use does not activate it.
+[Repo Map을 활용한 선택형 검색 지침](../../docs/harness/REPO_MAP_SEARCH.md)은
+현재 작업이나 세션에서 명시적으로 선택해 적용한다. 일반적인 맵 사용만으로 이 검색 절차가 자동 적용되지는 않는다.
