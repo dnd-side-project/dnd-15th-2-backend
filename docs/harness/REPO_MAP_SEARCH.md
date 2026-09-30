@@ -1,64 +1,56 @@
-# Local repository search conditions
+# Repo Map을 활용한 선택형 저장소 검색 지침
 
-B is optional and must be selected explicitly for each prepared session. Merging or installing these local tools does not activate B, modify global instructions, or inject a map into ordinary sessions. This adapter prepares an explicitly supplied `A` or `B` condition. It does not allocate conditions, define a public experiment API, collect usage, or run a model during preparation. Manual A/B selection is a smoke procedure; it is not the final randomized team experiment. Independently assigned tasks need not be paired.
+이 검색 방식은 파일·심볼 검색과 Repo Map 조회로 읽을 소스의 후보를 좁힌 뒤 필요한 원문을 확인하는 절차다.
+현재 작업이나 세션에서 명시적으로 선택해 적용한다. 도구를 병합하거나 이 문서를 연결하는 것만으로
+이 검색 절차가 자동 적용되거나 저장소 공통 정책이 바뀌지는 않는다.
+Issue·브랜치·TASK의 구현 시작 조건을 포함한 저장소의 모든 필수 지침을 준수한다.
+이 검색 지침 자체가 구현을 승인하는 것은 아니다.
 
-## Common workspace and identities
+이 저장소는 Repo Map 생성·최신 상태 검사·조회와 재사용 가능한 검색 절차를 제공한다.
+실험 작업 등록, 비교할 검색 방식의 배정, 세션 연결과 측정은 harness-delta의 책임이다.
+제품 실행과 버전 정책은 백엔드의 책임 범위 밖이다.
 
-Use a clean target checkout at an explicit full commit SHA with committed `AGENTS.md` and `TASK.md`. This adapter supports read-only exploration only and always records `implementation_authorized=false`; launch includes an explicit prohibition on edits and implementation. The supplied `--task-id` identifies the exploration. Existing TASK content is hashed unchanged, and the observed branch (including detached HEAD) is recorded; its older task is not reinterpreted as implementation authorization. Any future implementation requires a matching Issue/branch/TASK contract and is unsupported by this adapter. The adapter may run from a separate tooling checkout under development; this does not relax cleanliness of the target. Both conditions must use identical tracked target files, revision, product executable, model and reasoning effort. Their shared `common` identity hashes every tracked file, including common instructions and task context. The stable configuration digest excludes run paths and timestamps; each manifest separately records local paths and creation time. Compare `config.common`, `config.product_sha256`, `config.model`, `config.effort`, `config.verified_product_version` and `config.config_entrypoints` for equality before comparing outcomes; `config.condition` and the overall `config_digest` should differ between A and B.
+## 검색 절차
 
-Product version is pinned to `codex-cli 0.158.0`. Default prepare records the executable hash without executing it. Explicit `--verify-version` runs only `--version`; launch requires this evidence and rechecks it. Changing the product bytes, adapter bytes, target contents, revision, task context, condition configuration or B index/tool invalidates preparation. An expected digest from the caller guards against accidental manifest substitution; it is not a signature or a hostile-tampering security boundary.
+1. `rg`, 파일 검색과 심볼 검색으로 후보를 좁힌 뒤 필요한 소스와 기준 문서를 읽는다.
+2. 도움이 되면 기존 LSP를 사용하되, 이 절차를 위해 새로 설치하지 않는다.
+3. 필요에 따라 검색 범위를 넓힌다. 읽기 분량에는 제한을 두지 않는다.
+4. 결과 수를 제한한 맵 조회를 탐색 근거로 사용한다. 전체 맵을 컨텍스트에 주입하지 않는다.
+5. 결론을 내리기 전에 관련 소스의 근거를 확인한다. 맵은 구문 정보만 제공하며,
+   의미 분석으로 확정한 의존성이나 호출 그래프가 아니다.
 
-The manifest hashes the accessible `config.toml` and `AGENTS.md` entrypoints under `CODEX_HOME` (default `~/.codex`), records absence, and revalidates these hashes at launch without copying contents. It marks effective global settings as `unknown`. Neither hidden provider settings nor user configuration, skills, MCP servers, shell startup files, dynamic environment or account defaults are frozen by this adapter. Do not claim controlled equivalence until the operator has separately checked those conditions. Do not change or bypass baseline policies to make a comparison pass.
+## 로컬 맵 사용
 
-## Prepare without a model call
-
-All paths below are operator-supplied local paths. Store generated index and B overlay outside A's target checkout and outside measurement records. Index output must satisfy the map tool's ignored-local-output requirements. Output directories are new, private run directories; existing output is never overwritten. Create their parent directory first; prepare requires it to exist.
-
-```sh
-mkdir -p /private-runs
-python3 /tooling/scripts/repo-map/session.py prepare \
-  --condition A --workspace /targets/common \
-  --expected-revision <full-commit-sha> --task-id <task-id> \
-  --output /private-runs/a-001 --product /product/codex \
-  --model <approved-model> --effort high
-
-python3 /tooling/scripts/repo-map/run.py generate \
-  --root /targets/b --output /targets/b/build/repo-map/index.json
-python3 /tooling/scripts/repo-map/session.py prepare \
-  --condition B --workspace /targets/b \
-  --expected-revision <full-commit-sha> --task-id <task-id> \
-  --output /private-runs/b-001 --product /product/codex \
-  --model <approved-model> --effort high \
-  --map-tool /tooling/scripts/repo-map/run.py \
-  --index /targets/b/build/repo-map/index.json
-```
-
-B preparation requires a fresh index via the map tool's `check`. Its overlay contains absolute, shell-quoted query references and bounded search instructions, never the full index. A gets no overlay or index arguments. B first narrows candidates with file/symbol search, reads necessary sources and authoritative documents, and widens as needed. Existing LSP may be used; no service installation or arbitrary reading quota is required. Syntax-only map facts are not resolved dependencies or a call graph.
-
-## Explicit ordinary fresh launch
-
-After separate live authorization, prepare with `--verify-version`, inspect the manifest and copy its `config_digest` to an independently retained launch instruction. Prepare itself never launches a task. The following explicit command starts one new `codex exec`, uses JSON output, disables update checks, fixes read-only sandbox mode and sends the task (plus B overlay only for B) on standard input. It never resumes, retries, or automatically invokes a collector. Product output remains attached to the terminal; it is not copied into the manifest. A launch-attempt marker is written before invocation; reuse of that run is refused even if invocation fails. Prepare a new run after investigating a failure.
+JDK 21과 Python 3.9 이상을 준비하고 대상 저장소의 루트에서 다음 명령을 실행한다.
+출력 제약, 조회 형식과 인덱싱 한계는 [도구 설명서](../../scripts/repo-map/README.md)에
+기술되어 있다. 생성과 조회는 모델을 호출하지 않는다.
 
 ```sh
-python3 /tooling/scripts/repo-map/session.py launch \
-  --output /private-runs/a-001 --expected-config <config-digest> \
-  --task-file /private-inputs/task.txt
+python3 scripts/repo-map/run.py generate --root .
+python3 scripts/repo-map/run.py check --root .
+python3 scripts/repo-map/run.py query --root . --symbol 'SYMBOL' --limit 20
 ```
 
-This ordinary launch is not a measured collector session. No real model call is part of offline tests, which use a synthetic executable only.
+`SYMBOL`을 검색어로 바꾼다. 기본 인덱스는 Git 추적에서 제외된 로컬 파일
+`build/repo-map/index.json`이다. 사용 전에 최신 상태인지 검사하고, 인덱싱 대상 소스,
+HEAD, 도구 또는 Java/Python 런타임이 바뀌면 다시 생성한다. 조회 명령도 오래된
+인덱스를 거부한다. 생성한 인덱스는 로컬에만 보관하고 측정 기록에 포함하지 않는다.
 
-## Future measured workflow
+클래스별 심볼과 필드·명시적 생성자에 선언된 타입 참조를 묶어서 조회하려면 다음 명령을 사용한다.
 
-Freeze the exact commands, task, executable/configuration evidence, readable filesystem roots, collector linkage and new live budget for approval. Then use this ordering: neutral initial fresh exec → record exact native session link → collector-ready confirmation → resume that same linked session with the task and B-only overlay if assigned B. The neutral initial request must not contain the task or B treatment. The adapter does not implement this collector/resume sequence. Do not use its ordinary task launch as a substitute.
+```sh
+python3 scripts/repo-map/run.py query --root . --symbol 'SYMBOL' --format classes --limit 5
+```
 
-Keep evaluation oracle, previous answers, previous session artifacts and other-condition artifacts inaccessible to each tested process using independently established filesystem/process isolation. Setting the working directory alone does not confine reads; read-only sandbox mode is not an oracle-isolation guarantee. Stop the run on contamination or uncertain session linkage; record missingness rather than repairing results post hoc. Store only approved counts, timing, identifiers and hashes in measurement data, never source/index/prompt/answer contents.
+선언된 타입 참조만으로는 import의 실제 대상, 런타임 의존성 주입이나 메서드 호출을
+확정할 수 없다. 클래스 조회의 제한은 그룹 수에 적용되며, 각 그룹에 포함된 내용의
+크기를 제한하지는 않는다.
 
-## Class summary query
+## 과거 검증 기록
 
-The same query supports `--format classes` for grouped method symbols and declared field/explicit-constructor reference types. Keep a small class limit when navigating and inspect the source evidence before assuming runtime dependencies. This syntax-only view does not resolve import ambiguity, Spring injection or method calls. Existing row queries remain the default. Regenerate the map after updating these tools, then prepare new session outputs because the index, tool and B overlay fingerprints change. Previously prepared outputs remain as historical artifacts and must not be launched as current configurations.
-
-## Bounded operational observation
-
-A separately approved manual Docker check completed four source-exploration sessions and eight bounded CLI calls. Operational collection and independent review passed, and both B sessions showed map-query use. Answer correctness and completeness still require human assessment. Usage is partial, initialization is excluded, and full task totals and complete cost are unavailable. Two manually selected questions and source-citation presence do not establish general token savings, quality, or B superiority.
-
-The smoke runner and native evidence are private ignored local artifacts, not shipped product functionality. This repository does not implement randomized assignment, statistical aggregation, or the measured collector/resume runner. Docker is not required for ordinary optional map use. Further live calls need a new scoped authorization.
+기존 테스트 계획·보고서와 Git 이력에는 제거된 실험용 실행기의 당시 동작과 검증 결과가
+남아 있다. 이를 현재 실행기의 사용 지침으로 해석하지 않는다.
+기존 비공개 로컬 실험 기록은 이 저장소 밖에 보존한다.
+과거 수동 Docker 점검에서는 탐색 세션 4개를 완료하고 사용량을 부분적으로 수집했다.
+사람의 응답 품질 평가는 아직 끝나지 않았으며, 해당 운영 점검 결과만으로 Repo Map을 활용한 검색 방식의 우수성을
+입증하거나 채택을 정당화할 수 없다.
