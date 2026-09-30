@@ -92,3 +92,6 @@ They do not establish dependency injection, Spring bindings, runtime calls,
 instantiation, generated Lombok constructors or resolved semantic dependencies.
 Method parameter/return types, inheritance and generic declaration bounds remain
 available in regular signatures but are not dependency evidence in this view.
+
+Optional [B search guidance](../../docs/harness/REPO_MAP_SEARCH.md) is available
+for explicitly selected tasks or sessions; ordinary map use does not activate it.
