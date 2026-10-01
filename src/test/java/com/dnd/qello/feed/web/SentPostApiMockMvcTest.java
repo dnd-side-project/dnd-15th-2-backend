@@ -5,18 +5,6 @@
  */
 package com.dnd.qello.feed.web;
 
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyInt;
-import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.ArgumentMatchers.isNull;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
-
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -35,10 +23,21 @@ import com.dnd.qello.common.web.response.ApiResponseFactory;
 import com.dnd.qello.feed.error.FeedErrorCode;
 import com.dnd.qello.feed.error.FeedException;
 import com.dnd.qello.feed.service.FeedInteractionApplicationService;
-import com.dnd.qello.feed.view.AnswerCard;
 import com.dnd.qello.feed.view.SentPostCard;
 import com.dnd.qello.feed.view.SentPostDetail;
 import com.dnd.qello.feed.view.SentPostFilter;
+
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @ExtendWith(MockitoExtension.class)
 class SentPostApiMockMvcTest {
@@ -110,19 +109,6 @@ class SentPostApiMockMvcTest {
 	}
 
 	@Test
-	@DisplayName("답변 목록은 200과 뷰어 기준 reactedByMe·reactionCount를 함께 반환하고 자격 없는 뷰어도 빈 목록으로 200이다")
-	void answersReturnsCardsAndEmptyListForIneligibleViewer() throws Exception {
-		when(applicationService.answers(SENDER_ID, POST_ID, null, null, 20)).thenReturn(List.of(answerCard()));
-
-		mockMvc.perform(get("/api/v1/direction/posts/{postId}/answers", POST_ID))
-			.andExpect(status().isOk())
-			.andExpect(jsonPath("$.data.answers[0].answerId").value(101))
-			.andExpect(jsonPath("$.data.answers[0].reactedByMe").value(true))
-			.andExpect(jsonPath("$.data.answers[0].reactionCount").value(2))
-			.andExpect(jsonPath("$.data.answers[0].authorNickname").value("닉네임"));
-	}
-
-	@Test
 	@DisplayName("limit·cursor 검증 실패는 애플리케이션 계층 오류 코드로 400을 반환한다")
 	void mapsValidationFailuresTo400() throws Exception {
 		when(applicationService.listSentPosts(SENDER_ID, SentPostFilter.ALL, null, null, 51))
@@ -141,34 +127,27 @@ class SentPostApiMockMvcTest {
 	}
 
 	@Test
-	@DisplayName("인증 정보가 없으면 세 GET 경로 모두 401이고 application service를 호출하지 않는다")
+	@DisplayName("인증 정보가 없으면 두 GET 경로 모두 401이고 application service를 호출하지 않는다")
 	void allEndpointsRequireAuthentication() throws Exception {
 		MockMvc unauthenticatedMockMvc = buildMockMvc(false);
 
 		unauthenticatedMockMvc.perform(get("/api/v1/direction/posts")).andExpect(status().isUnauthorized());
 		unauthenticatedMockMvc.perform(get("/api/v1/direction/posts/{postId}", POST_ID))
-			.andExpect(status().isUnauthorized());
-		unauthenticatedMockMvc.perform(get("/api/v1/direction/posts/{postId}/answers", POST_ID))
-			.andExpect(status().isUnauthorized());
+				.andExpect(status().isUnauthorized());
 
 		verify(applicationService, never()).listSentPosts(anyLong(), any(), any(), any(), anyInt());
 		verify(applicationService, never()).sentPostDetail(anyLong(), anyLong());
-		verify(applicationService, never()).answers(anyLong(), anyLong(), any(), any(), anyInt());
 	}
 
 	private MockMvc buildMockMvc(boolean authenticated) {
 		Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
 		return MockMvcTestSupport.standalone(
-			new SentPostController(applicationService, new ApiResponseFactory(clock)), authenticated, SENDER_ID, clock);
+				new SentPostController(applicationService, new ApiResponseFactory(clock)), authenticated, SENDER_ID,
+				clock);
 	}
 
 	private static SentPostCard sentPostCard() {
 		return new SentPostCard(POST_ID, "질문", "본문", List.of(3L), "KR-11", NOW.minusSeconds(60),
-			NOW.plusSeconds(3600), 2, 1, 0);
-	}
-
-	private static AnswerCard answerCard() {
-		return new AnswerCard(101L, "닉네임", "KR-11", "답변 본문", List.of(), null, null, "NEAR",
-			NOW.minusSeconds(10), null, true, 2);
+				NOW.plusSeconds(3600), 2, 1, 0);
 	}
 }

@@ -12,7 +12,6 @@ import com.dnd.qello.common.web.response.ApiResponse;
 import com.dnd.qello.common.web.response.ApiResponseFactory;
 import com.dnd.qello.feed.service.FeedInteractionApplicationService;
 import com.dnd.qello.feed.view.SentPostFilter;
-import com.dnd.qello.feed.web.response.AnswerListingResponse;
 import com.dnd.qello.feed.web.response.SentPostDetailResponse;
 import com.dnd.qello.feed.web.response.SentPostListingResponse;
 
@@ -29,7 +28,8 @@ public class SentPostController implements SentPostApiSpec {
 
 	@Override
 	public ResponseEntity<ApiResponse<SentPostListingResponse>> list(
-		SentPostFilter filter, Instant cursorSubmittedAt, Long cursorPostId, int limit, Authentication authentication) {
+			SentPostFilter filter, Instant cursorSubmittedAt, Long cursorPostId, int limit,
+			Authentication authentication) {
 		long senderId = AuthenticatedUserId.require(authentication);
 		var cards = applicationService.listSentPosts(senderId, filter, cursorSubmittedAt, cursorPostId, limit);
 		return ResponseEntity.ok(responseFactory.success(SentPostListingResponse.from(cards, limit)));
@@ -39,14 +39,6 @@ public class SentPostController implements SentPostApiSpec {
 	public ResponseEntity<ApiResponse<SentPostDetailResponse>> detail(long postId, Authentication authentication) {
 		long senderId = AuthenticatedUserId.require(authentication);
 		return ResponseEntity.ok(responseFactory.success(
-			SentPostDetailResponse.from(applicationService.sentPostDetail(senderId, postId))));
-	}
-
-	@Override
-	public ResponseEntity<ApiResponse<AnswerListingResponse>> answers(
-		long postId, Instant cursorPublishedAt, Long cursorAnswerId, int limit, Authentication authentication) {
-		long viewerId = AuthenticatedUserId.require(authentication);
-		var cards = applicationService.answers(viewerId, postId, cursorPublishedAt, cursorAnswerId, limit);
-		return ResponseEntity.ok(responseFactory.success(AnswerListingResponse.from(cards, limit)));
+				SentPostDetailResponse.from(applicationService.sentPostDetail(senderId, postId))));
 	}
 }
