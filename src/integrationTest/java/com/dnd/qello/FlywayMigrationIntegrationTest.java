@@ -17,9 +17,9 @@ import org.springframework.test.context.ActiveProfiles;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-/**
- * Created at: 2026-08-03T17:45:39+09:00 Source scenario:
- * TEST-PLAN-GH-36-FLYWAY-BASELINE-INT-001 through INT-004,
+/*
+ * Created at: 2026-08-03T17:45:39+09:00
+ * Source scenario: TEST-PLAN-GH-36-FLYWAY-BASELINE-INT-001 through INT-004,
  * TEST-PLAN-GH-78-SCHEMA-REVISION-V7-INT-001,
  * TEST-PLAN-GH-88-COUNTRY-ONBOARDING-INT-003,
  * TEST-PLAN-GH-88-COUNTRY-ONBOARDING-INT-004,
