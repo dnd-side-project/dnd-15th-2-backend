@@ -8,21 +8,21 @@
 ## 1. Executive summary
 
 - Result: `PARTIAL`
-- Tested scope: `UnicodeTextNormalizer`, `ResourceLocalRuleEngine`, 두 config의 구현체 조립, 실제 구현체를 쓰는 `ModerationPipelineService` 경로. 단위 시나리오 UNIT-001~016이 통과했다.
+- Tested scope: `UnicodeTextNormalizer`, `ResourceLocalRuleEngine`, 두 config의 구현체 조립, 실제 구현체를 쓰는 `ModerationPipelineService` 경로. 단위 시나리오 UNIT-001~016과 통합 시나리오 INT-001이 통과했다. Linux(WSL) 환경에서 전체 `./gradlew test`(1099건), `./gradlew integrationTest`(747건), `./harness pr-ready --project-tests`가 모두 통과했다.
 - Unverified scope:
-  - INT-001(`ModerationPipelineIntegrationTest`): Docker가 없어 실행하지 못했다(BLOCKED).
-  - `./harness test-run`, `./harness check`, `./harness pr-ready --project-tests`: 이 PC의 환경 문제로 전체 `./gradlew test`가 29건 실패해 완료하지 못했다(아래 5절).
   - 보조 판정기 실제 구현: 공급자 미정으로 이번 범위에 없다. `UnavailableSecondaryModerationClient` 교체 완료 조건은 BLOCKED다.
-- Release recommendation: 위 미실행 항목을 CI 또는 Docker·Python이 갖춰진 환경에서 확인한 뒤 병합한다.
+  - Windows 기본 환경의 전체 `./gradlew test`: 12건이 실패한다(5절). 이 환경은 CI 대상이 아니며 Linux에서는 통과했다.
+  - GitHub Actions CI: 실행하지 않았다.
+- Release recommendation: 보조 판정기 범위를 정한 뒤 병합한다. CI 결과는 PR에서 확인한다.
 
 ## 2. Environment
 
 | Item | Version / safe description |
 | --- | --- |
-| Java | Microsoft OpenJDK 21.0.12(Gradle 실행용으로 `JAVA_HOME` 지정) |
+| Java | OpenJDK 21.0.12(Ubuntu 24.04, WSL2). Windows 측 개발 중 실행은 Microsoft OpenJDK 21.0.12 |
 | Spring Boot | 3.5.16 |
-| Database | 사용하지 않음(단위 테스트). 통합 테스트는 Testcontainers가 필요하나 Docker가 없었다 |
-| Test runner | JUnit 5, Gradle 8.14.3, Windows 11 |
+| Database | 단위 테스트는 사용하지 않음. 통합 테스트는 WSL의 Docker에서 Testcontainers로 실행 |
+| Test runner | JUnit 5, Gradle 8.14.3. 최종 검증은 Linux(WSL2), 개발 중 부분 실행은 Windows 11 |
 
 ## 3. Execution results
 
@@ -30,9 +30,11 @@
 | --- | --- | --- | --- | --- |
 | `./gradlew test --tests '*filtering*'` | PASS | filtering 패키지 전체 통과 | 11s | `build/test-results/test` |
 | 신규·변경 클래스 | PASS | UnicodeTextNormalizerTest 8, ResourceLocalRuleEngineTest 9, NicknameModerationGateConfigTest 4, AnswerModerationExecutionConfigTest 6, MinimalModerationComponentsTest 4, ModerationPipelineServiceTest 13, NicknameSyncModerationGateTest 11 | - | 같은 경로 |
-| `./gradlew test`(전체) | FAIL | 1097 중 29 실패 | 41s | 5절. 변경과 무관한 환경 실패 |
-| `./gradlew integrationTest --tests '*ModerationPipelineIntegrationTest'` | BLOCKED | 0 실행 | 6s | Docker 클라이언트를 찾지 못해 initializationError |
-| `./harness test-run` | FAIL | - | - | 전체 `test` 실패로 중단, 보고서 자동 생성 안 됨 |
+| `./gradlew test`(전체, Linux/WSL) | PASS | 1099 통과, 실패 0, 건너뜀 0 | 1m 50s | 클론한 브랜치(b510df3)에서 실행 |
+| `./gradlew integrationTest`(전체, Linux/WSL, Docker) | PASS | 747 통과, 실패 0, 건너뜀 0 | 12m 41s | `ModerationPipelineIntegrationTest` 6건 포함 |
+| `./harness pr-ready --project-tests`(Linux/WSL) | PASS | - | - | 정책 검사, Java 컨벤션 baseline, `gradlew check`, `git diff --check` 통과 |
+| `./gradlew test`(전체, Windows 11) | FAIL | 1099 중 12 실패 | 1m 14s | 5절. `origin/main`에서도 동일한 실패 |
+| `./harness test-run` | 미실행 | - | - | Windows에서 전체 `test` 실패로 중단됐고 Linux에서는 실행하지 않았다. 보고서는 수동으로 작성했다 |
 
 ## 4. Scenario results
 
@@ -45,16 +47,15 @@
 | UNIT-016 | PASS | `ModerationPipelineServiceTest` | 우회 표기 규칙 적중 시 공급자 미호출 BLOCK, 정규화 텍스트가 공급자에 전달됨 |
 | UNIT-017 | PASS(기존 테스트) | `NicknameSyncModerationGateTest.bothUnavailableFailsClosedWithoutThrowing` | 신규 테스트 없이 기존 테스트가 같은 계약을 검증한다 |
 | UNIT-018 | PASS | `MinimalModerationComponentsTest` | 삭제된 placeholder를 단언하던 UNIT-005·006을 제거하고 신규 테스트로 대체했다 |
-| INT-001 | NOT_RUN | `ModerationPipelineIntegrationTest` | Docker 없음 |
+| INT-001 | PASS | `ModerationPipelineIntegrationTest` | Linux/WSL의 Docker에서 6건 통과. 새 구현체로 조립해도 `filter_decision` 저장 동작이 변하지 않음 |
 
 ## 5. Failures and diagnostics
 
-전체 `./gradlew test` 29건 실패는 이 PC 환경 때문이며, 변경 파일과 관련이 없다.
+Linux(WSL)에서는 실패가 없다. Windows 11에서 전체 `./gradlew test`는 12건이 실패하며, 변경 파일과 관련이 없다.
 
-- Python 스텁: `python3`가 Microsoft Store 스텁이라 `RepoMapToolTest`, `JavaConventionBaselineTest`의 외부 스크립트 호출이 종료 코드 9009로 실패한다.
-- Windows 실행 형식: 테스트가 `./gradlew`를 직접 실행하는 `JavaStaticAnalysisRuleTest`, `JavaConventionBaselineTest`가 CreateProcess 193 오류로 실패한다.
-- 줄바꿈: `core.autocrlf=true`로 CRLF 체크아웃이어서 파일 SHA-256을 비교하는 `FlywayMigrationContractTest`와 소스 문자열을 비교하는 `*PersistenceBoundaryTest` 계열이 실패한다.
-- 위 실패를 `origin/main` 기준으로 다시 실행해 비교하지는 않았다. 원인 메시지가 환경 문제를 가리키는 것으로 판단했다.
+- 원인 분리: 처음 29건 실패 중 Python 스텁(`python3`가 Microsoft Store 스텁)과 CRLF 체크아웃(`core.autocrlf=true`, Flyway SHA-256 비교)은 환경 설정으로 해소했다. 해소 후 14건이 남았고, 같은 14건이 `origin/main`(e4ccc7a)에서도 실패하는 것을 별도 worktree로 확인했다. 이후 줄바꿈을 정리해 12건으로 줄었다.
+- 남은 12건의 원인은 Windows 고유 동작이다. `*PersistenceBoundaryTest`와 `AnswerJdbcBoundaryTest`는 `"/account/"` 같은 슬래시 경로 문자열로 비교하고, `JavaConventionBaselineTest`와 `JavaStaticAnalysisRuleTest`는 `./gradlew`를 직접 실행해 CreateProcess 193으로 실패하며, `RepoMapToolTest`는 심볼릭 링크 생성 권한이 없어 실패한다.
+- 위 테스트를 Windows에서 통과시키려면 테스트 코드 수정이 필요하다. 이번 이슈 범위 밖이어서 수정하지 않았다.
 
 ## 6. Potential issues
 
@@ -93,7 +94,7 @@
 ## 7. Regression and residual risk
 
 - `PassthroughTextNormalizer`, `NoMatchLocalRuleEngine`을 삭제했고 프로덕션과 테스트에서 참조가 없다(`grep` 확인). `UnavailableSecondaryModerationClient`는 `NicknameModerationGateConfig`가 아직 사용한다.
-- 미실행 항목(INT-001, 전체 `harness` 검증)은 Docker와 Python이 있는 환경에서 실행해야 한다.
+- 남은 미검증 항목은 GitHub Actions CI 결과와 보조 판정기 실제 구현이다. Windows 환경의 테스트 12건 실패는 이번 변경과 무관하게 이미 존재한다.
 
 ## 8. Artifacts
 
