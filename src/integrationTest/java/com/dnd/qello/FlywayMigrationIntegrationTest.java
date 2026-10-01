@@ -22,7 +22,8 @@ import org.springframework.test.context.ActiveProfiles;
  * Source scenario: TEST-PLAN-GH-36-FLYWAY-BASELINE-INT-001 through INT-004,
  * TEST-PLAN-GH-78-SCHEMA-REVISION-V7-INT-001, TEST-PLAN-GH-88-COUNTRY-ONBOARDING-INT-003,
  * TEST-PLAN-GH-88-COUNTRY-ONBOARDING-INT-004,
- * TEST-PLAN-GH-115-DIRECTION-MATCHING-CONTRACT-INT-001
+ * TEST-PLAN-GH-115-DIRECTION-MATCHING-CONTRACT-INT-001,
+ * TEST-PLAN-GH-294-COUNTRY-SEED-INT-006
  */
 @SpringBootTest
 @ActiveProfiles({"test", "flyway-migration"})
@@ -317,6 +318,11 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 			FROM flyway_schema_history
 			WHERE version = '28' AND success
 			""", Integer.class);
+		Integer successfulV29 = jdbcTemplate.queryForObject("""
+			SELECT count(*)
+			FROM flyway_schema_history
+			WHERE version = '29' AND success
+			""", Integer.class);
 		String postgisVersion = jdbcTemplate.queryForObject(
 			"SELECT PostGIS_Version()", String.class);
 
@@ -348,7 +354,8 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 		assertThat(successfulV26).isEqualTo(1);
 		assertThat(successfulV27).isEqualTo(1);
 		assertThat(successfulV28).isEqualTo(1);
-		assertThat(flyway.info().applied()).hasSize(28);
+		assertThat(successfulV29).isEqualTo(1);
+		assertThat(flyway.info().applied()).hasSize(29);
 		assertThat(postgisVersion).isNotBlank();
 	}
 
