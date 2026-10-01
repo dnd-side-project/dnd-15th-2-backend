@@ -1,59 +1,273 @@
 # Direction Communication Schema Manifest
 
-> GitHub Issue: #53
->
-> Snapshot date: 2026-08-11
->
-> Status: V1~V8 적용 이력과 V1~V9 baseline inventory를 보존한다. 현재 작업 브랜치에는
-> `V10`, filtering release registry `V11`, Issue #115의 `V12` migration이 존재하며,
-> 아래에 `V12` 계약을 추가로 기록했다. V12의 실제 PostgreSQL catalog 검증은 구현·통합 테스트 executor의 책임이다. `V7`(Issue #73, PR #81)이 `device_credential`을
-> 먼저 `main`에 merge해 번호를 점유했고, 2026-08-07 스키마 개정(답변 격리 폐기,
-> ADR-0002)은 `V8`로 반영했다(Issue #78, 원래 `V7`로 작성했으나 재번호). `V8` 적용
-> 검증은 Issue #78에서 한다.
->
-> **§5~§12 인벤토리는 2026-08-08(V1~V8) 기준으로 갱신했다.** 2026-08-05(V1+V2 상태)
-> 이후 `V3`~`V7`(user_account 비밀번호·낙관적 잠금, operator_credential, Spring
-> Session, device_credential)에서 소급 반영하지 않고 남아 있던 공백을 이번에 함께
-> 메웠다. 각 항목의 유래(어느 migration이 추가했는지)는 표·목록에 `(V5)`, `(V7)`,
-> `(V8)` 식으로 표시했다.
-> 근거는 `src/integrationTest/java/com/dnd/qello/FlywayMigrationIntegrationTest.java`의
-> `EXPECTED_TABLES`/`EXPECTED_INDEXES`/`EXPECTED_FUNCTIONS`/`EXPECTED_TRIGGERS`와
-> `catalogMatchesApprovedManifest()`의 제약 개수 assertion이다 — 이 테스트가 매
-> 마이그레이션마다 실제 DB catalog와 대조하므로, 이후에도 이 절들이 뒤처지면 그
-> 테스트를 1차 대조군으로 다시 맞춘다.
->
-> **2026-08-08(Issue #79) 정정**: 이 표의 DBML 행 SHA-256이 저장소에 실제로 커밋된
-> 파일과 불일치했다(`3b443c4b…` 기록 vs 실제 파일 `fb39599f…`) — `#78`이 §5~§12
-> 인벤토리는 갱신했지만 이 SHA-256 값을 재계산하지 않고 남긴 결함이다. 같은 시점에
-> vault 원본도 `post_reaction` 테이블 Note가 08-07 개정(공감 개수 노출 범위 확대)을
-> 놓친 것을 뒤늦게 발견해 정정했다. 이번에 저장소 DBML·ERD를 vault의 2026-08-08
-> 정정본으로 다시 동기화하고 SHA-256을 재계산했다 — 스키마·제약 변경은 없고 Note
-> 문구만 바뀌었으므로 §5~§12 인벤토리는 그대로 유효하다.
->
-> **2026-08-08b 재동기화**: 위 `#79` 판 이후 vault DBML이 인증 부록(§6 참고)을 더
-> 정합화했다 — `uq_user_account_id_role`/`uq_operator_credential_login_id`/
-> `uq_active_device_installation`은 전부 `V5`·`V7`이 이미 만든 실제 제약인데 vault
-> DBML의 `indexes{}` 선언이 빠져 있거나 `[unique]` 태그가 누락돼 있던 것을 vault
-> 쪽에서 바로잡았다. 이 저장소 DBML·ERD를 그 판으로 다시 byte-for-byte 재동기화하고
-> SHA-256을 갱신했다. 스키마·제약 개수는 바뀌지 않는다 — §5~§12는 그대로 유효하다.
-> 같은 작업 중 `ck_answer_edit_count_matches_edited_at`(vault) vs
-> `ck_answer_edit_count_edited_at`(`V8` 실제)이라는 두 번째 이름 불일치를 발견해
-> §3에 기록했다.
+> **현행 스냅샷:** 2026-09-29 · Issue #288 · `TASK-GH-288-ERD-DBML-REFRESH` · 기준 commit `b7118f7628813bed86a15f9eb5b46063b4400a1d` · Flyway V1~V28. 이 문서의 현행 인벤토리는 해당 migration을 빈 PostgreSQL 16/PostGIS 3.5에 적용한 로컬 카탈로그 기준이며 운영 DB와의 일치를 주장하지 않는다.
 
-## 1. 목적
+## 권위와 범위
 
-이 문서는 방향 소통 DBML, 설명 ERD, 독립 실행형 기준 DDL의 출처와
-동기화 지점을 고정한다. Issue #36부터는 이 manifest와 ADR을 검토 기준으로
-사용한다.
+[ADR-0001](../../adr/0001-database-schema-ownership.md)에 따라 실행 DB 변경의 권위는 [Flyway V1~V28 migration](../../../src/main/resources/db/migration/)이다. [DBML](direction_communication.dbml)은 현재 백엔드의 논리 설계이고 [ERD 설명](DIRECTION_COMMUNICATION_ERD.md)은 관계·동작의 해설이다. 과거 외부 vault/독립 DDL snapshot은 아래 접힌 이력에만 둔다. 이 manifest의 전체 집계는 `public`의 제품·백엔드 52개와 Spring Session 2개를 포함하고, PostGIS extension 소유 객체와 `flyway_schema_history`를 제외한다.
 
-## 2. 권위와 변경 순서
+## 현재 파일 체크섬
 
-1. 제품·논리 스키마 변경은 `direction_communication.dbml`에 먼저 반영한다.
-2. Issue #36에서 생성할 Flyway migration만 실행 DB schema를 변경한다.
-3. `DIRECTION_COMMUNICATION_ERD.md`는 DBML과 migration의 설명 문서다.
-4. 이미 적용된 Flyway migration은 수정하지 않고 새 versioned migration을 추가한다.
-5. DBML, migration, ERD가 충돌하면 임의로 DDL만 고치지 않는다. DBML 변경과
-   정책 근거를 먼저 리뷰한 뒤 새 migration으로 반영한다.
+| Artifact | SHA-256 | 검증 시점·의미 |
+| --- | --- | --- |
+| [DBML](direction_communication.dbml) | `8d11d7e861e574843af8311621f917438bda81eeb0b23f2143c169b8aa03ca31` | 2026-09-29, 최종 편집 후 계산 |
+| [ERD](DIRECTION_COMMUNICATION_ERD.md) | `87a40bfa4726d3059a9fd055a8f6b0a3ad7ea2b5a116d20eeec6b8100f69d170` | 2026-09-29, 최종 편집 후 계산 |
+
+과거 checksum은 아래 **이력** 표에 원문대로 보존한다. 이 두 현행 값은 저장소 파일의 해시이며 외부 vault 원본과의 byte-for-byte 일치 증거가 아니다.
+
+## V1~V28 전체 카탈로그 요약
+
+| 객체 | 전체 | 제품·백엔드 | Spring Session |
+| --- | ---: | ---: | ---: |
+| 테이블 | 54 | 52 | 2 |
+| 컬럼 | 454 | 444 | 10 |
+| 인덱스 | 166 | 161 | 5 |
+| 사용자 함수 | 13 | 13 | 0 |
+| 사용자 트리거 | 12 | 12 | 0 |
+| PRIMARY KEY | 54 | 52 | 2 |
+| FOREIGN KEY | 82 | 81 | 1 |
+| UNIQUE 제약 | 23 | 23 | 0 |
+| CHECK | 187 | 187 | 0 |
+| 지연 constraint trigger | 8 | 8 | 0 |
+| **일반 테이블 제약 (p/f/u/c)** | **346** | **343** | **3** |
+| **`pg_constraint` 전체 (p/f/u/c/t)** | **354** | **351** | **3** |
+
+제약 트리거 8개(`t`)는 사용자 트리거 12개 중 8개의 카탈로그 표현이기도 하다. 따라서 354행을 PK/FK/UNIQUE/CHECK 합계로 읽거나 사용자 트리거 12개를 다시 더하지 않는다. 인덱스 166개는 PK 지원 54, UNIQUE 제약 지원 23, 독립 UNIQUE 23, 독립 비 UNIQUE 66으로 나뉜다. 제품·백엔드 161개와 Spring Session 5개를 같은 기준으로 센 값이다.
+
+## 테이블·컬럼 전체 인벤토리
+
+열 이름은 카탈로그의 ordinal 순서다. 괄호의 숫자는 열 수이며 이름별 상세 타입·nullable·기본값은 DBML과 migration에 있다.
+
+| 범위 | 테이블 | 컬럼 | 열 이름 |
+| --- | --- | ---: | --- |
+| 제품·백엔드 | `active_user_presence` | 8 | `user_id`, `position`, `coarse_cell_id`, `coarse_region_code`, `accuracy_m`, `receive_allowed`, `location_at`, `expires_at` |
+| 제품·백엔드 | `answer` | 16 | `id`, `post_recipient_id`, `author_id`, `status`, `idempotency_key`, `body_text`, `coarse_region_code`, `bearing_from_sender_deg`, `distance_band`, `moderation_status`, `submitted_at`, `published_at`, `deleted_at`, `distance_m`, `edited_at`, `edit_count` |
+| 제품·백엔드 | `answer_reaction` | 3 | `answer_id`, `reactor_id`, `created_at` |
+| 제품·백엔드 | `appeal_case` | 14 | `id`, `target_type`, `target_id`, `filter_decision_id`, `created_at`, `appellant_user_id`, `status`, `window_started_at`, `expires_at`, `acceptance_reason_code`, `decision`, `decided_at`, `decided_by_operator_user_id`, `restore_blocked_reason_code` |
+| 제품·백엔드 | `approved_question` | 11 | `id`, `source_proposal_id`, `source_type`, `status`, `question_text`, `answer_format`, `active_from`, `active_until`, `approved_at`, `approved_by`, `created_at` |
+| 제품·백엔드 | `device_credential` | 9 | `id`, `user_id`, `installation_id`, `secret_hash`, `platform`, `credential_status`, `last_used_at`, `created_at`, `revoked_at` |
+| 제품·백엔드 | `direction_post` | 14 | `id`, `sender_id`, `approved_question_id`, `status`, `idempotency_key`, `body_text`, `coarse_region_code`, `moderation_status`, `submitted_at`, `published_at`, `expires_at`, `deleted_at`, `answers_read_at`, `request_fingerprint` |
+| 제품·백엔드 | `direction_scheme` | 7 | `id`, `code`, `version`, `type`, `segment_count`, `start_offset_deg`, `status` |
+| 제품·백엔드 | `direction_segment` | 7 | `id`, `scheme_id`, `segment_key`, `display_name`, `center_bearing_deg`, `angular_width_deg`, `sort_order` |
+| 제품·백엔드 | `filter_decision` | 8 | `id`, `filter_job_id`, `attempt_generation`, `verdict`, `requested_release_id`, `actual_model`, `decided_at`, `created_at` |
+| 제품·백엔드 | `filter_job` | 14 | `id`, `target_type`, `target_id`, `target_version`, `filter_release_id`, `status`, `attempt_generation`, `manually_resolved`, `resolved_verdict`, `idempotency_key`, `created_at`, `updated_at`, `deadline_at`, `logical_attempt_count` |
+| 제품·백엔드 | `filter_job_status_history` | 6 | `id`, `filter_job_id`, `from_status`, `to_status`, `reason`, `occurred_at` |
+| 제품·백엔드 | `filter_release` | 8 | `id`, `created_at`, `normalization_ref`, `local_ruleset_ref`, `category_mapping_ref`, `model_snapshot`, `status`, `promoted_at` |
+| 제품·백엔드 | `filter_release_retry_gate` | 6 | `filter_release_id`, `state`, `current_limit`, `consecutive_failures`, `consecutive_successes`, `updated_at` |
+| 제품·백엔드 | `manual_review_case` | 15 | `id`, `target_type`, `target_id`, `target_version`, `filter_release_id`, `created_at`, `status`, `filter_job_id`, `band`, `validated_report_signal_count`, `priority_policy_version`, `priority_reason_code`, `resolved_at`, `resolved_by_operator_user_id`, `resolved_verdict` |
+| 제품·백엔드 | `manual_review_priority_evaluation` | 6 | `id`, `manual_review_case_id`, `band`, `reason_code`, `policy_version`, `evaluated_at` |
+| 제품·백엔드 | `media_asset` | 11 | `id`, `owner_id`, `status`, `storage_key`, `mime_type`, `byte_size`, `checksum`, `exif_stripped`, `moderation_status`, `created_at`, `deleted_at` |
+| 제품·백엔드 | `media_attachment` | 5 | `media_id`, `owner_id`, `post_id`, `answer_id`, `display_order` |
+| 제품·백엔드 | `moderation_review` | 7 | `id`, `report_id`, `reviewer_id`, `decision`, `action_type`, `internal_note`, `reviewed_at` |
+| 제품·백엔드 | `notification` | 11 | `id`, `recipient_id`, `outbox_event_id`, `notification_type`, `dedup_key`, `direction_post_id`, `answer_id`, `status`, `created_at`, `read_at`, `report_id` |
+| 제품·백엔드 | `notification_delivery` | 9 | `id`, `notification_id`, `push_device_id`, `status`, `attempt_count`, `next_attempt_at`, `created_at`, `sent_at`, `provider_message_id` |
+| 제품·백엔드 | `notification_event` | 11 | `id`, `case_id`, `admin_link_path`, `status`, `attempt_count`, `next_attempt_at`, `created_at`, `processed_at`, `lease_owner`, `lease_expires_at`, `lease_generation` |
+| 제품·백엔드 | `notification_preference` | 4 | `notification_type`, `user_id`, `enabled`, `updated_at` |
+| 제품·백엔드 | `notification_seen_state` | 2 | `user_id`, `seen_at` |
+| 제품·백엔드 | `notification_user_setting` | 6 | `user_id`, `push_enabled`, `quiet_start`, `quiet_end`, `quiet_zone_id`, `updated_at` |
+| 제품·백엔드 | `operator_action_audit` | 9 | `id`, `operator_user_id`, `action_type`, `target_type`, `target_key`, `reason_code`, `reason_text`, `policy_version`, `occurred_at` |
+| 제품·백엔드 | `operator_credential` | 10 | `user_id`, `role`, `login_id`, `password_hash`, `failed_attempt_count`, `locked_until`, `password_updated_at`, `last_login_at`, `created_at`, `updated_at` |
+| 제품·백엔드 | `outbox_event` | 15 | `id`, `aggregate_type`, `aggregate_id`, `event_type`, `dedup_key`, `payload`, `status`, `attempt_count`, `next_attempt_at`, `created_at`, `processed_at`, `match_round`, `lease_owner`, `lease_expires_at`, `lease_generation` |
+| 제품·백엔드 | `post_audience` | 10 | `post_id`, `direction_scheme_id`, `selected_segment_key`, `center_bearing_deg`, `angular_width_deg`, `min_distance_m`, `max_distance_m`, `origin_position`, `origin_cell_id`, `snapshotted_at` |
+| 제품·백엔드 | `post_reaction` | 3 | `post_id`, `reactor_id`, `created_at` |
+| 제품·백엔드 | `post_recipient` | 18 | `id`, `post_id`, `recipient_id`, `status`, `distance_band`, `matched_bearing_deg`, `matched_region_code`, `matched_at`, `discovered_at`, `opened_at`, `skipped_at`, `capacity_released_at`, `expired_at`, `blocked_at`, `skip_requested_at`, `inbound_bearing_deg`, `distance_m`, `answers_read_at` |
+| 제품·백엔드 | `push_daily_budget` | 5 | `user_id`, `budget_date`, `consumed_total`, `consumed_general`, `updated_at` |
+| 제품·백엔드 | `push_device` | 8 | `id`, `user_id`, `platform`, `token_ciphertext`, `token_fingerprint`, `device_status`, `last_seen_at`, `revoked_at` |
+| 제품·백엔드 | `push_dispatch_group` | 15 | `id`, `recipient_id`, `notification_type`, `aggregation_key`, `status`, `window_started_at`, `collect_until`, `policy_expires_at`, `attempt_count`, `next_attempt_at`, `budget_local_date`, `budget_consumed_at`, `first_attempted_at`, `created_at`, `completed_at` |
+| 제품·백엔드 | `push_dispatch_group_member` | 3 | `group_id`, `notification_id`, `created_at` |
+| 제품·백엔드 | `question_assignment` | 7 | `id`, `cycle_id`, `approved_question_id`, `display_order`, `assigned_at`, `first_viewed_at`, `used_at` |
+| 제품·백엔드 | `question_assignment_cycle` | 8 | `id`, `user_id`, `cycle_key`, `pool_version`, `status`, `starts_at`, `ends_at`, `created_at` |
+| 제품·백엔드 | `question_proposal` | 8 | `id`, `proposer_id`, `status`, `proposed_text`, `decision_reason`, `submitted_at`, `created_at`, `updated_at` |
+| 제품·백엔드 | `question_proposal_review` | 6 | `id`, `proposal_id`, `reviewer_id`, `decision`, `reason`, `reviewed_at` |
+| 제품·백엔드 | `recipient_receive_state` | 6 | `user_id`, `active_unhandled_count`, `recent_received_count`, `recent_window_started_at`, `last_received_at`, `updated_at` |
+| 제품·백엔드 | `region_code` | 5 | `code`, `parent_code`, `display_name`, `level`, `created_at` |
+| 제품·백엔드 | `release_promotion_history` | 6 | `id`, `release_id`, `action`, `previous_active_release_id`, `operator_user_id`, `occurred_at` |
+| 제품·백엔드 | `report` | 12 | `id`, `reporter_id`, `target_user_id`, `direction_post_id`, `answer_id`, `reason_code`, `detail`, `status`, `created_at`, `resolved_at`, `case_id`, `sub_reason_code` |
+| 제품·백엔드 | `report_case` | 12 | `id`, `target_user_id`, `direction_post_id`, `answer_id`, `status`, `severity`, `queue`, `decision`, `created_at`, `resolved_at`, `sla_due_at`, `linked_manual_review_case_id` |
+| 제품·백엔드 | `report_case_event` | 5 | `id`, `case_id`, `event_type`, `detail`, `occurred_at` |
+| 제품·백엔드 | `report_content_snapshot` | 12 | `report_id`, `captured_at`, `target_type`, `target_id`, `author_id`, `body_text`, `media_object_keys`, `edit_count`, `content_published_at`, `content_hash`, `legal_hold`, `purge_after` |
+| 제품·백엔드 | `snapshot_emergency_migration_history` | 7 | `id`, `model_snapshot`, `source_release_id`, `target_release_id`, `migrated_job_count`, `operator_user_id`, `occurred_at` |
+| 제품·백엔드 | `snapshot_health` | 9 | `model_snapshot`, `status`, `target_only_failure_count`, `first_target_only_failure_at`, `last_target_only_failure_at`, `official_announcement`, `confirmed_at`, `confirmed_by_operator_user_id`, `updated_at` |
+| 제품·백엔드 | `snapshot_health_probe_result` | 5 | `id`, `model_snapshot`, `probe_type`, `classification`, `probed_at` |
+| 프레임워크 | `spring_session` | 7 | `primary_id`, `session_id`, `creation_time`, `last_access_time`, `max_inactive_interval`, `expiry_time`, `principal_name` |
+| 프레임워크 | `spring_session_attributes` | 3 | `session_primary_id`, `attribute_name`, `attribute_bytes` |
+| 제품·백엔드 | `user_account` | 14 | `id`, `role`, `status`, `coarse_region_code`, `locale`, `timezone`, `nickname`, `created_at`, `updated_at`, `deleted_at`, `version`, `country_code`, `country_level`, `profile_image_media_id` |
+| 제품·백엔드 | `user_block` | 4 | `blocker_id`, `blocked_id`, `created_at`, `released_at` |
+| 제품·백엔드 | `user_private_attribute` | 4 | `user_id`, `gender`, `age_band`, `updated_at` |
+
+## 제약 전체 인벤토리
+
+각 행의 이름은 해당 테이블의 최종 `pg_constraint` 명칭이다. `t` 항목은 아래 trigger 인벤토리와 중복 표시된다. CHECK의 SQL 식은 DBML Table Note와 원본 migration을 따른다.
+
+| 테이블 | PK | FK | UNIQUE | CHECK | t (constraint trigger) |
+| --- | --- | --- | --- | --- | --- |
+| `active_user_presence` | `active_user_presence_pkey` | `fk_active_user_presence_region`, `fk_active_user_presence_user` | — | `ck_active_user_presence_accuracy`, `ck_active_user_presence_expiry`, `ck_active_user_presence_location` | — |
+| `answer` | `answer_pkey` | `fk_answer_recipient_author`, `fk_answer_region` | `uq_answer_id_author`, `uq_answer_idempotency` | `ck_answer_bearing`, `ck_answer_body`, `ck_answer_deleted_at`, `ck_answer_distance_band`, `ck_answer_distance_m`, `ck_answer_edit_count`, `ck_answer_edit_count_edited_at`, `ck_answer_moderation`, `ck_answer_published_at`, `ck_answer_status` | `ct_answer_has_content` |
+| `answer_reaction` | `pk_answer_reaction` | `fk_answer_reaction_answer`, `fk_answer_reaction_user` | — | — | `ct_answer_reaction_reactor_can_view` |
+| `appeal_case` | `appeal_case_pkey` | `fk_appeal_case_decision` | — | `ck_appeal_case_acceptance_reason_code`, `ck_appeal_case_appellant_user_id`, `ck_appeal_case_decided_fields`, `ck_appeal_case_decision`, `ck_appeal_case_expires_after_window_start`, `ck_appeal_case_restore_blocked_reason`, `ck_appeal_case_status`, `ck_appeal_case_target_type` | — |
+| `approved_question` | `approved_question_pkey` | `fk_approved_question_approver`, `fk_approved_question_source_proposal` | `uq_approved_question_source_proposal` | `ck_approved_question_active_range`, `ck_approved_question_answer_format`, `ck_approved_question_approval`, `ck_approved_question_source`, `ck_approved_question_source_type`, `ck_approved_question_status`, `ck_approved_question_text` | — |
+| `device_credential` | `device_credential_pkey` | `fk_device_credential_user` | — | `ck_device_credential_installation_id`, `ck_device_credential_platform`, `ck_device_credential_revoked_at`, `ck_device_credential_status` | — |
+| `direction_post` | `direction_post_pkey` | `fk_direction_post_question`, `fk_direction_post_region`, `fk_direction_post_sender` | `uq_direction_post_id_sender`, `uq_direction_post_idempotency` | `ck_direction_post_answers_read_at`, `ck_direction_post_body`, `ck_direction_post_deleted_at`, `ck_direction_post_expiry`, `ck_direction_post_moderation`, `ck_direction_post_published_at`, `ck_direction_post_status` | `ct_direction_post_has_content`, `ct_direction_post_question_active` |
+| `direction_scheme` | `direction_scheme_pkey` | — | `uq_direction_scheme_code_version` | `ck_direction_scheme_segment_count`, `ck_direction_scheme_start_offset`, `ck_direction_scheme_status`, `ck_direction_scheme_type`, `ck_direction_scheme_version` | — |
+| `direction_segment` | `direction_segment_pkey` | `fk_direction_segment_scheme` | `uq_direction_segment_key`, `uq_direction_segment_order` | `ck_direction_segment_center`, `ck_direction_segment_order`, `ck_direction_segment_width` | — |
+| `filter_decision` | `filter_decision_pkey` | `fk_filter_decision_job`, `fk_filter_decision_requested_release` | — | `ck_filter_decision_verdict` | — |
+| `filter_job` | `filter_job_pkey` | `fk_filter_job_release` | — | `ck_filter_job_attempt_generation`, `ck_filter_job_logical_attempt_count`, `ck_filter_job_manual_implies_resolved`, `ck_filter_job_resolved_has_verdict`, `ck_filter_job_resolved_verdict`, `ck_filter_job_status`, `ck_filter_job_target_type` | — |
+| `filter_job_status_history` | `filter_job_status_history_pkey` | `fk_filter_job_status_history_job` | — | — | — |
+| `filter_release` | `filter_release_pkey` | — | — | `ck_filter_release_promoted_at`, `ck_filter_release_status` | — |
+| `filter_release_retry_gate` | `filter_release_retry_gate_pkey` | `fk_filter_release_retry_gate_release` | — | `ck_filter_release_retry_gate_counts`, `ck_filter_release_retry_gate_limit`, `ck_filter_release_retry_gate_limit_positive`, `ck_filter_release_retry_gate_state` | — |
+| `manual_review_case` | `manual_review_case_pkey` | `fk_manual_review_case_job`, `fk_manual_review_case_release` | — | `ck_manual_review_case_band`, `ck_manual_review_case_report_signal_count`, `ck_manual_review_case_resolved_fields`, `ck_manual_review_case_resolved_verdict`, `ck_manual_review_case_status`, `ck_manual_review_case_target_type` | — |
+| `manual_review_priority_evaluation` | `manual_review_priority_evaluation_pkey` | `fk_manual_review_priority_evaluation_case` | — | `ck_manual_review_priority_evaluation_band` | — |
+| `media_asset` | `media_asset_pkey` | `fk_media_asset_owner` | `uq_media_asset_id_owner`, `uq_media_asset_storage_key` | `ck_media_asset_deleted_at`, `ck_media_asset_moderation`, `ck_media_asset_size`, `ck_media_asset_status` | `ct_media_status_preserves_content` |
+| `media_attachment` | `media_attachment_pkey` | `fk_media_attachment_answer_owner`, `fk_media_attachment_asset_owner`, `fk_media_attachment_post_owner` | — | `ck_media_attachment_exactly_one_target`, `ck_media_attachment_order` | `ct_media_attachment_preserves_content` |
+| `moderation_review` | `moderation_review_pkey` | `fk_moderation_review_report`, `fk_moderation_review_reviewer` | — | `ck_moderation_review_action_type`, `ck_moderation_review_decision` | — |
+| `notification` | `notification_pkey` | `fk_notification_answer`, `fk_notification_outbox`, `fk_notification_post`, `fk_notification_recipient`, `notification_report_id_fkey` | `uq_notification_recipient_dedup` | `ck_notification_read_at`, `ck_notification_status`, `ck_notification_target`, `ck_notification_type` | — |
+| `notification_delivery` | `notification_delivery_pkey` | `fk_notification_delivery_device`, `fk_notification_delivery_notification` | `uq_notification_delivery_device` | `ck_notification_delivery_attempt_count`, `ck_notification_delivery_sent_at`, `ck_notification_delivery_status` | — |
+| `notification_event` | `notification_event_pkey` | `fk_notification_event_case` | `uq_notification_event_case_id` | `ck_notification_event_attempt_count`, `ck_notification_event_lease_generation`, `ck_notification_event_lease_state`, `ck_notification_event_processed_at`, `ck_notification_event_status` | — |
+| `notification_preference` | `pk_notification_preference` | `fk_notification_preference_user` | — | `ck_notification_preference_type` | — |
+| `notification_seen_state` | `notification_seen_state_pkey` | `fk_notification_seen_state_user` | — | — | — |
+| `notification_user_setting` | `notification_user_setting_pkey` | `fk_notification_user_setting_user` | — | `ck_notification_user_setting_distinct_quiet_hours`, `ck_notification_user_setting_quiet_hours` | — |
+| `operator_action_audit` | `operator_action_audit_pkey` | — | — | `ck_operator_action_audit_action_type`, `ck_operator_action_audit_operator`, `ck_operator_action_audit_policy_version`, `ck_operator_action_audit_reason_code`, `ck_operator_action_audit_reason_text`, `ck_operator_action_audit_target_key`, `ck_operator_action_audit_target_type` | — |
+| `operator_credential` | `operator_credential_pkey` | `fk_operator_credential_user` | `uq_operator_credential_login_id` | `ck_operator_credential_failed_attempt`, `ck_operator_credential_locked_until`, `ck_operator_credential_login_id`, `ck_operator_credential_role` | — |
+| `outbox_event` | `outbox_event_pkey` | — | `uq_outbox_event_dedup` | `ck_outbox_event_aggregate_type`, `ck_outbox_event_attempt_count`, `ck_outbox_event_event_type`, `ck_outbox_event_lease_generation`, `ck_outbox_event_lease_state`, `ck_outbox_event_match_round`, `ck_outbox_event_payload`, `ck_outbox_event_processed_at`, `ck_outbox_event_status` | — |
+| `post_audience` | `post_audience_pkey` | `fk_post_audience_post`, `fk_post_audience_segment` | — | `ck_post_audience_center`, `ck_post_audience_distance`, `ck_post_audience_origin`, `ck_post_audience_width` | — |
+| `post_reaction` | `pk_post_reaction` | `fk_post_reaction_recipient` | — | — | — |
+| `post_recipient` | `post_recipient_pkey` | `fk_post_recipient_post`, `fk_post_recipient_region`, `fk_post_recipient_user` | `uq_post_recipient_id_user`, `uq_post_recipient_post_user` | `ck_post_recipient_answers_read_at`, `ck_post_recipient_bearing`, `ck_post_recipient_distance_band`, `ck_post_recipient_distance_m`, `ck_post_recipient_inbound_bearing`, `ck_post_recipient_skip_pending`, `ck_post_recipient_status`, `ck_post_recipient_status_timestamps`, `ck_post_recipient_timestamps` | `ct_post_recipient_capacity_release`, `ct_post_recipient_not_sender` |
+| `push_daily_budget` | `pk_push_daily_budget` | `fk_push_daily_budget_user` | — | `ck_push_daily_budget_counts` | — |
+| `push_device` | `push_device_pkey` | `fk_push_device_user` | — | `ck_push_device_platform`, `ck_push_device_revoked_at`, `ck_push_device_status` | — |
+| `push_dispatch_group` | `push_dispatch_group_pkey` | `fk_push_dispatch_group_recipient` | `uq_push_dispatch_group_aggregation_key` | `ck_push_dispatch_group_attempt_count`, `ck_push_dispatch_group_budget`, `ck_push_dispatch_group_completed_at`, `ck_push_dispatch_group_first_attempt`, `ck_push_dispatch_group_status`, `ck_push_dispatch_group_type`, `ck_push_dispatch_group_window` | — |
+| `push_dispatch_group_member` | `pk_push_dispatch_group_member` | `fk_push_dispatch_group_member_group`, `fk_push_dispatch_group_member_notification` | — | — | — |
+| `question_assignment` | `question_assignment_pkey` | `fk_question_assignment_cycle`, `fk_question_assignment_question` | `uq_question_assignment_cycle_order`, `uq_question_assignment_cycle_question` | `ck_question_assignment_display_order`, `ck_question_assignment_used_at`, `ck_question_assignment_viewed_at` | — |
+| `question_assignment_cycle` | `question_assignment_cycle_pkey` | `fk_question_assignment_cycle_user` | `uq_question_assignment_cycle_user_key` | `ck_question_assignment_cycle_range`, `ck_question_assignment_cycle_status` | — |
+| `question_proposal` | `question_proposal_pkey` | `fk_question_proposal_proposer` | — | `ck_question_proposal_status`, `ck_question_proposal_submission`, `ck_question_proposal_text` | — |
+| `question_proposal_review` | `question_proposal_review_pkey` | `fk_question_proposal_review_proposal`, `fk_question_proposal_review_reviewer` | — | `ck_question_proposal_review_decision`, `ck_question_proposal_review_reason` | — |
+| `recipient_receive_state` | `recipient_receive_state_pkey` | `fk_recipient_receive_state_user` | — | `ck_recipient_receive_state_active_count`, `ck_recipient_receive_state_last_received`, `ck_recipient_receive_state_recent_count` | — |
+| `region_code` | `region_code_pkey` | `fk_region_code_parent` | `uq_region_code_code_level` | `ck_region_code_display_name`, `ck_region_code_level`, `ck_region_code_not_self_parent`, `ck_region_code_root` | — |
+| `release_promotion_history` | `release_promotion_history_pkey` | `fk_release_promotion_history_previous_release`, `fk_release_promotion_history_release` | — | `ck_release_promotion_history_action` | — |
+| `report` | `report_pkey` | `fk_report_answer`, `fk_report_direction_post`, `fk_report_reporter`, `fk_report_target_user`, `report_case_id_fkey` | — | `ck_report_exactly_one_target`, `ck_report_reason`, `ck_report_resolution`, `ck_report_status`, `ck_report_sub_reason` | — |
+| `report_case` | `report_case_pkey` | `fk_report_case_answer`, `fk_report_case_direction_post`, `fk_report_case_target_user` | — | `ck_report_case_decision`, `ck_report_case_exactly_one_target`, `ck_report_case_linked_manual_review_case_id`, `ck_report_case_queue`, `ck_report_case_resolution`, `ck_report_case_severity`, `ck_report_case_status` | — |
+| `report_case_event` | `report_case_event_pkey` | `fk_report_case_event_case` | — | `ck_report_case_event_type` | — |
+| `report_content_snapshot` | `report_content_snapshot_pkey` | `fk_report_content_snapshot_report` | — | `ck_report_content_snapshot_author_id`, `ck_report_content_snapshot_edit_count`, `ck_report_content_snapshot_target_id`, `ck_report_content_snapshot_target_type` | — |
+| `snapshot_emergency_migration_history` | `snapshot_emergency_migration_history_pkey` | `fk_snapshot_emergency_migration_history_snapshot`, `fk_snapshot_emergency_migration_history_source_release`, `fk_snapshot_emergency_migration_history_target_release` | — | `ck_snapshot_emergency_migration_history_different_release`, `ck_snapshot_emergency_migration_history_job_count` | — |
+| `snapshot_health` | `snapshot_health_pkey` | — | — | `ck_snapshot_health_confirmed`, `ck_snapshot_health_status`, `ck_snapshot_health_target_only_failure_count` | — |
+| `snapshot_health_probe_result` | `snapshot_health_probe_result_pkey` | `fk_snapshot_health_probe_result_snapshot` | — | `ck_snapshot_health_probe_result_classification`, `ck_snapshot_health_probe_result_type` | — |
+| `spring_session` | `spring_session_pk` | — | — | — | — |
+| `spring_session_attributes` | `spring_session_attributes_pk` | `spring_session_attributes_fk` | — | — | — |
+| `user_account` | `user_account_pkey` | `fk_user_account_country`, `fk_user_account_profile_image`, `fk_user_account_region` | `uq_user_account_id_role` | `ck_user_account_country_code`, `ck_user_account_deleted_at`, `ck_user_account_nickname`, `ck_user_account_role`, `ck_user_account_status`, `ck_user_account_user_country` | — |
+| `user_block` | `pk_user_block` | `fk_user_block_blocked`, `fk_user_block_blocker` | — | `ck_user_block_not_self`, `ck_user_block_release` | — |
+| `user_private_attribute` | `user_private_attribute_pkey` | `fk_user_private_attribute_user` | — | `ck_user_private_attribute_age_band`, `ck_user_private_attribute_gender` | — |
+
+82개 FK 중 제품·백엔드 81개, `spring_session_attributes_fk` 1개다. 제품 DBML Ref와 카탈로그를 비교할 때는 프레임워크 FK를 빼고 센다.
+
+## 인덱스 전체 인벤토리
+
+`PK`/`UQ 제약`은 지원 인덱스, `독립 UQ`/`독립`은 별도 인덱스다. `부분`/`식`/`GiST` 표기는 카탈로그 정의의 성격을 나타낸다. 선택도나 planner의 실제 사용을 보장하지 않는다. 특히 공간 후보 인덱스의 사용은 조건과 통계에 따라 달라진다.
+
+| 테이블 | 인덱스 (종류) |
+| --- | --- |
+| `active_user_presence` | `active_user_presence_expiry_idx` (독립, 부분), `active_user_presence_pkey` (PK), `active_user_presence_position_gix` (독립, 부분, GiST), `active_user_presence_region_idx` (독립) |
+| `answer` | `answer_pkey` (PK), `answer_recipient_idx` (독립), `answer_region_idx` (독립), `uq_answer_id_author` (UQ 제약), `uq_answer_idempotency` (UQ 제약), `uq_answer_one_per_recipient` (독립 UQ, 부분) |
+| `answer_reaction` | `answer_reaction_reactor_idx` (독립), `pk_answer_reaction` (PK) |
+| `appeal_case` | `appeal_case_appellant_idx` (독립), `appeal_case_pkey` (PK), `appeal_case_queue_idx` (독립, 부분), `uq_appeal_case_target_decision` (독립 UQ) |
+| `approved_question` | `approved_question_active_idx` (독립, 부분), `approved_question_approver_idx` (독립, 부분), `approved_question_pkey` (PK), `uq_approved_question_source_proposal` (UQ 제약) |
+| `device_credential` | `device_credential_pkey` (PK), `device_credential_user_idx` (독립, 부분), `uq_active_device_installation` (독립 UQ, 부분), `uq_device_credential_secret` (독립 UQ) |
+| `direction_post` | `direction_post_expiry_idx` (독립, 부분), `direction_post_pkey` (PK), `direction_post_question_idx` (독립), `direction_post_region_idx` (독립), `direction_post_sender_idx` (독립), `uq_direction_post_id_sender` (UQ 제약), `uq_direction_post_idempotency` (UQ 제약) |
+| `direction_scheme` | `direction_scheme_pkey` (PK), `uq_direction_scheme_active` (독립 UQ, 부분), `uq_direction_scheme_code_version` (UQ 제약) |
+| `direction_segment` | `direction_segment_pkey` (PK), `uq_direction_segment_key` (UQ 제약), `uq_direction_segment_order` (UQ 제약) |
+| `filter_decision` | `filter_decision_pkey` (PK), `uq_filter_decision_job_attempt` (독립 UQ) |
+| `filter_job` | `filter_job_deadline_scan_idx` (독립, 부분), `filter_job_pkey` (PK), `filter_job_target_idx` (독립), `uq_filter_job_idempotency_key` (독립 UQ) |
+| `filter_job_status_history` | `filter_job_status_history_job_idx` (독립), `filter_job_status_history_pkey` (PK) |
+| `filter_release` | `filter_release_pkey` (PK), `filter_release_status_idx` (독립), `uq_filter_release_single_promoted` (독립 UQ, 부분, 식) |
+| `filter_release_retry_gate` | `filter_release_retry_gate_pkey` (PK) |
+| `manual_review_case` | `manual_review_case_pkey` (PK), `manual_review_case_queue_idx` (독립, 부분), `uq_manual_review_case_target` (독립 UQ) |
+| `manual_review_priority_evaluation` | `manual_review_priority_evaluation_case_idx` (독립), `manual_review_priority_evaluation_pkey` (PK) |
+| `media_asset` | `media_asset_owner_idx` (독립), `media_asset_pkey` (PK), `uq_media_asset_id_owner` (UQ 제약), `uq_media_asset_storage_key` (UQ 제약) |
+| `media_attachment` | `media_attachment_pkey` (PK), `uq_media_attachment_answer_order` (독립 UQ, 부분), `uq_media_attachment_post_order` (독립 UQ, 부분) |
+| `moderation_review` | `moderation_review_pkey` (PK), `moderation_review_report_idx` (독립), `moderation_review_reviewer_idx` (독립) |
+| `notification` | `notification_answer_idx` (독립, 부분), `notification_inbox_idx` (독립), `notification_outbox_idx` (독립), `notification_pkey` (PK), `notification_post_idx` (독립, 부분), `notification_recipient_feed_idx` (독립, 부분), `uq_notification_recipient_dedup` (UQ 제약) |
+| `notification_delivery` | `notification_delivery_device_idx` (독립), `notification_delivery_dispatch_idx` (독립, 부분), `notification_delivery_pkey` (PK), `uq_notification_delivery_device` (UQ 제약) |
+| `notification_event` | `notification_event_claim_idx` (독립, 부분), `notification_event_pkey` (PK), `uq_notification_event_case_id` (UQ 제약) |
+| `notification_preference` | `notification_preference_user_idx` (독립), `pk_notification_preference` (PK) |
+| `notification_seen_state` | `notification_seen_state_pkey` (PK) |
+| `notification_user_setting` | `notification_user_setting_pkey` (PK) |
+| `operator_action_audit` | `operator_action_audit_operator_idx` (독립), `operator_action_audit_pkey` (PK), `operator_action_audit_target_idx` (독립) |
+| `operator_credential` | `operator_credential_pkey` (PK), `uq_operator_credential_login_id` (UQ 제약) |
+| `outbox_event` | `outbox_event_claim_idx` (독립, 부분), `outbox_event_dispatch_idx` (독립, 부분), `outbox_event_pkey` (PK), `uq_outbox_event_dedup` (UQ 제약), `uq_outbox_event_direction_matching_round` (독립 UQ, 부분) |
+| `post_audience` | `post_audience_pkey` (PK), `post_audience_segment_idx` (독립) |
+| `post_reaction` | `pk_post_reaction` (PK), `post_reaction_reactor_idx` (독립) |
+| `post_recipient` | `post_recipient_capacity_idx` (독립, 부분), `post_recipient_inbox_idx` (독립), `post_recipient_pkey` (PK), `post_recipient_region_idx` (독립), `uq_post_recipient_id_user` (UQ 제약), `uq_post_recipient_post_user` (UQ 제약) |
+| `push_daily_budget` | `pk_push_daily_budget` (PK) |
+| `push_device` | `push_device_pkey` (PK), `push_device_user_idx` (독립, 부분), `uq_active_push_token` (독립 UQ, 부분) |
+| `push_dispatch_group` | `push_dispatch_group_due_idx` (독립, 부분), `push_dispatch_group_pkey` (PK), `push_dispatch_group_recommendation_history_idx` (독립, 부분), `uq_push_dispatch_group_aggregation_key` (UQ 제약), `uq_push_dispatch_group_collecting` (독립 UQ, 부분) |
+| `push_dispatch_group_member` | `pk_push_dispatch_group_member` (PK), `uq_push_dispatch_group_member_notification` (독립 UQ) |
+| `question_assignment` | `question_assignment_history_idx` (독립), `question_assignment_pkey` (PK), `uq_question_assignment_cycle_order` (UQ 제약), `uq_question_assignment_cycle_question` (UQ 제약) |
+| `question_assignment_cycle` | `question_assignment_cycle_pkey` (PK), `uq_question_assignment_cycle_user_key` (UQ 제약) |
+| `question_proposal` | `question_proposal_pkey` (PK), `question_proposal_proposer_idx` (독립), `question_proposal_review_queue_idx` (독립, 부분) |
+| `question_proposal_review` | `question_proposal_review_history_idx` (독립), `question_proposal_review_pkey` (PK), `question_proposal_review_reviewer_idx` (독립) |
+| `recipient_receive_state` | `recipient_receive_selection_idx` (독립), `recipient_receive_state_pkey` (PK) |
+| `region_code` | `region_code_parent_idx` (독립, 부분), `region_code_pkey` (PK), `uq_region_code_code_level` (UQ 제약) |
+| `release_promotion_history` | `release_promotion_history_pkey` (PK), `release_promotion_history_release_idx` (독립) |
+| `report` | `idx_report_reporter_answer_suppression` (독립, 부분), `report_answer_idx` (독립, 부분), `report_direction_post_idx` (독립, 부분), `report_pkey` (PK), `report_queue_idx` (독립, 부분), `report_target_user_idx` (독립, 부분), `uq_open_report_answer` (독립 UQ, 부분), `uq_open_report_post` (독립 UQ, 부분), `uq_open_report_user` (독립 UQ, 부분) |
+| `report_case` | `report_case_pkey` (PK), `uq_open_case_answer` (독립 UQ, 부분), `uq_open_case_post` (독립 UQ, 부분), `uq_open_case_user` (독립 UQ, 부분) |
+| `report_case_event` | `report_case_event_case_idx` (독립), `report_case_event_pkey` (PK) |
+| `report_content_snapshot` | `report_content_snapshot_pkey` (PK) |
+| `snapshot_emergency_migration_history` | `snapshot_emergency_migration_history_pkey` (PK), `snapshot_emergency_migration_history_snapshot_idx` (독립) |
+| `snapshot_health` | `snapshot_health_pkey` (PK) |
+| `snapshot_health_probe_result` | `snapshot_health_probe_result_pkey` (PK), `snapshot_health_probe_result_snapshot_idx` (독립) |
+| `spring_session` | `spring_session_ix1` (독립 UQ), `spring_session_ix2` (독립), `spring_session_ix3` (독립), `spring_session_pk` (PK) |
+| `spring_session_attributes` | `spring_session_attributes_pk` (PK) |
+| `user_account` | `uq_user_account_id_role` (UQ 제약), `uq_user_account_nickname_ci` (독립 UQ, 부분, 식), `user_account_country_idx` (독립), `user_account_pkey` (PK), `user_account_region_idx` (독립) |
+| `user_block` | `pk_user_block` (PK), `user_block_reverse_idx` (독립, 부분) |
+| `user_private_attribute` | `user_private_attribute_pkey` (PK) |
+
+DBML parser `@dbml/core@10.2.0`은 `checks {}`와 TableGroup 속성을 받지 않는다. 정확한 CHECK SQL은 Note, 그룹 색상은 주석, generated column·GiST·partial/표현식 인덱스·지연 제약 트리거의 실행 의미는 Note와 migration에 남긴다. DBML 다이어그램만으로 SQL 집행을 추론하지 않는다.
+
+## 사용자 함수·트리거 전체 인벤토리
+
+| 함수 서명 |
+| --- |
+| `assert_answer_has_content(bigint)` |
+| `assert_post_has_content(bigint)` |
+| `enforce_answer_has_content()` |
+| `enforce_answer_reaction_reactor_can_view()` |
+| `enforce_direction_post_question_active()` |
+| `enforce_media_attachment_preserves_content()` |
+| `enforce_media_status_preserves_content()` |
+| `enforce_post_has_content()` |
+| `enforce_post_recipient_capacity_release()` |
+| `enforce_post_recipient_not_sender()` |
+| `enforce_question_text_immutability()` |
+| `enforce_report_evidence_immutability()` |
+| `enforce_report_snapshot_immutability_except_media_purge()` |
+
+| 테이블 | 트리거 | 호출 함수 |
+| --- | --- | --- |
+| `answer` | `ct_answer_has_content` | `enforce_answer_has_content()` |
+| `answer_reaction` | `ct_answer_reaction_reactor_can_view` | `enforce_answer_reaction_reactor_can_view()` |
+| `approved_question` | `tr_approved_question_text_immutable` | `enforce_question_text_immutability()` |
+| `direction_post` | `ct_direction_post_has_content` | `enforce_post_has_content()` |
+| `direction_post` | `ct_direction_post_question_active` | `enforce_direction_post_question_active()` |
+| `media_asset` | `ct_media_status_preserves_content` | `enforce_media_status_preserves_content()` |
+| `media_attachment` | `ct_media_attachment_preserves_content` | `enforce_media_attachment_preserves_content()` |
+| `post_recipient` | `ct_post_recipient_capacity_release` | `enforce_post_recipient_capacity_release()` |
+| `post_recipient` | `ct_post_recipient_not_sender` | `enforce_post_recipient_not_sender()` |
+| `question_proposal` | `tr_question_proposal_text_immutable_after_submit` | `enforce_question_text_immutability()` |
+| `report_case_event` | `tr_report_case_event_immutable` | `enforce_report_evidence_immutability()` |
+| `report_content_snapshot` | `tr_report_content_snapshot_immutable` | `enforce_report_snapshot_immutability_except_media_purge()` |
+
+## 2026-09-29 검증 근거와 한계
+
+- Java 21에서 기존 `FlywayMigrationIntegrationTest` 11개 통과. 별도 빈 PostgreSQL 16/PostGIS 3.5에 변경하지 않은 V1~V28 migration 28개를 적용하고 전체 `public` 카탈로그를 추출했다. 생성 전후 migration 파일의 정렬된 SHA-256 목록은 일치했고 임시 DB는 제거했다.
+- DBML은 `@dbml/core@10.2.0`에서 파싱·export했다. 독립 비교에서 제품 52 테이블/444 컬럼, 81 FK, 187 CHECK SQL 정의, 161 제품 인덱스, 12 트리거 이름이 카탈로그와 일치했다. 복합 FK, 부분 인덱스 predicate, 생성 컬럼, 그룹 소속도 비교했다. 이 결과는 로컬 작업 검증이며 운영 DB 조회 결과가 아니다.
+- 기존 `./harness test-run --id TEST-PLAN-GH-288-ERD-DBML-REFRESH`: 단위 1,064개·통합 742개, 실패·오류·skip 0. `./harness check`, `./harness pr-ready --project-tests`, `npm run hooks:validate`도 통과했다. 이 Task 3에서는 Gradle을 재실행하지 않고 문서의 링크·표·해시·공백 일관성을 확인한다.
+- 재현 방법: 저장소의 [migration](../../../src/main/resources/db/migration/)을 새 PostgreSQL/PostGIS에 Flyway로 적용한 뒤 `pg_catalog`에서 `public`의 table/column/constraint/index/user trigger/function을 추출한다. `pg_constraint.contype`별로 p/f/u/c/t를 나누고, `pg_index`에서 primary·제약 연결·독립 index를 분리한다. DBML을 고정 parser로 export하여 Spring Session 2개를 제외한 52개 테이블과 대조한다. 보안상 연결 값은 문서에 기록하지 않는다.
+- 검증 범위 밖: 외부 vault의 현행 파일, 운영 DB 스키마, 실제 푸시 provider/스케줄러 활성화. 과거 독립 DDL 실험과 이 snapshot의 결과를 혼합하지 않는다.
+
+## 과거 source snapshot과 결정 기록 (현행 지침 아님)
+
+아래 기록은 이전 날짜의 원문 체크섬과 변경·검증 이력을 보존한다. 당시의 "현재", V12 working branch 상태, 파일 경로, 카탈로그 개수, vault 동기화 문구는 해당 날짜의 진술이며 2026-09-29 V28 스냅샷의 사실로 재사용하지 않는다.
+
+<details>
+<summary>2026-08 source snapshot·V12 계약·인계 기록 펼치기</summary>
 
 ## 3. Source snapshot
 
@@ -163,338 +377,6 @@ DBML/ERD를 대조해 기록하며, 실제 PostgreSQL catalog 적용 여부는 �
 - Claim index: `outbox_event_claim_idx`
 - 기존 `outbox_event_dispatch_idx`와 `uq_outbox_event_dedup`는 유지한다.
 
-## 6. Table inventory
-
-- `region_code`
-- `user_account`
-- `user_private_attribute`
-- `active_user_presence`
-- `recipient_receive_state`
-- `question_proposal`
-- `question_proposal_review`
-- `approved_question`
-- `question_assignment_cycle`
-- `question_assignment`
-- `direction_scheme`
-- `direction_segment`
-- `media_asset`
-- `direction_post`
-- `post_audience`
-- `post_recipient`
-- `answer`
-- `post_reaction`
-- `answer_reaction`
-- `media_attachment`
-- `user_block`
-- `report`
-- `moderation_review`
-- `push_device`
-- `notification_user_setting` (`V26`)
-- `notification_preference`
-- `outbox_event`
-- `notification`
-- `notification_delivery`
-- `operator_credential` (`V5`)
-- `spring_session` (`V6`)
-- `spring_session_attributes` (`V6`)
-- `device_credential` (`V7`, `#81`)
-
-## 7. Function inventory
-
-- `enforce_question_text_immutability`
-- `enforce_direction_post_question_active`
-- `enforce_post_recipient_not_sender`
-- `enforce_post_recipient_capacity_release`
-- `assert_post_has_content`
-- `assert_answer_has_content`
-- `enforce_post_has_content`
-- `enforce_answer_has_content`
-- `enforce_media_attachment_preserves_content`
-- `enforce_media_status_preserves_content`
-- `enforce_answer_reaction_reactor_can_view` (`V8`, `enforce_answer_reaction_reactor_is_sender`에서 교체)
-
-## 8. Trigger inventory
-
-- `tr_approved_question_text_immutable`
-- `tr_question_proposal_text_immutable_after_submit`
-- `ct_direction_post_question_active`
-- `ct_post_recipient_not_sender`
-- `ct_post_recipient_capacity_release`
-- `ct_direction_post_has_content`
-- `ct_answer_has_content`
-- `ct_media_attachment_preserves_content`
-- `ct_media_status_preserves_content`
-- `ct_answer_reaction_reactor_can_view` (`V8`, `ct_answer_reaction_reactor_is_sender`에서 교체)
-
-## 9. Index inventory
-
-- `uq_media_attachment_post_order`
-- `uq_media_attachment_answer_order`
-- `region_code_parent_idx`
-- `active_user_presence_position_gix`
-- `active_user_presence_expiry_idx`
-- `approved_question_active_idx`
-- `uq_direction_scheme_active`
-- `user_account_region_idx`
-- `user_account_country_idx` (`V9`)
-- `active_user_presence_region_idx`
-- `question_proposal_proposer_idx`
-- `question_proposal_review_reviewer_idx`
-- `approved_question_approver_idx`
-- `media_asset_owner_idx`
-- `direction_post_question_idx`
-- `direction_post_region_idx`
-- `post_audience_segment_idx`
-- `post_recipient_region_idx`
-- `answer_region_idx`
-- `report_target_user_idx`
-- `report_direction_post_idx`
-- `report_answer_idx`
-- `report_queue_idx`
-- `moderation_review_report_idx`
-- `moderation_review_reviewer_idx`
-- `push_device_user_idx`
-- `notification_preference_user_idx`
-- `notification_outbox_idx`
-- `notification_post_idx`
-- `notification_answer_idx`
-- `notification_delivery_device_idx`
-- `question_proposal_review_queue_idx`
-- `question_proposal_review_history_idx`
-- `question_assignment_history_idx`
-- `direction_post_sender_idx`
-- `direction_post_expiry_idx`
-- `post_recipient_inbox_idx`
-- `post_recipient_capacity_idx`
-- `recipient_receive_selection_idx`
-- `answer_recipient_idx`
-- `user_block_reverse_idx`
-- `uq_open_report_user`
-- `uq_open_report_post`
-- `uq_open_report_answer`
-- `uq_active_push_token`
-- `outbox_event_dispatch_idx`
-- `uq_outbox_event_direction_matching_round` (V12, partial unique)
-- `outbox_event_claim_idx` (V12)
-- `notification_inbox_idx`
-- `notification_delivery_dispatch_idx`
-- `uq_answer_one_per_recipient` (`V8`에서 조건 축소, `status <> 'REJECTED'`)
-- `post_reaction_reactor_idx`
-- `answer_reaction_reactor_idx`
-- `spring_session_ix1` (`V6`)
-- `spring_session_ix2` (`V6`)
-- `spring_session_ix3` (`V6`)
-- `uq_device_credential_secret` (`V7`, `#81`)
-- `uq_active_device_installation` (`V7`, `#81`, partial unique — `credential_status = 'ACTIVE'`)
-- `device_credential_user_idx` (`V7`, `#81`, partial index 동일 조건)
-
-## 10. Foreign-key constraint inventory
-
-- `fk_region_code_parent`
-- `fk_user_account_region`
-- `fk_user_private_attribute_user`
-- `fk_active_user_presence_user`
-- `fk_active_user_presence_region`
-- `fk_recipient_receive_state_user`
-- `fk_question_proposal_proposer`
-- `fk_question_proposal_review_proposal`
-- `fk_question_proposal_review_reviewer`
-- `fk_approved_question_source_proposal`
-- `fk_approved_question_approver`
-- `fk_question_assignment_cycle_user`
-- `fk_question_assignment_cycle`
-- `fk_question_assignment_question`
-- `fk_direction_segment_scheme`
-- `fk_media_asset_owner`
-- `fk_direction_post_sender`
-- `fk_direction_post_question`
-- `fk_direction_post_region`
-- `fk_post_audience_post`
-- `fk_post_audience_segment`
-- `fk_post_recipient_post`
-- `fk_post_recipient_user`
-- `fk_post_recipient_region`
-- `fk_answer_recipient_author`
-- `fk_answer_region`
-- `fk_media_attachment_asset_owner`
-- `fk_media_attachment_post_owner`
-- `fk_media_attachment_answer_owner`
-- `fk_user_block_blocker`
-- `fk_user_block_blocked`
-- `fk_report_reporter`
-- `fk_report_target_user`
-- `fk_report_direction_post`
-- `fk_report_answer`
-- `fk_moderation_review_report`
-- `fk_moderation_review_reviewer`
-- `fk_push_device_user`
-- `fk_notification_user_setting_user`
-- `fk_notification_preference_user`
-- `fk_notification_recipient`
-- `fk_notification_outbox`
-- `fk_notification_post`
-- `fk_notification_answer`
-- `fk_notification_delivery_notification`
-- `fk_notification_delivery_device`
-- `fk_post_reaction_recipient`
-- `fk_answer_reaction_answer`
-- `fk_answer_reaction_user`
-- `fk_operator_credential_user` (`V5`)
-- `spring_session_attributes_fk` (`V6`)
-- `fk_device_credential_user` (`V7`, `#81`, `ON DELETE CASCADE`)
-- `fk_user_account_country` (`V9`, `country_code`와 생성 `country_level`의 복합 FK)
-
-## 11. Unique-constraint inventory
-
-- `uq_approved_question_source_proposal`
-- `uq_question_assignment_cycle_user_key`
-- `uq_question_assignment_cycle_question`
-- `uq_question_assignment_cycle_order`
-- `uq_direction_scheme_code_version`
-- `uq_direction_segment_key`
-- `uq_direction_segment_order`
-- `uq_media_asset_id_owner`
-- `uq_media_asset_storage_key`
-- `uq_direction_post_idempotency`
-- `uq_direction_post_id_sender`
-- `uq_post_recipient_post_user`
-- `uq_post_recipient_id_user`
-- `uq_answer_idempotency`
-- `uq_answer_id_author`
-- `uq_outbox_event_dedup`
-- `uq_notification_recipient_dedup`
-- `uq_notification_delivery_device`
-- `uq_user_account_id_role` (`V5`)
-- `uq_operator_credential_login_id` (`V5`)
-- `uq_region_code_code_level` (`V9`)
-
-partial unique object는 위 Index inventory에 포함된다. 반대로 이 절의 named unique
-테이블 제약이 만드는 인덱스는 Index inventory에 다시 넣지 않는다 — §5 표 아래 설명
-참고.
-
-## 12. Check-constraint inventory
-
-- `ck_region_code_not_self_parent`
-- `ck_region_code_display_name`
-- `ck_region_code_level`
-- `ck_region_code_root`
-- `ck_user_account_role`
-- `ck_user_account_status`
-- `ck_user_account_nickname`
-- `ck_user_account_deleted_at`
-- `ck_user_account_country_code` (`V9`)
-- `ck_user_account_user_country` (`V9`)
-- `ck_user_private_attribute_gender`
-- `ck_user_private_attribute_age_band`
-- `ck_active_user_presence_location`
-- `ck_active_user_presence_accuracy`
-- `ck_active_user_presence_expiry`
-- `ck_recipient_receive_state_active_count`
-- `ck_recipient_receive_state_recent_count`
-- `ck_recipient_receive_state_last_received`
-- `ck_question_proposal_status`
-- `ck_question_proposal_text`
-- `ck_question_proposal_submission`
-- `ck_question_proposal_review_decision`
-- `ck_question_proposal_review_reason`
-- `ck_approved_question_source_type`
-- `ck_approved_question_source`
-- `ck_approved_question_status`
-- `ck_approved_question_text`
-- `ck_approved_question_answer_format`
-- `ck_approved_question_active_range`
-- `ck_approved_question_approval`
-- `ck_question_assignment_cycle_status`
-- `ck_question_assignment_cycle_range`
-- `ck_question_assignment_display_order`
-- `ck_question_assignment_viewed_at`
-- `ck_question_assignment_used_at`
-- `ck_direction_scheme_version`
-- `ck_direction_scheme_type`
-- `ck_direction_scheme_segment_count`
-- `ck_direction_scheme_start_offset`
-- `ck_direction_scheme_status`
-- `ck_direction_segment_center`
-- `ck_direction_segment_width`
-- `ck_direction_segment_order`
-- `ck_media_asset_status`
-- `ck_media_asset_moderation`
-- `ck_media_asset_size`
-- `ck_media_asset_deleted_at`
-- `ck_direction_post_status`
-- `ck_direction_post_moderation`
-- `ck_direction_post_body`
-- `ck_direction_post_expiry`
-- `ck_direction_post_published_at`
-- `ck_direction_post_deleted_at`
-- `ck_direction_post_answers_read_at`
-- `ck_post_audience_center`
-- `ck_post_audience_width`
-- `ck_post_audience_distance`
-- `ck_post_audience_origin`
-- `ck_post_recipient_status`
-- `ck_post_recipient_bearing`
-- `ck_post_recipient_distance_band`
-- `ck_post_recipient_timestamps`
-- `ck_post_recipient_status_timestamps`
-- `ck_post_recipient_skip_pending`
-- `ck_answer_status`
-- `ck_answer_moderation`
-- `ck_answer_body`
-- `ck_answer_bearing`
-- `ck_answer_distance_band`
-- `ck_answer_published_at`
-- `ck_answer_deleted_at`
-- `ck_media_attachment_exactly_one_target`
-- `ck_media_attachment_order`
-- `ck_user_block_not_self`
-- `ck_user_block_release`
-- `ck_report_exactly_one_target`
-- `ck_report_reason`
-- `ck_report_status`
-- `ck_report_resolution`
-- `ck_moderation_review_decision`
-- `ck_moderation_review_action_type`
-- `ck_push_device_platform`
-- `ck_push_device_status`
-- `ck_push_device_revoked_at`
-- `ck_notification_preference_type`
-- `ck_notification_user_setting_quiet_hours`
-- `ck_notification_user_setting_distinct_quiet_hours`
-- `ck_outbox_event_aggregate_type`
-- `ck_outbox_event_event_type`
-- `ck_outbox_event_payload`
-- `ck_outbox_event_status`
-- `ck_outbox_event_attempt_count`
-- `ck_outbox_event_processed_at`
-- `ck_outbox_event_match_round` (V12)
-- `ck_outbox_event_lease_generation` (V12)
-- `ck_outbox_event_lease_state` (V12)
-- `ck_notification_type`
-- `ck_notification_target`
-- `ck_notification_status`
-- `ck_notification_read_at`
-- `ck_notification_delivery_status`
-- `ck_notification_delivery_attempt_count`
-- `ck_notification_delivery_sent_at`
-- `ck_operator_credential_role` (`V5`)
-- `ck_operator_credential_login_id` (`V5`)
-- `ck_operator_credential_failed_attempt` (`V5`)
-- `ck_operator_credential_locked_until` (`V5`)
-- `ck_device_credential_platform` (`V7`, `#81`)
-- `ck_device_credential_status` (`V7`, `#81`)
-- `ck_device_credential_revoked_at` (`V7`, `#81`)
-- `ck_device_credential_installation_id` (`V7`, `#81`)
-- `ck_post_recipient_inbound_bearing` (`V8`)
-- `ck_post_recipient_distance_m` (`V8`)
-- `ck_post_recipient_answers_read_at` (`V8`)
-- `ck_answer_distance_m` (`V8`)
-- `ck_answer_edit_count` (`V8`)
-- `ck_answer_edit_count_edited_at` (`V8`)
-
-`V3`이 추가한 `ck_user_account_password_hash`는 `V5`가 운영자 자격증명을
-`operator_credential`로 분리하며 제거했다 — 이 목록에는 없다.
-
 ## 13. 구현 전 결정과 명시적 제외
 
 | Topic | Issue #35 contract | Enforcement timing |
@@ -521,3 +403,5 @@ partial unique object는 위 Index inventory에 포함된다. 반대로 이 절�
   복합 PK 전환과 `ct_answer_reaction_reactor_can_view` 자격 트리거, `post_recipient`/
   `answer`의 방향·거리·수정 이력 컬럼과 백필, `uq_answer_one_per_recipient` 조건 축소.
   원래 `V7`로 작성했으나 #81과의 번호 충돌로 `V8`로 재번호했다
+
+</details>

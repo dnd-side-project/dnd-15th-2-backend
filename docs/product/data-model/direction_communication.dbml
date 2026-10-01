@@ -4,110 +4,25 @@ Project direction_connected_communication {
   Note: '''
     # 방향으로 연결되는 소통
 
-    dbdocs 게시용 DBML 문서다.
+    이 문서는 Flyway V1~V28을 적용한 실행 스키마의 제품·백엔드 테이블 52개를 설명한다.
+    실행 스키마의 권위는 Flyway versioned migration이다(ADR-0001). 이 DBML은
+    설계·검토용 표현이며 PostgreSQL의 일부 기능은 각 테이블/인덱스 Note에 SQL
+    원문과 함께 보충한다. Enum은 별도 PostgreSQL enum 타입이 아니라 VARCHAR와
+    CHECK의 허용 값 집합을 나타낸다.
 
-    > **2026-08-07 개정으로 답변 열람 범위가 뒤집혔다.** 답변은 이제 질문자 한 명이 아니라 **그 질문글의 수신 자격자 전원**에게 보인다. 아래 `2026-08-07 스키마 변경` 절을 먼저 읽는다. 그 이전 판(`2026-08-04`)의 "답변 격리" 서술은 폐기됐으나 이력을 위해 남겨둔다.
+    Spring Session 소유의 spring_session과 spring_session_attributes(V6)는 이
+    제품·백엔드 다이어그램에서 제외한다. 두 테이블을 포함한 실제 catalog는 54개다.
+    복합 FK는 Ref에 컬럼 순서대로 표현한다. FK가 없는 opaque 식별자에는 관계선을
+    그리지 않는다(예: filtering의 target_id, 감사 이력의 operator_user_id).
 
-    - 이 파일이 스키마의 기준(source of truth)이다. `docs/sql/direction_communication_ddl.sql`은 여기서 파생한다.
-    - 범위: 제품 논리 테이블 28개 (2026-08-04에 `post_reaction`, `answer_reaction` 추가)와 백엔드 인증 부록 2개 (`operator_credential`, `device_credential`). 아래 `백엔드 인증 부록` 절 참고.
-    - DB: PostgreSQL 16+ / PostGIS 3+
-    - DBML의 Enum은 SQL DDL의 `VARCHAR + CHECK` 값 집합을 문서화한 것이다.
-    - DBML로 표현되지 않는 PostgreSQL 기능은 아래 위치의 Note에 기록했다.
-      - trigger 9종: 해당 테이블(`approved_question`, `question_proposal`, `direction_post`, `post_recipient`, `answer`, `media_asset`, `media_attachment`)의 테이블 Note "트리거 불변식" 문단
-      - GiST index: `active_user_presence`의 `position` 컬럼 Note와 테이블 Note
-      - partial index / partial unique index: 각 인덱스의 Note
-      - 인덱스 컬럼 DESC 정렬: 각 인덱스의 Note
-    - `report`, `push_device`와 `device_credential`의 일부 `unique` 인덱스는 다이어그램상 무조건 unique로 보이지만 실제로는 partial unique다. 각 인덱스 Note의 "주의" 항목을 확인해야 한다.
-    - P02 거리, P04 만료 기간, P10 연령 수집, P15 질문 배정량·주기는 정책 미정이다. P03 발송별 최대 수신자는 MVP 기본값 10명으로 확정하고 애플리케이션 설정으로 조정한다.
-    - 2026-08-07 기준 남은 미결: 신고 누적 자동 숨김 기준, 수정 횟수 상한의 실제 초기값(3으로 시작).
-    - Spring Session이 쓰는 `spring_session` / `spring_session_attributes`(V6)는 프레임워크가 소유하는 테이블이라 이 문서에 넣지 않는다. 실제 DB에는 존재하므로 `docs/product/data-model/schema-manifest.md` §6에서 센다.
-
-    ## P06 위치 정책 (2026-08-03 확정: 1안)
-
-    짧은 TTL의 정확 좌표를 `active_user_presence`에 저장하고 외부에는 흐린 값만 제공한다.
-
-    - `active_user_presence.position`과 `post_audience.origin_position`은 실제 사용자 좌표를 담는 운영 컬럼이다. 더 이상 합성 데이터 전용이 아니다.
-    - 정확 좌표는 `expires_at`이 지나면 후보 탐색에서 제외하고, 보존 기간은 P07에서 확정한다.
-    - 정확 좌표는 API 응답·로그·분석 이벤트·Outbox payload에 넣지 않는다.
-    - ~~외부에는 `distance_band`와 `coarse_region_code`만 나간다.~~ **2026-08-07 개정.** 카드와 답변에 **정확 거리(`distance_m`)와 수신자 기준 방향을 노출한다.** 좌표 자체를 내보내는 것은 아니라 위 원칙의 문자는 지켜지지만 취지는 약해졌다. 조건이 붙는다 — **정확 거리 노출은 방향 구간이 45° 이상이고 근거리 하한(10km)이 적용될 때만 허용한다.** 아래 `정확 거리 노출의 전제` 참고.
-    - `coarse_cell_id` / `origin_cell_id`는 폐기하지 않고 선택적 보조 컬럼으로 남긴다. 2안(셀만 저장)은 채택하지 않았다.
-
-    ## 2026-08-03 스키마 변경
-
-    - `post_media` + `answer_media` → `media_attachment` 한 테이블로 통합. `media_id`가 PK이므로 "한 미디어는 한 콘텐츠에만" 불변식이 트리거 없이 원자적으로 성립한다. 기존 count 기반 constraint trigger 2종은 동시 삽입에서 둘 다 통과할 수 있어 제거했다.
-    - FK 컬럼 인덱스 일괄 추가. PostgreSQL은 FK에 인덱스를 자동 생성하지 않는다.
-    - `direction_scheme`에 `status = 'ACTIVE'` partial unique 추가. 같은 `code`의 두 버전이 동시에 ACTIVE가 될 수 없다.
-    - `post_recipient`에 상태와 타임스탬프를 묶는 CHECK와 용량 해제 constraint trigger 추가.
-
-    ## 2026-08-04 스키마 변경 (기능 명세서 개정 반영)
-
-    기준 문서는 `docs/2. 기능-명세서.md`와 `docs/adr/0001-답변은-질문자에게만-도달한다.md`다.
-
-    - **`post_reaction` / `answer_reaction` 신설.** 공감(화면 문구 `좋아요`)이 확정 MVP 기능이 됐다. 이전 ERD가 `like`를 Non-goal로 제외했던 판단을 뒤집는다. 두 테이블로 나눈 이유는 누를 수 있는 사람이 서로 다르고, 그 차이를 키로 강제할 수 있기 때문이다 — 질문글 공감은 수신자만, 답변 공감은 질문자만 남긴다.
-    - **`post_recipient.status`에 `SKIP_PENDING` 추가.** 스와이프 넘김에 5초 되돌리기가 생겼다. 되돌릴 수 있는 동안에는 수신 용량을 해제하지 않아야 하므로, 확정된 `SKIPPED`와 분리한다.
-    - **`recipient_receive_state`의 상한 5 하드코딩 제거.** 수신 상한은 고정 상수가 아니라 운영 설정값이다. DB에는 안전 상한(50)만 두고 실제 상한은 애플리케이션 설정에서 읽는다.
-    - **`direction_post.answers_read_at` 추가.** `내가 쓴 질문` 카드의 `새로운 답변 n개` 배지를 계산하기 위한 읽음 기준선이다.
-    - **`answer`에 수신 권한당 1건 partial unique 추가.** "한 질문글에 답변은 1회"가 확정돼, 그동안 미확정이라 걸지 않았던 제약을 건다.
-    - **알림·Outbox 종류 갱신.** `DAILY_QUESTION_ASSIGNED` → `QUESTION_RECOMMENDED`(배정이 아니라 추천이다), `ANSWER_REACTED` 추가.
-    - **댓글 테이블은 여전히 만들지 않는다.** 이전에는 Non-goal이라 제외했지만, 이제는 답변을 볼 수 있는 사람이 질문자 한 명뿐이라 댓글이 놓일 자리 자체가 없다. *(2026-08-07 주의: 이 근거는 폐기됐다. 결론은 같지만 이유가 구조적 불가능에서 제품 결정으로 바뀌었다.)*
-
-    ## 2026-08-07 스키마 변경 (답변 격리 폐기)
-
-    기준 문서는 `docs/2. 기능-명세서.md`(2026-08-07 개정)와 `docs/adr/0002-답변은-질문글을-받은-사람-모두에게-공개된다.md`다. `0001`은 `superseded`다.
-
-    답변이 **질문자 전용 사적 회신**에서 **그 질문글의 수신 자격자 전원에게 공개**되는 것으로 바뀌었다. 8/4 판은 답변자에게 돌아오는 것이 `공감을 받았는가` 하나뿐이라 답변할 이유가 만들어지지 않는다고 판단해 되돌렸다. 열람 자격이 방향으로 잠겨 있다는 점, 댓글이 없다는 점, 1인 1답변, 만료 후 새 답변 차단 — 이 넷이 공개 SNS와의 경계다.
-
-    ### 반드시 고쳐야 했던 것
-
-    - **`answer_reaction`의 기본키를 `answer_id` 단독에서 `(answer_id, reactor_id)` 복합으로 변경.** 공감할 수 있는 사람이 질문자 한 명뿐이라는 전제로 "답변당 1건"을 단독 키로 걸었던 것이라, 그대로 두면 **두 번째 사람의 공감이 기본키 충돌로 실패한다.** 이번 개정에서 가장 확실히 깨지는 지점이었다.
-    - **`ct_answer_reaction_reactor_is_sender` → `ct_answer_reaction_reactor_can_view`로 교체.** 누를 수 있는 사람이 질문자에서 "질문자 + 수신 자격자"로 넓어졌고, **자기 답변에는 누를 수 없다**는 금지가 새로 생겼다. 넘김·만료로 인한 자격 상실은 시간에 따라 판정이 변하므로 트리거는 "수신자 집합에 속하는가"까지만 보고, 현재 열람 가능 여부는 조회 계층이 강제한다.
-    - **`post_recipient.inbound_bearing_deg` 신설.** 목록과 카드에 표시하는 방향은 **보는 사람 기준**이다. 발송자가 "동쪽으로" 보냈어도 받는 사람에게는 서쪽에서 온 글이라, `matched_bearing_deg`를 그대로 쓰면 방향이 뒤집혀 보인다. 구면에서 역방위는 `+180°`가 아니므로 매칭 시점에 별도 계산해 스냅샷으로 박는다. **구간 키는 저장하지 않는다** — 라벨은 조회 시점에 ACTIVE `direction_scheme`으로 파생시켜야 8방향에서 16방향으로 바뀔 때 데이터 마이그레이션 없이 목록이 재분류된다. 반대로 발신 측 `post_audience.selected_segment_key`는 사용자의 의사 표시라 구간 자체를 스냅샷한다. **이 비대칭은 의도된 것이다.**
-    - **`post_recipient.distance_m` / `answer.distance_m` 신설.** 카드와 답변에 정확 거리를 표시하기로 확정됐는데 **스키마에 정확 거리를 담을 자리가 없었다.** 수신자 좌표는 `active_user_presence`에 TTL로만 남아 나중에 재계산할 수 없으므로, 방위와 똑같이 매칭 시점 스냅샷이 필요하다. `distance_band`는 폐기하지 않고 **근거리 하한(10km) 미만 표시용**으로 남는다.
-    - **`post_recipient.answers_read_at` 신설.** `direction_post.answers_read_at`은 질문자 전용이다. 답변이 전원에게 공개되면서 사람마다 마지막으로 본 시점이 달라져, `답변한` 목록의 `새 답변 n개` 배지는 수신자별 기준선이 따로 필요하다.
-    - **`answer.edited_at` / `answer.edit_count` 신설.** 답변 수정이 허용됐다. 공감은 수정에도 승계되므로 무제한이면 "공감을 모은 뒤 반복 교체"가 사고가 아니라 기능이 되고, 수정마다 재검토가 돌아 모더레이션 큐 비용도 늘어난다. **실효 상한(초기값 3)은 DB에 고정하지 않고** 운영 설정값으로 두며 DB에는 안전 상한 10만 건다 — `recipient_receive_state`의 수신 상한을 다루는 방식과 같다. `(edit_count = 0) = (edited_at IS NULL)` 동치도 함께 건다.
-    - **`uq_answer_one_per_recipient`의 제외 목록에서 `DELETED`를 뺐다.** `status <> 'REJECTED'`만 남는다. "삭제 후 재작성 불가"가 확정됐고, 열어두면 삭제→재작성이 사실상 무제한 수정이 되어 수정 정책이 무의미해진다. `REJECTED`만 자리를 비켜주는 이유는 운영이 거절한 것은 사용자 잘못이 아니기 때문이다.
-
-    ### 스키마를 바꾸지 않아도 되는 것
-
-    - **`post_recipient`의 상태 기계는 그대로다.** 화면의 `답변 안 한` / `답변한` 구분은 새 컬럼 없이 `answer` 존재 여부로 유도한다. 바뀐 것은 상태가 아니라 **그 상태를 어느 목록에 태우느냐**다.
-    - **슬롯도 그대로다.** `ct_post_recipient_capacity_release`가 `ANSWERED`를 여전히 해제 대상으로 보고, 다만 해제 후에도 행이 화면에 남을 뿐이다. 수신 상한은 `답변 안 한` 것만 센다.
-    - **답변 수정 중 처리에 새 컬럼이 필요 없다.** 검토 중인 답변은 다른 사람에게 감추므로 대기 중인 본문을 따로 보관하지 않는다. `status = 'SAFETY_CHECKING'`으로 되돌리고 `body_text`와 `media_attachment`를 직접 교체하면, 조회 계층이 `PUBLISHED`만 노출하는 것으로 충분하다. `ct_answer_has_content`와 `ct_media_attachment_preserves_content`가 `PUBLISHED`만 검사하므로 교체 중간에 첨부가 비어도 통과한다. **덕분에 사진 수정이 텍스트 수정과 같은 규칙으로 처리된다** — 반대로 기존 내용을 계속 보여주는 방식은 대기 중인 미디어를 붙일 대상이 없어 텍스트 수정만 가능해진다.
-    - **`direction_scheme` / `direction_segment`도 그대로다.** `segment_count`와 `start_offset_deg`가 이미 N방향을 수용한다. **8은 구조가 아니라 데이터다.**
-    - **`post_reaction`의 키 구조는 그대로다.** `(post_id, reactor_id)`가 `post_recipient`를 참조하는 구조가 "수신 자격자만 질문글에 공감" + "작성자는 자기 글에 공감 불가"를 이미 키로 강제한다. *(2026-08-08 정정: 다만 "그대로다"는 키 구조에만 해당한다. 기능 명세서 §F06 공감 표는 공감 **개수를 보는 사람**도 질문자 한정에서 볼 수 있는 사람 전원으로 넓혔는데, 이 목록을 작성할 때 그 변화를 놓쳐 `post_reaction` 테이블 Note가 한동안 "질문자에게만 노출"인 채로 남아 있었다. Note를 고쳤다.)*
-
-    ### 조회·쓰기 계층이 강제해야 하는 것 (DB 제약으로 표현하지 않음)
-
-    시간에 따라 판정이 변하는 규칙들이다. DB에 넣으면 만료 배치가 도는 순간 과거 데이터가 위반 상태가 되거나 진행 중인 전이가 막힌다.
-
-    - 답변을 볼 수 있는 주체는 질문글 작성자와 그 질문글의 수신 자격자다. 자격 없는 사용자에게는 답변 내용도 개수도 노출하지 않는다.
-    - 넘겼거나(`SKIPPED`) 답변 없이 만료된 수신자는 열람 자격을 잃는다.
-    - 답변 수정은 **만료 전까지만 제출**할 수 있다. 단 만료 전에 제출한 수정의 검토가 만료 후에 끝나면 반영한다.
-    - 목록 API는 방향별 집계를 함께 내려준다. 페이지네이션 때문에 클라이언트가 방향 칩을 만들 수 없다.
-
-    ### 정확 거리 노출의 전제
-
-    외부에 정확 거리를 내보내는 것은 **방향 구간이 45°(8방향)라는 사실에 기대어 성립한다.** 방향은 부채꼴을 주고 거리는 원을 주므로, 둘이 겹치면 호가 된다. 1,157km에서 45° 호는 약 909km라 넓지만, 구간을 16방향(22.5°)으로 좁히면 절반, 32방향(11.25°)이면 4분의 1이 된다. 호 길이는 거리에도 비례해 가까울수록 좁아지므로 근거리 하한 10km가 그 아래를 막는다.
-
-    **방향 스킴을 세분화할 때는 정확 거리 표시와 근거리 하한을 반드시 같이 재검토한다.** 방향만 늘리고 거리 정책을 그대로 두면 위치 노출 수준이 조용히 올라간다.
-
-    ## 백엔드 인증 부록 (2026-08-08)
-
-    기준 문서는 `docs/product/AUTH_DESIGN.md`와 `docs/adr/0006-split-operator-and-device-authentication.md`다.
-
-    제품 기획에서 나온 28개 테이블과 달리, 아래 두 테이블은 **백엔드가 인증을 구현하면서 필요해진 것**이라 원래 이 문서의 범위 밖이었다. 그러나 이 파일이 스키마의 기준인 이상 실제 DB에만 있고 여기에는 없는 테이블을 남겨두면 문서가 기준 역할을 못 한다. 부록으로 명시해 반영한다.
-
-    - **`operator_credential` 신설 (V5, `#72`).** 백오피스 운영자 로그인 자격증명이다. 원래 `user_account.password_hash`(V3)로 계정에 직접 붙어 있었으나, 일반 사용자가 운영자 때문에 존재하는 NULL 컬럼을 들고 다니는 구조였다. 계정 생명주기와 자격증명 생명주기는 변경 주기가 다르므로 분리했고, `user_account.password_hash`와 `ck_user_account_password_hash`는 함께 제거됐다. `(user_id, role)` 복합 외래키가 USER 계정에 자격증명이 붙는 것을 DB에서 거절하며, 그 대상이 되기 위해 `user_account`에 `uq_user_account_id_role`이 추가됐다.
-    - **`device_credential` 신설 (V7, `#73`).** 앱 사용자 기기 자격증명이다. 클라이언트가 만든 `installation_id`는 식별자일 뿐 인증 수단이 아니며, 서버가 발급한 32바이트 랜덤 `device_secret`의 SHA-256 해시로만 인증한다. 평문 시크릿은 등록 응답에서 한 번만 나가고 어디에도 저장하지 않는다. `push_device`와 물리적으로 같은 기기를 가리키지만, 푸시 토큰은 FCM/APNs가 소유하고 수시로 갱신되는 반면 이 자격증명은 우리가 발급·해지하는 값이라 생명주기가 독립적이어서 테이블을 나눴다.
-    - **`user_account.version` 추가 (V4, `#48`).** JPA 낙관적 잠금용 행 버전이다.
-
-    해시 알고리즘을 bcrypt가 아니라 salt 없는 SHA-256으로 둔 것은 `secret_hash`가 조회 경로이기 때문이다. 256bit 랜덤 값이라 무차별 대입이 성립하지 않아 salt 없이도 안전하고, 덕분에 unique index로 재발급 조회를 직접 처리할 수 있다. 대신 값 자체가 유일해야 하므로 `uq_device_credential_secret`을 건다.
-
-    `#74`(API 성공 응답 공통 포맷)와 `#75`(MediaAsset 업로드 서비스)는 스키마를 바꾸지 않았다. `#75`는 V1의 `media_asset` / `media_attachment`를 그대로 쓴다.
-
-    ## 2026-08-08 문서 정정
-
-    - **`post_reaction` 공감 개수 노출 범위.** 기능 명세서 08-07 개정(§F06 공감 표)은 질문글 공감 "개수를 보는 사람"도 질문자 한정에서 **볼 수 있는 사람 전원**으로 넓혔는데, 08-07 스키마 정리 당시 답변 쪽(`answer_reaction`)만 반영하고 `post_reaction`은 "그대로다"로 잘못 분류해 이 테이블 Note가 낡은 채로 남아 있었다. 키 구조는 실제로 안 바뀌어 스키마 변경은 없고, `post_reaction` 테이블 Note만 고쳤다(아래 "스키마를 바꾸지 않아도 되는 것" 목록의 `post_reaction` 항목 참고).
-    - **`user_account.version`(V4) / `operator_credential`(V5) / `device_credential`(V7)을 `docs/sql/direction_communication_ddl.sql`에 반영.** 팀원이 이 DBML에 추가한 뒤 DDL에는 옮기지 않은 상태였다. 이 셋이 §12 미결 항목이던 "인증·신원 수단"을 실제로 채운다. `docs/3. ...ERD.md`도 함께 갱신했다.
+    설계 이력: V2에서 post_reaction과 answer_reaction을 추가했다. V8/ADR-0002는
+    답변 열람 범위를 질문자 전용에서 질문글 수신 자격자 전체로 넓혔고,
+    answer_reaction 기본키를 (answer_id, reactor_id)로 바꿨다. 정확 좌표는
+    active_user_presence와 post_audience에 보관하고 Outbox payload에는 복사하지 않는다.
+    V10~V18은 독립적인 filtering 업무 테이블과 운영 감사 경로를 도입했다.
+    V19~V27은 신고 사건·증거·알림함 기준선·계정 프로필을 보강했고, V28은
+    푸시 묶음 및 일일 예산을 추가했다. 이전 시점의 설계 서술은 migration 이력과
+    별도 설계 문서에서 확인한다.
   '''
 }
 
@@ -241,7 +156,7 @@ Enum post_recipient_status {
 Enum answer_status {
   SUBMITTED [note: '사용자가 답변 제출을 완료한 초기 상태']
   SAFETY_CHECKING [note: '답변 본문과 미디어를 검사하는 상태']
-  PUBLISHED [note: '답변이 방향 글 발신자에게 공개된 상태']
+  PUBLISHED [note: '답변이 질문글 발신자와 열람 자격을 가진 수신자에게 공개된 상태']
   REJECTED [note: '안전 정책 위반으로 공개하지 않는 답변']
   HIDDEN [note: '신고나 운영 조치로 노출을 중단한 답변']
   DELETED [note: '삭제 처리된 답변']
@@ -285,7 +200,7 @@ Enum device_credential_status {
 
 Enum notification_type {
   ANSWER_RECEIVED [note: '내 질문글에 새 답변이 도착했음을 알리는 종류. 수신 대상은 질문글 작성자뿐이다']
-  ANSWER_REACTED [note: '내가 남긴 답변에 질문자가 공감했음을 알리는 종류. 답변자가 받는 유일한 반응 신호이며, 질문자가 만료 뒤에 열어볼 수 있어 늦게 도착할 수 있다']
+  ANSWER_REACTED [note: '내가 남긴 답변에 열람 자격자가 공감했음을 알리는 종류. 만료 뒤에 열어본 수신자에게서도 늦게 도착할 수 있다']
   DIRECTION_POST_RECEIVED [note: '새 질문글의 수신 권한이 생겼음을 알리는 종류']
   REPORT_RESOLVED [note: '내 신고의 처리 결과가 확정됐음을 알리는 종류']
   QUESTION_PROPOSAL_REVIEWED [note: '내 질문 제안의 검토가 끝났음을 알리는 종류']
@@ -299,6 +214,8 @@ Enum outbox_aggregate_type {
   QUESTION_ASSIGNMENT [note: '질문 추천 애그리거트']
   QUESTION_PROPOSAL [note: '질문 제안 애그리거트']
   REPORT [note: '신고 애그리거트']
+  FILTER_JOB [note: '답변 필터링 작업 애그리거트']
+  APPEAL_CASE [note: '필터링 이의제기 애그리거트']
 }
 
 Enum outbox_event_type {
@@ -311,6 +228,10 @@ Enum outbox_event_type {
   QUESTION_RECOMMENDED [note: '질문 추천 확정 후 대상 사용자 알림 생성을 요청하는 이벤트']
   QUESTION_PROPOSAL_REVIEWED [note: '질문 제안 판정 확정 후 제안자 알림 생성을 요청하는 이벤트']
   REPORT_RESOLVED [note: '신고 처리 결과 확정 후 신고자 알림 생성을 요청하는 이벤트']
+  MODERATION_EXECUTION_REQUESTED [note: '필터링 작업 실행 요청']
+  MODERATION_VERDICT_READY [note: '필터링 판정 완료']
+  MODERATION_DEADLINE_ELAPSED [note: '필터링 기한 경과']
+  MODERATION_APPEAL_RESOLVED [note: '필터링 이의제기 결과 확정']
 }
 
 Enum outbox_status {
@@ -345,7 +266,7 @@ Table region_code [headercolor: #4E79A7] {
   code varchar(100) [pk, not null, note: '서비스와 외부 지역 데이터가 공통으로 사용하는 지역 식별 코드']
   parent_code varchar(100) [note: '지역 계층에서 바로 위 부모 지역 코드이며 국가는 비어 있음']
   display_name text [not null, note: '화면에 표시할 지역 이름']
-  level region_level [not null, note: '국가부터 세부 지역까지의 계층 단계']
+  level region_level [not null, note: '국가부터 세부 지역까지의 계층 단계; SQL type VARCHAR(20)']
   created_at timestamptz [not null, default: `clock_timestamp()`, note: '행이 생성된 시각']
 
   indexes {
@@ -353,25 +274,29 @@ Table region_code [headercolor: #4E79A7] {
     parent_code [name: 'region_code_parent_idx', note: 'SQL DDL은 parent_code IS NOT NULL인 partial index']
   }
 
-  checks {
-    `parent_code IS NULL OR parent_code <> code` [name: 'ck_region_code_not_self_parent']
-    `btrim(display_name) <> ''` [name: 'ck_region_code_display_name']
-    `(level = 'COUNTRY') = (parent_code IS NULL)` [name: 'ck_region_code_root']
-  }
 
-  Note: '테이블 설명: 국가부터 세부 지역까지의 계층과 화면 표시 이름을 관리하는 지역 코드 마스터 테이블이다. 필요 이유: 지역 문자열을 여러 테이블에 제각각 저장하지 않고 하나의 코드 체계로 통일해 위치 조회와 공개 지역 표현의 일관성을 지킨다.'
+  Note: '''
+테이블 설명: 국가부터 세부 지역까지의 계층과 화면 표시 이름을 관리하는 지역 코드 마스터 테이블이다. 필요 이유: 지역 문자열을 여러 테이블에 제각각 저장하지 않고 하나의 코드 체계로 통일해 위치 조회와 공개 지역 표현의 일관성을 지킨다.
+
+Flyway CHECK constraints (SQL):
+ck_region_code_display_name: CHECK (btrim(display_name) <> ''::text)
+ck_region_code_level: CHECK (level::text = ANY (ARRAY['COUNTRY'::character varying, 'REGION'::character varying, 'CITY'::character varying, 'DISTRICT'::character varying]::text[]))
+ck_region_code_not_self_parent: CHECK (parent_code IS NULL OR parent_code::text <> code::text)
+ck_region_code_root: CHECK ((level::text = 'COUNTRY'::text) = (parent_code IS NULL))
+'''
 }
 
 Table user_account [headercolor: #4E79A7] {
   id bigint [pk, increment, not null, note: '행을 식별하는 기본키']
-  role user_role [not null, default: 'USER', note: '일반 사용자와 운영자를 구분하는 권한']
-  status user_status [not null, default: 'ACTIVE', note: '현재 처리 상태']
+  role user_role [not null, default: 'USER', note: '일반 사용자와 운영자를 구분하는 권한; SQL type VARCHAR(20)']
+  status user_status [not null, default: 'ACTIVE', note: '현재 처리 상태; SQL type VARCHAR(20)']
   country_code varchar(2) [note: '온보딩에서 검증한 ISO 3166-1 alpha-2 국가 코드. USER는 필수이고 OPERATOR는 NULL을 허용한다']
-  country_level varchar(20) [note: 'country_code가 region_code의 COUNTRY 행만 참조하도록 사용하는 생성 컬럼이며 항상 COUNTRY로 계산된다']
+  country_level varchar(20) [note: "SQL GENERATED ALWAYS AS ('COUNTRY'::varchar(20)) STORED. country_code가 region_code의 COUNTRY 행만 참조하도록 하는 복합 FK 컬럼"]
   coarse_region_code varchar(100) [not null, note: '사용자의 공개용 기준 지역 코드']
   locale varchar(35) [not null, note: '언어와 지역별 표시 형식을 결정하는 로케일']
   timezone varchar(64) [not null, note: '날짜 경계와 알림 계산에 사용하는 IANA 시간대']
   nickname varchar(50) [note: '다른 사용자에게 표시할 익명 닉네임']
+  profile_image_media_id bigint [note: '프로필 미디어. (profile_image_media_id, id)가 같은 소유자의 media_asset만 참조한다']
   created_at timestamptz [not null, default: `clock_timestamp()`, note: '행이 생성된 시각']
   updated_at timestamptz [not null, default: `clock_timestamp()`, note: '마지막으로 변경된 시각']
   version bigint [not null, default: 0, note: 'JPA 낙관적 잠금용 행 버전. 수정마다 증가하며 동시 수정 중 뒤늦은 요청을 거절한다. V4 migration에서 추가되었다.']
@@ -381,21 +306,26 @@ Table user_account [headercolor: #4E79A7] {
     (id, role) [unique, name: 'uq_user_account_id_role', note: 'id가 이미 PK지만 operator_credential의 (user_id, role) 복합 외래키가 참조하려면 그 컬럼 조합에 unique가 따로 있어야 한다. PostgreSQL의 요구사항이다. V5 migration에서 추가되었다']
     coarse_region_code [name: 'user_account_region_idx', note: 'region_code 삭제 시 RESTRICT 검사와 지역 단위 조회용 FK 인덱스']
     country_code [name: 'user_account_country_idx', note: '국가 단위 조회와 country_code 복합 FK의 역방향 검사에 사용한다. V9 migration에서 추가되었다']
+    `lower(nickname)` [unique, name: 'uq_user_account_nickname_ci', note: "SQL: CREATE UNIQUE INDEX uq_user_account_nickname_ci ON user_account (lower(nickname)) WHERE nickname IS NOT NULL AND deleted_at IS NULL. 대소문자 무시·활성 계정 한정 유일성"]
   }
 
-  checks {
-    `nickname IS NULL OR btrim(nickname) <> ''` [name: 'ck_user_account_nickname']
-    `(status = 'DELETED' AND deleted_at IS NOT NULL) OR (status <> 'DELETED' AND deleted_at IS NULL)` [name: 'ck_user_account_deleted_at']
-    `country_code IS NULL OR country_code ~ '^[A-Z]{2}$'` [name: 'ck_user_account_country_code']
-    `role <> 'USER' OR country_code IS NOT NULL` [name: 'ck_user_account_user_country']
-  }
 
-  Note: '테이블 설명: 사용자의 기본 식별자, 권한, 계정 상태, 기준 지역과 시간대를 관리하는 계정 테이블이다. 필요 이유: 사용자 식별자와 서비스 공통 권한·계정 상태를 한곳에서 관리해 모든 도메인이 동일한 계정 기준을 참조하게 한다.'
+  Note: '''
+테이블 설명: 사용자의 기본 식별자, 권한, 계정 상태, 기준 지역, 프로필 이미지와 시간대를 관리하는 계정 테이블이다. 프로필 FK는 같은 사용자가 소유한 media_asset만 허용하며, 자산 상태가 DELETED이면 조회 계층이 기본 이미지로 표시한다.
+
+Flyway CHECK constraints (SQL):
+ck_user_account_country_code: CHECK (country_code IS NULL OR country_code::text ~ '^[A-Z]{2}$'::text)
+ck_user_account_deleted_at: CHECK (status::text = 'DELETED'::text AND deleted_at IS NOT NULL OR status::text <> 'DELETED'::text AND deleted_at IS NULL)
+ck_user_account_nickname: CHECK (nickname IS NULL OR btrim(nickname::text) <> ''::text)
+ck_user_account_role: CHECK (role::text = ANY (ARRAY['USER'::character varying, 'OPERATOR'::character varying]::text[]))
+ck_user_account_status: CHECK (status::text = ANY (ARRAY['ACTIVE'::character varying, 'BLOCKED'::character varying, 'DELETED'::character varying]::text[]))
+ck_user_account_user_country: CHECK (role::text <> 'USER'::text OR country_code IS NOT NULL)
+'''
 }
 
 Table operator_credential [headercolor: #4E79A7] {
   user_id bigint [pk, not null, note: 'user_account를 가리키는 기본키이자 외래키']
-  role user_role [not null, default: 'OPERATOR', note: 'user_account.role과 복합 외래키를 이루기 위한 사본. 항상 OPERATOR다.']
+  role user_role [not null, default: 'OPERATOR', note: 'user_account.role과 복합 외래키를 이루기 위한 사본. 항상 OPERATOR다.; SQL type VARCHAR(20)']
   login_id varchar(50) [not null, note: '백오피스 로그인 식별자. 소문자만 허용한다.']
   password_hash varchar(255) [not null, note: '검증된 비밀번호 해시. 평문은 저장하지 않는다.']
   failed_attempt_count smallint [not null, default: 0, note: '연속 로그인 실패 횟수. 성공하면 0으로 되돌린다.']
@@ -409,14 +339,16 @@ Table operator_credential [headercolor: #4E79A7] {
     login_id [unique, name: 'uq_operator_credential_login_id', note: '로그인 식별자는 계정 간 유일하다. CHECK가 소문자만 허용하므로 대소문자 차이로 같은 식별자가 둘 생기지 않는다']
   }
 
-  checks {
-    `role = 'OPERATOR'` [name: 'ck_operator_credential_role']
-    `btrim(login_id) <> '' AND login_id = lower(login_id)` [name: 'ck_operator_credential_login_id']
-    `failed_attempt_count >= 0` [name: 'ck_operator_credential_failed_attempt']
-    `locked_until IS NULL OR locked_until > created_at` [name: 'ck_operator_credential_locked_until']
-  }
 
-  Note: '테이블 설명: 백오피스 운영자의 로그인 자격증명과 잠금 상태를 관리하는 테이블이다. 필요 이유: 계정 생명주기와 자격증명 생명주기의 변경 주기가 다르고, 일반 사용자가 운영자 때문에 존재하는 NULL 컬럼을 들고 다니지 않게 한다. (user_id, role) 복합 외래키로 USER 계정에 자격증명이 붙는 것을 DB가 거절한다. V5 migration에서 추가되었다.'
+  Note: '''
+테이블 설명: 백오피스 운영자의 로그인 자격증명과 잠금 상태를 관리하는 테이블이다. 필요 이유: 계정 생명주기와 자격증명 생명주기의 변경 주기가 다르고, 일반 사용자가 운영자 때문에 존재하는 NULL 컬럼을 들고 다니지 않게 한다. (user_id, role) 복합 외래키로 USER 계정에 자격증명이 붙는 것을 DB가 거절한다. V5 migration에서 추가되었다.
+
+Flyway CHECK constraints (SQL):
+ck_operator_credential_failed_attempt: CHECK (failed_attempt_count >= 0)
+ck_operator_credential_locked_until: CHECK (locked_until IS NULL OR locked_until > created_at)
+ck_operator_credential_login_id: CHECK (btrim(login_id::text) <> ''::text AND login_id::text = lower(login_id::text))
+ck_operator_credential_role: CHECK (role::text = 'OPERATOR'::text)
+'''
 }
 
 Table device_credential [headercolor: #4E79A7] {
@@ -424,8 +356,8 @@ Table device_credential [headercolor: #4E79A7] {
   user_id bigint [not null, note: '대상 사용자 식별자']
   installation_id varchar(64) [not null, note: '클라이언트가 만든 기기 식별자. 인증 수단이 아니라 조회·재등록 판단용 식별자일 뿐이다']
   secret_hash char(64) [not null, note: '서버가 발급한 device_secret의 SHA-256 해시(hex). 평문은 저장하지 않는다']
-  platform device_platform [not null, note: '자격증명을 등록한 클라이언트 플랫폼']
-  credential_status device_credential_status [not null, default: 'ACTIVE', note: '현재 인증 가능 여부']
+  platform device_platform [not null, note: '자격증명을 등록한 클라이언트 플랫폼; SQL type VARCHAR(20)']
+  credential_status device_credential_status [not null, default: 'ACTIVE', note: '현재 인증 가능 여부; SQL type VARCHAR(20)']
   last_used_at timestamptz [not null, default: `clock_timestamp()`, note: '토큰 재발급이 성공할 때마다 갱신되는 마지막 사용 시각']
   created_at timestamptz [not null, default: `clock_timestamp()`, note: '행이 생성된 시각']
   revoked_at timestamptz [note: '자격증명을 해지한 시각']
@@ -436,23 +368,31 @@ Table device_credential [headercolor: #4E79A7] {
     user_id [name: 'device_credential_user_idx', note: 'SQL DDL은 credential_status=ACTIVE인 partial index. 사용자별 활성 기기 조회와 user_account CASCADE 삭제용']
   }
 
-  checks {
-    `platform IN ('IOS', 'ANDROID')` [name: 'ck_device_credential_platform']
-    `credential_status IN ('ACTIVE', 'REVOKED')` [name: 'ck_device_credential_status']
-    `(credential_status = 'REVOKED') = (revoked_at IS NOT NULL)` [name: 'ck_device_credential_revoked_at']
-    `btrim(installation_id) <> ''` [name: 'ck_device_credential_installation_id']
-  }
 
-  Note: '테이블 설명: 앱 사용자 기기별 인증 자격증명을 관리하는 테이블이다. 필요 이유: 클라이언트가 만든 installation_id를 인증 수단으로 쓰지 않고, 서버가 발급한 고엔트로피 device_secret의 해시로만 기기를 인증한다. push_device와 물리적으로 같은 기기를 가리키지만 발급·해지 주체가 우리이고 생명주기가 독립적이라 분리한다. V7 migration에서 추가되었다.'
+  Note: '''
+테이블 설명: 앱 사용자 기기별 인증 자격증명을 관리하는 테이블이다. 필요 이유: 클라이언트가 만든 installation_id를 인증 수단으로 쓰지 않고, 서버가 발급한 고엔트로피 device_secret의 해시로만 기기를 인증한다. push_device와 물리적으로 같은 기기를 가리키지만 발급·해지 주체가 우리이고 생명주기가 독립적이라 분리한다. V7 migration에서 추가되었다.
+
+Flyway CHECK constraints (SQL):
+ck_device_credential_installation_id: CHECK (btrim(installation_id::text) <> ''::text)
+ck_device_credential_platform: CHECK (platform::text = ANY (ARRAY['IOS'::character varying, 'ANDROID'::character varying]::text[]))
+ck_device_credential_revoked_at: CHECK ((credential_status::text = 'REVOKED'::text) = (revoked_at IS NOT NULL))
+ck_device_credential_status: CHECK (credential_status::text = ANY (ARRAY['ACTIVE'::character varying, 'REVOKED'::character varying]::text[]))
+'''
 }
 
 Table user_private_attribute [headercolor: #4E79A7] {
   user_id bigint [pk, not null, note: '대상 사용자 식별자']
-  gender gender [note: '사용자가 선택적으로 제공한 성별 값']
-  age_band age_band [note: '생년월일 대신 최소한으로 저장하는 연령대 구간']
+  gender gender [note: '사용자가 선택적으로 제공한 성별 값; SQL type VARCHAR(20)']
+  age_band age_band [note: '생년월일 대신 최소한으로 저장하는 연령대 구간; SQL type VARCHAR(20)']
   updated_at timestamptz [not null, default: `clock_timestamp()`, note: '마지막으로 변경된 시각']
 
-  Note: '테이블 설명: 사용자가 선택적으로 제공한 성별과 연령대 같은 민감 속성을 보관하는 1대1 확장 테이블이다. 필요 이유: 성별·연령대 같은 선택형 민감 정보를 일반 계정과 분리해 수집 승인, 접근 권한, 삭제 범위를 독립 관리한다. P10 승인 전 연령대는 수집하지 않는다.'
+  Note: '''
+테이블 설명: 사용자가 선택적으로 제공한 성별과 연령대 같은 민감 속성을 보관하는 1대1 확장 테이블이다. 필요 이유: 성별·연령대 같은 선택형 민감 정보를 일반 계정과 분리해 수집 승인, 접근 권한, 삭제 범위를 독립 관리한다. P10 승인 전 연령대는 수집하지 않는다.
+
+Flyway CHECK constraints (SQL):
+ck_user_private_attribute_age_band: CHECK (age_band IS NULL OR (age_band::text = ANY (ARRAY['10S'::character varying, '20S'::character varying, '30S'::character varying, '40S'::character varying, '50S'::character varying, '60S'::character varying, '70S_PLUS'::character varying]::text[])))
+ck_user_private_attribute_gender: CHECK (gender IS NULL OR (gender::text = ANY (ARRAY['MALE'::character varying, 'FEMALE'::character varying, 'OTHER'::character varying, 'UNDISCLOSED'::character varying]::text[])))
+'''
 }
 
 Table active_user_presence [headercolor: #4E79A7] {
@@ -470,13 +410,15 @@ Table active_user_presence [headercolor: #4E79A7] {
     coarse_region_code [name: 'active_user_presence_region_idx', note: 'region_code 삭제 시 RESTRICT 검사와 지역 단위 후보 조회용 FK 인덱스']
   }
 
-  checks {
-    `num_nonnulls(position, coarse_cell_id) >= 1` [name: 'ck_active_user_presence_location']
-    `accuracy_m IS NULL OR accuracy_m >= 0` [name: 'ck_active_user_presence_accuracy']
-    `expires_at > location_at` [name: 'ck_active_user_presence_expiry']
-  }
 
-  Note: '테이블 설명: 수신자 매칭에 사용할 사용자의 최근 위치와 수신 가능 여부를 TTL 형태로 보관하는 테이블이다. 필요 이유: 자주 바뀌고 짧게 유효한 위치와 수신 가능 상태를 계정 원본에서 분리해 TTL 기반 수신자 탐색을 빠르게 수행한다. P06 정책: 1안(짧은 TTL 정확 좌표 저장, 외부에는 흐린 값만 제공)으로 2026-08-03 확정했다. 이 테이블이 서비스 전체에서 정확 좌표를 보관하는 유일한 곳이며 접근 경로를 매칭 워커로 제한한다. 인덱스 보충: SQL DDL에는 아래 인덱스 블록 외에 position 컬럼의 partial GiST 인덱스 active_user_presence_position_gix(WHERE receive_allowed)가 있으며, 이것이 방향·거리 후보 탐색의 핵심 인덱스다.'
+  Note: '''
+테이블 설명: 수신자 매칭에 사용할 사용자의 최근 위치와 수신 가능 여부를 TTL 형태로 보관하는 테이블이다. 필요 이유: 자주 바뀌고 짧게 유효한 위치와 수신 가능 상태를 계정 원본에서 분리해 TTL 기반 수신자 탐색을 빠르게 수행한다. P06 정책: 1안(짧은 TTL 정확 좌표 저장, 외부에는 흐린 값만 제공)으로 2026-08-03 확정했다. 이 테이블이 서비스 전체에서 정확 좌표를 보관하는 유일한 곳이며 접근 경로를 매칭 워커로 제한한다. 인덱스 보충: SQL DDL에는 아래 인덱스 블록 외에 position 컬럼의 partial GiST 인덱스 active_user_presence_position_gix(WHERE receive_allowed)가 있으며, 이것이 방향·거리 후보 탐색의 핵심 인덱스다.
+
+Flyway CHECK constraints (SQL):
+ck_active_user_presence_accuracy: CHECK (accuracy_m IS NULL OR accuracy_m >= 0::numeric)
+ck_active_user_presence_expiry: CHECK (expires_at > location_at)
+ck_active_user_presence_location: CHECK (num_nonnulls("position", coarse_cell_id) >= 1)
+'''
 }
 
 Table recipient_receive_state [headercolor: #4E79A7] {
@@ -491,13 +433,15 @@ Table recipient_receive_state [headercolor: #4E79A7] {
     (active_unhandled_count, recent_received_count, last_received_at) [name: 'recipient_receive_selection_idx']
   }
 
-  checks {
-    `active_unhandled_count BETWEEN 0 AND 50` [name: 'ck_recipient_receive_state_active_count']
-    `recent_received_count >= 0` [name: 'ck_recipient_receive_state_recent_count']
-    `last_received_at IS NULL OR last_received_at >= recent_window_started_at` [name: 'ck_recipient_receive_state_last_received']
-  }
 
-  Note: '테이블 설명: 사용자별 활성 미처리 수신 건수와 최근 수신 이력을 집계한 용량 관리 테이블이다. 필요 이유: 활성 미처리 질문글이 설정된 수신 상한을 넘지 않도록 매칭 트랜잭션에서 원자적으로 예약해 동시 발송 시 초과를 막는다. 수신 상한: 고정 상수가 아니라 운영 설정값이다(초기값 5, 10 등으로 조정 가능). 실효 상한은 애플리케이션 설정에서 읽어 T5 예약 시 비교하며, 이 테이블의 CHECK는 어떤 설정에서도 넘을 수 없는 안전 상한 50만 강제한다. 상한을 DB CHECK로 박으면 값을 바꿀 때마다 마이그레이션이 필요해진다. ck_recipient_receive_state_active_count(2026-08-04): 이전의 BETWEEN 0 AND 5에서 상한 5 하드코딩을 제거하고 안전 상한 50으로 바꿨다. 슬롯 해제: 열람과 공감으로는 해제되지 않고 답변·넘김 확정·만료·참여 불가 전환으로만 해제된다.'
+  Note: '''
+테이블 설명: 사용자별 활성 미처리 수신 건수와 최근 수신 이력을 집계한 용량 관리 테이블이다. 필요 이유: 활성 미처리 질문글이 설정된 수신 상한을 넘지 않도록 매칭 트랜잭션에서 원자적으로 예약해 동시 발송 시 초과를 막는다. 수신 상한: 고정 상수가 아니라 운영 설정값이다(초기값 5, 10 등으로 조정 가능). 실효 상한은 애플리케이션 설정에서 읽어 T5 예약 시 비교하며, 이 테이블의 CHECK는 어떤 설정에서도 넘을 수 없는 안전 상한 50만 강제한다. 상한을 DB CHECK로 박으면 값을 바꿀 때마다 마이그레이션이 필요해진다. ck_recipient_receive_state_active_count(2026-08-04): 이전의 BETWEEN 0 AND 5에서 상한 5 하드코딩을 제거하고 안전 상한 50으로 바꿨다. 슬롯 해제: 열람과 공감으로는 해제되지 않고 답변·넘김 확정·만료·참여 불가 전환으로만 해제된다.
+
+Flyway CHECK constraints (SQL):
+ck_recipient_receive_state_active_count: CHECK (active_unhandled_count >= 0 AND active_unhandled_count <= 50)
+ck_recipient_receive_state_last_received: CHECK (last_received_at IS NULL OR last_received_at >= recent_window_started_at)
+ck_recipient_receive_state_recent_count: CHECK (recent_received_count >= 0)
+'''
 }
 
 // -----------------------------------------------------------------------------
@@ -507,7 +451,7 @@ Table recipient_receive_state [headercolor: #4E79A7] {
 Table question_proposal [headercolor: #59A14F] {
   id bigint [pk, increment, not null, note: '행을 식별하는 기본키']
   proposer_id bigint [not null, note: '질문을 제안한 사용자 식별자']
-  status question_proposal_status [not null, default: 'DRAFT', note: '현재 처리 상태']
+  status question_proposal_status [not null, default: 'DRAFT', note: '현재 처리 상태; SQL type VARCHAR(30)']
   proposed_text text [not null, note: '사용자가 제출한 질문 문구 원문']
   decision_reason text [note: '운영 판정 결과를 사용자에게 설명할 사유']
   submitted_at timestamptz [note: '사용자가 제출을 완료한 시각']
@@ -519,19 +463,22 @@ Table question_proposal [headercolor: #59A14F] {
     proposer_id [name: 'question_proposal_proposer_idx', note: '제안자별 목록 조회와 FK RESTRICT 검사용']
   }
 
-  checks {
-    `btrim(proposed_text) <> ''` [name: 'ck_question_proposal_text']
-    `status = 'DRAFT' OR submitted_at IS NOT NULL` [name: 'ck_question_proposal_submission']
-  }
 
-  Note: '테이블 설명: 사용자가 운영 검토를 요청한 질문 문구와 현재 처리 상태를 저장하는 테이블이다. 필요 이유: 사용자 제안을 승인 질문과 분리해 승인 전 비공개 원칙과 제안자의 처리 상태 조회를 보장한다. 트리거 불변식: SQL DDL의 tr_question_proposal_text_immutable_after_submit(BEFORE UPDATE OF proposed_text)이 DRAFT를 벗어난 제안의 문구 변경을 거부해, 운영자가 검토한 문구와 실제 문구가 달라지지 않는다.'
+  Note: '''
+테이블 설명: 사용자가 운영 검토를 요청한 질문 문구와 현재 처리 상태를 저장하는 테이블이다. 필요 이유: 사용자 제안을 승인 질문과 분리해 승인 전 비공개 원칙과 제안자의 처리 상태 조회를 보장한다. 트리거 불변식: SQL DDL의 tr_question_proposal_text_immutable_after_submit(BEFORE UPDATE OF proposed_text)이 DRAFT를 벗어난 제안의 문구 변경을 거부해, 운영자가 검토한 문구와 실제 문구가 달라지지 않는다.
+
+Flyway CHECK constraints (SQL):
+ck_question_proposal_status: CHECK (status::text = ANY (ARRAY['DRAFT'::character varying, 'SUBMITTED'::character varying, 'UNDER_REVIEW'::character varying, 'APPROVED'::character varying, 'REJECTED'::character varying, 'ARCHIVED'::character varying]::text[]))
+ck_question_proposal_submission: CHECK (status::text = 'DRAFT'::text OR submitted_at IS NOT NULL)
+ck_question_proposal_text: CHECK (btrim(proposed_text) <> ''::text)
+'''
 }
 
 Table question_proposal_review [headercolor: #59A14F] {
   id bigint [pk, increment, not null, note: '행을 식별하는 기본키']
   proposal_id bigint [not null, note: '검토 대상 질문 제안 식별자']
   reviewer_id bigint [not null, note: '판정을 수행한 운영자 식별자']
-  decision question_review_decision [not null, note: '승인 또는 반려 판정']
+  decision question_review_decision [not null, note: '승인 또는 반려 판정; SQL type VARCHAR(30)']
   reason text [note: '판정 근거이며 반려일 때 필수']
   reviewed_at timestamptz [not null, default: `clock_timestamp()`, note: '판정을 확정한 시각']
 
@@ -540,20 +487,23 @@ Table question_proposal_review [headercolor: #59A14F] {
     reviewer_id [name: 'question_proposal_review_reviewer_idx', note: '운영자별 검토 이력 조회와 FK RESTRICT 검사용']
   }
 
-  checks {
-    `decision = 'APPROVED' OR NULLIF(btrim(reason), '') IS NOT NULL` [name: 'ck_question_proposal_review_reason']
-  }
 
-  Note: '테이블 설명: 운영자가 질문 제안을 승인하거나 반려한 판정과 사유를 기록하는 검토 이력 테이블이다. 필요 이유: 질문 제안 상태를 덮어쓰는 데 그치지 않고 누가 언제 어떤 이유로 승인·반려했는지 감사 이력으로 남긴다.'
+  Note: '''
+테이블 설명: 운영자가 질문 제안을 승인하거나 반려한 판정과 사유를 기록하는 검토 이력 테이블이다. 필요 이유: 질문 제안 상태를 덮어쓰는 데 그치지 않고 누가 언제 어떤 이유로 승인·반려했는지 감사 이력으로 남긴다.
+
+Flyway CHECK constraints (SQL):
+ck_question_proposal_review_decision: CHECK (decision::text = ANY (ARRAY['APPROVED'::character varying, 'REJECTED'::character varying]::text[]))
+ck_question_proposal_review_reason: CHECK (decision::text = 'APPROVED'::text OR NULLIF(btrim(reason), ''::text) IS NOT NULL)
+'''
 }
 
 Table approved_question [headercolor: #59A14F] {
   id bigint [pk, increment, not null, note: '행을 식별하는 기본키']
   source_proposal_id bigint [unique, note: '사용자 제안에서 승격된 경우 원본 제안 식별자. SQL DDL의 제약명은 uq_approved_question_source_proposal다']
-  source_type approved_question_source_type [not null, note: '운영자·사용자 제안·자동 생성 중 질문 출처']
-  status approved_question_status [not null, default: 'PENDING_REVIEW', note: '현재 처리 상태']
+  source_type approved_question_source_type [not null, note: '운영자·사용자 제안·자동 생성 중 질문 출처; SQL type VARCHAR(30)']
+  status approved_question_status [not null, default: 'PENDING_REVIEW', note: '현재 처리 상태; SQL type VARCHAR(30)']
   question_text text [not null, note: '사용자에게 제시되는 변경 불가 질문 문구']
-  answer_format answer_format [not null, note: '사진·글 등 질문이 안내하는 응답 형식']
+  answer_format answer_format [not null, note: '사진·글 등 질문이 안내하는 응답 형식; SQL type VARCHAR(20)']
   active_from timestamptz [note: '신규 배정 가능 시작 시각']
   active_until timestamptz [note: '신규 배정 중단 시각']
   approved_at timestamptz [note: '운영 승인이 확정된 시각']
@@ -565,14 +515,19 @@ Table approved_question [headercolor: #59A14F] {
     approved_by [name: 'approved_question_approver_idx', note: 'SQL DDL은 approved_by IS NOT NULL인 partial index. 승인자별 조회와 FK RESTRICT 검사용']
   }
 
-  checks {
-    `(source_type = 'USER_PROPOSAL' AND source_proposal_id IS NOT NULL) OR (source_type <> 'USER_PROPOSAL' AND source_proposal_id IS NULL)` [name: 'ck_approved_question_source']
-    `btrim(question_text) <> ''` [name: 'ck_approved_question_text']
-    `active_until IS NULL OR active_from IS NULL OR active_until > active_from` [name: 'ck_approved_question_active_range']
-    `status <> 'ACTIVE' OR (approved_at IS NOT NULL AND approved_by IS NOT NULL AND active_from IS NOT NULL)` [name: 'ck_approved_question_approval']
-  }
 
-  Note: '테이블 설명: 운영 검토를 통과해 사용자 배정과 방향 글 작성에 사용할 수 있는 질문 풀 테이블이다. 필요 이유: 검토를 통과한 질문만 배정과 글 작성에 사용하도록 질문 풀의 기준점을 제공하고 과거 콘텐츠가 참조한 문구를 보존한다. 트리거 불변식: SQL DDL의 tr_approved_question_text_immutable(BEFORE UPDATE OF question_text)이 승인 이후 question_text 변경을 거부해, 과거 방향 글이 참조한 문구가 사후에 바뀌지 않는다.'
+  Note: '''
+테이블 설명: 운영 검토를 통과해 사용자 배정과 방향 글 작성에 사용할 수 있는 질문 풀 테이블이다. 필요 이유: 검토를 통과한 질문만 배정과 글 작성에 사용하도록 질문 풀의 기준점을 제공하고 과거 콘텐츠가 참조한 문구를 보존한다. 트리거 불변식: SQL DDL의 tr_approved_question_text_immutable(BEFORE UPDATE OF question_text)이 승인 이후 question_text 변경을 거부해, 과거 방향 글이 참조한 문구가 사후에 바뀌지 않는다.
+
+Flyway CHECK constraints (SQL):
+ck_approved_question_active_range: CHECK (active_until IS NULL OR active_from IS NULL OR active_until > active_from)
+ck_approved_question_answer_format: CHECK (answer_format::text = ANY (ARRAY['PHOTO'::character varying, 'TEXT'::character varying, 'BOTH'::character varying]::text[]))
+ck_approved_question_approval: CHECK (status::text <> 'ACTIVE'::text OR approved_at IS NOT NULL AND approved_by IS NOT NULL AND active_from IS NOT NULL)
+ck_approved_question_source: CHECK (source_type::text = 'USER_PROPOSAL'::text AND source_proposal_id IS NOT NULL OR source_type::text <> 'USER_PROPOSAL'::text AND source_proposal_id IS NULL)
+ck_approved_question_source_type: CHECK (source_type::text = ANY (ARRAY['OPERATOR'::character varying, 'USER_PROPOSAL'::character varying, 'GENERATED_CANDIDATE'::character varying]::text[]))
+ck_approved_question_status: CHECK (status::text = ANY (ARRAY['PENDING_REVIEW'::character varying, 'ACTIVE'::character varying, 'INACTIVE'::character varying, 'ARCHIVED'::character varying]::text[]))
+ck_approved_question_text: CHECK (btrim(question_text) <> ''::text)
+'''
 }
 
 Table question_assignment_cycle [headercolor: #59A14F] {
@@ -580,7 +535,7 @@ Table question_assignment_cycle [headercolor: #59A14F] {
   user_id bigint [not null, note: '대상 사용자 식별자']
   cycle_key varchar(100) [not null, note: '같은 사용자에게 같은 주기를 중복 생성하지 않는 멱등키']
   pool_version varchar(100) [not null, note: '배정 당시 승인 질문 풀의 스냅샷 버전']
-  status question_assignment_cycle_status [not null, default: 'ACTIVE', note: '현재 처리 상태']
+  status question_assignment_cycle_status [not null, default: 'ACTIVE', note: '현재 처리 상태; SQL type VARCHAR(20)']
   starts_at timestamptz [not null, note: '질문 세트 유효 시작 시각']
   ends_at timestamptz [not null, note: '질문 세트 유효 종료 시각']
   created_at timestamptz [not null, default: `clock_timestamp()`, note: '행이 생성된 시각']
@@ -589,11 +544,14 @@ Table question_assignment_cycle [headercolor: #59A14F] {
     (user_id, cycle_key) [unique, name: 'uq_question_assignment_cycle_user_key']
   }
 
-  checks {
-    `ends_at > starts_at` [name: 'ck_question_assignment_cycle_range']
-  }
 
-  Note: '테이블 설명: 특정 사용자에게 일정 기간 유지되는 질문 세트의 주기와 풀 버전을 관리하는 테이블이다. 필요 이유: 한 주기 동안 같은 사용자에게 같은 질문 세트를 유지하고 배정 결과를 버전과 기간으로 재현한다.'
+  Note: '''
+테이블 설명: 특정 사용자에게 일정 기간 유지되는 질문 세트의 주기와 풀 버전을 관리하는 테이블이다. 필요 이유: 한 주기 동안 같은 사용자에게 같은 질문 세트를 유지하고 배정 결과를 버전과 기간으로 재현한다.
+
+Flyway CHECK constraints (SQL):
+ck_question_assignment_cycle_range: CHECK (ends_at > starts_at)
+ck_question_assignment_cycle_status: CHECK (status::text = ANY (ARRAY['ACTIVE'::character varying, 'COMPLETED'::character varying, 'CANCELLED'::character varying]::text[]))
+'''
 }
 
 Table question_assignment [headercolor: #59A14F] {
@@ -611,13 +569,15 @@ Table question_assignment [headercolor: #59A14F] {
     (approved_question_id, assigned_at) [name: 'question_assignment_history_idx', note: 'SQL DDL은 assigned_at DESC 정렬이며 DBML은 컬럼 정렬 방향을 표현하지 않는다']
   }
 
-  checks {
-    `display_order > 0` [name: 'ck_question_assignment_display_order']
-    `first_viewed_at IS NULL OR first_viewed_at >= assigned_at` [name: 'ck_question_assignment_viewed_at']
-    `used_at IS NULL OR used_at >= assigned_at` [name: 'ck_question_assignment_used_at']
-  }
 
-  Note: '테이블 설명: 배정 주기 안에 포함된 승인 질문, 표시 순서, 노출과 사용 시각을 저장하는 테이블이다. 필요 이유: 배정 주기와 승인 질문의 다대다 관계, 화면 순서, 최초 노출과 사용 여부를 행 단위로 기록한다.'
+  Note: '''
+테이블 설명: 배정 주기 안에 포함된 승인 질문, 표시 순서, 노출과 사용 시각을 저장하는 테이블이다. 필요 이유: 배정 주기와 승인 질문의 다대다 관계, 화면 순서, 최초 노출과 사용 여부를 행 단위로 기록한다.
+
+Flyway CHECK constraints (SQL):
+ck_question_assignment_display_order: CHECK (display_order > 0)
+ck_question_assignment_used_at: CHECK (used_at IS NULL OR used_at >= assigned_at)
+ck_question_assignment_viewed_at: CHECK (first_viewed_at IS NULL OR first_viewed_at >= assigned_at)
+'''
 }
 
 // -----------------------------------------------------------------------------
@@ -628,23 +588,27 @@ Table direction_scheme [headercolor: #F28E2B] {
   id bigint [pk, increment, not null, note: '행을 식별하는 기본키']
   code varchar(50) [not null, note: '같은 방향 정책 계열을 묶는 코드']
   version integer [not null, note: '정책 변경 순서를 나타내는 버전']
-  type direction_scheme_type [not null, note: '동일 구간 분할 또는 연속 각도 방식']
+  type direction_scheme_type [not null, note: '동일 구간 분할 또는 연속 각도 방식; SQL type VARCHAR(30)']
   segment_count integer [note: '동일 분할 정책의 방향 구간 수']
   start_offset_deg numeric(7,3) [not null, note: '첫 구간 경계 계산의 시작 오프셋 각도']
-  status direction_scheme_status [not null, default: 'ACTIVE', note: '현재 처리 상태']
+  status direction_scheme_status [not null, default: 'ACTIVE', note: '현재 처리 상태; SQL type VARCHAR(20)']
 
   indexes {
     (code, version) [unique, name: 'uq_direction_scheme_code_version']
     code [unique, name: 'uq_direction_scheme_active', note: '주의: 실제 제약은 무조건 unique가 아니다. SQL DDL은 status=ACTIVE인 행에만 적용되는 partial unique index다. 같은 code의 두 버전이 동시에 ACTIVE가 되는 것을 막아 애플리케이션이 현재 방향 정책을 모호하지 않게 고를 수 있다. INACTIVE·ARCHIVED 버전은 code가 겹쳐도 된다']
   }
 
-  checks {
-    `version > 0` [name: 'ck_direction_scheme_version']
-    `(type = 'EQUAL_SEGMENTS' AND segment_count > 0) OR (type = 'CONTINUOUS' AND segment_count IS NULL)` [name: 'ck_direction_scheme_segment_count']
-    `start_offset_deg >= 0 AND start_offset_deg < 360` [name: 'ck_direction_scheme_start_offset']
-  }
 
-  Note: '테이블 설명: 방향 분할 방식, 구간 수, 시작 각도와 버전을 정의하는 방향 정책 마스터 테이블이다. 필요 이유: 방향 수와 분할 방식이 바뀌어도 정책을 버전 관리해 과거 발송을 새로운 규칙으로 재해석하지 않게 한다.'
+  Note: '''
+테이블 설명: 방향 분할 방식, 구간 수, 시작 각도와 버전을 정의하는 방향 정책 마스터 테이블이다. 필요 이유: 방향 수와 분할 방식이 바뀌어도 정책을 버전 관리해 과거 발송을 새로운 규칙으로 재해석하지 않게 한다.
+
+Flyway CHECK constraints (SQL):
+ck_direction_scheme_segment_count: CHECK (type::text = 'EQUAL_SEGMENTS'::text AND segment_count > 0 OR type::text = 'CONTINUOUS'::text AND segment_count IS NULL)
+ck_direction_scheme_start_offset: CHECK (start_offset_deg >= 0::numeric AND start_offset_deg < 360::numeric)
+ck_direction_scheme_status: CHECK (status::text = ANY (ARRAY['ACTIVE'::character varying, 'INACTIVE'::character varying, 'ARCHIVED'::character varying]::text[]))
+ck_direction_scheme_type: CHECK (type::text = ANY (ARRAY['EQUAL_SEGMENTS'::character varying, 'CONTINUOUS'::character varying]::text[]))
+ck_direction_scheme_version: CHECK (version > 0)
+'''
 }
 
 Table direction_segment [headercolor: #F28E2B] {
@@ -661,25 +625,27 @@ Table direction_segment [headercolor: #F28E2B] {
     (scheme_id, sort_order) [unique, name: 'uq_direction_segment_order']
   }
 
-  checks {
-    `center_bearing_deg >= 0 AND center_bearing_deg < 360` [name: 'ck_direction_segment_center']
-    `angular_width_deg > 0 AND angular_width_deg <= 360` [name: 'ck_direction_segment_width']
-    `sort_order >= 0` [name: 'ck_direction_segment_order']
-  }
 
-  Note: '테이블 설명: 방향 정책에 속한 각 구간의 코드, 이름, 중심 방위각과 각도 폭을 정의하는 테이블이다. 필요 이유: 방향 구간을 코드에 고정하지 않고 데이터로 관리해 방향 수, 이름, 중심각과 폭 변경을 지원한다.'
+  Note: '''
+테이블 설명: 방향 정책에 속한 각 구간의 코드, 이름, 중심 방위각과 각도 폭을 정의하는 테이블이다. 필요 이유: 방향 구간을 코드에 고정하지 않고 데이터로 관리해 방향 수, 이름, 중심각과 폭 변경을 지원한다.
+
+Flyway CHECK constraints (SQL):
+ck_direction_segment_center: CHECK (center_bearing_deg >= 0::numeric AND center_bearing_deg < 360::numeric)
+ck_direction_segment_order: CHECK (sort_order >= 0)
+ck_direction_segment_width: CHECK (angular_width_deg > 0::numeric AND angular_width_deg <= 360::numeric)
+'''
 }
 
 Table media_asset [headercolor: #F28E2B] {
   id bigint [pk, increment, not null, note: '행을 식별하는 기본키']
   owner_id bigint [not null, note: '소유 사용자 식별자']
-  status media_asset_status [not null, default: 'UPLOADING', note: '현재 처리 상태']
+  status media_asset_status [not null, default: 'UPLOADING', note: '현재 처리 상태; SQL type VARCHAR(30)']
   storage_key varchar(500) [not null, unique, note: '오브젝트 스토리지 내부 파일 키. SQL DDL의 제약명은 uq_media_asset_storage_key다']
   mime_type varchar(100) [not null, note: '파일 형식 검증에 사용하는 MIME 타입']
   byte_size bigint [not null, note: '업로드 제한과 비용 계산에 쓰는 파일 크기']
   checksum varchar(128) [not null, note: '무결성과 중복 확인에 쓰는 해시']
   exif_stripped boolean [not null, default: false, note: '사진 EXIF 민감 정보 제거 완료 여부']
-  moderation_status content_moderation_status [not null, default: 'PENDING', note: '콘텐츠 안전 검사 결과']
+  moderation_status content_moderation_status [not null, default: 'PENDING', note: '콘텐츠 안전 검사 결과; SQL type VARCHAR(30)']
   created_at timestamptz [not null, default: `clock_timestamp()`, note: '행이 생성된 시각']
   deleted_at timestamptz [note: '삭제 처리된 시각']
 
@@ -688,24 +654,28 @@ Table media_asset [headercolor: #F28E2B] {
     owner_id [name: 'media_asset_owner_idx', note: '소유자별 미디어 조회와 FK RESTRICT 검사용']
   }
 
-  checks {
-    `byte_size > 0` [name: 'ck_media_asset_size']
-    `(status = 'DELETED') = (deleted_at IS NOT NULL)` [name: 'ck_media_asset_deleted_at']
-  }
 
-  Note: '테이블 설명: 업로드된 파일의 소유자, 저장 위치, 형식, 크기, 검사와 삭제 상태를 관리하는 미디어 테이블이다. 필요 이유: 파일 업로드·검사·삭제 생명주기를 콘텐츠에서 분리하고 소유자와 안전 검사 결과를 공통 관리한다. 트리거 불변식: SQL DDL의 ct_media_status_preserves_content(DEFERRABLE INITIALLY DEFERRED)가 status 변경으로 이 미디어가 붙은 ACTIVE 글이나 PUBLISHED 답변이 콘텐츠 없는 상태가 되는 것을 막는다. media_attachment.media_id가 PK이므로 이 트리거는 최대 한 건의 첨부만 확인한다.'
+  Note: '''
+테이블 설명: 업로드된 파일의 소유자, 저장 위치, 형식, 크기, 검사와 삭제 상태를 관리하는 미디어 테이블이다. 필요 이유: 파일 업로드·검사·삭제 생명주기를 콘텐츠에서 분리하고 소유자와 안전 검사 결과를 공통 관리한다. 트리거 불변식: SQL DDL의 ct_media_status_preserves_content(DEFERRABLE INITIALLY DEFERRED)가 status 변경으로 이 미디어가 붙은 ACTIVE 글이나 PUBLISHED 답변이 콘텐츠 없는 상태가 되는 것을 막는다. media_attachment.media_id가 PK이므로 이 트리거는 최대 한 건의 첨부만 확인한다.
+
+Flyway CHECK constraints (SQL):
+ck_media_asset_deleted_at: CHECK ((status::text = 'DELETED'::text) = (deleted_at IS NOT NULL))
+ck_media_asset_moderation: CHECK (moderation_status::text = ANY (ARRAY['PENDING'::character varying, 'PASSED'::character varying, 'REVIEW_HELD'::character varying, 'REJECTED'::character varying]::text[]))
+ck_media_asset_size: CHECK (byte_size > 0)
+ck_media_asset_status: CHECK (status::text = ANY (ARRAY['UPLOADING'::character varying, 'READY'::character varying, 'REJECTED'::character varying, 'DELETED'::character varying]::text[]))
+'''
 }
 
 Table direction_post [headercolor: #F28E2B] {
   id bigint [pk, increment, not null, note: '행을 식별하는 기본키']
   sender_id bigint [not null, note: '방향 글을 작성하고 발송한 사용자']
   approved_question_id bigint [not null, note: '글 작성의 출발점이 된 승인 질문']
-  status direction_post_status [not null, default: 'SUBMITTED', note: '현재 처리 상태']
+  status direction_post_status [not null, default: 'SUBMITTED', note: '현재 처리 상태; SQL type VARCHAR(30)']
   idempotency_key varchar(200) [not null, note: '동일 요청의 중복 처리를 막는 멱등키']
   request_fingerprint varchar(80) [note: '정규화된 사용자 의도 입력의 v1:SHA-256 fingerprint. 기존 행은 NULL을 허용하고 첫 멱등 재시도 때 복원 가능한 범위에서 lazy backfill한다']
   body_text text [note: '사용자가 작성한 글 본문']
   coarse_region_code varchar(100) [not null, note: '글에 공개할 흐린 발송 지역']
-  moderation_status content_moderation_status [not null, default: 'PENDING', note: '콘텐츠 안전 검사 결과']
+  moderation_status content_moderation_status [not null, default: 'PENDING', note: '콘텐츠 안전 검사 결과; SQL type VARCHAR(30)']
   submitted_at timestamptz [not null, default: `clock_timestamp()`, note: '사용자가 제출을 완료한 시각']
   published_at timestamptz [note: '상대 사용자에게 공개된 시각']
   expires_at timestamptz [not null, note: '새 답변 작성을 차단할 만료 시각. 서버가 발송 시점에 확정하며 사용자가 고르지 않는다. 만료 후에도 질문자의 열람과 공감은 계속 가능하다']
@@ -721,14 +691,19 @@ Table direction_post [headercolor: #F28E2B] {
     coarse_region_code [name: 'direction_post_region_idx', note: 'region_code 삭제 시 RESTRICT 검사용 FK 인덱스']
   }
 
-  checks {
-    `body_text IS NULL OR btrim(body_text) <> ''` [name: 'ck_direction_post_body']
-    `expires_at > submitted_at` [name: 'ck_direction_post_expiry']
-    `status <> 'ACTIVE' OR published_at IS NOT NULL` [name: 'ck_direction_post_published_at']
-    `(status = 'DELETED') = (deleted_at IS NOT NULL)` [name: 'ck_direction_post_deleted_at']
-  }
 
-  Note: '테이블 설명: 사용자가 승인 질문에 글이나 사진을 붙여 특정 방향으로 발송한 원문 콘텐츠 테이블이다. 필요 이유: 사용자가 승인 질문에 붙여 한 방향으로 보내는 원문 콘텐츠와 발행·검사·만료 상태의 기준 행을 제공한다. 트리거 불변식: SQL DDL의 ct_direction_post_question_active는 참조하는 approved_question의 status가 ACTIVE일 때만 INSERT와 approved_question_id 변경을 허용한다. ct_direction_post_has_content는 status=ACTIVE인 글에 body_text 또는 status=READY인 첨부 미디어가 최소 하나 있어야 커밋되게 한다. 둘 다 DEFERRABLE INITIALLY DEFERRED constraint trigger이므로 트랜잭션 커밋 시점에 검사한다.'
+  Note: '''
+테이블 설명: 사용자가 승인 질문에 글이나 사진을 붙여 특정 방향으로 발송한 원문 콘텐츠 테이블이다. 필요 이유: 사용자가 승인 질문에 붙여 한 방향으로 보내는 원문 콘텐츠와 발행·검사·만료 상태의 기준 행을 제공한다. 트리거 불변식: SQL DDL의 ct_direction_post_question_active는 참조하는 approved_question의 status가 ACTIVE일 때만 INSERT와 approved_question_id 변경을 허용한다. ct_direction_post_has_content는 status=ACTIVE인 글에 body_text 또는 status=READY인 첨부 미디어가 최소 하나 있어야 커밋되게 한다. 둘 다 DEFERRABLE INITIALLY DEFERRED constraint trigger이므로 트랜잭션 커밋 시점에 검사한다.
+
+Flyway CHECK constraints (SQL):
+ck_direction_post_answers_read_at: CHECK (answers_read_at IS NULL OR answers_read_at >= submitted_at)
+ck_direction_post_body: CHECK (body_text IS NULL OR btrim(body_text) <> ''::text)
+ck_direction_post_deleted_at: CHECK ((status::text = 'DELETED'::text) = (deleted_at IS NOT NULL))
+ck_direction_post_expiry: CHECK (expires_at > submitted_at)
+ck_direction_post_moderation: CHECK (moderation_status::text = ANY (ARRAY['PENDING'::character varying, 'PASSED'::character varying, 'REVIEW_HELD'::character varying, 'REJECTED'::character varying]::text[]))
+ck_direction_post_published_at: CHECK (status::text <> 'ACTIVE'::text OR published_at IS NOT NULL)
+ck_direction_post_status: CHECK (status::text = ANY (ARRAY['SUBMITTED'::character varying, 'SAFETY_CHECKING'::character varying, 'MATCHING'::character varying, 'ACTIVE'::character varying, 'MATCH_FAILED'::character varying, 'REVIEW_HELD'::character varying, 'REJECTED'::character varying, 'EXPIRED'::character varying, 'HIDDEN'::character varying, 'DELETED'::character varying]::text[]))
+'''
 }
 
 Table post_audience [headercolor: #F28E2B] {
@@ -747,14 +722,16 @@ Table post_audience [headercolor: #F28E2B] {
     (direction_scheme_id, selected_segment_key) [name: 'post_audience_segment_idx', note: 'direction_segment 복합 FK의 RESTRICT 검사와 방향 구간별 집계용']
   }
 
-  checks {
-    `center_bearing_deg >= 0 AND center_bearing_deg < 360` [name: 'ck_post_audience_center']
-    `angular_width_deg > 0 AND angular_width_deg <= 360` [name: 'ck_post_audience_width']
-    `min_distance_m >= 0 AND max_distance_m > min_distance_m` [name: 'ck_post_audience_distance']
-    `num_nonnulls(origin_position, origin_cell_id) >= 1` [name: 'ck_post_audience_origin']
-  }
 
-  Note: '테이블 설명: 방향 글 발송 당시 선택한 방향, 거리 범위와 발송 원점을 고정한 1대1 조건 스냅샷 테이블이다. 필요 이유: 발송 당시 방향·거리·원점을 스냅샷으로 고정해 이후 정책이나 위치가 바뀌어도 매칭 조건을 재현한다.'
+  Note: '''
+테이블 설명: 방향 글 발송 당시 선택한 방향, 거리 범위와 발송 원점을 고정한 1대1 조건 스냅샷 테이블이다. 필요 이유: 발송 당시 방향·거리·원점을 스냅샷으로 고정해 이후 정책이나 위치가 바뀌어도 매칭 조건을 재현한다.
+
+Flyway CHECK constraints (SQL):
+ck_post_audience_center: CHECK (center_bearing_deg >= 0::numeric AND center_bearing_deg < 360::numeric)
+ck_post_audience_distance: CHECK (min_distance_m >= 0 AND max_distance_m > min_distance_m)
+ck_post_audience_origin: CHECK (num_nonnulls(origin_position, origin_cell_id) >= 1)
+ck_post_audience_width: CHECK (angular_width_deg > 0::numeric AND angular_width_deg <= 360::numeric)
+'''
 }
 
 Table media_attachment [headercolor: #F28E2B] {
@@ -769,19 +746,21 @@ Table media_attachment [headercolor: #F28E2B] {
     (answer_id, display_order) [unique, name: 'uq_media_attachment_answer_order', note: 'SQL DDL은 answer_id IS NOT NULL인 partial unique index. 답변 첨부 조회의 FK 인덱스 역할도 겸한다']
   }
 
-  checks {
-    `num_nonnulls(post_id, answer_id) = 1` [name: 'ck_media_attachment_exactly_one_target']
-    `display_order >= 0` [name: 'ck_media_attachment_order']
-  }
 
-  Note: '테이블 설명: 미디어를 방향 글 또는 답변 중 정확히 하나에 연결하고 표시 순서를 관리하는 첨부 테이블이다. 필요 이유: 2026-08-03 이전에는 post_media와 answer_media 두 테이블로 나뉘어 있었고 "한 미디어는 한 콘텐츠에만"을 count 기반 constraint trigger로 검사했다. 그 방식은 서로의 미커밋 행을 볼 수 없는 두 트랜잭션이 같은 미디어를 각각 다른 콘텐츠에 붙일 때 둘 다 통과하는 구멍이 있었다. 한 테이블로 합치고 media_id를 PK로 두어 DB가 원자적으로 강제하도록 바꿨다. 소유권 불변식: (media_id, owner_id) → media_asset(id, owner_id) 복합 FK가 미디어 소유자를 고정하고, (post_id, owner_id) → direction_post(id, sender_id)와 (answer_id, owner_id) → answer(id, author_id) 복합 FK가 콘텐츠 작성자와의 일치를 강제한다. 뒤의 두 FK는 MATCH SIMPLE이므로 해당 대상 컬럼이 NULL이면 검사를 건너뛰고, 값이 있을 때만 owner_id 일치를 요구한다. 트리거 불변식: SQL DDL의 ct_media_attachment_preserves_content(DEFERRABLE INITIALLY DEFERRED)가 첨부를 붙이거나 떼어낸 뒤에도 ACTIVE 글과 PUBLISHED 답변의 콘텐츠 조건이 유지되는지 재검사한다.'
+  Note: '''
+테이블 설명: 미디어를 방향 글 또는 답변 중 정확히 하나에 연결하고 표시 순서를 관리하는 첨부 테이블이다. 필요 이유: 2026-08-03 이전에는 post_media와 answer_media 두 테이블로 나뉘어 있었고 "한 미디어는 한 콘텐츠에만"을 count 기반 constraint trigger로 검사했다. 그 방식은 서로의 미커밋 행을 볼 수 없는 두 트랜잭션이 같은 미디어를 각각 다른 콘텐츠에 붙일 때 둘 다 통과하는 구멍이 있었다. 한 테이블로 합치고 media_id를 PK로 두어 DB가 원자적으로 강제하도록 바꿨다. 소유권 불변식: (media_id, owner_id) → media_asset(id, owner_id) 복합 FK가 미디어 소유자를 고정하고, (post_id, owner_id) → direction_post(id, sender_id)와 (answer_id, owner_id) → answer(id, author_id) 복합 FK가 콘텐츠 작성자와의 일치를 강제한다. 뒤의 두 FK는 MATCH SIMPLE이므로 해당 대상 컬럼이 NULL이면 검사를 건너뛰고, 값이 있을 때만 owner_id 일치를 요구한다. 트리거 불변식: SQL DDL의 ct_media_attachment_preserves_content(DEFERRABLE INITIALLY DEFERRED)가 첨부를 붙이거나 떼어낸 뒤에도 ACTIVE 글과 PUBLISHED 답변의 콘텐츠 조건이 유지되는지 재검사한다.
+
+Flyway CHECK constraints (SQL):
+ck_media_attachment_exactly_one_target: CHECK (num_nonnulls(post_id, answer_id) = 1)
+ck_media_attachment_order: CHECK (display_order >= 0)
+'''
 }
 
 Table post_recipient [headercolor: #F28E2B] {
   id bigint [pk, increment, not null, note: '행을 식별하는 기본키']
   post_id bigint [not null, note: '수신자가 접근할 방향 글']
   recipient_id bigint [not null, note: '열람·답변 권한을 받은 사용자']
-  status post_recipient_status [not null, default: 'AVAILABLE', note: '현재 처리 상태']
+  status post_recipient_status [not null, default: 'AVAILABLE', note: '현재 처리 상태; SQL type VARCHAR(30)']
   distance_m bigint [not null, note: '2026-08-07 추가. 발송 원점에서 수신자까지의 정확한 거리(미터) 스냅샷. 카드에 정확 거리를 표시하기로 확정되면서 필요해졌다. 수신자 좌표는 active_user_presence에 TTL로만 남아 나중에 재계산할 수 없으므로 매칭 시점에 박는다. 근거리 하한(10km) 미만이면 이 값 대신 distance_band를 노출한다']
   distance_band varchar(50) [not null, note: '거리 구간. 2026-08-07 이전에는 정확 거리를 대신하는 유일한 노출 값이었으나, 이제는 근거리 하한 미만일 때 정확 거리 대신 노출하는 값이다. 하한 이상에서는 distance_m을 그대로 보여준다']
   matched_bearing_deg numeric(7,3) [not null, note: '발송 원점에서 수신자까지 계산한 방위각. 발신자 기준이며 매칭 판정의 근거다. 화면에 이 값을 그대로 보여주지 않는다 — 표시용은 inbound_bearing_deg다']
@@ -805,31 +784,35 @@ Table post_recipient [headercolor: #F28E2B] {
     matched_region_code [name: 'post_recipient_region_idx', note: 'region_code 삭제 시 RESTRICT 검사용 FK 인덱스']
   }
 
-  checks {
-    `matched_bearing_deg >= 0 AND matched_bearing_deg < 360` [name: 'ck_post_recipient_bearing']
-    `inbound_bearing_deg >= 0 AND inbound_bearing_deg < 360` [name: 'ck_post_recipient_inbound_bearing']
-    `distance_m >= 0` [name: 'ck_post_recipient_distance_m']
-    `btrim(distance_band) <> ''` [name: 'ck_post_recipient_distance_band']
-    `(discovered_at IS NULL OR discovered_at >= matched_at) AND (opened_at IS NULL OR opened_at >= matched_at) AND (answers_read_at IS NULL OR answers_read_at >= matched_at) AND (skip_requested_at IS NULL OR skip_requested_at >= matched_at) AND (skipped_at IS NULL OR skipped_at >= skip_requested_at) AND (capacity_released_at IS NULL OR capacity_released_at >= matched_at) AND (expired_at IS NULL OR expired_at >= matched_at) AND (blocked_at IS NULL OR blocked_at >= matched_at)` [name: 'ck_post_recipient_timestamps']
-    `(status = 'SKIPPED') = (skipped_at IS NOT NULL) AND (status = 'EXPIRED') = (expired_at IS NOT NULL) AND (status = 'BLOCKED') = (blocked_at IS NOT NULL) AND (status <> 'DISCOVERED' OR discovered_at IS NOT NULL) AND (status <> 'OPENED' OR opened_at IS NOT NULL) AND (status <> 'AVAILABLE' OR (discovered_at IS NULL AND opened_at IS NULL))` [name: 'ck_post_recipient_status_timestamps']
-    `(status = 'SKIP_PENDING') = (skip_requested_at IS NOT NULL AND skipped_at IS NULL) AND (skip_requested_at IS NOT NULL OR skipped_at IS NULL)` [name: 'ck_post_recipient_skip_pending']
-  }
 
-  Note: '테이블 설명: 방향 글별로 최종 선정된 수신자와 열람·답변 권한 및 처리 상태를 저장하는 테이블이다. 필요 이유: 매칭 결과를 실제 열람·답변 권한으로 고정해 매 조회마다 위치를 재계산하지 않고 수신 상태와 용량을 추적한다. 트리거 불변식: SQL DDL의 ct_post_recipient_not_sender(DEFERRABLE INITIALLY DEFERRED)가 direction_post.sender_id와 같은 사용자를 수신자로 넣는 것을 거부해, 발신자가 자기 글을 수신하지 못한다. ct_post_recipient_capacity_release(DEFERRABLE INITIALLY DEFERRED)는 status가 ANSWERED·SKIPPED·EXPIRED·BLOCKED인 것과 capacity_released_at이 채워진 것이 서로 동치임을 커밋 시점에 검사한다. 즉시 검사하는 CHECK가 아니라 지연 트리거인 이유는 T6·T6A·T6B가 상태 전이와 조건부 용량 해제를 같은 트랜잭션 안의 서로 다른 문장으로 수행하기 때문이다. 이 트리거는 NEW가 아니라 post_recipient를 다시 조회해 판정한다. 지연 AFTER ROW 트리거는 실행 시점만 커밋으로 미룰 뿐 전달받는 튜플은 자신을 큐에 넣은 문장 당시의 버전이라, NEW로 판정하면 해제 직전의 중간 상태를 보고 잘못 실패한다. 상태 대응: ck_post_recipient_status_timestamps는 SKIPPED·EXPIRED·BLOCKED를 각자의 타임스탬프와 동치로 묶고, DISCOVERED·OPENED에는 해당 타임스탬프를 요구하며, AVAILABLE에는 열람 흔적이 없어야 함을 강제한다. 2026-08-03 이전에는 이 테이블만 상태와 타임스탬프를 연결하는 제약이 없어 status=SKIPPED인데 skipped_at이 비어 있는 행이 허용됐다. 답변 격리 폐기(2026-08-07, ADR 0002): 답변이 수신 자격자 전원에게 공개되면서 이 테이블의 역할이 하나 늘었다. post_recipient는 이제 "이 질문글을 받을 권한"만이 아니라 "이 질문글의 답변을 열람할 권한"의 근거이기도 하다. 답변 공감 자격 판정(ct_answer_reaction_reactor_can_view)이 이 테이블을 조회한다. 다만 넘김·만료로 인한 자격 상실은 시간에 따라 변하므로 그 트리거는 "수신자 집합에 속하는가"까지만 보고, 현재 열람 가능 여부는 조회 계층이 강제한다. 두 카테고리(2026-08-07): 화면의 `답변 안 한`/`답변한` 구분은 새 컬럼 없이 answer 존재 여부로 유도한다. 상태 기계는 바뀌지 않았고 바뀐 것은 그 상태를 어느 목록에 태우느냐뿐이다. 슬롯도 그대로다 — ANSWERED가 여전히 용량 해제 대상이고, 다만 해제 후에도 행이 화면에 남을 뿐이다. 넘김 되돌리기(2026-08-04): 넘김은 곧바로 SKIPPED가 되지 않고 SKIP_PENDING을 거친다. ct_post_recipient_capacity_release는 ANSWERED·SKIPPED·EXPIRED·BLOCKED만 용량 해제와 동치로 보므로, SKIP_PENDING은 트리거를 고치지 않고도 자연스럽게 용량을 붙잡아 둔다. 되돌리기 시간이 지나면 SKIP_CONFIRMATION_DUE 이벤트를 처리하는 워커가 SKIPPED로 확정하며 이때 용량이 해제된다. 되돌리면 skip_requested_at을 비우고 이전 상태로 되돌아가는데, 이전 상태는 별도 컬럼 없이 opened_at·discovered_at 유무로 유도한다 — opened_at이 있으면 OPENED, discovered_at만 있으면 DISCOVERED, 둘 다 없으면 AVAILABLE이다. ck_post_recipient_skip_pending은 SKIP_PENDING이 "넘김을 요청했지만 아직 확정되지 않은" 상태와 동치임을 강제한다. 확정된 넘김은 skip_requested_at과 skipped_at을 모두 가지고, 되돌린 넘김은 둘 다 비운다. ck_post_recipient_timestamps에서 skipped_at의 하한은 matched_at이 아니라 skip_requested_at이다. 확정은 요청보다 앞설 수 없다.'
+  Note: '''
+테이블 설명: 방향 글별로 최종 선정된 수신자와 열람·답변 권한 및 처리 상태를 저장하는 테이블이다. 필요 이유: 매칭 결과를 실제 열람·답변 권한으로 고정해 매 조회마다 위치를 재계산하지 않고 수신 상태와 용량을 추적한다. 트리거 불변식: SQL DDL의 ct_post_recipient_not_sender(DEFERRABLE INITIALLY DEFERRED)가 direction_post.sender_id와 같은 사용자를 수신자로 넣는 것을 거부해, 발신자가 자기 글을 수신하지 못한다. ct_post_recipient_capacity_release(DEFERRABLE INITIALLY DEFERRED)는 status가 ANSWERED·SKIPPED·EXPIRED·BLOCKED인 것과 capacity_released_at이 채워진 것이 서로 동치임을 커밋 시점에 검사한다. 즉시 검사하는 CHECK가 아니라 지연 트리거인 이유는 T6·T6A·T6B가 상태 전이와 조건부 용량 해제를 같은 트랜잭션 안의 서로 다른 문장으로 수행하기 때문이다. 이 트리거는 NEW가 아니라 post_recipient를 다시 조회해 판정한다. 지연 AFTER ROW 트리거는 실행 시점만 커밋으로 미룰 뿐 전달받는 튜플은 자신을 큐에 넣은 문장 당시의 버전이라, NEW로 판정하면 해제 직전의 중간 상태를 보고 잘못 실패한다. 상태 대응: ck_post_recipient_status_timestamps는 SKIPPED·EXPIRED·BLOCKED를 각자의 타임스탬프와 동치로 묶고, DISCOVERED·OPENED에는 해당 타임스탬프를 요구하며, AVAILABLE에는 열람 흔적이 없어야 함을 강제한다. 2026-08-03 이전에는 이 테이블만 상태와 타임스탬프를 연결하는 제약이 없어 status=SKIPPED인데 skipped_at이 비어 있는 행이 허용됐다. 답변 격리 폐기(2026-08-07, ADR 0002): 답변이 수신 자격자 전원에게 공개되면서 이 테이블의 역할이 하나 늘었다. post_recipient는 이제 "이 질문글을 받을 권한"만이 아니라 "이 질문글의 답변을 열람할 권한"의 근거이기도 하다. 답변 공감 자격 판정(ct_answer_reaction_reactor_can_view)이 이 테이블을 조회한다. 다만 넘김·만료로 인한 자격 상실은 시간에 따라 변하므로 그 트리거는 "수신자 집합에 속하는가"까지만 보고, 현재 열람 가능 여부는 조회 계층이 강제한다. 두 카테고리(2026-08-07): 화면의 `답변 안 한`/`답변한` 구분은 새 컬럼 없이 answer 존재 여부로 유도한다. 상태 기계는 바뀌지 않았고 바뀐 것은 그 상태를 어느 목록에 태우느냐뿐이다. 슬롯도 그대로다 — ANSWERED가 여전히 용량 해제 대상이고, 다만 해제 후에도 행이 화면에 남을 뿐이다. 넘김 되돌리기(2026-08-04): 넘김은 곧바로 SKIPPED가 되지 않고 SKIP_PENDING을 거친다. ct_post_recipient_capacity_release는 ANSWERED·SKIPPED·EXPIRED·BLOCKED만 용량 해제와 동치로 보므로, SKIP_PENDING은 트리거를 고치지 않고도 자연스럽게 용량을 붙잡아 둔다. 되돌리기 시간이 지나면 SKIP_CONFIRMATION_DUE 이벤트를 처리하는 워커가 SKIPPED로 확정하며 이때 용량이 해제된다. 되돌리면 skip_requested_at을 비우고 이전 상태로 되돌아가는데, 이전 상태는 별도 컬럼 없이 opened_at·discovered_at 유무로 유도한다 — opened_at이 있으면 OPENED, discovered_at만 있으면 DISCOVERED, 둘 다 없으면 AVAILABLE이다. ck_post_recipient_skip_pending은 SKIP_PENDING이 "넘김을 요청했지만 아직 확정되지 않은" 상태와 동치임을 강제한다. 확정된 넘김은 skip_requested_at과 skipped_at을 모두 가지고, 되돌린 넘김은 둘 다 비운다. ck_post_recipient_timestamps에서 skipped_at의 하한은 matched_at이 아니라 skip_requested_at이다. 확정은 요청보다 앞설 수 없다.
+
+Flyway CHECK constraints (SQL):
+ck_post_recipient_answers_read_at: CHECK (answers_read_at IS NULL OR answers_read_at >= matched_at)
+ck_post_recipient_bearing: CHECK (matched_bearing_deg >= 0::numeric AND matched_bearing_deg < 360::numeric)
+ck_post_recipient_distance_band: CHECK (btrim(distance_band::text) <> ''::text)
+ck_post_recipient_distance_m: CHECK (distance_m >= 0)
+ck_post_recipient_inbound_bearing: CHECK (inbound_bearing_deg >= 0::numeric AND inbound_bearing_deg < 360::numeric)
+ck_post_recipient_skip_pending: CHECK ((status::text = 'SKIP_PENDING'::text) = (skip_requested_at IS NOT NULL AND skipped_at IS NULL) AND (skip_requested_at IS NOT NULL OR skipped_at IS NULL))
+ck_post_recipient_status: CHECK (status::text = ANY (ARRAY['AVAILABLE'::character varying, 'DISCOVERED'::character varying, 'OPENED'::character varying, 'ANSWERED'::character varying, 'SKIP_PENDING'::character varying, 'SKIPPED'::character varying, 'EXPIRED'::character varying, 'BLOCKED'::character varying]::text[]))
+ck_post_recipient_status_timestamps: CHECK ((status::text = 'SKIPPED'::text) = (skipped_at IS NOT NULL) AND (status::text = 'EXPIRED'::text) = (expired_at IS NOT NULL) AND (status::text = 'BLOCKED'::text) = (blocked_at IS NOT NULL) AND (status::text <> 'DISCOVERED'::text OR discovered_at IS NOT NULL) AND (status::text <> 'OPENED'::text OR opened_at IS NOT NULL) AND (status::text <> 'AVAILABLE'::text OR discovered_at IS NULL AND opened_at IS NULL))
+ck_post_recipient_timestamps: CHECK ((discovered_at IS NULL OR discovered_at >= matched_at) AND (opened_at IS NULL OR opened_at >= matched_at) AND (skip_requested_at IS NULL OR skip_requested_at >= matched_at) AND (skipped_at IS NULL OR skipped_at >= skip_requested_at) AND (capacity_released_at IS NULL OR capacity_released_at >= matched_at) AND (expired_at IS NULL OR expired_at >= matched_at) AND (blocked_at IS NULL OR blocked_at >= matched_at))
+'''
 }
 
 Table answer [headercolor: #F28E2B] {
   id bigint [pk, increment, not null, note: '행을 식별하는 기본키']
   post_recipient_id bigint [not null, note: '답변 권한의 근거가 되는 수신 권한']
   author_id bigint [not null, note: '답변을 작성한 수신 사용자']
-  status answer_status [not null, default: 'SUBMITTED', note: '현재 처리 상태']
+  status answer_status [not null, default: 'SUBMITTED', note: '현재 처리 상태; SQL type VARCHAR(30)']
   idempotency_key varchar(200) [not null, note: '동일 요청의 중복 처리를 막는 멱등키']
   body_text text [note: '사용자가 작성한 글 본문']
   coarse_region_code varchar(100) [not null, note: '정확 위치 대신 사용하는 흐린 지역 코드']
   bearing_from_sender_deg numeric(7,3) [not null, note: '질문자 원점에서 답변자까지의 방위각 스냅샷. 답변 옆에 표시하는 방향이 이 값이며, 보는 사람이 질문자든 다른 수신자든 같은 값을 본다. 보는 사람마다 다시 계산하지 않는다 — 그렇게 하면 답변 하나가 관측자마다 다른 방위를 갖게 되어 여러 관측을 모아 답변자 위치를 삼각측량할 수 있다. post_recipient.matched_bearing_deg와 같은 값이어야 한다']
   distance_m bigint [not null, note: '2026-08-07 추가. 질문자에서 답변자까지의 정확한 거리(미터) 스냅샷. 답변 옆에 표시하며 방위와 마찬가지로 질문자 기준 고정값이다. post_recipient.distance_m과 같은 값이어야 한다. 근거리 하한(10km) 미만이면 이 값 대신 distance_band를 노출한다']
   distance_band varchar(50) [not null, note: '거리 구간. 근거리 하한 미만일 때 정확 거리 대신 노출한다']
-  moderation_status content_moderation_status [not null, default: 'PENDING', note: '현재 공개 중인 본문의 안전 검사 결과']
+  moderation_status content_moderation_status [not null, default: 'PENDING', note: '현재 공개 중인 본문의 안전 검사 결과; SQL type VARCHAR(30)']
   submitted_at timestamptz [not null, default: `clock_timestamp()`, note: '사용자가 제출을 완료한 시각']
   published_at timestamptz [note: '다른 사용자에게 공개된 시각']
   edited_at timestamptz [note: '2026-08-07 추가. 수정된 내용이 검토를 통과해 실제로 반영된 시각이며, 값이 있으면 화면에 `수정됨`을 표시한다. 답변 수정이 허용되면서 필요해졌다. 재검토 큐에 넣을 근거이자, 신고가 들어왔을 때 신고 시점의 내용을 특정하는 기준이다. 공감은 수정해도 승계되므로 이 표시가 공감을 누른 사람에게 남기는 유일한 신호다']
@@ -844,19 +827,22 @@ Table answer [headercolor: #F28E2B] {
     coarse_region_code [name: 'answer_region_idx', note: 'region_code 삭제 시 RESTRICT 검사용 FK 인덱스']
   }
 
-  checks {
-    `body_text IS NULL OR btrim(body_text) <> ''` [name: 'ck_answer_body']
-    `bearing_from_sender_deg >= 0 AND bearing_from_sender_deg < 360` [name: 'ck_answer_bearing']
-    `distance_m >= 0` [name: 'ck_answer_distance_m']
-    `btrim(distance_band) <> ''` [name: 'ck_answer_distance_band']
-    `status <> 'PUBLISHED' OR published_at IS NOT NULL` [name: 'ck_answer_published_at']
-    `edited_at IS NULL OR (published_at IS NOT NULL AND edited_at >= published_at)` [name: 'ck_answer_edited_at']
-    `edit_count >= 0 AND edit_count <= 10` [name: 'ck_answer_edit_count']
-    `(edit_count = 0) = (edited_at IS NULL)` [name: 'ck_answer_edit_count_matches_edited_at']
-    `(status = 'DELETED') = (deleted_at IS NOT NULL)` [name: 'ck_answer_deleted_at']
-  }
 
-  Note: '테이블 설명: 방향 글 수신자가 작성한 글·사진 답변과 검사·공개·삭제 상태를 관리하는 테이블이다. 필요 이유: 수신 권한을 가진 사용자만 응답하게 하고 답변의 검사·공개·삭제와 멱등 제출을 독립 관리한다. 트리거 불변식: SQL DDL의 ct_answer_has_content(DEFERRABLE INITIALLY DEFERRED)가 status=PUBLISHED인 답변에 body_text 또는 status=READY인 첨부 미디어가 최소 하나 있어야 커밋되게 한다. 답변 개수(2026-08-04 확정): 한 질문글에 답변은 1회다. uq_answer_one_per_recipient partial unique가 강제하며, 이전의 "상한 미확정" 서술은 폐기했다. 열람 범위(2026-08-07 개정, ADR 0002): 답변을 조회할 수 있는 주체는 질문글 작성자와 그 질문글의 수신 자격자다. 이전 판은 질문자와 답변 작성자 본인뿐이었으나 답변 격리가 폐기됐다. 수신 자격이 없는 사용자에게는 답변 내용도 개수도 노출하지 않으며, 넘겼거나(SKIPPED) 답변 없이 만료된 수신자는 열람 자격을 잃는다. 이 판정은 상태에 따라 시간이 지나며 변하므로 DB 제약이 아니라 조회 계층에서 강제한다. 수정(2026-08-07): 작성자는 자기 답변의 텍스트와 사진을 수정할 수 있고 수정은 모더레이션 재검토를 거친 뒤 반영된다. 검토 중인 답변은 다른 사람에게 감추므로 대기 중인 본문을 따로 보관할 컬럼이 필요 없다 — status를 SAFETY_CHECKING으로 되돌리고 moderation_status를 PENDING으로 두면 조회 계층이 PUBLISHED만 노출하는 것으로 충분하다. 그 동안 body_text와 media_attachment를 직접 교체해도 중간 상태가 노출되지 않으며, ct_media_attachment_preserves_content와 ct_answer_has_content가 PUBLISHED만 검사하므로 교체 중간에 첨부가 비어도 통과한다. 반대로 검토 중에 기존 내용을 계속 보여주는 방식은 대기 중인 미디어를 붙일 대상이 media_attachment에 없어 텍스트 수정만 가능해진다. 작성자 본인에게는 검토 중에도 노출하고 `검토 중` 배지를 붙인다. 만료 후에 검토가 끝나도 반영한다 — 만료는 새 answer 행 생성만 막지 기존 행의 상태 전이를 막지 않는다. uq_answer_one_per_recipient가 SAFETY_CHECKING도 자리로 세므로 수정 중에 새 답변을 끼워 넣을 수 없다. 삭제: 흔적을 남기지 않으며 그 답변에 달린 answer_reaction은 FK CASCADE로 함께 사라진다. 삭제 후 같은 질문글에 다시 답변할 수 없다.'
+  Note: '''
+테이블 설명: 방향 글 수신자가 작성한 글·사진 답변과 검사·공개·삭제 상태를 관리하는 테이블이다. 필요 이유: 수신 권한을 가진 사용자만 응답하게 하고 답변의 검사·공개·삭제와 멱등 제출을 독립 관리한다. 트리거 불변식: SQL DDL의 ct_answer_has_content(DEFERRABLE INITIALLY DEFERRED)가 status=PUBLISHED인 답변에 body_text 또는 status=READY인 첨부 미디어가 최소 하나 있어야 커밋되게 한다. 답변 개수(2026-08-04 확정): 한 질문글에 답변은 1회다. uq_answer_one_per_recipient partial unique가 강제하며, 이전의 "상한 미확정" 서술은 폐기했다. 열람 범위(2026-08-07 개정, ADR 0002): 답변을 조회할 수 있는 주체는 질문글 작성자와 그 질문글의 수신 자격자다. 이전 판은 질문자와 답변 작성자 본인뿐이었으나 답변 격리가 폐기됐다. 수신 자격이 없는 사용자에게는 답변 내용도 개수도 노출하지 않으며, 넘겼거나(SKIPPED) 답변 없이 만료된 수신자는 열람 자격을 잃는다. 이 판정은 상태에 따라 시간이 지나며 변하므로 DB 제약이 아니라 조회 계층에서 강제한다. 수정(2026-08-07): 작성자는 자기 답변의 텍스트와 사진을 수정할 수 있고 수정은 모더레이션 재검토를 거친 뒤 반영된다. 검토 중인 답변은 다른 사람에게 감추므로 대기 중인 본문을 따로 보관할 컬럼이 필요 없다 — status를 SAFETY_CHECKING으로 되돌리고 moderation_status를 PENDING으로 두면 조회 계층이 PUBLISHED만 노출하는 것으로 충분하다. 그 동안 body_text와 media_attachment를 직접 교체해도 중간 상태가 노출되지 않으며, ct_media_attachment_preserves_content와 ct_answer_has_content가 PUBLISHED만 검사하므로 교체 중간에 첨부가 비어도 통과한다. 반대로 검토 중에 기존 내용을 계속 보여주는 방식은 대기 중인 미디어를 붙일 대상이 media_attachment에 없어 텍스트 수정만 가능해진다. 작성자 본인에게는 검토 중에도 노출하고 `검토 중` 배지를 붙인다. 만료 후에 검토가 끝나도 반영한다 — 만료는 새 answer 행 생성만 막지 기존 행의 상태 전이를 막지 않는다. uq_answer_one_per_recipient가 SAFETY_CHECKING도 자리로 세므로 수정 중에 새 답변을 끼워 넣을 수 없다. 삭제: 흔적을 남기지 않으며 그 답변에 달린 answer_reaction은 FK CASCADE로 함께 사라진다. 삭제 후 같은 질문글에 다시 답변할 수 없다.
+
+Flyway CHECK constraints (SQL):
+ck_answer_bearing: CHECK (bearing_from_sender_deg >= 0::numeric AND bearing_from_sender_deg < 360::numeric)
+ck_answer_body: CHECK (body_text IS NULL OR btrim(body_text) <> ''::text)
+ck_answer_deleted_at: CHECK ((status::text = 'DELETED'::text) = (deleted_at IS NOT NULL))
+ck_answer_distance_band: CHECK (btrim(distance_band::text) <> ''::text)
+ck_answer_distance_m: CHECK (distance_m >= 0)
+ck_answer_edit_count: CHECK (edit_count >= 0 AND edit_count <= 10)
+ck_answer_edit_count_edited_at: CHECK ((edit_count = 0) = (edited_at IS NULL))
+ck_answer_moderation: CHECK (moderation_status::text = ANY (ARRAY['PENDING'::character varying, 'PASSED'::character varying, 'REVIEW_HELD'::character varying, 'REJECTED'::character varying]::text[]))
+ck_answer_published_at: CHECK (status::text <> 'PUBLISHED'::text OR published_at IS NOT NULL)
+ck_answer_status: CHECK (status::text = ANY (ARRAY['SUBMITTED'::character varying, 'SAFETY_CHECKING'::character varying, 'PUBLISHED'::character varying, 'REJECTED'::character varying, 'HIDDEN'::character varying, 'DELETED'::character varying]::text[]))
+'''
 }
 
 Table post_reaction [headercolor: #F28E2B] {
@@ -899,12 +885,14 @@ Table user_block [headercolor: #E15759] {
     (blocked_id, blocker_id) [name: 'user_block_reverse_idx', note: 'SQL DDL은 released_at IS NULL인 partial index']
   }
 
-  checks {
-    `blocker_id <> blocked_id` [name: 'ck_user_block_not_self']
-    `released_at IS NULL OR released_at >= created_at` [name: 'ck_user_block_release']
-  }
 
-  Note: '테이블 설명: 차단한 사용자와 차단된 사용자 쌍, 차단 시작과 해제 시각을 관리하는 관계 테이블이다. 필요 이유: 현재 차단 관계를 매칭·조회·알림에서 공통 확인해 차단한 사용자가 다시 연결되는 것을 막는다.'
+  Note: '''
+테이블 설명: 차단한 사용자와 차단된 사용자 쌍, 차단 시작과 해제 시각을 관리하는 관계 테이블이다. 필요 이유: 현재 차단 관계를 매칭·조회·알림에서 공통 확인해 차단한 사용자가 다시 연결되는 것을 막는다.
+
+Flyway CHECK constraints (SQL):
+ck_user_block_not_self: CHECK (blocker_id <> blocked_id)
+ck_user_block_release: CHECK (released_at IS NULL OR released_at >= created_at)
+'''
 }
 
 Table report [headercolor: #E15759] {
@@ -913,36 +901,43 @@ Table report [headercolor: #E15759] {
   target_user_id bigint [note: '사용자를 신고한 경우 대상 사용자']
   direction_post_id bigint [note: '방향 글을 신고한 경우 대상 글']
   answer_id bigint [note: '답변을 신고한 경우 대상 답변']
+  case_id bigint [note: '여러 신고를 묶어 검토하는 report_case 식별자']
   reason_code varchar(50) [not null, note: '신고 사유 분류 코드']
+  sub_reason_code varchar(30) [note: '긴급 분류를 위한 하위 사유. reason_code와 허용 조합을 CHECK로 제한한다']
   detail text [note: '신고자가 작성한 상세 설명']
-  status report_status [not null, default: 'RECEIVED', note: '현재 처리 상태']
+  status report_status [not null, default: 'RECEIVED', note: '현재 처리 상태; SQL type VARCHAR(30)']
   created_at timestamptz [not null, default: `clock_timestamp()`, note: '행이 생성된 시각']
   resolved_at timestamptz [note: '운영 판정이 끝난 시각']
 
   indexes {
-    (reporter_id, target_user_id) [unique, name: 'uq_open_report_user', note: '주의: 실제 제약은 무조건 unique가 아니다. SQL DDL은 target_user_id IS NOT NULL이고 status IN (RECEIVED, AUTO_HIDDEN, UNDER_REVIEW)인 행에만 적용되는 partial unique index이므로, 신고가 종결되면 같은 사용자를 다시 신고할 수 있다']
-    (reporter_id, direction_post_id) [unique, name: 'uq_open_report_post', note: '주의: 실제 제약은 무조건 unique가 아니다. SQL DDL은 direction_post_id IS NOT NULL이고 status IN (RECEIVED, AUTO_HIDDEN, UNDER_REVIEW)인 행에만 적용되는 partial unique index이므로, 신고가 종결되면 같은 글을 다시 신고할 수 있다']
-    (reporter_id, answer_id) [unique, name: 'uq_open_report_answer', note: '주의: 실제 제약은 무조건 unique가 아니다. SQL DDL은 answer_id IS NOT NULL이고 status IN (RECEIVED, AUTO_HIDDEN, UNDER_REVIEW)인 행에만 적용되는 partial unique index이므로, 신고가 종결되면 같은 답변을 다시 신고할 수 있다']
+    (reporter_id, target_user_id) [unique, name: 'uq_open_report_user', note: "SQL WHERE target_user_id IS NOT NULL AND status IN ('RECEIVED', 'AUTO_HIDDEN', 'UNDER_REVIEW', 'MORE_INFO_REQUIRED'). 부분 유일 인덱스"]
+    (reporter_id, direction_post_id) [unique, name: 'uq_open_report_post', note: "SQL WHERE direction_post_id IS NOT NULL AND status IN ('RECEIVED', 'AUTO_HIDDEN', 'UNDER_REVIEW', 'MORE_INFO_REQUIRED'). 부분 유일 인덱스"]
+    (reporter_id, answer_id) [unique, name: 'uq_open_report_answer', note: "SQL WHERE answer_id IS NOT NULL AND status IN ('RECEIVED', 'AUTO_HIDDEN', 'UNDER_REVIEW', 'MORE_INFO_REQUIRED'). 부분 유일 인덱스"]
     (status, created_at) [name: 'report_queue_idx', note: '운영 검토 대기열 조회용. SQL DDL은 RECEIVED, AUTO_HIDDEN, UNDER_REVIEW인 partial index']
     target_user_id [name: 'report_target_user_idx', note: 'SQL DDL은 target_user_id IS NOT NULL인 partial index. 대상별 누적 신고 조회와 FK RESTRICT 검사용']
     direction_post_id [name: 'report_direction_post_idx', note: 'SQL DDL은 direction_post_id IS NOT NULL인 partial index. 대상별 누적 신고 조회와 FK RESTRICT 검사용']
     answer_id [name: 'report_answer_idx', note: 'SQL DDL은 answer_id IS NOT NULL인 partial index. 대상별 누적 신고 조회와 FK RESTRICT 검사용']
+    (reporter_id, answer_id) [name: 'idx_report_reporter_answer_suppression', note: 'SQL WHERE answer_id IS NOT NULL. 신고자의 모든 답변 신고(종결 포함)를 조회해 해당 답변 노출을 억제한다']
   }
 
-  checks {
-    `num_nonnulls(target_user_id, direction_post_id, answer_id) = 1` [name: 'ck_report_exactly_one_target']
-    `btrim(reason_code) <> ''` [name: 'ck_report_reason']
-    `resolved_at IS NULL OR resolved_at >= created_at` [name: 'ck_report_resolution']
-  }
 
-  Note: '테이블 설명: 사용자, 방향 글 또는 답변에 대해 접수된 신고 대상·사유·처리 상태를 관리하는 테이블이다. 필요 이유: 사용자·방향 글·답변 중 하나에 대한 신고를 사건 단위로 접수하고 상태와 중복 미해결 신고를 관리한다.'
+  Note: '''
+테이블 설명: 사용자, 방향 글 또는 답변에 대해 접수된 신고 대상·사유·처리 상태를 관리하는 테이블이다. 필요 이유: 사용자·방향 글·답변 중 하나에 대한 신고를 사건 단위로 접수하고 상태와 중복 미해결 신고를 관리한다.
+
+Flyway CHECK constraints (SQL):
+ck_report_exactly_one_target: CHECK (num_nonnulls(target_user_id, direction_post_id, answer_id) = 1)
+ck_report_reason: CHECK (reason_code::text = ANY (ARRAY['SEXUAL_CONTENT'::character varying, 'VIOLENCE_OR_THREAT'::character varying, 'HATE_OR_HARASSMENT'::character varying, 'PRIVACY_VIOLATION'::character varying, 'SPAM_OR_ADVERTISING'::character varying, 'IMPERSONATION'::character varying, 'ILLEGAL_OR_DANGEROUS'::character varying, 'OTHER'::character varying]::text[]))
+ck_report_resolution: CHECK (resolved_at IS NULL OR resolved_at >= created_at)
+ck_report_status: CHECK (status::text = ANY (ARRAY['RECEIVED'::character varying, 'AUTO_HIDDEN'::character varying, 'UNDER_REVIEW'::character varying, 'ACTIONED'::character varying, 'NO_VIOLATION'::character varying, 'MORE_INFO_REQUIRED'::character varying]::text[]))
+ck_report_sub_reason: CHECK (sub_reason_code IS NULL OR reason_code::text = 'SEXUAL_CONTENT'::text AND (sub_reason_code::text = ANY (ARRAY['CSAM'::character varying, 'NCII'::character varying]::text[])) OR reason_code::text = 'VIOLENCE_OR_THREAT'::text AND sub_reason_code::text = 'CREDIBLE_THREAT'::text OR reason_code::text = 'ILLEGAL_OR_DANGEROUS'::text AND sub_reason_code::text = 'SELF_HARM_RISK'::text)
+'''
 }
 
 Table moderation_review [headercolor: #E15759] {
   id bigint [pk, increment, not null, note: '행을 식별하는 기본키']
   report_id bigint [not null, note: '판정 대상 신고 사건']
   reviewer_id bigint [not null, note: '검토를 수행한 운영자']
-  decision moderation_review_decision [not null, note: '위반 조치·위반 없음·추가 정보 필요 판정']
+  decision moderation_review_decision [not null, note: '위반 조치·위반 없음·추가 정보 필요 판정; SQL type VARCHAR(30)']
   action_type varchar(50) [not null, note: '숨김·계정 제한 등 실제 조치 코드']
   internal_note text [note: '사용자에게 공개하지 않는 내부 메모']
   reviewed_at timestamptz [not null, default: `clock_timestamp()`, note: '운영 판정을 확정한 시각']
@@ -952,11 +947,14 @@ Table moderation_review [headercolor: #E15759] {
     reviewer_id [name: 'moderation_review_reviewer_idx', note: '운영자별 판정 이력 조회와 FK RESTRICT 검사용']
   }
 
-  checks {
-    `btrim(action_type) <> ''` [name: 'ck_moderation_review_action_type']
-  }
 
-  Note: '테이블 설명: 신고 사건에 대한 운영자의 판정, 실제 조치와 내부 메모를 기록하는 검토 이력 테이블이다. 필요 이유: 신고 상태와 별도로 운영자의 판정·조치 이력을 남겨 변경 과정과 책임자를 감사할 수 있게 한다.'
+  Note: '''
+테이블 설명: 신고 사건에 대한 운영자의 판정, 실제 조치와 내부 메모를 기록하는 검토 이력 테이블이다. 필요 이유: 신고 상태와 별도로 운영자의 판정·조치 이력을 남겨 변경 과정과 책임자를 감사할 수 있게 한다.
+
+Flyway CHECK constraints (SQL):
+ck_moderation_review_action_type: CHECK (btrim(action_type::text) <> ''::text)
+ck_moderation_review_decision: CHECK (decision::text = ANY (ARRAY['ACTIONED'::character varying, 'NO_VIOLATION'::character varying, 'MORE_INFO_REQUIRED'::character varying]::text[]))
+'''
 }
 
 // -----------------------------------------------------------------------------
@@ -966,10 +964,10 @@ Table moderation_review [headercolor: #E15759] {
 Table push_device [headercolor: #B07AA1] {
   id bigint [pk, increment, not null, note: '행을 식별하는 기본키']
   user_id bigint [not null, note: '대상 사용자 식별자']
-  platform push_platform [not null, note: 'iOS 또는 Android 푸시 공급자 구분']
+  platform push_platform [not null, note: 'iOS 또는 Android 푸시 공급자 구분; SQL type VARCHAR(20)']
   token_ciphertext bytea [not null, note: '암호화해 저장한 푸시 토큰 원문']
   token_fingerprint varchar(128) [not null, note: '복호화 없이 중복을 확인하는 토큰 지문']
-  device_status push_device_status [not null, default: 'ACTIVE', note: '현재 발송 가능·무효·철회 상태']
+  device_status push_device_status [not null, default: 'ACTIVE', note: '현재 발송 가능·무효·철회 상태; SQL type VARCHAR(20)']
   last_seen_at timestamptz [not null, default: `clock_timestamp()`, note: '앱이 토큰을 마지막으로 확인한 시각']
   revoked_at timestamptz [note: '토큰 사용을 철회한 시각']
 
@@ -978,15 +976,19 @@ Table push_device [headercolor: #B07AA1] {
     user_id [name: 'push_device_user_idx', note: 'SQL DDL은 device_status=ACTIVE인 partial index. 사용자별 발송 대상 기기 조회와 user_account CASCADE 삭제용']
   }
 
-  checks {
-    `(device_status = 'REVOKED') = (revoked_at IS NOT NULL)` [name: 'ck_push_device_revoked_at']
-  }
 
-  Note: '테이블 설명: 사용자 기기별 플랫폼, 암호화된 푸시 토큰과 토큰 유효 상태를 관리하는 테이블이다. 필요 이유: 한 사용자의 여러 기기 토큰과 유효성·철회 상태를 분리해 기기별 푸시 대상을 관리한다.'
+  Note: '''
+테이블 설명: 사용자 기기별 플랫폼, 암호화된 푸시 토큰과 토큰 유효 상태를 관리하는 테이블이다. 필요 이유: 한 사용자의 여러 기기 토큰과 유효성·철회 상태를 분리해 기기별 푸시 대상을 관리한다.
+
+Flyway CHECK constraints (SQL):
+ck_push_device_platform: CHECK (platform::text = ANY (ARRAY['IOS'::character varying, 'ANDROID'::character varying]::text[]))
+ck_push_device_revoked_at: CHECK ((device_status::text = 'REVOKED'::text) = (revoked_at IS NOT NULL))
+ck_push_device_status: CHECK (device_status::text = ANY (ARRAY['ACTIVE'::character varying, 'INVALID'::character varying, 'REVOKED'::character varying]::text[]))
+'''
 }
 
 Table notification_preference [headercolor: #B07AA1] {
-  notification_type notification_type [not null, note: '사용자가 설정하는 알림 종류']
+  notification_type notification_type [not null, note: '사용자가 설정하는 알림 종류; SQL type VARCHAR(50)']
   user_id bigint [not null, note: '대상 사용자 식별자']
   enabled boolean [not null, default: true, note: '사용자 공통 push master와 별도로 유지되는 종류별 push enabled override']
   updated_at timestamptz [not null, default: `clock_timestamp()`, note: '마지막으로 변경된 시각']
@@ -996,7 +998,12 @@ Table notification_preference [headercolor: #B07AA1] {
     user_id [name: 'notification_preference_user_idx', note: 'PK의 선두 컬럼이 notification_type이라 user_id 단독 조회를 커버하지 못한다. 사용자별 설정 일괄 조회와 CASCADE 삭제용']
   }
 
-  Note: '테이블 설명: 사용자별 알림 종류 수신 여부 override를 관리하는 설정 테이블이다. 필요 이유: 사용자 공통 push master와 quiet schedule은 notification_user_setting이 맡고, 이 테이블은 종류별 enabled만 독립적으로 저장한다.'
+  Note: '''
+테이블 설명: 사용자별 알림 종류 수신 여부 override를 관리하는 설정 테이블이다. 필요 이유: 사용자 공통 push master와 quiet schedule은 notification_user_setting이 맡고, 이 테이블은 종류별 enabled만 독립적으로 저장한다.
+
+Flyway CHECK constraints (SQL):
+ck_notification_preference_type: CHECK (notification_type::text = ANY (ARRAY['ANSWER_RECEIVED'::character varying, 'ANSWER_REACTED'::character varying, 'DIRECTION_POST_RECEIVED'::character varying, 'REPORT_RESOLVED'::character varying, 'QUESTION_PROPOSAL_REVIEWED'::character varying, 'QUESTION_RECOMMENDED'::character varying]::text[]))
+'''
 }
 
 Table notification_user_setting [headercolor: #B07AA1] {
@@ -1007,23 +1014,25 @@ Table notification_user_setting [headercolor: #B07AA1] {
   quiet_zone_id varchar(50) [note: 'quiet start/end를 해석하는 IANA Zone ID']
   updated_at timestamptz [not null, default: `clock_timestamp()`, note: '마지막으로 변경된 시각']
 
-  checks {
-    `num_nonnulls(quiet_start, quiet_end, quiet_zone_id) IN (0, 3)` [name: 'ck_notification_user_setting_quiet_hours']
-    `(quiet_start IS NULL OR quiet_start <> quiet_end)` [name: 'ck_notification_user_setting_distinct_quiet_hours']
-  }
 
-  Note: '테이블 설명: 사용자 공통 push master와 quiet schedule을 관리하는 설정 테이블이다. 필요 이유: 아직 배포되지 않은 notification_preference.quiet_* 계약을 사용자 단위 설정으로 치환하고 종류별 enabled와 책임을 분리한다.'
+  Note: '''
+테이블 설명: 사용자 공통 push master와 quiet schedule을 관리하는 설정 테이블이다. 필요 이유: 아직 배포되지 않은 notification_preference.quiet_* 계약을 사용자 단위 설정으로 치환하고 종류별 enabled와 책임을 분리한다.
+
+Flyway CHECK constraints (SQL):
+ck_notification_user_setting_distinct_quiet_hours: CHECK (quiet_start IS NULL OR quiet_start <> quiet_end)
+ck_notification_user_setting_quiet_hours: CHECK (num_nonnulls(quiet_start, quiet_end, quiet_zone_id) = ANY (ARRAY[0, 3]))
+'''
 }
 
 Table outbox_event [headercolor: #B07AA1] {
   id bigint [pk, increment, not null, note: '행을 식별하는 기본키']
-  aggregate_type outbox_aggregate_type [not null, note: '이벤트가 발생한 도메인 주체 종류']
+  aggregate_type outbox_aggregate_type [not null, note: '이벤트가 발생한 도메인 주체 종류; SQL type VARCHAR(100)']
   aggregate_id bigint [not null, note: '이벤트가 발생한 도메인 주체 식별자']
-  event_type outbox_event_type [not null, note: '워커가 수행할 후속 작업 종류']
+  event_type outbox_event_type [not null, note: '워커가 수행할 후속 작업 종류; SQL type VARCHAR(100)']
   match_round integer [note: 'DIRECTION_POST의 RECIPIENT_MATCH_REQUESTED에만 필수인 매칭 라운드. 초기 작업은 1이며 retry/reclaim에서는 증가하지 않는다']
   dedup_key varchar(255) [not null, unique, note: '같은 논리 이벤트의 중복을 막는 키. SQL DDL의 제약명은 uq_outbox_event_dedup다']
   payload jsonb [not null, default: `'{}'::jsonb`, note: '후속 처리에 사용할 JSON 스냅샷. 매칭 payload에는 coarse 식별자만 넣고 정확 좌표·PostGIS point를 복사하지 않는다']
-  status outbox_status [not null, default: 'PENDING', note: '현재 처리 상태']
+  status outbox_status [not null, default: 'PENDING', note: '현재 처리 상태; SQL type VARCHAR(20)']
   attempt_count integer [not null, default: 0, note: '처리를 시도한 누적 횟수']
   next_attempt_at timestamptz [not null, default: `clock_timestamp()`, note: '실패 후 다시 처리할 수 있는 시각']
   lease_owner varchar(100) [note: '현재 PROCESSING 작업을 점유한 worker의 opaque logical id. 사용자·계정·비밀값이 아니다']
@@ -1035,30 +1044,36 @@ Table outbox_event [headercolor: #B07AA1] {
   indexes {
     (status, next_attempt_at, id) [name: 'outbox_event_dispatch_idx', note: 'SQL DDL은 PENDING, FAILED인 partial index']
     (aggregate_id, match_round, event_type) [unique, name: 'uq_outbox_event_direction_matching_round', note: 'DIRECTION_POST의 RECIPIENT_MATCH_REQUESTED에만 적용하는 partial unique index. 같은 post·round·event는 한 작업만 허용한다']
-    (status, next_attempt_at, lease_expires_at, id) [name: 'outbox_event_claim_idx', note: 'PENDING·FAILED와 만료된 PROCESSING을 한 claim 경로에서 찾기 위한 index. 실제 due 조건과 row 점유는 한 transaction에서 처리한다']
+    (status, next_attempt_at, lease_expires_at, id) [name: 'outbox_event_claim_idx', note: "SQL WHERE status IN ('PENDING', 'FAILED', 'PROCESSING'). 만료된 PROCESSING lease는 조회 조건에서 판정하고 같은 transaction에서 행을 점유한다"]
   }
 
-  checks {
-    `((aggregate_type = 'DIRECTION_POST' AND event_type = 'RECIPIENT_MATCH_REQUESTED') = (match_round IS NOT NULL)) AND (match_round IS NULL OR match_round > 0)` [name: 'ck_outbox_event_match_round']
-    `lease_generation >= 0` [name: 'ck_outbox_event_lease_generation']
-    `((status = 'PROCESSING') = (lease_owner IS NOT NULL AND lease_expires_at IS NOT NULL)) AND ((lease_owner IS NULL) = (lease_expires_at IS NULL))` [name: 'ck_outbox_event_lease_state']
-    `jsonb_typeof(payload) = 'object'` [name: 'ck_outbox_event_payload']
-    `attempt_count >= 0` [name: 'ck_outbox_event_attempt_count']
-    `(status = 'PROCESSED') = (processed_at IS NOT NULL) AND (processed_at IS NULL OR processed_at >= created_at)` [name: 'ck_outbox_event_processed_at']
-  }
 
-  Note: '테이블 설명: 도메인 트랜잭션에서 발생한 비동기 후속 작업을 안전하게 전달하기 위한 이벤트 테이블이다. 필요 이유: 도메인 변경과 비동기 작업 요청을 같은 트랜잭션에 저장해 커밋 후 매칭·알림 이벤트가 유실되는 문제를 막는다. Issue #115에서 별도 matching_job 테이블을 만들지 않고 RECIPIENT_MATCH_REQUESTED Outbox row 자체를 matching job으로 취급한다. worker 완료·실패 갱신은 id, PROCESSING 상태, lease_owner, lease_generation, lease 만료 조건을 함께 확인해 stale worker가 새 소유자의 결과를 덮어쓰지 못하게 한다.'
+  Note: '''
+테이블 설명: 도메인 트랜잭션에서 발생한 비동기 후속 작업을 안전하게 전달하기 위한 이벤트 테이블이다. 필요 이유: 도메인 변경과 비동기 작업 요청을 같은 트랜잭션에 저장해 커밋 후 매칭·알림 이벤트가 유실되는 문제를 막는다. Issue #115에서 별도 matching_job 테이블을 만들지 않고 RECIPIENT_MATCH_REQUESTED Outbox row 자체를 matching job으로 취급한다. worker 완료·실패 갱신은 id, PROCESSING 상태, lease_owner, lease_generation, lease 만료 조건을 함께 확인해 stale worker가 새 소유자의 결과를 덮어쓰지 못하게 한다.
+
+Flyway CHECK constraints (SQL):
+ck_outbox_event_aggregate_type: CHECK (aggregate_type::text = ANY (ARRAY['DIRECTION_POST'::character varying, 'POST_RECIPIENT'::character varying, 'ANSWER'::character varying, 'QUESTION_ASSIGNMENT'::character varying, 'QUESTION_PROPOSAL'::character varying, 'REPORT'::character varying, 'FILTER_JOB'::character varying, 'APPEAL_CASE'::character varying]::text[]))
+ck_outbox_event_attempt_count: CHECK (attempt_count >= 0)
+ck_outbox_event_event_type: CHECK (event_type::text = ANY (ARRAY['RECIPIENT_MATCH_REQUESTED'::character varying, 'RECIPIENTS_CONFIRMED'::character varying, 'DIRECTION_POST_EXPIRED'::character varying, 'ANSWER_PUBLISHED'::character varying, 'ANSWER_REACTED'::character varying, 'SKIP_CONFIRMATION_DUE'::character varying, 'QUESTION_RECOMMENDED'::character varying, 'QUESTION_PROPOSAL_REVIEWED'::character varying, 'REPORT_RESOLVED'::character varying, 'MODERATION_EXECUTION_REQUESTED'::character varying, 'MODERATION_VERDICT_READY'::character varying, 'MODERATION_DEADLINE_ELAPSED'::character varying, 'MODERATION_APPEAL_RESOLVED'::character varying]::text[]))
+ck_outbox_event_lease_generation: CHECK (lease_generation >= 0)
+ck_outbox_event_lease_state: CHECK ((status::text = 'PROCESSING'::text) = (lease_owner IS NOT NULL AND lease_expires_at IS NOT NULL) AND (lease_owner IS NULL) = (lease_expires_at IS NULL))
+ck_outbox_event_match_round: CHECK ((aggregate_type::text = 'DIRECTION_POST'::text AND event_type::text = 'RECIPIENT_MATCH_REQUESTED'::text) = (match_round IS NOT NULL) AND (match_round IS NULL OR match_round > 0))
+ck_outbox_event_payload: CHECK (jsonb_typeof(payload) = 'object'::text)
+ck_outbox_event_processed_at: CHECK ((status::text = 'PROCESSED'::text) = (processed_at IS NOT NULL) AND (processed_at IS NULL OR processed_at >= created_at))
+ck_outbox_event_status: CHECK (status::text = ANY (ARRAY['PENDING'::character varying, 'PROCESSING'::character varying, 'PROCESSED'::character varying, 'FAILED'::character varying, 'DEAD'::character varying]::text[]))
+'''
 }
 
 Table notification [headercolor: #B07AA1] {
   id bigint [pk, increment, not null, note: '행을 식별하는 기본키']
   recipient_id bigint [not null, note: '알림을 확인할 사용자']
   outbox_event_id bigint [not null, note: '알림 생성을 유발한 Outbox 이벤트']
-  notification_type notification_type [not null, note: '화면 문구와 이동 목적지를 결정하는 종류']
+  notification_type notification_type [not null, note: '화면 문구와 이동 목적지를 결정하는 종류; SQL type VARCHAR(50)']
   dedup_key varchar(255) [not null, note: '같은 사용자에게 동일 알림이 중복 생성되는 것을 막는 키']
   direction_post_id bigint [note: '방향 글 관련 알림의 이동 대상']
   answer_id bigint [note: '답변 관련 알림의 이동 대상']
-  status notification_status [not null, default: 'UNREAD', note: '현재 처리 상태']
+  report_id bigint [note: '신고 처리 결과 알림의 이동 대상']
+  status notification_status [not null, default: 'UNREAD', note: '현재 처리 상태; SQL type VARCHAR(20)']
   created_at timestamptz [not null, default: `clock_timestamp()`, note: '행이 생성된 시각']
   read_at timestamptz [note: '사용자가 알림을 확인한 시각']
 
@@ -1068,21 +1083,26 @@ Table notification [headercolor: #B07AA1] {
     outbox_event_id [name: 'notification_outbox_idx', note: 'Outbox 이벤트별 생성 알림 추적과 FK RESTRICT 검사용']
     direction_post_id [name: 'notification_post_idx', note: 'SQL DDL은 direction_post_id IS NOT NULL인 partial index. direction_post 삭제 시 SET NULL 갱신 대상을 찾는 데 필요하다']
     answer_id [name: 'notification_answer_idx', note: 'SQL DDL은 answer_id IS NOT NULL인 partial index. answer 삭제 시 SET NULL 갱신 대상을 찾는 데 필요하다']
+    (recipient_id, created_at, id) [name: 'notification_recipient_feed_idx', note: "SQL: CREATE INDEX notification_recipient_feed_idx ON notification (recipient_id, created_at DESC, id DESC) WHERE status IN ('UNREAD', 'READ'). 알림함 최신순 조회"]
   }
 
-  checks {
-    `num_nonnulls(direction_post_id, answer_id) <= 1` [name: 'ck_notification_target']
-    `read_at IS NULL OR (read_at >= created_at AND status IN ('READ', 'DISMISSED'))` [name: 'ck_notification_read_at']
-  }
 
-  Note: '테이블 설명: 사용자에게 노출되는 앱 내 알림의 종류, 이동 대상, 읽음 상태를 관리하는 테이블이다. 필요 이유: 푸시 성공 여부와 무관한 앱 내 알림의 진실의 원천을 제공하고 사용자별 중복 생성을 막는다.'
+  Note: '''
+테이블 설명: 사용자에게 노출되는 앱 내 알림의 종류, 이동 대상, 읽음 상태를 관리하는 테이블이다. 필요 이유: 푸시 성공 여부와 무관한 앱 내 알림의 진실의 원천을 제공하고 사용자별 중복 생성을 막는다.
+
+Flyway CHECK constraints (SQL):
+ck_notification_read_at: CHECK (read_at IS NULL OR read_at >= created_at AND (status::text = ANY (ARRAY['READ'::character varying, 'DISMISSED'::character varying]::text[])))
+ck_notification_status: CHECK (status::text = ANY (ARRAY['UNREAD'::character varying, 'READ'::character varying, 'DISMISSED'::character varying, 'REVOKED'::character varying]::text[]))
+ck_notification_target: CHECK (num_nonnulls(direction_post_id, answer_id, report_id) <= 1)
+ck_notification_type: CHECK (notification_type::text = ANY (ARRAY['ANSWER_RECEIVED'::character varying, 'ANSWER_REACTED'::character varying, 'DIRECTION_POST_RECEIVED'::character varying, 'REPORT_RESOLVED'::character varying, 'QUESTION_PROPOSAL_REVIEWED'::character varying, 'QUESTION_RECOMMENDED'::character varying]::text[]))
+'''
 }
 
 Table notification_delivery [headercolor: #B07AA1] {
   id bigint [pk, increment, not null, note: '행을 식별하는 기본키']
   notification_id bigint [not null, note: '푸시로 전달할 앱 내 알림']
   push_device_id bigint [not null, note: '발송을 시도할 대상 기기']
-  status notification_delivery_status [not null, default: 'PENDING', note: '현재 처리 상태']
+  status notification_delivery_status [not null, default: 'PENDING', note: '현재 처리 상태; SQL type VARCHAR(20)']
   attempt_count integer [not null, default: 0, note: '처리를 시도한 누적 횟수']
   next_attempt_at timestamptz [not null, default: `clock_timestamp()`, note: '실패 후 다시 처리할 수 있는 시각']
   created_at timestamptz [not null, default: `clock_timestamp()`, note: '행이 생성된 시각']
@@ -1095,81 +1115,636 @@ Table notification_delivery [headercolor: #B07AA1] {
     push_device_id [name: 'notification_delivery_device_idx', note: 'uq_notification_delivery_device의 선두 컬럼이 notification_id라 push_device_id 단독 조회를 커버하지 못한다. 기기 철회 시 전달 작업 취소와 FK RESTRICT 검사용']
   }
 
-  checks {
-    `attempt_count >= 0` [name: 'ck_notification_delivery_attempt_count']
-    `(status = 'SENT') = (sent_at IS NOT NULL) AND (sent_at IS NULL OR sent_at >= created_at)` [name: 'ck_notification_delivery_sent_at']
-  }
 
-  Note: '테이블 설명: 앱 내 알림을 개별 푸시 기기로 전달한 시도, 재시도와 공급자 응답을 기록하는 테이블이다. 필요 이유: 하나의 앱 내 알림을 여러 기기에 보내는 개별 시도와 재시도·실패·공급자 응답을 추적한다.'
+  Note: '''
+테이블 설명: 앱 내 알림을 개별 푸시 기기로 전달한 시도, 재시도와 공급자 응답을 기록하는 테이블이다. 필요 이유: 하나의 앱 내 알림을 여러 기기에 보내는 개별 시도와 재시도·실패·공급자 응답을 추적한다.
+
+Flyway CHECK constraints (SQL):
+ck_notification_delivery_attempt_count: CHECK (attempt_count >= 0)
+ck_notification_delivery_sent_at: CHECK ((status::text = 'SENT'::text) = (sent_at IS NOT NULL) AND (sent_at IS NULL OR sent_at >= created_at))
+ck_notification_delivery_status: CHECK (status::text = ANY (ARRAY['PENDING'::character varying, 'PROCESSING'::character varying, 'SENT'::character varying, 'FAILED'::character varying, 'CANCELLED'::character varying, 'DEAD'::character varying]::text[]))
+'''
 }
 
 // -----------------------------------------------------------------------------
-// 관계
+// V10~V28 추가 테이블: 자동 필터링, 신고 사건, 운영 감사, 알림/푸시
 // -----------------------------------------------------------------------------
 
-Ref fk_region_code_parent: region_code.parent_code > region_code.code [delete: restrict]
+Table appeal_case [headercolor: #76B7B2] {
+  id bigint [pk, increment, not null]
+  target_type varchar(20) [not null]
+  target_id bigint [not null]
+  filter_decision_id bigint [not null]
+  created_at timestamptz [not null, default: `clock_timestamp()`]
+  appellant_user_id bigint [not null]
+  status varchar(20) [not null, default: 'OPEN']
+  window_started_at timestamptz [not null]
+  expires_at timestamptz [not null]
+  acceptance_reason_code varchar(30) [not null, default: 'WITHIN_WINDOW']
+  decision varchar(20)
+  decided_at timestamptz
+  decided_by_operator_user_id bigint
+  restore_blocked_reason_code varchar(30)
 
-Ref fk_user_account_region: user_account.coarse_region_code > region_code.code [delete: restrict]
-Ref fk_user_private_attribute_user: user_account.id - user_private_attribute.user_id [delete: cascade]
-// 실제 제약은 (user_id, role) 복합 외래키다. DBML이 복합 참조를 표현하지 못해 user_id만 적는다.
-Ref fk_operator_credential_user: user_account.id - operator_credential.user_id [delete: cascade]
-Ref fk_device_credential_user: device_credential.user_id > user_account.id [delete: cascade]
-Ref fk_active_user_presence_user: user_account.id - active_user_presence.user_id [delete: cascade]
+  indexes {
+    (appellant_user_id, created_at) [name: 'appeal_case_appellant_idx']
+    created_at [name: 'appeal_case_queue_idx', note: 'SQL WHERE ((status)::text = \'OPEN\'::text)']
+    (target_type, target_id, filter_decision_id) [unique, name: 'uq_appeal_case_target_decision']
+  }
+
+  Note: '''
+작성자의 필터링 판정 이의제기와 접수 기간·운영 결정·복원 차단 사유. target_id와 appellant_user_id는 호출자 도메인의 opaque 식별자이며 FK를 걸지 않는다.
+
+Flyway CHECK constraints (SQL):
+ck_appeal_case_acceptance_reason_code: CHECK (acceptance_reason_code::text = ANY (ARRAY['WITHIN_WINDOW'::character varying, 'WINDOW_UNVERIFIABLE'::character varying]::text[]))
+ck_appeal_case_appellant_user_id: CHECK (appellant_user_id > 0)
+ck_appeal_case_decided_fields: CHECK ((status::text = 'RESOLVED'::text) = (decision IS NOT NULL AND decided_at IS NOT NULL AND decided_by_operator_user_id IS NOT NULL))
+ck_appeal_case_decision: CHECK (decision IS NULL OR (decision::text = ANY (ARRAY['UPHOLD_HIDDEN'::character varying, 'OVERTURN_HIDDEN'::character varying]::text[])))
+ck_appeal_case_expires_after_window_start: CHECK (expires_at >= (window_started_at + '184 days'::interval))
+ck_appeal_case_restore_blocked_reason: CHECK (restore_blocked_reason_code IS NULL OR decision::text = 'OVERTURN_HIDDEN'::text)
+ck_appeal_case_status: CHECK (status::text = ANY (ARRAY['OPEN'::character varying, 'RESOLVED'::character varying]::text[]))
+ck_appeal_case_target_type: CHECK (target_type::text = ANY (ARRAY['ANSWER'::character varying, 'NICKNAME'::character varying]::text[]))
+'''
+}
+
+Table filter_decision [headercolor: #76B7B2] {
+  id bigint [pk, increment, not null]
+  filter_job_id bigint [not null]
+  attempt_generation integer [not null]
+  verdict varchar(10) [not null]
+  requested_release_id bigint [not null]
+  actual_model varchar(100)
+  decided_at timestamptz [not null]
+  created_at timestamptz [not null, default: `clock_timestamp()`]
+
+  indexes {
+    (filter_job_id, attempt_generation) [unique, name: 'uq_filter_decision_job_attempt']
+  }
+
+  Note: '''
+필터링 시도별 원시 판정 원장. (filter_job_id, attempt_generation)이 중복 기록을 막고 requested_release_id와 실제 공급자 모델을 함께 보존한다.
+
+Flyway CHECK constraints (SQL):
+ck_filter_decision_verdict: CHECK (verdict::text = ANY (ARRAY['ALLOW'::character varying, 'BLOCK'::character varying]::text[]))
+'''
+}
+
+Table filter_job [headercolor: #76B7B2] {
+  id bigint [pk, increment, not null]
+  target_type varchar(20) [not null]
+  target_id bigint [not null]
+  target_version bigint [not null, default: 0]
+  filter_release_id bigint [not null]
+  status varchar(30) [not null, default: 'AUTOMATED']
+  attempt_generation integer [not null, default: 1]
+  manually_resolved boolean [not null, default: false]
+  resolved_verdict varchar(10)
+  idempotency_key varchar(200) [not null]
+  created_at timestamptz [not null, default: `clock_timestamp()`]
+  updated_at timestamptz [not null, default: `clock_timestamp()`]
+  deadline_at timestamptz [not null]
+  logical_attempt_count integer [not null]
+
+  indexes {
+    deadline_at [name: 'filter_job_deadline_scan_idx', note: 'SQL WHERE ((status)::text <> \'RESOLVED\'::text)']
+    (target_type, target_id, target_version) [name: 'filter_job_target_idx']
+    idempotency_key [unique, name: 'uq_filter_job_idempotency_key']
+  }
+
+
+  Note: '''
+필터링 작업의 현재 권위 상태와 재시도·deadline을 관리한다. target_type/target_id는 호출자 도메인을 가리키는 opaque 식별자이며 이 테이블에는 FK가 없다.
+
+Flyway CHECK constraints (SQL):
+ck_filter_job_attempt_generation: CHECK (attempt_generation > 0)
+ck_filter_job_logical_attempt_count: CHECK (logical_attempt_count >= 0)
+ck_filter_job_manual_implies_resolved: CHECK (NOT manually_resolved OR status::text = 'RESOLVED'::text)
+ck_filter_job_resolved_has_verdict: CHECK ((status::text = 'RESOLVED'::text) = (resolved_verdict IS NOT NULL))
+ck_filter_job_resolved_verdict: CHECK (resolved_verdict::text = ANY (ARRAY['ALLOW'::character varying, 'BLOCK'::character varying]::text[]))
+ck_filter_job_status: CHECK (status::text = ANY (ARRAY['AUTOMATED'::character varying, 'RETRY_EXHAUSTED'::character varying, 'MANUAL_REVIEW_REQUIRED'::character varying, 'RESOLVED'::character varying]::text[]))
+ck_filter_job_target_type: CHECK (target_type::text = ANY (ARRAY['ANSWER'::character varying, 'NICKNAME'::character varying]::text[]))
+'''
+}
+
+Table filter_job_status_history [headercolor: #76B7B2] {
+  id bigint [pk, increment, not null]
+  filter_job_id bigint [not null]
+  from_status varchar(30)
+  to_status varchar(30) [not null]
+  reason varchar(200)
+  occurred_at timestamptz [not null, default: `clock_timestamp()`]
+
+  indexes {
+    filter_job_id [name: 'filter_job_status_history_job_idx']
+  }
+  Note: '''
+filter_job의 상태 전이를 시간순으로 남기는 감사 이력이다. from_status는 최초 전이에서 NULL일 수 있다.
+'''
+}
+
+Table filter_release [headercolor: #76B7B2] {
+  id bigint [pk, increment, not null]
+  created_at timestamptz [not null, default: `clock_timestamp()`]
+  normalization_ref varchar(200) [not null]
+  local_ruleset_ref varchar(200) [not null]
+  category_mapping_ref varchar(200) [not null]
+  model_snapshot varchar(200) [not null]
+  status varchar(20) [not null, default: 'CANDIDATE']
+  promoted_at timestamptz
+
+  indexes {
+    status [name: 'filter_release_status_idx']
+    `(true)` [unique, name: 'uq_filter_release_single_promoted', note: 'SQL WHERE ((status)::text = \'PROMOTED\'::text)']
+  }
+
+
+  Note: '''
+정규화 규칙·로컬 규칙·카테고리 매핑·모델 snapshot의 고정 참조를 묶는 release registry다. PROMOTED 상태는 부분 유일 인덱스로 동시에 하나만 허용한다.
+
+Flyway CHECK constraints (SQL):
+ck_filter_release_promoted_at: CHECK ((status::text = 'PROMOTED'::text) = (promoted_at IS NOT NULL))
+ck_filter_release_status: CHECK (status::text = ANY (ARRAY['CANDIDATE'::character varying, 'OFFLINE_EVALUATED'::character varying, 'SHADOW'::character varying, 'CANARY'::character varying, 'PROMOTED'::character varying, 'ROLLED_BACK'::character varying]::text[]))
+'''
+}
+
+Table filter_release_retry_gate [headercolor: #76B7B2] {
+  filter_release_id bigint [pk, not null]
+  state varchar(20) [not null]
+  current_limit integer
+  consecutive_failures integer [not null, default: 0]
+  consecutive_successes integer [not null, default: 0]
+  updated_at timestamptz [not null, default: `clock_timestamp()`]
+
+
+
+  Note: '''
+release별 재시도 폭주 완화 상태다. DEGRADED일 때만 current_limit이 존재하며 연속 성공·실패 수를 기록한다.
+
+Flyway CHECK constraints (SQL):
+ck_filter_release_retry_gate_counts: CHECK (consecutive_failures >= 0 AND consecutive_successes >= 0)
+ck_filter_release_retry_gate_limit: CHECK ((state::text = 'DEGRADED'::text) = (current_limit IS NOT NULL))
+ck_filter_release_retry_gate_limit_positive: CHECK (current_limit IS NULL OR current_limit > 0)
+ck_filter_release_retry_gate_state: CHECK (state::text = ANY (ARRAY['HEALTHY'::character varying, 'DEGRADED'::character varying]::text[]))
+'''
+}
+
+Table manual_review_case [headercolor: #76B7B2] {
+  id bigint [pk, increment, not null]
+  target_type varchar(20) [not null]
+  target_id bigint [not null]
+  target_version bigint [not null, default: 0]
+  filter_release_id bigint [not null]
+  created_at timestamptz [not null, default: `clock_timestamp()`]
+  status varchar(20) [not null, default: 'OPEN']
+  filter_job_id bigint [not null]
+  band varchar(20) [not null, default: 'STANDARD']
+  validated_report_signal_count integer [not null, default: 0]
+  priority_policy_version varchar(50) [not null]
+  priority_reason_code varchar(30) [not null, default: 'DEFAULT']
+  resolved_at timestamptz
+  resolved_by_operator_user_id bigint
+  resolved_verdict varchar(10)
+
+  indexes {
+    (band, created_at) [name: 'manual_review_case_queue_idx', note: 'SQL WHERE ((status)::text = \'OPEN\'::text)']
+    (target_type, target_id, target_version, filter_release_id) [unique, name: 'uq_manual_review_case_target']
+  }
+
+  Note: '''
+필터링 작업에서 열린 수동 검토 사건이다. filter_job_id가 원인 작업을 가리키며 band·우선순위 근거·검토 결과를 보관한다. target_id와 resolved_by_operator_user_id는 타 도메인의 opaque 식별자다.
+
+Flyway CHECK constraints (SQL):
+ck_manual_review_case_band: CHECK (band::text = ANY (ARRAY['HIGH'::character varying, 'STANDARD'::character varying]::text[]))
+ck_manual_review_case_report_signal_count: CHECK (validated_report_signal_count >= 0)
+ck_manual_review_case_resolved_fields: CHECK ((status::text = 'RESOLVED'::text) = (resolved_at IS NOT NULL AND resolved_by_operator_user_id IS NOT NULL AND resolved_verdict IS NOT NULL))
+ck_manual_review_case_resolved_verdict: CHECK (resolved_verdict IS NULL OR (resolved_verdict::text = ANY (ARRAY['ALLOW'::character varying, 'BLOCK'::character varying]::text[])))
+ck_manual_review_case_status: CHECK (status::text = ANY (ARRAY['OPEN'::character varying, 'RESOLVED'::character varying]::text[]))
+ck_manual_review_case_target_type: CHECK (target_type::text = ANY (ARRAY['ANSWER'::character varying, 'NICKNAME'::character varying]::text[]))
+'''
+}
+
+Table manual_review_priority_evaluation [headercolor: #76B7B2] {
+  id bigint [pk, increment, not null]
+  manual_review_case_id bigint [not null]
+  band varchar(20) [not null]
+  reason_code varchar(30) [not null]
+  policy_version varchar(50) [not null]
+  evaluated_at timestamptz [not null, default: `clock_timestamp()`]
+
+  indexes {
+    manual_review_case_id [name: 'manual_review_priority_evaluation_case_idx']
+  }
+
+
+  Note: '''
+수동 검토 우선순위 평가의 append-only 이력이다. 한 사건에 여러 평가가 남을 수 있다.
+
+Flyway CHECK constraints (SQL):
+ck_manual_review_priority_evaluation_band: CHECK (band::text = ANY (ARRAY['HIGH'::character varying, 'STANDARD'::character varying]::text[]))
+'''
+}
+
+Table notification_event [headercolor: #B07AA1] {
+  id bigint [pk, increment, not null]
+  case_id bigint [not null]
+  admin_link_path varchar(255) [not null]
+  status varchar(20) [not null, default: 'PENDING']
+  attempt_count integer [not null, default: 0]
+  next_attempt_at timestamptz [not null, default: `clock_timestamp()`]
+  created_at timestamptz [not null, default: `clock_timestamp()`]
+  processed_at timestamptz
+  lease_owner varchar(100)
+  lease_expires_at timestamptz
+  lease_generation bigint [not null, default: 0]
+
+  indexes {
+    (status, next_attempt_at, lease_expires_at, id) [name: 'notification_event_claim_idx', note: 'SQL WHERE ((status)::text = ANY ((ARRAY[\'PENDING\'::character varying, \'FAILED\'::character varying, \'PROCESSING\'::character varying])::text[]))']
+    case_id [unique, name: 'uq_notification_event_case_id']
+  }
+
+  Note: '''
+수동 검토 사건 생성 시 관리자 채널로 전달할 알림 작업이다. case_id와 admin_link_path만 전송 대상으로 저장하고 lease 및 재시도를 관리한다.
+
+Flyway CHECK constraints (SQL):
+ck_notification_event_attempt_count: CHECK (attempt_count >= 0)
+ck_notification_event_lease_generation: CHECK (lease_generation >= 0)
+ck_notification_event_lease_state: CHECK ((status::text = 'PROCESSING'::text) = (lease_owner IS NOT NULL AND lease_expires_at IS NOT NULL) AND (lease_owner IS NULL) = (lease_expires_at IS NULL))
+ck_notification_event_processed_at: CHECK ((status::text = 'PROCESSED'::text) = (processed_at IS NOT NULL) AND (processed_at IS NULL OR processed_at >= created_at))
+ck_notification_event_status: CHECK (status::text = ANY (ARRAY['PENDING'::character varying, 'PROCESSING'::character varying, 'PROCESSED'::character varying, 'FAILED'::character varying, 'DEAD'::character varying]::text[]))
+'''
+}
+
+Table notification_seen_state [headercolor: #B07AA1] {
+  user_id bigint [pk, not null]
+  seen_at timestamptz [not null]
+
+  Note: '''
+사용자별 알림함 마지막 열람 시각이다. 개별 notification.status를 일괄 READ로 바꾸지 않고 목록의 새 항목 기준선으로 쓴다.
+'''
+}
+
+Table operator_action_audit [headercolor: #9C755F] {
+  id bigint [pk, increment, not null]
+  operator_user_id bigint [not null]
+  action_type varchar(50) [not null]
+  target_type varchar(30) [not null]
+  target_key varchar(200) [not null]
+  reason_code varchar(30) [not null]
+  reason_text varchar(500) [not null]
+  policy_version varchar(50) [not null]
+  occurred_at timestamptz [not null, default: `clock_timestamp()`]
+
+  indexes {
+    (operator_user_id, occurred_at) [name: 'operator_action_audit_operator_idx']
+    (target_type, target_key, occurred_at) [name: 'operator_action_audit_target_idx']
+  }
+
+
+  Note: '''
+운영자가 필터링 권위를 바꾼 행위의 append-only 감사 원장이다. 대상 키와 운영자 식별자는 FK 없이 보존해 원본 생명주기에 종속되지 않는다.
+
+Flyway CHECK constraints (SQL):
+ck_operator_action_audit_action_type: CHECK (action_type::text = ANY (ARRAY['RELEASE_MARK_OFFLINE_EVALUATED'::character varying, 'RELEASE_DESIGNATE_SHADOW'::character varying, 'RELEASE_DESIGNATE_CANARY'::character varying, 'RELEASE_PROMOTE'::character varying, 'RELEASE_ROLLBACK'::character varying, 'RELEASE_DEMOTED_BY_PROMOTION'::character varying, 'MANUAL_REVIEW_DECIDE'::character varying, 'APPEAL_DECIDE'::character varying, 'APPEAL_EXTEND_EXPIRY'::character varying, 'SNAPSHOT_HEALTH_CONFIRM_PERMANENT'::character varying, 'SNAPSHOT_EMERGENCY_MIGRATION'::character varying]::text[]))
+ck_operator_action_audit_operator: CHECK (operator_user_id > 0)
+ck_operator_action_audit_policy_version: CHECK (btrim(policy_version::text) <> ''::text)
+ck_operator_action_audit_reason_code: CHECK (btrim(reason_code::text) <> ''::text)
+ck_operator_action_audit_reason_text: CHECK (btrim(reason_text::text) <> ''::text)
+ck_operator_action_audit_target_key: CHECK (btrim(target_key::text) <> ''::text)
+ck_operator_action_audit_target_type: CHECK (target_type::text = ANY (ARRAY['FILTER_RELEASE'::character varying, 'MANUAL_REVIEW_CASE'::character varying, 'APPEAL_CASE'::character varying, 'SNAPSHOT_HEALTH'::character varying]::text[]))
+'''
+}
+
+Table push_daily_budget [headercolor: #B07AA1] {
+  user_id bigint [not null]
+  budget_date date [not null]
+  consumed_total integer [not null, default: 0]
+  consumed_general integer [not null, default: 0]
+  updated_at timestamptz [not null, default: `clock_timestamp()`]
+
+  indexes {
+    (user_id, budget_date) [pk, name: 'pk_push_daily_budget']
+  }
+
+  Note: '''
+사용자·로컬 날짜별 푸시 소비 예산이다. 일반 알림 소비량은 전체 소비량을 넘을 수 없다.
+
+Flyway CHECK constraints (SQL):
+ck_push_daily_budget_counts: CHECK (consumed_total >= 0 AND consumed_general >= 0 AND consumed_general <= consumed_total)
+'''
+}
+
+Table push_dispatch_group [headercolor: #B07AA1] {
+  id bigint [pk, increment, not null]
+  recipient_id bigint [not null]
+  notification_type varchar(50) [not null]
+  aggregation_key varchar(255) [not null]
+  status varchar(20) [not null]
+  window_started_at timestamptz [not null]
+  collect_until timestamptz [not null]
+  policy_expires_at timestamptz [not null]
+  attempt_count integer [not null, default: 0]
+  next_attempt_at timestamptz [not null]
+  budget_local_date date
+  budget_consumed_at timestamptz
+  first_attempted_at timestamptz
+  created_at timestamptz [not null, default: `clock_timestamp()`]
+  completed_at timestamptz
+
+  indexes {
+    (status, next_attempt_at, id) [name: 'push_dispatch_group_due_idx', note: 'SQL WHERE ((status)::text = ANY ((ARRAY[\'COLLECTING\'::character varying, \'PENDING\'::character varying, \'FAILED\'::character varying, \'PROCESSING\'::character varying])::text[]))']
+    (recipient_id, first_attempted_at) [name: 'push_dispatch_group_recommendation_history_idx', note: 'SQL WHERE (((notification_type)::text = \'QUESTION_RECOMMENDED\'::text) AND (first_attempted_at IS NOT NULL)); SQL order: recipient_id, first_attempted_at DESC']
+    aggregation_key [unique, name: 'uq_push_dispatch_group_aggregation_key']
+    (recipient_id, notification_type) [unique, name: 'uq_push_dispatch_group_collecting', note: 'SQL WHERE ((status)::text = \'COLLECTING\'::text)']
+  }
+
+  Note: '''
+알림을 수집 창에 묶어 푸시를 발송하는 작업 단위다. aggregation_key가 멱등성을 보장하고 같은 수신자·알림 종류의 COLLECTING 그룹은 하나만 둔다.
+
+Flyway CHECK constraints (SQL):
+ck_push_dispatch_group_attempt_count: CHECK (attempt_count >= 0)
+ck_push_dispatch_group_budget: CHECK ((budget_local_date IS NULL) = (budget_consumed_at IS NULL))
+ck_push_dispatch_group_completed_at: CHECK ((status::text = ANY (ARRAY['COMPLETED'::character varying, 'CANCELLED'::character varying, 'DEAD'::character varying]::text[])) = (completed_at IS NOT NULL))
+ck_push_dispatch_group_first_attempt: CHECK (first_attempted_at IS NULL OR budget_consumed_at IS NOT NULL)
+ck_push_dispatch_group_status: CHECK (status::text = ANY (ARRAY['COLLECTING'::character varying, 'PENDING'::character varying, 'PROCESSING'::character varying, 'FAILED'::character varying, 'COMPLETED'::character varying, 'CANCELLED'::character varying, 'DEAD'::character varying]::text[]))
+ck_push_dispatch_group_type: CHECK (notification_type::text = ANY (ARRAY['ANSWER_RECEIVED'::character varying, 'ANSWER_REACTED'::character varying, 'DIRECTION_POST_RECEIVED'::character varying, 'REPORT_RESOLVED'::character varying, 'QUESTION_PROPOSAL_REVIEWED'::character varying, 'QUESTION_RECOMMENDED'::character varying]::text[]))
+ck_push_dispatch_group_window: CHECK (collect_until >= window_started_at AND policy_expires_at >= collect_until)
+'''
+}
+
+Table push_dispatch_group_member [headercolor: #B07AA1] {
+  group_id bigint [not null]
+  notification_id bigint [not null]
+  created_at timestamptz [not null, default: `clock_timestamp()`]
+
+  indexes {
+    (group_id, notification_id) [pk, name: 'pk_push_dispatch_group_member']
+    notification_id [unique, name: 'uq_push_dispatch_group_member_notification']
+  }
+  Note: '''
+푸시 묶음과 notification의 구성 관계다. notification_id 유일성이 한 알림의 중복 묶음을 막는다.
+'''
+}
+
+Table release_promotion_history [headercolor: #76B7B2] {
+  id bigint [pk, increment, not null]
+  release_id bigint [not null]
+  action varchar(20) [not null]
+  previous_active_release_id bigint
+  operator_user_id bigint [not null]
+  occurred_at timestamptz [not null, default: `clock_timestamp()`]
+
+  indexes {
+    release_id [name: 'release_promotion_history_release_idx']
+  }
+
+
+  Note: '''
+release 승격·rollback의 append-only 이력이다. operator_user_id는 filtering 소유 경계를 지키기 위해 FK 없이 보관한다.
+
+Flyway CHECK constraints (SQL):
+ck_release_promotion_history_action: CHECK (action::text = ANY (ARRAY['PROMOTE'::character varying, 'ROLLBACK'::character varying]::text[]))
+'''
+}
+
+Table report_case [headercolor: #E15759] {
+  id bigint [pk, increment, not null]
+  target_user_id bigint
+  direction_post_id bigint
+  answer_id bigint
+  status varchar(20) [not null, default: 'OPEN']
+  severity varchar(20) [not null, default: 'NORMAL']
+  queue varchar(20) [not null, default: 'STANDARD']
+  decision varchar(30)
+  created_at timestamptz [not null, default: `clock_timestamp()`]
+  resolved_at timestamptz
+  sla_due_at timestamptz [not null]
+  linked_manual_review_case_id bigint
+
+  indexes {
+    answer_id [unique, name: 'uq_open_case_answer', note: 'SQL WHERE ((answer_id IS NOT NULL) AND ((status)::text = ANY ((ARRAY[\'OPEN\'::character varying, \'UNDER_REVIEW\'::character varying])::text[])))']
+    direction_post_id [unique, name: 'uq_open_case_post', note: 'SQL WHERE ((direction_post_id IS NOT NULL) AND ((status)::text = ANY ((ARRAY[\'OPEN\'::character varying, \'UNDER_REVIEW\'::character varying])::text[])))']
+    target_user_id [unique, name: 'uq_open_case_user', note: 'SQL WHERE ((target_user_id IS NOT NULL) AND ((status)::text = ANY ((ARRAY[\'OPEN\'::character varying, \'UNDER_REVIEW\'::character varying])::text[])))']
+  }
+
+
+  Note: '''
+대상 하나에 대한 여러 신고를 묶는 사건이다. 사용자·글·답변 중 정확히 하나를 대상으로 삼고 대상별 열린 사건을 하나로 제한한다. linked_manual_review_case_id는 타 도메인 상관관계 식별자로 FK가 없다.
+
+Flyway CHECK constraints (SQL):
+ck_report_case_decision: CHECK (decision IS NULL OR (decision::text = ANY (ARRAY['ACTIONED'::character varying, 'NO_VIOLATION'::character varying, 'MORE_INFO_REQUIRED'::character varying]::text[])))
+ck_report_case_exactly_one_target: CHECK (num_nonnulls(target_user_id, direction_post_id, answer_id) = 1)
+ck_report_case_linked_manual_review_case_id: CHECK (linked_manual_review_case_id IS NULL OR linked_manual_review_case_id > 0)
+ck_report_case_queue: CHECK (queue::text = ANY (ARRAY['STANDARD'::character varying, 'URGENT'::character varying]::text[]))
+ck_report_case_resolution: CHECK ((status::text = 'RESOLVED'::text) = (decision IS NOT NULL AND resolved_at IS NOT NULL) AND (resolved_at IS NULL OR resolved_at >= created_at))
+ck_report_case_severity: CHECK (severity::text = ANY (ARRAY['NORMAL'::character varying, 'CRITICAL'::character varying]::text[]))
+ck_report_case_status: CHECK (status::text = ANY (ARRAY['OPEN'::character varying, 'UNDER_REVIEW'::character varying, 'RESOLVED'::character varying]::text[]))
+'''
+}
+
+Table report_case_event [headercolor: #E15759] {
+  id bigint [pk, increment, not null]
+  case_id bigint [not null]
+  event_type varchar(30) [not null]
+  detail text
+  occurred_at timestamptz [not null, default: `clock_timestamp()`]
+
+  indexes {
+    (case_id, occurred_at) [name: 'report_case_event_case_idx']
+  }
+
+
+  Note: '''
+신고 사건의 append-only 상태 이력이다. SQL: tr_report_case_event_immutable BEFORE UPDATE OR DELETE가 enforce_report_evidence_immutability()를 호출해 변경을 거부한다.
+
+Flyway CHECK constraints (SQL):
+ck_report_case_event_type: CHECK (event_type::text = ANY (ARRAY['CASE_OPENED'::character varying, 'REPORT_ATTACHED'::character varying, 'DUPLICATE_SUPPRESSED'::character varying, 'ESCALATED'::character varying, 'MORE_INFO_REQUESTED'::character varying, 'RESOLVED'::character varying]::text[]))
+'''
+}
+
+Table report_content_snapshot [headercolor: #E15759] {
+  report_id bigint [pk, not null]
+  captured_at timestamptz [not null, default: `clock_timestamp()`]
+  target_type varchar(20) [not null]
+  target_id bigint [not null]
+  author_id bigint [not null]
+  body_text text
+  media_object_keys text[] [not null, default: '{}']
+  edit_count integer [not null, default: 0]
+  content_published_at timestamptz
+  content_hash char(64) [not null]
+  legal_hold boolean [not null, default: false]
+  purge_after timestamptz
+
+
+
+  Note: '''
+신고 시점의 본문·미디어 키·해시를 보존하는 증거다. SQL: tr_report_content_snapshot_immutable BEFORE UPDATE OR DELETE가 enforce_report_snapshot_immutability_except_media_purge()를 호출한다. V27 이후 legal_hold가 아니고 media_object_keys만 빈 배열로 비우는 만료 purge UPDATE 한 가지를 허용하며, 나머지 UPDATE와 DELETE를 거부한다.
+
+Flyway CHECK constraints (SQL):
+ck_report_content_snapshot_author_id: CHECK (author_id > 0)
+ck_report_content_snapshot_edit_count: CHECK (edit_count >= 0)
+ck_report_content_snapshot_target_id: CHECK (target_id > 0)
+ck_report_content_snapshot_target_type: CHECK (target_type::text = ANY (ARRAY['USER'::character varying, 'DIRECTION_POST'::character varying, 'ANSWER'::character varying]::text[]))
+'''
+}
+
+Table snapshot_emergency_migration_history [headercolor: #76B7B2] {
+  id bigint [pk, increment, not null]
+  model_snapshot varchar(200) [not null]
+  source_release_id bigint [not null]
+  target_release_id bigint [not null]
+  migrated_job_count integer [not null]
+  operator_user_id bigint [not null]
+  occurred_at timestamptz [not null, default: `clock_timestamp()`]
+
+  indexes {
+    model_snapshot [name: 'snapshot_emergency_migration_history_snapshot_idx']
+  }
+
+  Note: '''
+모델 snapshot 장애로 필터링 작업을 다른 release로 이관한 append-only lineage다. 원본·대상 release와 이관 건수를 보관한다.
+
+Flyway CHECK constraints (SQL):
+ck_snapshot_emergency_migration_history_different_release: CHECK (source_release_id <> target_release_id)
+ck_snapshot_emergency_migration_history_job_count: CHECK (migrated_job_count >= 0)
+'''
+}
+
+Table snapshot_health [headercolor: #76B7B2] {
+  model_snapshot varchar(200) [pk, not null]
+  status varchar(20) [not null, default: 'HEALTHY']
+  target_only_failure_count integer [not null, default: 0]
+  first_target_only_failure_at timestamptz
+  last_target_only_failure_at timestamptz
+  official_announcement boolean [not null, default: false]
+  confirmed_at timestamptz
+  confirmed_by_operator_user_id bigint
+  updated_at timestamptz [not null, default: `clock_timestamp()`]
+
+
+
+  Note: '''
+모델 snapshot별 synthetic probe 상태다. 영구 장애 확정에는 확인 시각과 운영자 식별자가 함께 필요하다.
+
+Flyway CHECK constraints (SQL):
+ck_snapshot_health_confirmed: CHECK ((status::text = 'PERMANENT_CONFIRMED'::text) = (confirmed_at IS NOT NULL AND confirmed_by_operator_user_id IS NOT NULL))
+ck_snapshot_health_status: CHECK (status::text = ANY (ARRAY['HEALTHY'::character varying, 'PERMANENT_SUSPECTED'::character varying, 'PERMANENT_CONFIRMED'::character varying]::text[]))
+ck_snapshot_health_target_only_failure_count: CHECK (target_only_failure_count >= 0)
+'''
+}
+
+Table snapshot_health_probe_result [headercolor: #76B7B2] {
+  id bigint [pk, increment, not null]
+  model_snapshot varchar(200) [not null]
+  probe_type varchar(10) [not null]
+  classification varchar(30)
+  probed_at timestamptz [not null, default: `clock_timestamp()`]
+
+  indexes {
+    (model_snapshot, probed_at) [name: 'snapshot_health_probe_result_snapshot_idx']
+  }
+
+  Note: '''
+synthetic target/control probe의 개별 원시 결과다. classification NULL은 성공을 뜻한다.
+
+Flyway CHECK constraints (SQL):
+ck_snapshot_health_probe_result_classification: CHECK (classification IS NULL OR (classification::text = ANY (ARRAY['RATE_LIMITED'::character varying, 'SERVER_ERROR'::character varying, 'TIMEOUT_OR_NETWORK'::character varying, 'NON_TARGET_CLIENT_ERROR'::character varying, 'UNKNOWN'::character varying]::text[])))
+ck_snapshot_health_probe_result_type: CHECK (probe_type::text = ANY (ARRAY['TARGET'::character varying, 'CONTROL'::character varying]::text[]))
+'''
+}
+
+// -----------------------------------------------------------------------------
+// 관계: Flyway V28의 모든 제품·백엔드 외래키
+// -----------------------------------------------------------------------------
+
 Ref fk_active_user_presence_region: active_user_presence.coarse_region_code > region_code.code [delete: restrict]
-Ref fk_recipient_receive_state_user: user_account.id - recipient_receive_state.user_id [delete: cascade]
-
+Ref fk_active_user_presence_user: active_user_presence.user_id > user_account.id [delete: cascade]
+Ref fk_answer_reaction_answer: answer_reaction.answer_id > answer.id [delete: cascade]
+Ref fk_answer_reaction_user: answer_reaction.reactor_id > user_account.id [delete: cascade]
+Ref fk_answer_recipient_author: answer.(post_recipient_id, author_id) > post_recipient.(id, recipient_id) [delete: restrict]
+Ref fk_answer_region: answer.coarse_region_code > region_code.code [delete: restrict]
+Ref fk_appeal_case_decision: appeal_case.filter_decision_id > filter_decision.id [delete: no action]
+Ref fk_approved_question_approver: approved_question.approved_by > user_account.id [delete: restrict]
+Ref fk_approved_question_source_proposal: approved_question.source_proposal_id > question_proposal.id [delete: restrict]
+Ref fk_device_credential_user: device_credential.user_id > user_account.id [delete: cascade]
+Ref fk_direction_post_question: direction_post.approved_question_id > approved_question.id [delete: restrict]
+Ref fk_direction_post_region: direction_post.coarse_region_code > region_code.code [delete: restrict]
+Ref fk_direction_post_sender: direction_post.sender_id > user_account.id [delete: restrict]
+Ref fk_direction_segment_scheme: direction_segment.scheme_id > direction_scheme.id [delete: restrict]
+Ref fk_filter_decision_job: filter_decision.filter_job_id > filter_job.id [delete: no action]
+Ref fk_filter_decision_requested_release: filter_decision.requested_release_id > filter_release.id [delete: no action]
+Ref fk_filter_job_release: filter_job.filter_release_id > filter_release.id [delete: no action]
+Ref fk_filter_job_status_history_job: filter_job_status_history.filter_job_id > filter_job.id [delete: no action]
+Ref fk_filter_release_retry_gate_release: filter_release_retry_gate.filter_release_id > filter_release.id [delete: no action]
+Ref fk_manual_review_case_job: manual_review_case.filter_job_id > filter_job.id [delete: no action]
+Ref fk_manual_review_case_release: manual_review_case.filter_release_id > filter_release.id [delete: no action]
+Ref fk_manual_review_priority_evaluation_case: manual_review_priority_evaluation.manual_review_case_id > manual_review_case.id [delete: no action]
+Ref fk_media_asset_owner: media_asset.owner_id > user_account.id [delete: restrict]
+Ref fk_media_attachment_answer_owner: media_attachment.(answer_id, owner_id) > answer.(id, author_id) [delete: cascade]
+Ref fk_media_attachment_asset_owner: media_attachment.(media_id, owner_id) > media_asset.(id, owner_id) [delete: restrict]
+Ref fk_media_attachment_post_owner: media_attachment.(post_id, owner_id) > direction_post.(id, sender_id) [delete: cascade]
+Ref fk_moderation_review_report: moderation_review.report_id > report.id [delete: restrict]
+Ref fk_moderation_review_reviewer: moderation_review.reviewer_id > user_account.id [delete: restrict]
+Ref fk_notification_answer: notification.answer_id > answer.id [delete: set null]
+Ref fk_notification_delivery_device: notification_delivery.push_device_id > push_device.id [delete: restrict]
+Ref fk_notification_delivery_notification: notification_delivery.notification_id > notification.id [delete: cascade]
+Ref fk_notification_event_case: notification_event.case_id > manual_review_case.id [delete: no action]
+Ref fk_notification_outbox: notification.outbox_event_id > outbox_event.id [delete: restrict]
+Ref fk_notification_post: notification.direction_post_id > direction_post.id [delete: set null]
+Ref fk_notification_preference_user: notification_preference.user_id > user_account.id [delete: cascade]
+Ref fk_notification_recipient: notification.recipient_id > user_account.id [delete: restrict]
+Ref fk_notification_seen_state_user: notification_seen_state.user_id > user_account.id [delete: cascade]
+Ref fk_notification_user_setting_user: notification_user_setting.user_id > user_account.id [delete: cascade]
+Ref fk_operator_credential_user: operator_credential.(user_id, role) > user_account.(id, role) [delete: cascade]
+Ref fk_post_audience_post: post_audience.post_id > direction_post.id [delete: cascade]
+Ref fk_post_audience_segment: post_audience.(direction_scheme_id, selected_segment_key) > direction_segment.(scheme_id, segment_key) [delete: restrict]
+Ref fk_post_reaction_recipient: post_reaction.(post_id, reactor_id) > post_recipient.(post_id, recipient_id) [delete: cascade]
+Ref fk_post_recipient_post: post_recipient.post_id > direction_post.id [delete: cascade]
+Ref fk_post_recipient_region: post_recipient.matched_region_code > region_code.code [delete: restrict]
+Ref fk_post_recipient_user: post_recipient.recipient_id > user_account.id [delete: restrict]
+Ref fk_push_daily_budget_user: push_daily_budget.user_id > user_account.id [delete: cascade]
+Ref fk_push_device_user: push_device.user_id > user_account.id [delete: cascade]
+Ref fk_push_dispatch_group_member_group: push_dispatch_group_member.group_id > push_dispatch_group.id [delete: cascade]
+Ref fk_push_dispatch_group_member_notification: push_dispatch_group_member.notification_id > notification.id [delete: restrict]
+Ref fk_push_dispatch_group_recipient: push_dispatch_group.recipient_id > user_account.id [delete: cascade]
+Ref fk_question_assignment_cycle: question_assignment.cycle_id > question_assignment_cycle.id [delete: cascade]
+Ref fk_question_assignment_cycle_user: question_assignment_cycle.user_id > user_account.id [delete: restrict]
+Ref fk_question_assignment_question: question_assignment.approved_question_id > approved_question.id [delete: restrict]
 Ref fk_question_proposal_proposer: question_proposal.proposer_id > user_account.id [delete: restrict]
 Ref fk_question_proposal_review_proposal: question_proposal_review.proposal_id > question_proposal.id [delete: restrict]
 Ref fk_question_proposal_review_reviewer: question_proposal_review.reviewer_id > user_account.id [delete: restrict]
-Ref fk_approved_question_source_proposal: approved_question.source_proposal_id > question_proposal.id [delete: restrict]
-Ref fk_approved_question_approver: approved_question.approved_by > user_account.id [delete: restrict]
-Ref fk_question_assignment_cycle_user: question_assignment_cycle.user_id > user_account.id [delete: restrict]
-Ref fk_question_assignment_cycle: question_assignment.cycle_id > question_assignment_cycle.id [delete: cascade]
-Ref fk_question_assignment_question: question_assignment.approved_question_id > approved_question.id [delete: restrict]
-
-Ref fk_direction_segment_scheme: direction_segment.scheme_id > direction_scheme.id [delete: restrict]
-Ref fk_media_asset_owner: media_asset.owner_id > user_account.id [delete: restrict]
-Ref fk_direction_post_sender: direction_post.sender_id > user_account.id [delete: restrict]
-Ref fk_direction_post_question: direction_post.approved_question_id > approved_question.id [delete: restrict]
-Ref fk_direction_post_region: direction_post.coarse_region_code > region_code.code [delete: restrict]
-Ref fk_post_audience_post: direction_post.id - post_audience.post_id [delete: cascade]
-Ref fk_post_audience_segment: post_audience.(direction_scheme_id, selected_segment_key) > direction_segment.(scheme_id, segment_key) [delete: restrict]
-Ref fk_media_attachment_asset_owner: media_attachment.(media_id, owner_id) > media_asset.(id, owner_id) [delete: restrict]
-Ref fk_media_attachment_post_owner: media_attachment.(post_id, owner_id) > direction_post.(id, sender_id) [delete: cascade]
-Ref fk_media_attachment_answer_owner: media_attachment.(answer_id, owner_id) > answer.(id, author_id) [delete: cascade]
-Ref fk_post_recipient_post: post_recipient.post_id > direction_post.id [delete: cascade]
-Ref fk_post_recipient_user: post_recipient.recipient_id > user_account.id [delete: restrict]
-Ref fk_post_recipient_region: post_recipient.matched_region_code > region_code.code [delete: restrict]
-Ref fk_answer_recipient_author: answer.(post_recipient_id, author_id) > post_recipient.(id, recipient_id) [delete: restrict]
-Ref fk_answer_region: answer.coarse_region_code > region_code.code [delete: restrict]
-Ref fk_post_reaction_recipient: post_reaction.(post_id, reactor_id) > post_recipient.(post_id, recipient_id) [delete: cascade]
-Ref fk_answer_reaction_answer: answer_reaction.answer_id - answer.id [delete: cascade]
-Ref fk_answer_reaction_user: answer_reaction.reactor_id > user_account.id [delete: cascade]
-
-Ref fk_user_block_blocker: user_block.blocker_id > user_account.id [delete: cascade]
-Ref fk_user_block_blocked: user_block.blocked_id > user_account.id [delete: cascade]
+Ref fk_recipient_receive_state_user: recipient_receive_state.user_id > user_account.id [delete: cascade]
+Ref fk_region_code_parent: region_code.parent_code > region_code.code [delete: restrict]
+Ref fk_release_promotion_history_previous_release: release_promotion_history.previous_active_release_id > filter_release.id [delete: no action]
+Ref fk_release_promotion_history_release: release_promotion_history.release_id > filter_release.id [delete: no action]
+Ref fk_report_answer: report.answer_id > answer.id [delete: restrict]
+Ref fk_report_case_answer: report_case.answer_id > answer.id [delete: restrict]
+Ref fk_report_case_direction_post: report_case.direction_post_id > direction_post.id [delete: restrict]
+Ref fk_report_case_event_case: report_case_event.case_id > report_case.id [delete: restrict]
+Ref fk_report_case_target_user: report_case.target_user_id > user_account.id [delete: restrict]
+Ref fk_report_content_snapshot_report: report_content_snapshot.report_id > report.id [delete: restrict]
+Ref fk_report_direction_post: report.direction_post_id > direction_post.id [delete: restrict]
 Ref fk_report_reporter: report.reporter_id > user_account.id [delete: restrict]
 Ref fk_report_target_user: report.target_user_id > user_account.id [delete: restrict]
-Ref fk_report_direction_post: report.direction_post_id > direction_post.id [delete: restrict]
-Ref fk_report_answer: report.answer_id > answer.id [delete: restrict]
-Ref fk_moderation_review_report: moderation_review.report_id > report.id [delete: restrict]
-Ref fk_moderation_review_reviewer: moderation_review.reviewer_id > user_account.id [delete: restrict]
-
-Ref fk_push_device_user: push_device.user_id > user_account.id [delete: cascade]
-Ref fk_notification_user_setting_user: notification_user_setting.user_id > user_account.id [delete: cascade]
-Ref fk_notification_preference_user: notification_preference.user_id > user_account.id [delete: cascade]
-Ref fk_notification_recipient: notification.recipient_id > user_account.id [delete: restrict]
-Ref fk_notification_outbox: notification.outbox_event_id > outbox_event.id [delete: restrict]
-Ref fk_notification_post: notification.direction_post_id > direction_post.id [delete: set null]
-Ref fk_notification_answer: notification.answer_id > answer.id [delete: set null]
-Ref fk_notification_delivery_notification: notification_delivery.notification_id > notification.id [delete: cascade]
-Ref fk_notification_delivery_device: notification_delivery.push_device_id > push_device.id [delete: restrict]
+Ref fk_snapshot_emergency_migration_history_snapshot: snapshot_emergency_migration_history.model_snapshot > snapshot_health.model_snapshot [delete: no action]
+Ref fk_snapshot_emergency_migration_history_source_release: snapshot_emergency_migration_history.source_release_id > filter_release.id [delete: no action]
+Ref fk_snapshot_emergency_migration_history_target_release: snapshot_emergency_migration_history.target_release_id > filter_release.id [delete: no action]
+Ref fk_snapshot_health_probe_result_snapshot: snapshot_health_probe_result.model_snapshot > snapshot_health.model_snapshot [delete: no action]
+Ref fk_user_account_country: user_account.(country_code, country_level) > region_code.(code, level) [delete: restrict]
+Ref fk_user_account_profile_image: user_account.(profile_image_media_id, id) > media_asset.(id, owner_id) [delete: restrict]
+Ref fk_user_account_region: user_account.coarse_region_code > region_code.code [delete: restrict]
+Ref fk_user_block_blocked: user_block.blocked_id > user_account.id [delete: cascade]
+Ref fk_user_block_blocker: user_block.blocker_id > user_account.id [delete: cascade]
+Ref fk_user_private_attribute_user: user_private_attribute.user_id > user_account.id [delete: cascade]
+Ref notification_report_id_fkey: notification.report_id > report.id [delete: set null]
+Ref report_case_id_fkey: report.case_id > report_case.id [delete: restrict]
 
 // -----------------------------------------------------------------------------
 // dbdocs 그룹
 // -----------------------------------------------------------------------------
 
-TableGroup account_and_location [color: #D9EAF7, note: '계정, 지역, 위치 TTL, 수신 용량'] {
+// 그룹 색상 #D9EAF7. 계정, 지역, 위치 TTL, 수신 용량
+TableGroup account_and_location {
   region_code
   user_account
   user_private_attribute
@@ -1177,12 +1752,14 @@ TableGroup account_and_location [color: #D9EAF7, note: '계정, 지역, 위치 T
   recipient_receive_state
 }
 
-TableGroup authentication [color: #DCE3EE, note: '백오피스 운영자와 앱 기기의 인증 자격증명. 제품 논리 스키마가 아니라 백엔드 인증 부록이다'] {
+// 그룹 색상 #DCE3EE. 백오피스 운영자와 앱 기기의 인증 자격증명. 제품 논리 스키마가 아니라 백엔드 인증 부록이다
+TableGroup authentication {
   operator_credential
   device_credential
 }
 
-TableGroup question_supply [color: #DFF2D8, note: '질문 제안, 운영 검토, 승인 질문, 사용자별 배정'] {
+// 그룹 색상 #DFF2D8. 질문 제안, 운영 검토, 승인 질문, 사용자별 배정
+TableGroup question_supply {
   question_proposal
   question_proposal_review
   approved_question
@@ -1190,7 +1767,8 @@ TableGroup question_supply [color: #DFF2D8, note: '질문 제안, 운영 검토,
   question_assignment
 }
 
-TableGroup direction_communication [color: #FCE4CC, note: '방향 정책, 발송 콘텐츠, 수신 권한, 답변과 공감, 미디어'] {
+// 그룹 색상 #FCE4CC. 방향 정책, 발송 콘텐츠, 수신 권한, 답변과 공감, 미디어
+TableGroup direction_communication {
   direction_scheme
   direction_segment
   media_asset
@@ -1203,17 +1781,48 @@ TableGroup direction_communication [color: #FCE4CC, note: '방향 정책, 발송
   answer_reaction
 }
 
-TableGroup safety_and_moderation [color: #F8D7DA, note: '차단, 신고, 운영 판정'] {
+// 그룹 색상 #D6EFEA. 자동 필터링과 수동 검토, release 및 snapshot 상태
+TableGroup filtering_and_review {
+  filter_release
+  filter_job
+  filter_job_status_history
+  filter_decision
+  manual_review_case
+  manual_review_priority_evaluation
+  appeal_case
+  release_promotion_history
+  filter_release_retry_gate
+  snapshot_health
+  snapshot_health_probe_result
+  snapshot_emergency_migration_history
+}
+
+// 그룹 색상 #F8D7DA. 차단, 신고, 운영 판정
+TableGroup safety_and_moderation {
   user_block
   report
+  report_case
+  report_content_snapshot
+  report_case_event
   moderation_review
 }
 
-TableGroup notification_and_outbox [color: #EADCF0, note: '앱 내 알림, 푸시 기기·전달, 트랜잭셔널 Outbox'] {
+// 그룹 색상 #E8D8C9. 운영자의 filtering authority 변경 감사 원장
+TableGroup operational_audit {
+  operator_action_audit
+}
+
+// 그룹 색상 #EADCF0. 앱 내 알림, 푸시 기기·전달, 트랜잭셔널 Outbox
+TableGroup notification_and_outbox {
   push_device
   notification_user_setting
   notification_preference
   outbox_event
   notification
+  notification_seen_state
+  notification_event
   notification_delivery
+  push_dispatch_group
+  push_dispatch_group_member
+  push_daily_budget
 }
