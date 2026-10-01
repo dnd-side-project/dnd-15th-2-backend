@@ -10,10 +10,10 @@
 - Result: `PARTIAL`
 - Tested scope: `UnicodeTextNormalizer`, `ResourceLocalRuleEngine`, 두 config의 구현체 조립, 실제 구현체를 쓰는 `ModerationPipelineService` 경로. 단위 시나리오 UNIT-001~016과 통합 시나리오 INT-001이 통과했다. Linux(WSL) 환경에서 전체 `./gradlew test`(1099건), `./gradlew integrationTest`(747건), `./harness pr-ready --project-tests`가 모두 통과했다.
 - Unverified scope:
-  - 보조 판정기 실제 구현: 공급자 미정으로 이번 범위에 없다. `UnavailableSecondaryModerationClient` 교체 완료 조건은 BLOCKED다.
+  - 보조 판정기 실제 구현: 공급자 미정이라 #298로 분리했다. 이 PR의 범위가 아니며 `UnavailableSecondaryModerationClient`는 그대로 남는다.
   - Windows 기본 환경의 전체 `./gradlew test`: 12건이 실패한다(5절). 이 환경은 CI 대상이 아니며 Linux에서는 통과했다.
   - GitHub Actions CI: 실행하지 않았다.
-- Release recommendation: 보조 판정기 범위를 정한 뒤 병합한다. CI 결과는 PR에서 확인한다.
+- Release recommendation: CI 결과를 PR에서 확인한 뒤 병합한다. 보조 판정기는 #298에서 이어간다.
 
 ## 2. Environment
 
@@ -63,7 +63,7 @@ Linux(WSL)에서는 실패가 없다. Windows 11에서 전체 `./gradlew test`�
 
 - 지원 ref는 `normalization-v1`, `local-rules-v1` 두 개다. 운영에서 `filter_release`를 만들 때 이 이름을 쓰지 않으면 해당 release의 모든 moderation이 `INVALID_TEXT`로 실패한다. 현재 저장소에는 seed된 release가 없다(확인함). release 생성 절차에 ref 이름 안내가 필요하다.
 - 운영 규칙 집합(`local-rules-v1.rules`)은 비어 있다. 따라서 운영 판정은 이전과 동일하게 OpenAI 호출과 `FlaggedCategoryPolicyEngine`에 전적으로 의존한다.
-- 정규화 실패(null·빈 입력)가 닉네임 게이트에서는 "주 판정기 오류"로 취급되어 보조 판정기로 넘어간다. 현재 보조 판정기는 항상 예외라 `REJECTED(UNAVAILABLE)`이다. 보조 판정기 실제 구현이 들어오면 빈 닉네임이 보조 판정으로 허용될 수 있는지 재검토해야 한다.
+- 정규화 실패(null·빈 입력)가 닉네임 게이트에서는 "주 판정기 오류"로 취급되어 보조 판정기로 넘어간다. 현재 보조 판정기는 항상 예외라 `REJECTED(UNAVAILABLE)`이다. 보조 판정기 실제 구현이 들어오면 빈 닉네임이 보조 판정으로 허용될 수 있는지 재검토해야 하며, 이 항목은 #298의 범위에 넣었다.
 - 규칙 접기는 NFKC·소문자·글자숫자 외 제거까지만 한다. 시각적 동형 문자(키릴 문자 등) 매핑은 하지 않는다.
 
 ### Infrastructure and resource limits
@@ -93,8 +93,8 @@ Linux(WSL)에서는 실패가 없다. Windows 11에서 전체 `./gradlew test`�
 
 ## 7. Regression and residual risk
 
-- `PassthroughTextNormalizer`, `NoMatchLocalRuleEngine`을 삭제했고 프로덕션과 테스트에서 참조가 없다(`grep` 확인). `UnavailableSecondaryModerationClient`는 `NicknameModerationGateConfig`가 아직 사용한다.
-- 남은 미검증 항목은 GitHub Actions CI 결과와 보조 판정기 실제 구현이다. Windows 환경의 테스트 12건 실패는 이번 변경과 무관하게 이미 존재한다.
+- `PassthroughTextNormalizer`, `NoMatchLocalRuleEngine`을 삭제했고 프로덕션과 테스트에서 참조가 없다(`grep` 확인). `UnavailableSecondaryModerationClient`는 `NicknameModerationGateConfig`가 아직 사용하며 교체는 #298에서 한다.
+- 남은 미검증 항목은 GitHub Actions CI 결과다. 보조 판정기 실제 구현은 #298로 분리했다. Windows 환경의 테스트 12건 실패는 이번 변경과 무관하게 이미 존재한다.
 
 ## 8. Artifacts
 
