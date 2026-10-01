@@ -1,10 +1,9 @@
 /*
  * Created at: 2026-08-19T02:20:00+09:00
- * Source scenario: TEST-PLAN-GH-168-NICKNAME-DUPLICATE-MODERATION-UNIT-022
+ * Source scenario: TEST-PLAN-GH-168-NICKNAME-DUPLICATE-MODERATION-UNIT-022,
+ * TEST-PLAN-GH-287-MODERATION-PLACEHOLDER-UNIT-014 (added 2026-10-01T17:10:00+09:00)
  */
 package com.dnd.qello.filtering.config;
-
-import static org.assertj.core.api.Assertions.assertThat;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -16,16 +15,22 @@ import org.junit.jupiter.api.Test;
 import org.springframework.boot.convert.ApplicationConversionService;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.ConfigurableApplicationContext;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import com.dnd.qello.filtering.domain.FilterDecision;
 import com.dnd.qello.filtering.domain.FilterRelease;
 import com.dnd.qello.filtering.domain.FilterReleaseStatus;
 import com.dnd.qello.filtering.moderation.GatedNicknameModerationChecker;
+import com.dnd.qello.filtering.moderation.ModerationPipelineService;
 import com.dnd.qello.filtering.moderation.NicknameModerationChecker;
 import com.dnd.qello.filtering.moderation.NicknameSyncModerationGate;
 import com.dnd.qello.filtering.moderation.NoOpNicknameModerationChecker;
+import com.dnd.qello.filtering.moderation.ResourceLocalRuleEngine;
+import com.dnd.qello.filtering.moderation.UnicodeTextNormalizer;
 import com.dnd.qello.filtering.repository.FilterDecisionRepository;
 import com.dnd.qello.filtering.repository.FilterReleaseRepository;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 class NicknameModerationGateConfigTest {
 
@@ -36,12 +41,12 @@ class NicknameModerationGateConfigTest {
 	// SpringApplication이 ApplicationConversionService를 자동 등록하므로 문제가 없지만,
 	// 이 경량 러너에서는 명시적으로 등록해야 @Value(Duration) 바인딩이 통과한다.
 	private final ApplicationContextRunner runner = new ApplicationContextRunner()
-		.withInitializer(context -> ((ConfigurableApplicationContext) context).getBeanFactory()
-			.setConversionService(ApplicationConversionService.getSharedInstance()))
-		.withUserConfiguration(NicknameModerationGateConfig.class)
-		.withBean(FilterDecisionRepository.class, UnusedFilterDecisionRepository::new)
-		.withBean(FilterReleaseRepository.class, () -> new FixedFilterReleaseRepository(promotedRelease()))
-		.withBean(Clock.class, () -> Clock.fixed(NOW, ZoneOffset.UTC));
+			.withInitializer(context -> ((ConfigurableApplicationContext) context).getBeanFactory()
+					.setConversionService(ApplicationConversionService.getSharedInstance()))
+			.withUserConfiguration(NicknameModerationGateConfig.class)
+			.withBean(FilterDecisionRepository.class, UnusedFilterDecisionRepository::new)
+			.withBean(FilterReleaseRepository.class, () -> new FixedFilterReleaseRepository(promotedRelease()))
+			.withBean(Clock.class, () -> Clock.fixed(NOW, ZoneOffset.UTC));
 
 	@Test
 	@DisplayName("UNIT-022: production gate가 꺼져 있으면 게이트 빈 없이 NoOpNicknameModerationChecker만 등록된다")
@@ -50,7 +55,7 @@ class NicknameModerationGateConfigTest {
 			assertThat(context).hasNotFailed();
 			assertThat(context).doesNotHaveBean(NicknameSyncModerationGate.class);
 			assertThat(context.getBean(NicknameModerationChecker.class))
-				.isInstanceOf(NoOpNicknameModerationChecker.class);
+					.isInstanceOf(NoOpNicknameModerationChecker.class);
 		});
 	}
 
@@ -60,24 +65,42 @@ class NicknameModerationGateConfigTest {
 		runner.withPropertyValues(
 				"qello.filtering.production.enabled=true",
 				"qello.filtering.nickname-moderation.openai-api-key=example-key-for-unit-test")
-			.run(context -> {
-				assertThat(context).hasNotFailed();
-				assertThat(context).hasSingleBean(NicknameSyncModerationGate.class);
-				assertThat(context.getBean(NicknameModerationChecker.class))
-					.isInstanceOf(GatedNicknameModerationChecker.class);
-			});
+				.run(context -> {
+					assertThat(context).hasNotFailed();
+					assertThat(context).hasSingleBean(NicknameSyncModerationGate.class);
+					assertThat(context.getBean(NicknameModerationChecker.class))
+							.isInstanceOf(GatedNicknameModerationChecker.class);
+				});
 	}
 
 	@Test
 	@DisplayName("UNIT-022: production gate가 켜져 있는데 API 키가 비어 있으면 기동이 실패한다")
 	void contextFailsWhenApiKeyMissing() {
 		runner.withPropertyValues("qello.filtering.production.enabled=true")
-			.run(context -> assertThat(context).hasFailed());
+				.run(context -> assertThat(context).hasFailed());
+	}
+
+	@Test
+	@DisplayName("UNIT-014: 닉네임 게이트의 주 pipeline은 UnicodeTextNormalizer와 ResourceLocalRuleEngine으로 조립된다")
+	void gatePipelineUsesRealNormalizerAndRuleEngine() {
+		runner.withPropertyValues(
+				"qello.filtering.production.enabled=true",
+				"qello.filtering.nickname-moderation.openai-api-key=example-key-for-unit-test")
+				.run(context -> {
+					assertThat(context).hasNotFailed();
+					NicknameSyncModerationGate gate = context.getBean(NicknameSyncModerationGate.class);
+					Object pipeline = ReflectionTestUtils.getField(gate, "primaryPipeline");
+					assertThat(pipeline).isInstanceOf(ModerationPipelineService.class);
+					assertThat(ReflectionTestUtils.getField(pipeline, "textNormalizer"))
+							.isInstanceOf(UnicodeTextNormalizer.class);
+					assertThat(ReflectionTestUtils.getField(pipeline, "localRuleEngine"))
+							.isInstanceOf(ResourceLocalRuleEngine.class);
+				});
 	}
 
 	private static FilterRelease promotedRelease() {
 		return FilterRelease.restore(1L, "norm-v1", "ruleset-v1", "category-map-v1", "model-v1",
-			FilterReleaseStatus.PROMOTED, NOW, NOW);
+				FilterReleaseStatus.PROMOTED, NOW, NOW);
 	}
 
 	private static final class UnusedFilterDecisionRepository implements FilterDecisionRepository {
