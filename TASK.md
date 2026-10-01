@@ -1,49 +1,56 @@
-# GitHub Issue #132 Task Contract
+# GitHub Issue #287 Task Contract
 
-> Generated at: `2026-08-12T10:10:54+09:00`
+> Generated at: `2026-10-01T14:25:25+09:00`
 >
 > 이 파일은 현재 작업 브랜치의 계약이다. 저장소 전역 정책은 `AGENTS.md`를
 > 따른다.
 
 ## Work gate
 
-- Title: `MVP AWS 아키텍처 전체 설계`
-- GitHub Issue: `#132`
-- Branch: `infra/gh-132-mvp-infra-design`
+- Title: `닉네임·답변 moderation placeholder를 실제 구현으로 교체`
+- GitHub Issue: `#287`
+- Branch: `feat/gh-287-moderation-placeholder-replacement`
 - Base branch: `main`
-- DESIGN-ID: `D-2`
-- Design report: `docs/reports/infrastructure/gh-132-D-2.md`
-- Design status: `READY_FOR_DESIGN_REVIEW` — 사람 결정 6건 확정(2026-08-12).
-  선택안 Option C, 월 약 125 USD 추정
 
 ## Objective
 
-- Qello MVP를 실제로 구동할 AWS 컴퓨팅·데이터베이스·네트워크·배포·관측
-  계층을 설계하고, Terraform 구현 전에 검토 가능한 Infrastructure Design
-  Report를 만든다.
-- D-1(#63)이 만든 State Backend·OIDC·S3 자산 위에 얹는 설계이며, 기존 자산을
-  재설계하지 않는다.
-- 설계만 수행한다. Terraform 구현과 apply는 이 이슈 범위 밖이다.
+닉네임·답변 moderation 경로의 OpenAI 주 판정기와 config 조립은 구현돼 있으나(#168),
+`PassthroughTextNormalizer`(trim만 수행), `NoMatchLocalRuleEngine`(항상 noMatch),
+`UnavailableSecondaryModerationClient`(즉시 예외)가 placeholder다.
+이 세 placeholder를 실제 구현으로 교체하고 `qello.filtering.production.enabled=true`에서
+두 경로가 실제 판정으로 끝까지 동작하는지 검증한다.
 
 ## Scope
 
-1. 요구사항 intake — 확인된 값과 가정을 `CONFIRMED`/`ASSUMED`/`UNKNOWN`/
-   `BLOCKED`로 분류한다.
-2. 컴퓨팅·데이터베이스·네트워크 egress·비밀 관리 후보를 비교하고 탈락 이유를
-   기록한다.
-3. AWS Price List API의 공식 단가로 예산 구간별 월 비용을 산정한다.
-4. IAM·네트워크·암호화·State 관점의 독립 보안 검토를 수행한다.
-5. 변경 위험도, 실패 모드, 롤백·복구 절차를 기록한다.
-6. Terraform 소유 파일 경계와 검증 계획을 정의한다.
+- `SecondaryModerationClient` 실제 구현체를 추가하고 `NicknameModerationGateConfig`의
+  `UnavailableSecondaryModerationClient` 조립을 교체한다. 공급자는 미결정(UNKNOWN)이며
+  선정 결과가 선행 조건이다. 주 판정기와 실행 자원·장애 영역을 공유하지 않는다(`INV-NICK-004`).
+- `TextNormalizer` 실제 구현체로 `PassthroughTextNormalizer`를 교체한다. 정규화 규칙은
+  구현 전에 설계로 확정한다(미결정).
+- `LocalRuleEngine` 실제 구현체로 `NoMatchLocalRuleEngine`을 교체한다. 규칙 출처와 갱신
+  방식은 미결정이며 규칙 원문을 로그·metric tag에 남기지 않는다(`INV-CMP-001`, `INV-CMP-002`).
+- `NicknameModerationGateConfig`와 `AnswerModerationExecutionConfig`의 placeholder 조립을
+  새 구현체로 바꾼다.
+- `production.enabled=true`에서 닉네임 게이트와 답변 pipeline의 기동·판정 경로를 점검하고,
+  `docs/filtering-production-gate.md` 3절 미배선 항목 중 이번 교체로 영향받는 것만 목록화한다.
+
+## Design decisions
+
+- 정규화 `v1`(확정 2026-10-01): NFKC, zero-width·제어 문자 제거, 연속 공백 축소, trim. 구분자 제거와
+  동형 문자 처리는 정규화가 아니라 로컬 규칙 엔진 내부 비교용 접기에서만 한다. null·정규화 후 빈 문자열과
+  알 수 없는 `normalizationRef`는 `FilteringException`으로 fail-closed 한다.
+- 로컬 규칙(확정 2026-10-01): `localRulesetRef`로 classpath 리소스를 고르는 엔진만 구현한다. 운영 규칙 목록은
+  비워 두고(매칭 없음), 목록 추가는 OpenAI 판정 결과를 본 뒤 후속 작업으로 한다. 로그·metric에는 `ruleId`만 남긴다.
+- 보조 판정기(확정 2026-10-01): #287에 포함하고 공급자 선정을 기다린다. 공급자가 정해지기 전에는
+  `UnavailableSecondaryModerationClient` 교체 항목이 완료되지 않는다.
 
 ## Explicit exclusions
 
-- Terraform 코드 구현 — `/harness-infra-build`와 별도 이슈에서 수행한다.
-- `terraform apply`, `terraform plan`(자격 증명 필요), 실제 AWS 리소스 변경.
-- 애플리케이션 코드 변경. 특히 health 엔드포인트(actuator) 도입은 이 이슈
-  범위 밖이며 별도 이슈로 분리해야 한다(보고서 §15-5).
-- 배포 workflow(`.github/workflows/*deploy*`) 신규 작성.
-- `infra/environments/dev/storage/**`와 D-1 소유 리소스의 재설계.
+- 공급자 DPA·데이터 거주지·보관 정책 등 `filtering-production-gate.md` 2절의 사람 확인 항목
+- 스케줄러 배선, `SlackNotifier` 실제 구현체, metric exporter와 경보 규칙
+- `OpenAiModerationProviderClient`의 호출·재시도·실패 분류 로직 변경
+- `FlaggedCategoryPolicyEngine`의 정책 변경
+- 이미지·미디어 moderation
 - 인프라 apply, 배포, 프로덕션 변경은 별도 승인 없이는 실행하지 않는다.
 - Secret, 계정 식별자, 토큰, `.env` 값은 기록하지 않는다.
 
@@ -51,16 +58,13 @@
 
 | Area | Owner | Required review |
 | --- | --- | --- |
-| Infrastructure Design Report D-2(아키텍처 대안, 비용, 보안, 위험) | Infrastructure orchestrator | 대안 탈락 이유의 타당성, 공식 단가 근거, `infra-apply` 권한 확대 범위(SEC-A), RDS 자격증명 State 노출 방지(SEC-C), Option C 선택과 x86 채택 근거 |
-| 사람 결정 6건 | `@Byuntil`, `@tkv00` | 2026-08-12 확정 완료 — 예산 B~C, prod 단일, 도메인 추후 구매, 장기 운영, actuator 도입, 이미지 아키텍처 위임 |
+| TextNormalizer·LocalRuleEngine 구현과 config 교체 | 실행 에이전트 | 설계 확정 후 사용자 PR 리뷰 |
+| SecondaryModerationClient 구현 | 실행 에이전트 | 공급자 선정(사람 결정) 후 사용자 PR 리뷰 |
+| 신규 단위 테스트 | 실행 에이전트 | `/harness-test-plan` 승인 후 작성 |
 
 ## Existing user-owned changes
 
-- 격리된 worktree(`.claude/worktrees/gh-132-mvp-infra-design`)에서
-  `origin/main`(commit `2d6aba2`) 기준으로 분기했다. 분기 시점
-  `git status --short`는 비어 있었다.
-- 같은 저장소의 `feat/gh-106-nickname-sync-filter` 브랜치에 있던 사용자
-  변경(`TASK.md` 수정, `docs/test-plans/gh-106-*.md`)은 건드리지 않았다.
+- 작업 시작 시 `git status --short`는 깨끗했고 `TASK.md`만 `task-init`으로 수정되었다.
 
 ## Validation
 
@@ -70,26 +74,12 @@
 git diff --check
 ```
 
-인프라 정적 검증(`terraform fmt`/`validate`/`tflint`/`checkov`)은 이 이슈가
-Terraform 파일을 만들지 않으므로 대상이 없다. 빌드 이슈에서 수행한다.
-
 ## Completion criteria
 
-- [x] `templates/infrastructure-design-report.md` 형식의 보고서를 생성하고
-      `DESIGN-ID` `D-2`를 부여한다.
-- [x] 컴퓨팅·데이터베이스 각각 최소 두 가지 대안과 탈락 이유를 기록한다.
-- [x] `AGENTS.md` 4.5의 검토 영역을 모두 다룬다.
-- [x] 비용을 AWS 공식 단가(Price List API, 조회일 기록)로 산정한다.
-- [x] 독립 보안 검토 finding을 severity와 함께 기록한다.
-- [x] 변경 위험도, 실패 모드, 롤백·복구 절차를 기록한다.
-- [x] 사람 결정 6건이 확정된다(보고서 §15) — 2026-08-12.
-- [x] 확정된 결정을 반영해 선택안을 하나로 확정한다(Option C).
-- [ ] 설계 상태가 `APPROVED_FOR_BUILD`로 승인된다.
-- [ ] `@Byuntil`, `@tkv00`의 PR 승인.
-
-## 후속 이슈 (이 이슈 범위 밖, 보고서 §15.1)
-
-- [ ] actuator 도입(애플리케이션 변경) — ALB health check의 선행 조건.
-- [ ] 배포 workflow 작성(ECR push + ECS 서비스 갱신).
-- [ ] 도메인 구매와 Route53 위임 — 실사용자 공개 전 필수.
-- [ ] OpenAI API Key를 SSM SecureString에 사람이 사전 등록.
+- 보조 판정기가 주 판정기 timeout/error에만 호출되고 명시적 BLOCK을 뒤집지 못한다(`NicknameSyncModerationGateTest` 통과).
+- 보조 판정기 자체 timeout/error 시 `REJECTED(UNAVAILABLE)`로 fail-closed 한다(신규 단위 테스트).
+- `TextNormalizer`·`LocalRuleEngine` 신규 단위 테스트가 통과하고 빈 입력·null·비정상 유니코드에서 ALLOW로 새지 않는다.
+- 세 placeholder가 프로덕션 조립에서 참조되지 않는다(`grep` 확인).
+- API 키와 사용자 콘텐츠 원문이 로그·예외 메시지·metric tag에 없다.
+- `NicknameModerationGateConfigTest`, `AnswerModerationExecutionConfigTest`, `ModerationPipelineIntegrationTest`가 통과한다.
+- `./harness check`와 `./harness pr-ready --project-tests`가 통과한다.
