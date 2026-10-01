@@ -1,17 +1,16 @@
 /*
  * Created at: 2026-08-11T21:20:00+09:00
  * Source scenario: TEST-PLAN-GH-105-MODERATION-PIPELINE-UNIT-001 through UNIT-010,
- * TEST-PLAN-GH-105-MODERATION-PIPELINE-UNIT-013
+ * TEST-PLAN-GH-105-MODERATION-PIPELINE-UNIT-013,
+ * TEST-PLAN-GH-287-MODERATION-PLACEHOLDER-UNIT-016 (added 2026-10-01T17:40:00+09:00)
  * (UNIT-011, UNIT-012은 OpenAI 응답 매퍼와 함께 openai 패키지에서 구현한다)
  */
 package com.dnd.qello.filtering.moderation;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
@@ -32,6 +31,9 @@ import com.dnd.qello.filtering.error.FilteringErrorCode;
 import com.dnd.qello.filtering.error.FilteringException;
 import com.dnd.qello.filtering.repository.FilterDecisionRepository;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
 class ModerationPipelineServiceTest {
 
 	private static final Instant NOW = Instant.parse("2026-08-11T00:00:00Z");
@@ -42,8 +44,8 @@ class ModerationPipelineServiceTest {
 	void shortCircuitsOnLocalRuleBlock() {
 		FakeModerationProviderClient providerClient = new FakeModerationProviderClient(providerResult(false));
 		ModerationPipelineService service = newService(new FakeTextNormalizer(),
-			new FakeLocalRuleEngine(LocalRuleVerdict.block("rule-001")), providerClient,
-			new FakePolicyEngine(FilterVerdict.ALLOW));
+				new FakeLocalRuleEngine(LocalRuleVerdict.block("rule-001")), providerClient,
+				new FakePolicyEngine(FilterVerdict.ALLOW));
 
 		ModerationPipelineResult result = service.execute(ephemeralRequest(release(1L)));
 
@@ -58,8 +60,8 @@ class ModerationPipelineServiceTest {
 		FakeTextNormalizer normalizer = new FakeTextNormalizer();
 		FakeModerationProviderClient providerClient = new FakeModerationProviderClient(providerResult(false));
 		ModerationPipelineService service = newService(normalizer,
-			new FakeLocalRuleEngine(LocalRuleVerdict.noMatch()), providerClient,
-			new FakePolicyEngine(FilterVerdict.ALLOW));
+				new FakeLocalRuleEngine(LocalRuleVerdict.noMatch()), providerClient,
+				new FakePolicyEngine(FilterVerdict.ALLOW));
 
 		service.execute(ephemeralRequest(release(1L)));
 
@@ -72,10 +74,10 @@ class ModerationPipelineServiceTest {
 	@DisplayName("공급자 flagged=true라도 정책 엔진이 ALLOW로 판단하면 최종 verdict는 ALLOW다")
 	void policyEngineOverridesFlaggedTrueToAllow() {
 		ModerationProviderResult flaggedButLowRisk = new ModerationProviderResult(
-			true, Map.of("harassment", true), Map.of("harassment", 0.51), "omni-moderation-2024-09-26");
+				true, Map.of("harassment", true), Map.of("harassment", 0.51), "omni-moderation-2024-09-26");
 		ModerationPipelineService service = newService(new FakeTextNormalizer(),
-			new FakeLocalRuleEngine(LocalRuleVerdict.noMatch()),
-			new FakeModerationProviderClient(flaggedButLowRisk), new FakePolicyEngine(FilterVerdict.ALLOW));
+				new FakeLocalRuleEngine(LocalRuleVerdict.noMatch()),
+				new FakeModerationProviderClient(flaggedButLowRisk), new FakePolicyEngine(FilterVerdict.ALLOW));
 
 		ModerationPipelineResult result = service.execute(ephemeralRequest(release(1L)));
 
@@ -86,8 +88,8 @@ class ModerationPipelineServiceTest {
 	@DisplayName("공급자 flagged=false라도 정책 엔진이 BLOCK으로 판단하면 최종 verdict는 BLOCK이다")
 	void policyEngineOverridesFlaggedFalseToBlock() {
 		ModerationPipelineService service = newService(new FakeTextNormalizer(),
-			new FakeLocalRuleEngine(LocalRuleVerdict.noMatch()),
-			new FakeModerationProviderClient(providerResult(false)), new FakePolicyEngine(FilterVerdict.BLOCK));
+				new FakeLocalRuleEngine(LocalRuleVerdict.noMatch()),
+				new FakeModerationProviderClient(providerResult(false)), new FakePolicyEngine(FilterVerdict.BLOCK));
 
 		ModerationPipelineResult result = service.execute(ephemeralRequest(release(1L)));
 
@@ -99,15 +101,15 @@ class ModerationPipelineServiceTest {
 	void propagatesProviderTimeoutWithoutConvertingToVerdict() {
 		FakePolicyEngine policyEngine = new FakePolicyEngine(FilterVerdict.ALLOW);
 		FilteringException timeout = new FilteringException(
-			FilteringErrorCode.MODERATION_PROVIDER_UNAVAILABLE, "openai", "timeout");
+				FilteringErrorCode.MODERATION_PROVIDER_UNAVAILABLE, "openai", "timeout");
 		ModerationPipelineService service = newService(new FakeTextNormalizer(),
-			new FakeLocalRuleEngine(LocalRuleVerdict.noMatch()),
-			new FakeModerationProviderClient(timeout), policyEngine);
+				new FakeLocalRuleEngine(LocalRuleVerdict.noMatch()),
+				new FakeModerationProviderClient(timeout), policyEngine);
 
 		assertThatThrownBy(() -> service.execute(ephemeralRequest(release(1L))))
-			.isInstanceOf(FilteringException.class)
-			.satisfies(ex -> assertThat(((FilteringException) ex).getErrorCode())
-				.isEqualTo(FilteringErrorCode.MODERATION_PROVIDER_UNAVAILABLE));
+				.isInstanceOf(FilteringException.class)
+				.satisfies(ex -> assertThat(((FilteringException) ex).getErrorCode())
+						.isEqualTo(FilteringErrorCode.MODERATION_PROVIDER_UNAVAILABLE));
 		assertThat(policyEngine.callCount).isZero();
 	}
 
@@ -116,13 +118,13 @@ class ModerationPipelineServiceTest {
 	void propagatesProviderServerErrorWithoutConvertingToVerdict() {
 		FakePolicyEngine policyEngine = new FakePolicyEngine(FilterVerdict.BLOCK);
 		FilteringException serverError = new FilteringException(
-			FilteringErrorCode.MODERATION_PROVIDER_UNAVAILABLE, "openai", "server_error");
+				FilteringErrorCode.MODERATION_PROVIDER_UNAVAILABLE, "openai", "server_error");
 		ModerationPipelineService service = newService(new FakeTextNormalizer(),
-			new FakeLocalRuleEngine(LocalRuleVerdict.noMatch()),
-			new FakeModerationProviderClient(serverError), policyEngine);
+				new FakeLocalRuleEngine(LocalRuleVerdict.noMatch()),
+				new FakeModerationProviderClient(serverError), policyEngine);
 
 		assertThatThrownBy(() -> service.execute(ephemeralRequest(release(1L))))
-			.isInstanceOf(FilteringException.class);
+				.isInstanceOf(FilteringException.class);
 		assertThat(policyEngine.callCount).isZero();
 	}
 
@@ -131,10 +133,10 @@ class ModerationPipelineServiceTest {
 	void keepsRequestedReleaseIdAndActualModelSeparate() {
 		FilterRelease release = release(7L, "norm-v1", "requested-model-snapshot");
 		ModerationProviderResult providerResult = new ModerationProviderResult(
-			false, Map.of(), Map.of(), "actual-model-reported-by-provider");
+				false, Map.of(), Map.of(), "actual-model-reported-by-provider");
 		ModerationPipelineService service = newService(new FakeTextNormalizer(),
-			new FakeLocalRuleEngine(LocalRuleVerdict.noMatch()),
-			new FakeModerationProviderClient(providerResult), new FakePolicyEngine(FilterVerdict.ALLOW));
+				new FakeLocalRuleEngine(LocalRuleVerdict.noMatch()),
+				new FakeModerationProviderClient(providerResult), new FakePolicyEngine(FilterVerdict.ALLOW));
 
 		ModerationPipelineResult result = service.execute(ephemeralRequest(release));
 
@@ -148,8 +150,8 @@ class ModerationPipelineServiceTest {
 	void exposesRuleProviderAndFinalDecisionSeparately() {
 		ModerationProviderResult providerResult = providerResult(true);
 		ModerationPipelineService service = newService(new FakeTextNormalizer(),
-			new FakeLocalRuleEngine(LocalRuleVerdict.noMatch()),
-			new FakeModerationProviderClient(providerResult), new FakePolicyEngine(FilterVerdict.ALLOW));
+				new FakeLocalRuleEngine(LocalRuleVerdict.noMatch()),
+				new FakeModerationProviderClient(providerResult), new FakePolicyEngine(FilterVerdict.ALLOW));
 
 		ModerationPipelineResult result = service.execute(ephemeralRequest(release(1L)));
 
@@ -164,11 +166,11 @@ class ModerationPipelineServiceTest {
 	void propagatesContentTypeAndLanguageToPolicyEngine() {
 		FakePolicyEngine policyEngine = new FakePolicyEngine(FilterVerdict.ALLOW);
 		ModerationPipelineService service = newService(new FakeTextNormalizer(),
-			new FakeLocalRuleEngine(LocalRuleVerdict.noMatch()),
-			new FakeModerationProviderClient(providerResult(false)), policyEngine);
+				new FakeLocalRuleEngine(LocalRuleVerdict.noMatch()),
+				new FakeModerationProviderClient(providerResult(false)), policyEngine);
 
 		service.execute(ModerationPipelineRequest.ephemeral(
-			FilterTargetType.NICKNAME, ModerationLanguage.EN, "hello", release(1L)));
+				FilterTargetType.NICKNAME, ModerationLanguage.EN, "hello", release(1L)));
 
 		assertThat(policyEngine.lastContentType).isEqualTo(FilterTargetType.NICKNAME);
 		assertThat(policyEngine.lastLanguage).isEqualTo(ModerationLanguage.EN);
@@ -179,8 +181,8 @@ class ModerationPipelineServiceTest {
 	void normalizesUsingReleaseScopedRef() {
 		FakeTextNormalizer normalizer = new FakeTextNormalizer();
 		ModerationPipelineService service = newService(normalizer,
-			new FakeLocalRuleEngine(LocalRuleVerdict.noMatch()),
-			new FakeModerationProviderClient(providerResult(false)), new FakePolicyEngine(FilterVerdict.ALLOW));
+				new FakeLocalRuleEngine(LocalRuleVerdict.noMatch()),
+				new FakeModerationProviderClient(providerResult(false)), new FakePolicyEngine(FilterVerdict.ALLOW));
 
 		service.execute(ephemeralRequest(release(1L, "norm-a", "model-a")));
 		assertThat(normalizer.lastNormalizationRef).isEqualTo("norm-a");
@@ -197,17 +199,17 @@ class ModerationPipelineServiceTest {
 			CountDownLatch answerTaskStarted = new CountDownLatch(1);
 			CountDownLatch releaseAnswerTask = new CountDownLatch(1);
 			ModerationPipelineService answerPipeline = newService(new FakeTextNormalizer(),
-				new FakeLocalRuleEngine(LocalRuleVerdict.noMatch()),
-				new BlockingModerationProviderClient(answerTaskStarted, releaseAnswerTask),
-				new FakePolicyEngine(FilterVerdict.ALLOW));
+					new FakeLocalRuleEngine(LocalRuleVerdict.noMatch()),
+					new BlockingModerationProviderClient(answerTaskStarted, releaseAnswerTask),
+					new FakePolicyEngine(FilterVerdict.ALLOW));
 
-			Future<?> saturating =
-				answerPathExecutor.submit(() -> answerPipeline.execute(ephemeralRequest(release(1L))));
+			Future<?> saturating = answerPathExecutor
+					.submit(() -> answerPipeline.execute(ephemeralRequest(release(1L))));
 			assertThat(answerTaskStarted.await(2, TimeUnit.SECONDS)).isTrue();
 
 			ModerationPipelineService nicknamePipeline = newService(new FakeTextNormalizer(),
-				new FakeLocalRuleEngine(LocalRuleVerdict.noMatch()),
-				new FakeModerationProviderClient(providerResult(false)), new FakePolicyEngine(FilterVerdict.ALLOW));
+					new FakeLocalRuleEngine(LocalRuleVerdict.noMatch()),
+					new FakeModerationProviderClient(providerResult(false)), new FakePolicyEngine(FilterVerdict.ALLOW));
 
 			long startNanos = System.nanoTime();
 			ModerationPipelineResult result = nicknamePipeline.execute(ephemeralRequest(release(2L)));
@@ -223,15 +225,53 @@ class ModerationPipelineServiceTest {
 		}
 	}
 
+	@Test
+	@DisplayName("UNIT-016: 실제 정규화·규칙 구현체에서 우회 표기가 로컬 규칙에 적중하면 공급자 호출 없이 BLOCK한다")
+	void realComponentsShortCircuitObfuscatedRuleMatch() {
+		FakeModerationProviderClient providerClient = new FakeModerationProviderClient(providerResult(false));
+		ModerationPipelineService service = newService(new UnicodeTextNormalizer(), testRuleEngine(), providerClient,
+				new FakePolicyEngine(FilterVerdict.ALLOW));
+
+		ModerationPipelineResult result = service.execute(realComponentsRequest(" ｚｚ-bad word-ｚｚ "));
+
+		assertThat(result.verdict()).isEqualTo(FilterVerdict.BLOCK);
+		assertThat(result.shortCircuitedByRule()).isTrue();
+		assertThat(providerClient.callCount).isZero();
+	}
+
+	@Test
+	@DisplayName("UNIT-016: 실제 정규화 구현체가 숨은 문자와 공백을 정리한 텍스트가 공급자로 전달된다")
+	void realComponentsPassNormalizedTextToProvider() {
+		FakeModerationProviderClient providerClient = new FakeModerationProviderClient(providerResult(false));
+		ModerationPipelineService service = newService(new UnicodeTextNormalizer(), testRuleEngine(), providerClient,
+				new FakePolicyEngine(FilterVerdict.ALLOW));
+
+		service.execute(realComponentsRequest("  안녕" + String.valueOf((char) 0x200B) + "하세요  "));
+
+		assertThat(providerClient.callCount).isEqualTo(1);
+		assertThat(providerClient.lastNormalizedContent).isEqualTo("안녕하세요");
+	}
+
+	private static LocalRuleEngine testRuleEngine() {
+		return ResourceLocalRuleEngine.load(ModerationPipelineServiceTest.class.getClassLoader(),
+				List.of("test-rules"));
+	}
+
+	private static ModerationPipelineRequest realComponentsRequest(String rawContent) {
+		FilterRelease release = FilterRelease.restore(1L, UnicodeTextNormalizer.NORMALIZATION_V1, "test-rules",
+				"category-map-v1", "model-v1", FilterReleaseStatus.PROMOTED, NOW, NOW);
+		return ModerationPipelineRequest.ephemeral(FilterTargetType.ANSWER, ModerationLanguage.KO, rawContent, release);
+	}
+
 	private static ModerationPipelineService newService(TextNormalizer normalizer, LocalRuleEngine ruleEngine,
-		ModerationProviderClient providerClient, PolicyEngine policyEngine) {
+			ModerationProviderClient providerClient, PolicyEngine policyEngine) {
 		return new ModerationPipelineService(normalizer, ruleEngine, providerClient, policyEngine,
-			new UnusedFilterDecisionRepository(), Clock.fixed(NOW, ZoneOffset.UTC));
+				new UnusedFilterDecisionRepository(), Clock.fixed(NOW, ZoneOffset.UTC));
 	}
 
 	private static ModerationPipelineRequest ephemeralRequest(FilterRelease release) {
 		return ModerationPipelineRequest.ephemeral(FilterTargetType.ANSWER, ModerationLanguage.KO, RAW_CONTENT,
-			release);
+				release);
 	}
 
 	private static FilterRelease release(long id) {
@@ -240,12 +280,12 @@ class ModerationPipelineServiceTest {
 
 	private static FilterRelease release(long id, String normalizationRef, String modelSnapshot) {
 		return FilterRelease.restore(id, normalizationRef, "ruleset-v1", "category-map-v1", modelSnapshot,
-			FilterReleaseStatus.PROMOTED, NOW, NOW);
+				FilterReleaseStatus.PROMOTED, NOW, NOW);
 	}
 
 	private static ModerationProviderResult providerResult(boolean flagged) {
 		return new ModerationProviderResult(flagged, Map.of("harassment", flagged),
-			Map.of("harassment", flagged ? 0.9 : 0.01), "omni-moderation-2024-09-26");
+				Map.of("harassment", flagged ? 0.9 : 0.01), "omni-moderation-2024-09-26");
 	}
 
 	private static final class FakeTextNormalizer implements TextNormalizer {
@@ -341,7 +381,7 @@ class ModerationPipelineServiceTest {
 
 		@Override
 		public FilterVerdict decide(ModerationProviderResult providerResult, FilterTargetType contentType,
-			ModerationLanguage language, String categoryMappingRef) {
+				ModerationLanguage language, String categoryMappingRef) {
 			callCount++;
 			lastContentType = contentType;
 			lastLanguage = language;
@@ -362,7 +402,7 @@ class ModerationPipelineServiceTest {
 
 		@Override
 		public Optional<FilterDecision> findByFilterJobIdAndAttemptGeneration(long filterJobId,
-			int attemptGeneration) {
+				int attemptGeneration) {
 			throw new UnsupportedOperationException();
 		}
 	}

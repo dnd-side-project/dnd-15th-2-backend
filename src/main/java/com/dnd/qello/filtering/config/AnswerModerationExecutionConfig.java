@@ -22,10 +22,10 @@ import com.dnd.qello.filtering.moderation.FlaggedCategoryPolicyEngine;
 import com.dnd.qello.filtering.moderation.LocalRuleEngine;
 import com.dnd.qello.filtering.moderation.ModerationPipelineService;
 import com.dnd.qello.filtering.moderation.ModerationProviderClient;
-import com.dnd.qello.filtering.moderation.NoMatchLocalRuleEngine;
-import com.dnd.qello.filtering.moderation.PassthroughTextNormalizer;
 import com.dnd.qello.filtering.moderation.PolicyEngine;
+import com.dnd.qello.filtering.moderation.ResourceLocalRuleEngine;
 import com.dnd.qello.filtering.moderation.TextNormalizer;
+import com.dnd.qello.filtering.moderation.UnicodeTextNormalizer;
 import com.dnd.qello.filtering.moderation.openai.OpenAiModerationProviderClient;
 import com.dnd.qello.filtering.repository.FilterDecisionRepository;
 import com.dnd.qello.filtering.repository.FilterJobRepository;
@@ -42,7 +42,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 // 답변 moderation 실행 경로(#107, #108)를 production gate 뒤에서 구성한다(#204).
 // NicknameModerationGateConfig(#168)와 대칭이다 — 판정 파이프라인 자체는 같은
-// 구현체(PassthroughTextNormalizer 등)를 쓰지만, 답변 부하가 닉네임 판정 지연으로
+// 구현체(UnicodeTextNormalizer 등)를 쓰지만, 답변 부하가 닉네임 판정 지연으로
 // 번지지 않도록 RestClient·ExecutorService는 이 설정에서만 별도로 만든다
 // (INV-RES-001, INV-RES-002).
 //
@@ -93,8 +93,8 @@ public class AnswerModerationExecutionConfig {
 			RestClient answerModerationOpenAiRestClient,
 			FilterDecisionRepository filterDecisionRepository,
 			Clock clock) {
-		TextNormalizer textNormalizer = new PassthroughTextNormalizer();
-		LocalRuleEngine localRuleEngine = new NoMatchLocalRuleEngine();
+		TextNormalizer textNormalizer = new UnicodeTextNormalizer();
+		LocalRuleEngine localRuleEngine = ResourceLocalRuleEngine.loadDefault();
 		ModerationProviderClient providerClient = new OpenAiModerationProviderClient(answerModerationOpenAiRestClient);
 		PolicyEngine policyEngine = new FlaggedCategoryPolicyEngine();
 		return new ModerationPipelineService(

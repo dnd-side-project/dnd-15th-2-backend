@@ -1,6 +1,7 @@
 /**
  * Created at: 2026-09-07T10:05:00+09:00
- * Source scenario: TEST-PLAN-GH-204-ANSWER-MODERATION-PRODUCTION-WIRING-UNIT-001 through UNIT-005
+ * Source scenario: TEST-PLAN-GH-204-ANSWER-MODERATION-PRODUCTION-WIRING-UNIT-001 through UNIT-005,
+ * TEST-PLAN-GH-287-MODERATION-PLACEHOLDER-UNIT-015 (added 2026-10-01T17:10:00+09:00)
  */
 package com.dnd.qello.filtering.config;
 
@@ -14,6 +15,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.boot.convert.ApplicationConversionService;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.ConfigurableApplicationContext;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.web.client.RestClient;
 
@@ -24,6 +26,8 @@ import com.dnd.qello.filtering.domain.RetryGateConfig;
 import com.dnd.qello.filtering.moderation.AnswerModerationExecutionWorker;
 import com.dnd.qello.filtering.moderation.AnswerModerationRetryPolicy;
 import com.dnd.qello.filtering.moderation.ModerationPipelineService;
+import com.dnd.qello.filtering.moderation.ResourceLocalRuleEngine;
+import com.dnd.qello.filtering.moderation.UnicodeTextNormalizer;
 import com.dnd.qello.filtering.repository.FilterDecisionRepository;
 import com.dnd.qello.filtering.repository.FilterJobRepository;
 import com.dnd.qello.filtering.repository.FilterJobStatusHistoryRepository;
@@ -146,6 +150,19 @@ class AnswerModerationExecutionConfigTest {
 							RestClient.class);
 					assertThat(answerRestClient).isNotSameAs(nicknameRestClient);
 				});
+	}
+
+	@Test
+	@DisplayName("UNIT-015: answer pipeline은 UnicodeTextNormalizer와 ResourceLocalRuleEngine으로 조립된다")
+	void answerPipelineUsesRealNormalizerAndRuleEngine() {
+		runner.withPropertyValues(ALL_REQUIRED_VALUES).run(context -> {
+			assertThat(context).hasNotFailed();
+			ModerationPipelineService pipeline = context.getBean(ModerationPipelineService.class);
+			assertThat(ReflectionTestUtils.getField(pipeline, "textNormalizer"))
+					.isInstanceOf(UnicodeTextNormalizer.class);
+			assertThat(ReflectionTestUtils.getField(pipeline, "localRuleEngine"))
+					.isInstanceOf(ResourceLocalRuleEngine.class);
+		});
 	}
 
 	private static String[] withoutProperty(String[] values, String keySuffix) {
