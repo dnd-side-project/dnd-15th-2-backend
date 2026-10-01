@@ -25,7 +25,7 @@ class CountrySeedMigrationContractTest {
 
 	private static final String SEED_PATH = "db/migration/V29__seed_country_region_code.sql";
 	private static final Pattern ROW = Pattern.compile(
-		"^\\s*\\('([^']*)', (NULL|'[^']*'), '([^']*)', '([^']*)'\\)[,]?\\s*$", Pattern.MULTILINE);
+			"^\\s*\\('([^']*)', (NULL|'[^']*'), '([^']*)', '([^']*)'\\)[,]?\\s*$", Pattern.MULTILINE);
 	private static final Pattern ROW_START = Pattern.compile("^\\s*\\('", Pattern.MULTILINE);
 
 	private static String sql;

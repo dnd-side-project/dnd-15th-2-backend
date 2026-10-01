@@ -4,9 +4,6 @@
  */
 package com.dnd.qello;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-
 import java.nio.charset.StandardCharsets;
 
 import org.flywaydb.core.Flyway;
@@ -25,6 +22,9 @@ import org.springframework.test.context.ActiveProfiles;
 
 import com.dnd.qello.account.repository.CountryCatalogRepository;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
 @SpringBootTest
 @ActiveProfiles({"test", "flyway-migration"})
 class CountrySeedMigrationIntegrationTest extends PostgisContainerIntegrationTestSupport {
@@ -41,11 +41,11 @@ class CountrySeedMigrationIntegrationTest extends PostgisContainerIntegrationTes
 
 	private static Flyway flywayForSchema(String schema, String... targets) {
 		var configuration = Flyway.configure()
-			.dataSource(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())
-			.schemas(schema)
-			.defaultSchema(schema)
-			.locations("classpath:db/migration")
-			.cleanDisabled(true);
+				.dataSource(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())
+				.schemas(schema)
+				.defaultSchema(schema)
+				.locations("classpath:db/migration")
+				.cleanDisabled(true);
 		if (targets.length > 0) {
 			configuration = configuration.target(targets[0]);
 		}
@@ -72,15 +72,15 @@ class CountrySeedMigrationIntegrationTest extends PostgisContainerIntegrationTes
 	@DisplayName("전체 마이그레이션 후 region_code에는 level이 COUNTRY인 국가 249개만 시드로 존재한다")
 	void seedsAllCountriesAsRootRows() {
 		Integer countries = jdbcTemplate.queryForObject(
-			"SELECT count(*) FROM region_code WHERE level = 'COUNTRY'", Integer.class);
+				"SELECT count(*) FROM region_code WHERE level = 'COUNTRY'", Integer.class);
 		Integer otherLevels = jdbcTemplate.queryForObject(
-			"SELECT count(*) FROM region_code WHERE level <> 'COUNTRY'", Integer.class);
+				"SELECT count(*) FROM region_code WHERE level <> 'COUNTRY'", Integer.class);
 		Integer rootsWithParent = jdbcTemplate.queryForObject(
-			"SELECT count(*) FROM region_code WHERE level = 'COUNTRY' AND parent_code IS NOT NULL", Integer.class);
+				"SELECT count(*) FROM region_code WHERE level = 'COUNTRY' AND parent_code IS NOT NULL", Integer.class);
 		Integer malformedCodes = jdbcTemplate.queryForObject(
-			"SELECT count(*) FROM region_code WHERE level = 'COUNTRY' AND code !~ '^[A-Z]{2}$'", Integer.class);
+				"SELECT count(*) FROM region_code WHERE level = 'COUNTRY' AND code !~ '^[A-Z]{2}$'", Integer.class);
 		String koreaName = jdbcTemplate.queryForObject(
-			"SELECT display_name FROM region_code WHERE code = 'KR'", String.class);
+				"SELECT display_name FROM region_code WHERE code = 'KR'", String.class);
 
 		assertThat(countries).isEqualTo(249);
 		assertThat(otherLevels).isZero();
@@ -110,7 +110,7 @@ class CountrySeedMigrationIntegrationTest extends PostgisContainerIntegrationTes
 
 		Integer after = jdbcTemplate.queryForObject("SELECT count(*) FROM region_code", Integer.class);
 		String koreaName = jdbcTemplate.queryForObject(
-			"SELECT display_name FROM region_code WHERE code = 'KR'", String.class);
+				"SELECT display_name FROM region_code WHERE code = 'KR'", String.class);
 		assertThat(after).isEqualTo(before);
 		assertThat(koreaName).isEqualTo("Korea");
 	}
@@ -119,23 +119,23 @@ class CountrySeedMigrationIntegrationTest extends PostgisContainerIntegrationTes
 	@DisplayName("시드된 국가는 user_account.country_code가 참조할 수 있고 시드에 없는 코드는 FK로 거부된다")
 	void userAccountReferencesSeededCountryOnly() {
 		jdbcTemplate.update("""
-			INSERT INTO region_code (code, parent_code, display_name, level)
-			VALUES (?, 'JP', 'Country Seed Test Region', 'REGION')
-			""", TEST_REGION);
+				INSERT INTO region_code (code, parent_code, display_name, level)
+				VALUES (?, 'JP', 'Country Seed Test Region', 'REGION')
+				""", TEST_REGION);
 
 		jdbcTemplate.update("""
-			INSERT INTO user_account
-				(role, country_code, coarse_region_code, locale, timezone, nickname)
-			VALUES ('USER', 'JP', ?, 'ja-JP', 'Asia/Tokyo', 'country-seed-jp')
-			""", TEST_REGION);
+				INSERT INTO user_account
+					(role, country_code, coarse_region_code, locale, timezone, nickname)
+				VALUES ('USER', 'JP', ?, 'ja-JP', 'Asia/Tokyo', 'country-seed-jp')
+				""", TEST_REGION);
 
 		assertThatThrownBy(() -> jdbcTemplate.update("""
-			INSERT INTO user_account
-				(role, country_code, coarse_region_code, locale, timezone, nickname)
-			VALUES ('USER', 'ZZ', ?, 'ja-JP', 'Asia/Tokyo', 'country-seed-zz')
-			""", TEST_REGION)).isInstanceOf(DataIntegrityViolationException.class);
+				INSERT INTO user_account
+					(role, country_code, coarse_region_code, locale, timezone, nickname)
+				VALUES ('USER', 'ZZ', ?, 'ja-JP', 'Asia/Tokyo', 'country-seed-zz')
+				""", TEST_REGION)).isInstanceOf(DataIntegrityViolationException.class);
 		Integer accounts = jdbcTemplate.queryForObject(
-			"SELECT count(*) FROM user_account WHERE coarse_region_code = ?", Integer.class, TEST_REGION);
+				"SELECT count(*) FROM user_account WHERE coarse_region_code = ?", Integer.class, TEST_REGION);
 		assertThat(accounts).isEqualTo(1);
 	}
 
@@ -147,18 +147,18 @@ class CountrySeedMigrationIntegrationTest extends PostgisContainerIntegrationTes
 			scoped.execute("SET search_path TO " + UPGRADE_SCHEMA);
 
 			scoped.update("INSERT INTO region_code (code, parent_code, display_name, level) "
-				+ "VALUES ('KR', NULL, 'Korea', 'COUNTRY')");
+					+ "VALUES ('KR', NULL, 'Korea', 'COUNTRY')");
 			scoped.update("INSERT INTO region_code (code, parent_code, display_name, level) "
-				+ "VALUES ('CSEED-KR-1', 'KR', 'Country Seed Existing Region', 'REGION')");
+					+ "VALUES ('CSEED-KR-1', 'KR', 'Country Seed Existing Region', 'REGION')");
 
 			flywayForSchema(UPGRADE_SCHEMA).migrate();
 
 			Integer countries = scoped.queryForObject(
-				"SELECT count(*) FROM region_code WHERE level = 'COUNTRY'", Integer.class);
+					"SELECT count(*) FROM region_code WHERE level = 'COUNTRY'", Integer.class);
 			String koreaName = scoped.queryForObject(
-				"SELECT display_name FROM region_code WHERE code = 'KR'", String.class);
+					"SELECT display_name FROM region_code WHERE code = 'KR'", String.class);
 			Integer existingRegion = scoped.queryForObject(
-				"SELECT count(*) FROM region_code WHERE code = 'CSEED-KR-1' AND parent_code = 'KR'", Integer.class);
+					"SELECT count(*) FROM region_code WHERE code = 'CSEED-KR-1' AND parent_code = 'KR'", Integer.class);
 
 			assertThat(countries).isEqualTo(249);
 			assertThat(koreaName).isEqualTo("Korea");
