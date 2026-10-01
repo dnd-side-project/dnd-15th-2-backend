@@ -29,24 +29,23 @@ public class OpenApiConfiguration {
 	@Bean
 	OpenAPI qelloOpenApi() {
 		return new OpenAPI()
-			.info(new Info()
-				.title("Qello API")
-				.version("v1")
-				.description("""
-					Qello 백엔드 API. 모든 응답은 docs/api-response.md의 공통 계약을 따른다.
-					성공은 status/data/timestamp, 실패는 status/message/errorDetail/timestamp를 갖는다.
-					오류 코드 목록은 docs/error-codes.md에 있다."""))
-			.components(new Components()
-				.addSecuritySchemes(OPERATOR_SESSION_SCHEME, new SecurityScheme()
-					.type(SecurityScheme.Type.APIKEY)
-					.in(SecurityScheme.In.COOKIE)
-					.name(SESSION_COOKIE_NAME)
-					.description("백오피스 세션 쿠키. POST /admin/login 성공 시 발급된다."))
-				.addSecuritySchemes(APP_ACCESS_TOKEN_SCHEME, new SecurityScheme()
-					.type(SecurityScheme.Type.HTTP)
-					.scheme("bearer")
-					.bearerFormat("JWT")
-					.description("앱 액세스 토큰. 기기 등록 또는 토큰 재발급으로 받는다.")));
+				.info(new Info()
+						.title("Qello API")
+						.version("v1")
+						.description("""
+								Qello 백엔드 API. 모든 응답은 docs/api-response.md의 공통 계약을 따른다.
+								성공은 status/data/timestamp, 실패는 status/message/errorDetail/timestamp를 갖는다."""))
+				.components(new Components()
+						.addSecuritySchemes(OPERATOR_SESSION_SCHEME, new SecurityScheme()
+								.type(SecurityScheme.Type.APIKEY)
+								.in(SecurityScheme.In.COOKIE)
+								.name(SESSION_COOKIE_NAME)
+								.description("백오피스 세션 쿠키. POST /admin/login 성공 시 발급된다."))
+						.addSecuritySchemes(APP_ACCESS_TOKEN_SCHEME, new SecurityScheme()
+								.type(SecurityScheme.Type.HTTP)
+								.scheme("bearer")
+								.bearerFormat("JWT")
+								.description("앱 액세스 토큰. 기기 등록 또는 토큰 재발급으로 받는다.")));
 	}
 
 	// 컨트롤러가 늘어나도 공통 규칙을 반복해 적지 않게 한다. 새 엔드포인트는 자동으로

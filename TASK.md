@@ -41,6 +41,11 @@ Java·테스트 소스, 기존/신규 migration, vault 원본, 인프라·운영
 ## Validation
 승인된 계획의 기존 테스트·임시 DB catalog 검증을 수행한다. 새 JUnit 코드는 작성하지 않는다.
 
+현재 요청에서 승인한 범위는 기존 테스트 실행과 필수 검사다. 새 동작이나 테스트는 추가하지 않는다.
+기존 Repo Map 테스트는 생성·freshness·조회·클래스 그룹·구문 한계와 실패 처리를 검증한다.
+실행기 전용 테스트는 기능 제거와 함께 삭제하고 원본 테스트 계획·보고서는 역사적 증거로 보존한다.
+애플리케이션, DB, 트랜잭션, 동시 요청, 외부 API, 인프라 동작 변경은 없다.
+
 ```bash
 ./gradlew integrationTest --tests com.dnd.qello.FlywayMigrationIntegrationTest
 ./harness check
@@ -49,6 +54,16 @@ npm run hooks:validate
 git diff --check
 ```
 추가: 고정 버전 DBML parser, 전체 임시 DB catalog와 구조 대조, SHA-256, migration 무변경.
+
+필수 검사의 실제 결과와 실행할 수 없는 항목은 PR에 구분해서 보고한다.
+
+## Common policy audit
+
+- `git diff --name-status ac38168..origin/main`에서 기존 Repo Map 변경은 도구·선택형 문서·전용 테스트·당시 TASK·테스트 계획/보고서에 한정되어 있었다.
+- `AGENTS.md`, `CLAUDE.md`, `.agents/`, `agents/` 및 그 외 공통 파일 변경은 없었다. 공통 정책에 B를 자동 적용한 변경은 발견되지 않았다.
+- Repo Map 실행기 참조는 삭제 대상과 해당 사용 문서 및 기존 테스트 계획/보고서에 한정되어 있었다. 역사적 계획/보고서의 참조는 수정하지 않는다.
+- 기존 `scripts/experiments/codex-agents-eval.zsh`와 관련 2026-09-10 계획은 Repo Map 도입 전 별개 실험으로 이번 범위 밖에 두고 보존한다.
+- 기존 A/common 정책은 변경하지 않고 B의 명시적 선택 조건을 문서에 유지한다.
 
 ## Completion criteria
 - [x] 제품·백엔드 52개 테이블의 최종 정의와 관계를 DBML에 반영한다.

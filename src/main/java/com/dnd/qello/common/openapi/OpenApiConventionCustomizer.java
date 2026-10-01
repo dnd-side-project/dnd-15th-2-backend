@@ -35,23 +35,22 @@ public class OpenApiConventionCustomizer implements OpenApiCustomizer {
 		if (openApi.getPaths() == null) {
 			return;
 		}
-		openApi.getPaths().values().forEach(pathItem ->
-			pathItem.readOperations().forEach(operation -> {
-				narrowContentType(operation);
-				addCommonErrorResponses(operation);
-			}));
+		openApi.getPaths().values().forEach(pathItem -> pathItem.readOperations().forEach(operation -> {
+			narrowContentType(operation);
+			addCommonErrorResponses(operation);
+		}));
 	}
 
 	// 오류 응답 스키마는 어떤 컨트롤러도 반환 타입으로 쓰지 않는다.
 	// GlobalExceptionHandler가 만들기 때문이라 springdoc이 스스로 찾지 못한다.
 	private void registerErrorSchema(OpenAPI openApi) {
 		if (openApi.getComponents().getSchemas() != null
-			&& openApi.getComponents().getSchemas().containsKey(ERROR_SCHEMA_NAME)) {
+				&& openApi.getComponents().getSchemas().containsKey(ERROR_SCHEMA_NAME)) {
 			return;
 		}
 
 		ResolvedSchema resolved = ModelConverters.getInstance()
-			.readAllAsResolvedSchema(new AnnotatedType(ApiErrorResponse.class));
+				.readAllAsResolvedSchema(new AnnotatedType(ApiErrorResponse.class));
 		if (resolved == null) {
 			return;
 		}
@@ -81,7 +80,7 @@ public class OpenApiConventionCustomizer implements OpenApiCustomizer {
 		if (responses == null) {
 			return;
 		}
-		putIfAbsent(responses, "400", "요청 값이 올바르지 않습니다. 오류 코드는 docs/error-codes.md를 따른다.");
+		putIfAbsent(responses, "400", "요청 값이 올바르지 않습니다.");
 		putIfAbsent(responses, "500", "서버 내부 오류가 발생했습니다.");
 	}
 
@@ -90,11 +89,11 @@ public class OpenApiConventionCustomizer implements OpenApiCustomizer {
 			return;
 		}
 		responses.addApiResponse(statusCode, new ApiResponse()
-			.description(description)
-			.content(new Content().addMediaType(
-				MediaType.APPLICATION_JSON_VALUE,
-				new io.swagger.v3.oas.models.media.MediaType()
-					.schema(new Schema<>().$ref(ERROR_SCHEMA_REF)))));
+				.description(description)
+				.content(new Content().addMediaType(
+						MediaType.APPLICATION_JSON_VALUE,
+						new io.swagger.v3.oas.models.media.MediaType()
+								.schema(new Schema<>().$ref(ERROR_SCHEMA_REF)))));
 	}
 
 }
