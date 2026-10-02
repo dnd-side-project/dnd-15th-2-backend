@@ -1,8 +1,15 @@
+/**
+ * Created at: 2026-08-06T14:30:00+09:00
+ * Source scenario: TEST-PLAN-GH-67-INBOX-SENT-POST-UNIT-006 through UNIT-008,
+ * TEST-PLAN-GH-79-ANSWER-VISIBILITY-RECIPIENTS (2026-08-08 개정 반영),
+ * TEST-PLAN-GH-96-INBOX-DETAIL-SCOPE-UNIT-001 through UNIT-003,
+ * TEST-PLAN-GH-170-FEED-READ-INTERACTION-API-UNIT-020 (added 2026-08-19T15:16:05+09:00),
+ * TEST-PLAN-GH-300-FEED-MEDIA-VIEW-URL-UNIT-007 (added 2026-10-02T17:03:54+09:00)
+ */
 package com.dnd.qello.feed;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 import java.io.IOException;
+import java.lang.reflect.RecordComponent;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
@@ -16,14 +23,17 @@ import com.dnd.qello.feed.repository.jdbc.sql.FeedScopeSql;
 import com.dnd.qello.feed.repository.jdbc.sql.InboxQuerySql;
 import com.dnd.qello.feed.repository.jdbc.sql.PostAnswerQuerySql;
 import com.dnd.qello.feed.service.InboxQueryService;
+import com.dnd.qello.feed.view.AnswerCard;
+import com.dnd.qello.feed.view.InboxCard;
+import com.dnd.qello.feed.view.MediaView;
+import com.dnd.qello.feed.view.SentPostCard;
+import com.dnd.qello.feed.web.response.AnswerListingResponse;
+import com.dnd.qello.feed.web.response.InboxListingResponse;
+import com.dnd.qello.feed.web.response.MediaResponse;
+import com.dnd.qello.feed.web.response.SentPostListingResponse;
 
-/**
- * Created at: 2026-08-06T14:30:00+09:00
- * Source scenario: TEST-PLAN-GH-67-INBOX-SENT-POST-UNIT-006 through UNIT-008,
- * TEST-PLAN-GH-79-ANSWER-VISIBILITY-RECIPIENTS (2026-08-08 개정 반영),
- * TEST-PLAN-GH-96-INBOX-DETAIL-SCOPE-UNIT-001 through UNIT-003,
- * TEST-PLAN-GH-170-FEED-READ-INTERACTION-API-UNIT-020 (added 2026-08-19T15:16:05+09:00)
- */
+import static org.assertj.core.api.Assertions.assertThat;
+
 class FeedPersistenceBoundaryTest {
 
 	@Test
@@ -31,29 +41,33 @@ class FeedPersistenceBoundaryTest {
 	void viewsAndPortsRemainIndependent() throws IOException {
 		try (Stream<Path> paths = Files.walk(Path.of("src/main/java/com/dnd/qello/feed/view"))) {
 			assertThat(paths.filter(path -> path.toString().endsWith(".java")).map(this::read))
-				.allMatch(source -> !source.contains("jakarta.persistence") && !source.contains("org.springframework"));
+					.allMatch(source -> !source.contains("jakarta.persistence")
+							&& !source.contains("org.springframework"));
 		}
 		try (Stream<Path> paths = Files.walk(Path.of("src/main/java/com/dnd/qello/feed/repository"))) {
 			List<String> ports = paths.filter(path -> path.toString().endsWith(".java"))
-				.filter(path -> !path.toString().contains("/jdbc/"))
-				.map(this::read).toList();
+					.filter(path -> !path.toString().contains("/jdbc/"))
+					.map(this::read).toList();
 			assertThat(ports).allMatch(source -> !source.contains("jakarta.persistence")
-				&& !source.contains("org.springframework.data"));
+					&& !source.contains("org.springframework.data"));
 		}
 	}
 
-	/** feed 자신의 repository.jdbc 서브패키지(예: sql/)는 경계 위반이 아니므로 feature 이름까지 포함해 매칭한다. */
-	private static final List<String> OTHER_FEATURES =
-		List.of("account", "answer", "auth", "direction", "notification", "question", "safety");
+	/**
+	 * feed 자신의 repository.jdbc 서브패키지(예: sql/)는 경계 위반이 아니므로 feature 이름까지 포함해 매칭한다.
+	 */
+	private static final List<String> OTHER_FEATURES = List.of("account", "answer", "auth", "direction", "notification",
+			"question", "safety");
 
 	@Test
 	@DisplayName("feed는 다른 feature의 JPA Entity와 JDBC 구현을 직접 참조하지 않는다")
 	void feedDoesNotReachIntoOtherFeatureImplementations() throws IOException {
 		try (Stream<Path> paths = Files.walk(Path.of("src/main/java/com/dnd/qello/feed"))) {
 			assertThat(paths.filter(path -> path.toString().endsWith(".java")).map(this::read))
-				.allMatch(source -> OTHER_FEATURES.stream().noneMatch(feature ->
-					source.contains(feature + ".repository.jdbc.") || source.contains(feature + ".repository.jpa."))
-					&& !source.contains("JpaEntity"));
+					.allMatch(source -> OTHER_FEATURES.stream()
+							.noneMatch(feature -> source.contains(feature + ".repository.jdbc.")
+									|| source.contains(feature + ".repository.jpa."))
+							&& !source.contains("JpaEntity"));
 		}
 	}
 
@@ -69,26 +83,27 @@ class FeedPersistenceBoundaryTest {
 	@DisplayName("공통 수신 열람 정책은 ANSWERED 예외와 명시적 만료 시각을 표현한다")
 	void recipientViewPolicyUsesExplicitAtAndPreservesAnsweredAfterExpiry() {
 		assertThat(FeedScopeSql.RECIPIENT_VIEW_ELIGIBILITY)
-			.contains("pr.status = 'ANSWERED'")
-			.contains("pr.status IN ('AVAILABLE','DISCOVERED','OPENED','SKIP_PENDING')")
-			.contains("dp.expires_at > :at")
-			.doesNotContain("CURRENT_TIMESTAMP")
-			.doesNotContain("clock_timestamp()");
+				.contains("pr.status = 'ANSWERED'")
+				.contains("pr.status IN ('AVAILABLE','DISCOVERED','OPENED','SKIP_PENDING')")
+				.contains("dp.expires_at > :at")
+				.doesNotContain("CURRENT_TIMESTAMP")
+				.doesNotContain("clock_timestamp()");
 	}
 
 	@Test
 	@DisplayName("상세와 답변 열람 SQL은 같은 공통 수신 열람 정책을 사용한다")
 	void detailAndAnswerQueriesShareRecipientViewPolicy() throws IOException {
 		String inboxSql = read(Path.of("src/main/java/com/dnd/qello/feed/repository/jdbc/sql/InboxQuerySql.java"));
-		String answerSql = read(Path.of("src/main/java/com/dnd/qello/feed/repository/jdbc/sql/PostAnswerQuerySql.java"));
+		String answerSql = read(
+				Path.of("src/main/java/com/dnd/qello/feed/repository/jdbc/sql/PostAnswerQuerySql.java"));
 
 		assertThat(inboxSql).contains("FeedScopeSql.ACTIVE_POST_VISIBILITY")
-			.contains("FeedScopeSql.RECIPIENT_VIEW_ELIGIBILITY");
+				.contains("FeedScopeSql.RECIPIENT_VIEW_ELIGIBILITY");
 		assertThat(answerSql).contains("FeedScopeSql.RECIPIENT_VIEW_ELIGIBILITY");
 		assertThat(InboxQuerySql.SCOPE_FILTER).contains(FeedScopeSql.ACTIVE_POST_VISIBILITY.trim());
 		assertThat(InboxQuerySql.DETAIL_SCOPE_FILTER).contains(FeedScopeSql.ACTIVE_POST_VISIBILITY.trim());
 		assertThat(PostAnswerQuerySql.CAN_VIEW_ANSWERS_SQL)
-			.contains(FeedScopeSql.RECIPIENT_VIEW_ELIGIBILITY);
+				.contains(FeedScopeSql.RECIPIENT_VIEW_ELIGIBILITY);
 		assertThat(inboxSql).doesNotContain("CURRENT_TIMESTAMP");
 		assertThat(answerSql).doesNotContain("CURRENT_TIMESTAMP");
 	}
@@ -107,11 +122,26 @@ class FeedPersistenceBoundaryTest {
 		String cardSource = read(Path.of("src/main/java/com/dnd/qello/feed/view/InboxCard.java"));
 		assertThat(cardSource).contains("reactedByMe");
 		assertThat(InboxQuerySql.SELECT_CARD).contains("reacted_by_me")
-			.contains("prm.post_id = dp.id AND prm.reactor_id = :recipientId");
+				.contains("prm.post_id = dp.id AND prm.reactor_id = :recipientId");
+	}
+
+	@Test
+	@DisplayName("feed 카드 view와 목록 응답 record에는 storage key·버킷 이름·mediaIds 필드가 없다")
+	void cardViewsAndResponsesDoNotCarryStorageLocation() {
+		List<Class<?>> records = List.of(InboxCard.class, SentPostCard.class, AnswerCard.class, MediaView.class,
+				InboxListingResponse.Card.class, SentPostListingResponse.Card.class, AnswerListingResponse.Answer.class,
+				MediaResponse.class);
+
+		assertThat(records).flatExtracting(type -> List.of(type.getRecordComponents()))
+				.extracting(RecordComponent::getName)
+				.doesNotContain("storageKey", "bucket", "mediaIds");
 	}
 
 	private String read(Path path) {
-		try { return Files.readString(path); }
-		catch (IOException exception) { throw new IllegalStateException(exception); }
+		try {
+			return Files.readString(path);
+		} catch (IOException exception) {
+			throw new IllegalStateException(exception);
+		}
 	}
 }
