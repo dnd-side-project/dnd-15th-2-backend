@@ -38,11 +38,10 @@
             "format" : "date-time",
             "type" : "string"
           },
-          "mediaIds" : {
-            "description" : "첨부된 이미지 식별자 목록",
+          "media" : {
+            "description" : "첨부 이미지 목록. 첨부가 없거나 READY 상태가 아니면 빈 배열입니다",
             "items" : {
-              "format" : "int64",
-              "type" : "integer"
+              "$ref" : "#/components/schemas/FeedMedia"
             },
             "type" : "array"
           },
@@ -1515,6 +1514,26 @@
         ],
         "type" : "object"
       },
+      "FeedMedia" : {
+        "description" : "첨부 이미지와 일정 시간이 지나면 만료되는 조회 URL",
+        "properties" : {
+          "expiresAt" : {
+            "description" : "조회 URL이 만료되는 시각",
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "mediaId" : {
+            "description" : "첨부 이미지 식별자. 같은 이미지는 조회할 때마다 URL이 바뀌므로 클라이언트 캐시 키로는 이 값을 씁니다",
+            "format" : "int64",
+            "type" : "integer"
+          },
+          "url" : {
+            "description" : "이미지 조회 URL. expiresAt이 지나면 403을 받으므로 목록을 다시 조회해 새 URL을 받습니다",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
       "FileAppealRequest" : {
         "description" : "이의제기 접수 요청입니다.",
         "properties" : {
@@ -1627,11 +1646,10 @@
             "format" : "date-time",
             "type" : "string"
           },
-          "mediaIds" : {
-            "description" : "첨부된 이미지 식별자 목록",
+          "media" : {
+            "description" : "첨부 이미지 목록. 첨부가 없거나 READY 상태가 아니면 빈 배열입니다",
             "items" : {
-              "format" : "int64",
-              "type" : "integer"
+              "$ref" : "#/components/schemas/FeedMedia"
             },
             "type" : "array"
           },
@@ -2738,11 +2756,10 @@
             "format" : "date-time",
             "type" : "string"
           },
-          "mediaIds" : {
-            "description" : "첨부된 이미지 식별자 목록",
+          "media" : {
+            "description" : "첨부 이미지 목록. 첨부가 없거나 READY 상태가 아니면 빈 배열입니다",
             "items" : {
-              "format" : "int64",
-              "type" : "integer"
+              "$ref" : "#/components/schemas/FeedMedia"
             },
             "type" : "array"
           },

@@ -3,7 +3,8 @@
  * Source scenario: TEST-PLAN-GH-67-INBOX-QUERY-INT-001 through INT-005,
  * TEST-PLAN-GH-78-SCHEMA-REVISION-V7-INT-010,
  * TEST-PLAN-GH-79-ANSWER-VISIBILITY-RECIPIENTS-INT-005, INT-007, INT-008, INT-009,
- * TEST-PLAN-GH-96-INBOX-DETAIL-SCOPE-INT-006
+ * TEST-PLAN-GH-96-INBOX-DETAIL-SCOPE-INT-006,
+ * TEST-PLAN-GH-300-FEED-MEDIA-VIEW-URL MIGRATE (mediaIds 단언을 media로 이전, added 2026-10-02T17:06:00+09:00)
  */
 package com.dnd.qello;
 
@@ -174,7 +175,7 @@ class InboxQueryIntegrationTest extends PostgisContainerIntegrationTestSupport {
 		assertThat(cards).hasSize(1);
 		assertThat(cards.getFirst().postId()).isEqualTo(active);
 		assertThat(cards.getFirst().questionText()).isEqualTo("오늘 뭐 하고 있나요?");
-		assertThat(cards.getFirst().mediaIds()).isEmpty();
+		assertThat(cards.getFirst().media()).isEmpty();
 		// inbound_bearing_deg(225)를 쓴다 — matched_bearing_deg(45)를 그대로 쓰면 방향이 뒤집혀 보인다.
 		assertThat(cards.getFirst().inboundBearingDegrees()).isEqualByComparingTo(BigDecimal.valueOf(225));
 	}

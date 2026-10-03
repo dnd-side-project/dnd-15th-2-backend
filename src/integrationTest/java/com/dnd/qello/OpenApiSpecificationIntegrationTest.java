@@ -4,13 +4,11 @@
  * TEST-PLAN-GH-121-ACTIVE-USER-PRESENCE-API-INT-011 (added 2026-08-14T00:51:11+09:00),
  * TEST-PLAN-GH-122-DIRECTION-PREVIEW-SUBMISSION-API-INT-019 (added 2026-08-14T12:27:28+09:00),
  * TEST-PLAN-GH-178-NOTIFICATION-PREFERENCES-INT-012 (added 2026-08-21T21:25:00+09:00),
- * TEST-PLAN-GH-179-PUSH-DELIVERY-INT-018 (added 2026-08-25T00:17:40+09:00)
+ * TEST-PLAN-GH-179-PUSH-DELIVERY-INT-018 (added 2026-08-25T00:17:40+09:00),
+ * TEST-PLAN-GH-300-FEED-MEDIA-VIEW-URL-INT-008 (added 2026-10-02T17:07:28+09:00,
+ * 상세 card 확장 2026-10-02T17:33:49+09:00)
  */
 package com.dnd.qello;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -35,6 +33,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
 // OpenAPI 스펙을 저장소 산출물로 고정한다.
 //
 // 이 테스트는 검증과 생성을 함께 한다. springdoc이 만든 스펙을 docs/api/openapi.json으로
@@ -50,8 +52,8 @@ class OpenApiSpecificationIntegrationTest extends PostgisContainerIntegrationTes
 	// 스펙 예시나 스키마 이름에 실제 비밀값이 새어 나오는지 본다. springdoc은 필드
 	// 이름만 노출하지만, 누군가 @Schema(example = ...)에 실제 값을 적으면 여기서 걸린다.
 	private static final String[] FORBIDDEN_FRAGMENTS = {
-		"BEGIN PRIVATE KEY",
-		"eyJhbGciOi"
+			"BEGIN PRIVATE KEY",
+			"eyJhbGciOi"
 	};
 
 	@Autowired
@@ -69,7 +71,7 @@ class OpenApiSpecificationIntegrationTest extends PostgisContainerIntegrationTes
 		Files.writeString(SPECIFICATION_PATH, generated, StandardCharsets.UTF_8);
 
 		assertThat(Files.readString(SPECIFICATION_PATH, StandardCharsets.UTF_8))
-			.isEqualTo(generated);
+				.isEqualTo(generated);
 	}
 
 	@Test
@@ -108,13 +110,13 @@ class OpenApiSpecificationIntegrationTest extends PostgisContainerIntegrationTes
 		assertThat(operation.isMissingNode()).isFalse();
 		assertThat(operation.at("/security/0/appAccessToken").isArray()).isTrue();
 		assertThat(fieldNames(resolveSchema(specification,
-			operation.at("/requestBody/content/application~1json/schema"))))
-			.containsExactlyInAnyOrder("latitude", "longitude", "accuracyMeters", "receiveAllowed", "observedAt");
+				operation.at("/requestBody/content/application~1json/schema"))))
+				.containsExactlyInAnyOrder("latitude", "longitude", "accuracyMeters", "receiveAllowed", "observedAt");
 		assertThat(operation.at("/responses").fieldNames()).toIterable()
-			.contains("200", "400", "401", "403", "404", "500");
+				.contains("200", "400", "401", "403", "404", "500");
 
 		JsonNode successEnvelope = resolveSchema(specification,
-			operation.at("/responses/200/content/application~1json/schema"));
+				operation.at("/responses/200/content/application~1json/schema"));
 		JsonNode responseData = resolveSchema(specification, successEnvelope.at("/properties/data"));
 		assertThat(fieldNames(responseData)).containsExactly("applied");
 	}
@@ -130,12 +132,14 @@ class OpenApiSpecificationIntegrationTest extends PostgisContainerIntegrationTes
 		assertResponses(operation, "200", "400", "401", "409", "500");
 
 		JsonNode successEnvelope = resolveSchema(specification,
-			operation.at("/responses/200/content/application~1json/schema"));
+				operation.at("/responses/200/content/application~1json/schema"));
 		JsonNode responseData = resolveSchema(specification, successEnvelope.at("/properties/data"));
-		assertThat(fieldNames(responseData)).containsExactlyInAnyOrder("schemeId", "schemeCode", "schemeVersion", "segments");
+		assertThat(fieldNames(responseData)).containsExactlyInAnyOrder("schemeId", "schemeCode", "schemeVersion",
+				"segments");
 		JsonNode segmentSchema = resolveSchema(specification,
-			responseData.at("/properties/segments/items"));
-		assertThat(fieldNames(segmentSchema)).containsExactlyInAnyOrder("segmentKey", "displayName", "sortOrder", "count");
+				responseData.at("/properties/segments/items"));
+		assertThat(fieldNames(segmentSchema)).containsExactlyInAnyOrder("segmentKey", "displayName", "sortOrder",
+				"count");
 		assertNoPrivateFields(operation);
 	}
 
@@ -148,18 +152,18 @@ class OpenApiSpecificationIntegrationTest extends PostgisContainerIntegrationTes
 		assertThat(operation.isMissingNode()).isFalse();
 		assertAppAuthentication(operation);
 		assertThat(operation.at("/parameters").findValuesAsText("name"))
-			.contains("Idempotency-Key");
+				.contains("Idempotency-Key");
 		assertResponses(operation, "202", "400", "401", "403", "404", "409", "500");
 
 		JsonNode request = resolveSchema(specification,
-			operation.at("/requestBody/content/application~1json/schema"));
+				operation.at("/requestBody/content/application~1json/schema"));
 		assertThat(fieldNames(request)).containsExactlyInAnyOrder(
-			"approvedQuestionId", "schemeId", "segmentKey", "bodyText", "mediaIds");
+				"approvedQuestionId", "schemeId", "segmentKey", "bodyText", "mediaIds");
 		JsonNode successEnvelope = resolveSchema(specification,
-			operation.at("/responses/202/content/application~1json/schema"));
+				operation.at("/responses/202/content/application~1json/schema"));
 		JsonNode responseData = resolveSchema(specification, successEnvelope.at("/properties/data"));
 		assertThat(fieldNames(responseData)).containsExactlyInAnyOrder(
-			"postId", "submissionStatus", "submittedAt", "expiresAt");
+				"postId", "submissionStatus", "submittedAt", "expiresAt");
 		assertNoPrivateFields(operation);
 	}
 
@@ -174,13 +178,13 @@ class OpenApiSpecificationIntegrationTest extends PostgisContainerIntegrationTes
 		assertResponses(operation, "201", "400", "401", "500");
 
 		JsonNode request = resolveSchema(specification,
-			operation.at("/requestBody/content/application~1json/schema"));
+				operation.at("/requestBody/content/application~1json/schema"));
 		assertThat(fieldNames(request)).containsExactlyInAnyOrder("contentType", "byteSize", "checksum");
 		JsonNode successEnvelope = resolveSchema(specification,
-			operation.at("/responses/201/content/application~1json/schema"));
+				operation.at("/responses/201/content/application~1json/schema"));
 		JsonNode responseData = resolveSchema(specification, successEnvelope.at("/properties/data"));
 		assertThat(fieldNames(responseData)).containsExactlyInAnyOrder(
-			"mediaId", "uploadUrl", "contentType", "expiresAt");
+				"mediaId", "uploadUrl", "contentType", "expiresAt");
 		assertThat(responseData.at("/properties/uploadUrl").path("type").asText()).isEqualTo("string");
 		assertThat(fieldNames(responseData)).doesNotContain("storageKey", "userId", "latitude", "longitude");
 	}
@@ -197,10 +201,48 @@ class OpenApiSpecificationIntegrationTest extends PostgisContainerIntegrationTes
 		assertThat(operation.at("/parameters").findValuesAsText("name")).contains("mediaId");
 
 		JsonNode successEnvelope = resolveSchema(specification,
-			operation.at("/responses/200/content/application~1json/schema"));
+				operation.at("/responses/200/content/application~1json/schema"));
 		JsonNode responseData = resolveSchema(specification, successEnvelope.at("/properties/data"));
 		assertThat(fieldNames(responseData)).containsExactlyInAnyOrder("mediaId", "status");
 		assertNoPrivateFields(operation);
+	}
+
+	@Test
+	@DisplayName("INT-008: 세 feed 목록 카드와 두 상세 card는 mediaIds 대신 mediaId·url·expiresAt만 담은 media를 문서화한다")
+	void documentsFeedListingMediaContract() throws Exception {
+		JsonNode specification = objectMapper.readTree(fetchSpecification());
+
+		assertListingMedia(specification, "/api/v1/direction/inbox", "cards");
+		assertListingMedia(specification, "/api/v1/direction/posts", "cards");
+		assertListingMedia(specification, "/api/v1/direction/posts/{postId}/answers", "answers");
+		assertDetailMedia(specification, "/api/v1/direction/inbox/{postRecipientId}");
+		assertDetailMedia(specification, "/api/v1/direction/posts/{postId}");
+	}
+
+	private void assertDetailMedia(JsonNode specification, String path) {
+		JsonNode operation = operation(specification, path, "get");
+		JsonNode envelope = resolveSchema(specification,
+				operation.at("/responses/200/content/application~1json/schema"));
+		JsonNode data = resolveSchema(specification, envelope.at("/properties/data"));
+		JsonNode card = resolveSchema(specification, data.at("/properties/card"));
+		assertMediaSchema(specification, card, path);
+		assertNoPrivateFields(operation);
+	}
+
+	private void assertListingMedia(JsonNode specification, String path, String itemsField) {
+		JsonNode operation = operation(specification, path, "get");
+		JsonNode envelope = resolveSchema(specification,
+				operation.at("/responses/200/content/application~1json/schema"));
+		JsonNode data = resolveSchema(specification, envelope.at("/properties/data"));
+		JsonNode item = resolveSchema(specification, data.at("/properties/" + itemsField + "/items"));
+		assertMediaSchema(specification, item, path);
+		assertNoPrivateFields(operation);
+	}
+
+	private void assertMediaSchema(JsonNode specification, JsonNode card, String path) {
+		assertThat(fieldNames(card)).as(path).contains("media").doesNotContain("mediaIds");
+		JsonNode media = resolveSchema(specification, card.at("/properties/media/items"));
+		assertThat(fieldNames(media)).as(path).containsExactlyInAnyOrder("mediaId", "url", "expiresAt");
 	}
 
 	@Test
@@ -215,31 +257,31 @@ class OpenApiSpecificationIntegrationTest extends PostgisContainerIntegrationTes
 		assertResponses(getOperation, "200", "401", "403", "404");
 
 		JsonNode getSuccessEnvelope = resolveSchema(specification,
-			getOperation.at("/responses/200/content/application~1json/schema"));
+				getOperation.at("/responses/200/content/application~1json/schema"));
 		JsonNode getResponseData = resolveSchema(specification, getSuccessEnvelope.at("/properties/data"));
 		assertThat(fieldNames(getResponseData))
-			.containsExactlyInAnyOrder("pushEnabled", "quietHours", "preferences", "inboxRecordingPolicy");
+				.containsExactlyInAnyOrder("pushEnabled", "quietHours", "preferences", "inboxRecordingPolicy");
 		assertThat(enumValues(getResponseData.at("/properties/inboxRecordingPolicy")))
-			.containsExactly("ALWAYS_RECORD");
+				.containsExactly("ALWAYS_RECORD");
 		JsonNode responsePreferenceItemSchema = resolveSchema(specification,
-			getResponseData.at("/properties/preferences/items"));
+				getResponseData.at("/properties/preferences/items"));
 		assertThat(enumValues(responsePreferenceItemSchema.at("/properties/type")))
-			.containsExactly(
-				"ANSWER_RECEIVED",
-				"ANSWER_REACTED",
-				"DIRECTION_POST_RECEIVED",
-				"REPORT_RESOLVED",
-				"QUESTION_PROPOSAL_REVIEWED",
-				"QUESTION_RECOMMENDED");
+				.containsExactly(
+						"ANSWER_RECEIVED",
+						"ANSWER_REACTED",
+						"DIRECTION_POST_RECEIVED",
+						"REPORT_RESOLVED",
+						"QUESTION_PROPOSAL_REVIEWED",
+						"QUESTION_RECOMMENDED");
 
 		assertThat(putOperation.isMissingNode()).isFalse();
 		assertAppAuthentication(putOperation);
 		assertResponses(putOperation, "200", "400", "401", "403", "404");
 
 		JsonNode requestSchema = resolveSchema(specification,
-			putOperation.at("/requestBody/content/application~1json/schema"));
+				putOperation.at("/requestBody/content/application~1json/schema"));
 		assertThat(fieldNames(requestSchema))
-			.containsExactlyInAnyOrder("pushEnabled", "quietHours", "preferences");
+				.containsExactlyInAnyOrder("pushEnabled", "quietHours", "preferences");
 		assertThat(requiredFields(requestSchema)).containsExactlyInAnyOrder("pushEnabled", "preferences");
 
 		JsonNode quietHoursSchema = resolveSchema(specification, requestSchema.at("/properties/quietHours"));
@@ -247,17 +289,17 @@ class OpenApiSpecificationIntegrationTest extends PostgisContainerIntegrationTes
 		assertThat(requiredFields(quietHoursSchema)).containsExactlyInAnyOrder("start", "end", "zoneId");
 
 		JsonNode preferenceItemSchema = resolveSchema(specification,
-			requestSchema.at("/properties/preferences/items"));
+				requestSchema.at("/properties/preferences/items"));
 		assertThat(fieldNames(preferenceItemSchema)).containsExactlyInAnyOrder("type", "enabled");
 		assertThat(requiredFields(preferenceItemSchema)).containsExactlyInAnyOrder("type", "enabled");
 		assertThat(enumValues(preferenceItemSchema.at("/properties/type")))
-			.containsExactly(
-				"ANSWER_RECEIVED",
-				"ANSWER_REACTED",
-				"DIRECTION_POST_RECEIVED",
-				"REPORT_RESOLVED",
-				"QUESTION_PROPOSAL_REVIEWED",
-				"QUESTION_RECOMMENDED");
+				.containsExactly(
+						"ANSWER_RECEIVED",
+						"ANSWER_REACTED",
+						"DIRECTION_POST_RECEIVED",
+						"REPORT_RESOLVED",
+						"QUESTION_PROPOSAL_REVIEWED",
+						"QUESTION_RECOMMENDED");
 		assertNoPrivateFields(getOperation);
 		assertNoPrivateFields(putOperation);
 	}
@@ -269,9 +311,9 @@ class OpenApiSpecificationIntegrationTest extends PostgisContainerIntegrationTes
 		JsonNode registerOperation = operation(specification, "/api/v1/notifications/devices", "post");
 		JsonNode revokeOperation = operation(specification, "/api/v1/notifications/devices/revoke", "post");
 		JsonNode registerResponse = registerOperation
-			.at("/responses/204");
+				.at("/responses/204");
 		JsonNode revokeResponse = revokeOperation
-			.at("/responses/204");
+				.at("/responses/204");
 
 		assertThat(registerOperation.at("/requestBody/required").asBoolean()).isTrue();
 		assertThat(revokeOperation.at("/requestBody/required").asBoolean()).isTrue();
@@ -285,7 +327,7 @@ class OpenApiSpecificationIntegrationTest extends PostgisContainerIntegrationTes
 		// RFC 6901에서 path key의 slash만 escape한다. `{mediaId}`는 JSON Pointer에서
 		// 특별한 문자가 아니므로 그대로 둬야 springdoc 경로를 찾을 수 있다.
 		return specification.at("/paths/" + path.replace("/", "~1")
-			+ "/" + method);
+				+ "/" + method);
 	}
 
 	private void assertAppAuthentication(JsonNode operation) {
@@ -296,12 +338,12 @@ class OpenApiSpecificationIntegrationTest extends PostgisContainerIntegrationTes
 		for (String responseCode : responseCodes) {
 			JsonNode response = operation.at("/responses/" + responseCode);
 			assertThat(response.isMissingNode())
-				.as("missing response %s", responseCode)
-				.isFalse();
+					.as("missing response %s", responseCode)
+					.isFalse();
 			if (responseCode.startsWith("4") || responseCode.startsWith("5")) {
 				assertThat(response.at("/content/application~1json/schema/$ref").asText())
-					.as("error schema for response %s", responseCode)
-					.isEqualTo("#/components/schemas/ApiErrorResponse");
+						.as("error schema for response %s", responseCode)
+						.isEqualTo("#/components/schemas/ApiErrorResponse");
 			}
 		}
 	}
@@ -309,16 +351,16 @@ class OpenApiSpecificationIntegrationTest extends PostgisContainerIntegrationTes
 	private void assertNoPrivateFields(JsonNode operation) {
 		String serialized = operation.toString();
 		assertThat(serialized).doesNotContain(
-			"\"userId\"", "\"latitude\"", "\"longitude\"", "\"recipientId\"",
-			"\"recipients\"", "\"storageKey\"");
+				"\"userId\"", "\"latitude\"", "\"longitude\"", "\"recipientId\"",
+				"\"recipients\"", "\"storageKey\"");
 	}
 
 	private String fetchSpecification() throws Exception {
 		return mockMvc.perform(get("/v3/api-docs"))
-			.andExpect(status().isOk())
-			.andReturn()
-			.getResponse()
-			.getContentAsString(StandardCharsets.UTF_8);
+				.andExpect(status().isOk())
+				.andReturn()
+				.getResponse()
+				.getContentAsString(StandardCharsets.UTF_8);
 	}
 
 	private JsonNode resolveSchema(JsonNode specification, JsonNode schema) {
@@ -349,13 +391,13 @@ class OpenApiSpecificationIntegrationTest extends PostgisContainerIntegrationTes
 	}
 
 	/**
-	 * JSON 객체의 키 순서와 들여쓰기, 개행을 고정한다. JSON 객체는 순서가 의미를 갖지 않으므로
-	 * 정렬해도 스펙이 달라지지 않고, 배열 순서는 그대로 보존된다.
+	 * JSON 객체의 키 순서와 들여쓰기, 개행을 고정한다. JSON 객체는 순서가 의미를 갖지 않으므로 정렬해도 스펙이 달라지지 않고, 배열
+	 * 순서는 그대로 보존된다.
 	 */
 	private String canonicalize(String json) throws IOException {
 		ObjectMapper canonicalMapper = JsonMapper.builder()
-			.enable(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS)
-			.build();
+				.enable(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS)
+				.build();
 
 		// Map으로 읽어야 ORDER_MAP_ENTRIES_BY_KEYS가 적용된다. JsonNode는 삽입 순서를 유지한다.
 		Map<?, ?> tree = objectMapper.readValue(json, Map.class);
@@ -363,8 +405,8 @@ class OpenApiSpecificationIntegrationTest extends PostgisContainerIntegrationTes
 	}
 
 	/**
-	 * 개행을 LF로 고정한다. Jackson 기본 들여쓰기는 OS 줄바꿈을 쓰므로 그대로 두면
-	 * 같은 커밋에서도 플랫폼마다 산출물이 달라져 CI diff 검사가 거짓 실패한다.
+	 * 개행을 LF로 고정한다. Jackson 기본 들여쓰기는 OS 줄바꿈을 쓰므로 그대로 두면 같은 커밋에서도 플랫폼마다 산출물이 달라져 CI
+	 * diff 검사가 거짓 실패한다.
 	 */
 	private DefaultPrettyPrinter prettyPrinter() {
 		DefaultIndenter indenter = new DefaultIndenter("  ", "\n");

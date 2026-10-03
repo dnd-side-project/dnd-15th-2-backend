@@ -1,10 +1,13 @@
 /**
  * Created at: 2026-10-01T14:28:33+09:00
  * Source scenario: TEST-PLAN-GH-170-FEED-READ-INTERACTION-API-UNIT-013,
- * UNIT-014 (답변 목록 단언을 SentPostApiMockMvcTest에서 이전, GH-296)
+ * UNIT-014 (답변 목록 단언을 SentPostApiMockMvcTest에서 이전, GH-296),
+ * TEST-PLAN-GH-300-FEED-MEDIA-VIEW-URL-UNIT-006 (added 2026-10-02T17:02:54+09:00)
  */
 package com.dnd.qello.feed.web;
 
+import java.net.MalformedURLException;
+import java.net.URI;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -22,6 +25,7 @@ import com.dnd.qello.common.web.MockMvcTestSupport;
 import com.dnd.qello.common.web.response.ApiResponseFactory;
 import com.dnd.qello.feed.service.FeedInteractionApplicationService;
 import com.dnd.qello.feed.view.AnswerCard;
+import com.dnd.qello.feed.view.MediaView;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -64,6 +68,20 @@ class PostAnswerApiMockMvcTest {
 	}
 
 	@Test
+	@DisplayName("답변의 첨부 이미지는 media의 mediaId·url·expiresAt으로 나가고 mediaIds와 storage key는 나가지 않는다")
+	void answersExposeMediaViewUrlsWithoutStorageKey() throws Exception {
+		when(applicationService.answers(VIEWER_ID, POST_ID, null, null, 20)).thenReturn(List.of(answerCard()));
+
+		mockMvc.perform(get("/api/v1/direction/posts/{postId}/answers", POST_ID))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.data.answers[0].media[0].mediaId").value(3))
+			.andExpect(jsonPath("$.data.answers[0].media[0].url").value("https://media.example.test/view/3?signature=test"))
+			.andExpect(jsonPath("$.data.answers[0].media[0].expiresAt").value("2026-08-19T06:05:00Z"))
+			.andExpect(jsonPath("$.data.answers[0].media[0].storageKey").doesNotExist())
+			.andExpect(jsonPath("$.data.answers[0].mediaIds").doesNotExist());
+	}
+
+	@Test
 	@DisplayName("인증 정보가 없으면 답변 목록은 401이고 application service를 호출하지 않는다")
 	void answersRequiresAuthentication() throws Exception {
 		buildMockMvc(false).perform(get("/api/v1/direction/posts/{postId}/answers", POST_ID))
@@ -80,7 +98,16 @@ class PostAnswerApiMockMvcTest {
 	}
 
 	private static AnswerCard answerCard() {
-		return new AnswerCard(101L, "닉네임", "KR-11", "답변 본문", List.of(), null, null, "NEAR",
+		return new AnswerCard(101L, "닉네임", "KR-11", "답변 본문", List.of(mediaView()), null, null, "NEAR",
 				NOW.minusSeconds(10), null, true, 2);
+	}
+
+	private static MediaView mediaView() {
+		try {
+			return new MediaView(3L, URI.create("https://media.example.test/view/3?signature=test").toURL(),
+					NOW.plusSeconds(300));
+		} catch (MalformedURLException exception) {
+			throw new IllegalStateException(exception);
+		}
 	}
 }

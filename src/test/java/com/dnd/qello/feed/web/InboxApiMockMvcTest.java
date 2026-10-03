@@ -1,21 +1,14 @@
 /**
  * Created at: 2026-08-16T15:02:00+09:00
  * Source scenario: TEST-PLAN-GH-124-INBOX-READ-SKIP-API-UNIT-010,
- * UNIT-012
+ * UNIT-012, TEST-PLAN-GH-300-FEED-MEDIA-VIEW-URL-UNIT-004 (added 2026-10-02T17:02:54+09:00),
+ * TEST-PLAN-GH-300-FEED-MEDIA-VIEW-URL-UNIT-008 (added 2026-10-02T17:33:30+09:00)
  */
 package com.dnd.qello.feed.web;
 
-import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
-
 import java.math.BigDecimal;
+import java.net.MalformedURLException;
+import java.net.URI;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -41,6 +34,17 @@ import com.dnd.qello.feed.view.InboxCard;
 import com.dnd.qello.feed.view.InboxCategory;
 import com.dnd.qello.feed.view.InboxDetail;
 import com.dnd.qello.feed.view.InboxListing;
+import com.dnd.qello.feed.view.MediaView;
+
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @ExtendWith(MockitoExtension.class)
 class InboxApiMockMvcTest {
@@ -75,6 +79,35 @@ class InboxApiMockMvcTest {
 			.andExpect(jsonPath("$.data.cards[0].longitude").doesNotExist());
 
 		verify(applicationService).list(RECIPIENT_ID, InboxCategory.UNANSWERED, "N");
+	}
+
+	@Test
+	@DisplayName("목록 카드의 첨부 이미지는 media의 mediaId·url·expiresAt으로 나가고 mediaIds와 storage key는 나가지 않는다")
+	void listExposesMediaViewUrlsWithoutStorageKey() throws Exception {
+		when(applicationService.list(RECIPIENT_ID, InboxCategory.UNANSWERED, null))
+			.thenReturn(new InboxListing(List.of(card()), List.of()));
+
+		mockMvc.perform(get("/api/v1/direction/inbox"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.data.cards[0].media[0].mediaId").value(3))
+			.andExpect(jsonPath("$.data.cards[0].media[0].url").value("https://media.example.test/view/3?signature=test"))
+			.andExpect(jsonPath("$.data.cards[0].media[0].expiresAt").value("2026-08-16T06:05:00Z"))
+			.andExpect(jsonPath("$.data.cards[0].media[0].storageKey").doesNotExist())
+			.andExpect(jsonPath("$.data.cards[0].mediaIds").doesNotExist());
+	}
+
+	@Test
+	@DisplayName("상세 카드의 첨부 이미지도 media의 mediaId·url·expiresAt으로 나가고 mediaIds와 storage key는 나가지 않는다")
+	void detailExposesMediaViewUrlsWithoutStorageKey() throws Exception {
+		when(applicationService.detail(RECIPIENT_ID, POST_RECIPIENT_ID)).thenReturn(new InboxDetail(card(), NOW, null));
+
+		mockMvc.perform(get("/api/v1/direction/inbox/{postRecipientId}", POST_RECIPIENT_ID))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.data.card.media[0].mediaId").value(3))
+			.andExpect(jsonPath("$.data.card.media[0].url").value("https://media.example.test/view/3?signature=test"))
+			.andExpect(jsonPath("$.data.card.media[0].expiresAt").value("2026-08-16T06:05:00Z"))
+			.andExpect(jsonPath("$.data.card.media[0].storageKey").doesNotExist())
+			.andExpect(jsonPath("$.data.card.mediaIds").doesNotExist());
 	}
 
 	@Test
@@ -135,13 +168,14 @@ class InboxApiMockMvcTest {
 
 		unauthenticatedMockMvc.perform(get("/api/v1/direction/inbox")).andExpect(status().isUnauthorized());
 		unauthenticatedMockMvc.perform(get("/api/v1/direction/inbox/{postRecipientId}", POST_RECIPIENT_ID))
-			.andExpect(status().isUnauthorized());
+				.andExpect(status().isUnauthorized());
 		unauthenticatedMockMvc.perform(put("/api/v1/direction/inbox/{postRecipientId}/skip", POST_RECIPIENT_ID))
-			.andExpect(status().isUnauthorized());
+				.andExpect(status().isUnauthorized());
 		unauthenticatedMockMvc.perform(delete("/api/v1/direction/inbox/{postRecipientId}/skip", POST_RECIPIENT_ID))
-			.andExpect(status().isUnauthorized());
+				.andExpect(status().isUnauthorized());
 
-		verify(applicationService, never()).list(anyLong(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
+		verify(applicationService, never()).list(anyLong(), org.mockito.ArgumentMatchers.any(),
+				org.mockito.ArgumentMatchers.any());
 		verify(applicationService, never()).detail(anyLong(), anyLong());
 		verify(applicationService, never()).skip(anyLong(), anyLong());
 		verify(applicationService, never()).revertSkip(anyLong(), anyLong());
@@ -156,14 +190,14 @@ class InboxApiMockMvcTest {
 		when(applicationService.revertSkip(RECIPIENT_ID, POST_RECIPIENT_ID)).thenThrow(notFound);
 
 		mockMvc.perform(get("/api/v1/direction/inbox/{postRecipientId}", POST_RECIPIENT_ID))
-			.andExpect(status().isNotFound())
-			.andExpect(jsonPath("$.errorDetail.code").value(FeedErrorCode.INBOX_ITEM_NOT_FOUND.code()));
+				.andExpect(status().isNotFound())
+				.andExpect(jsonPath("$.errorDetail.code").value(FeedErrorCode.INBOX_ITEM_NOT_FOUND.code()));
 		mockMvc.perform(put("/api/v1/direction/inbox/{postRecipientId}/skip", POST_RECIPIENT_ID))
-			.andExpect(status().isNotFound())
-			.andExpect(jsonPath("$.errorDetail.code").value(FeedErrorCode.INBOX_ITEM_NOT_FOUND.code()));
+				.andExpect(status().isNotFound())
+				.andExpect(jsonPath("$.errorDetail.code").value(FeedErrorCode.INBOX_ITEM_NOT_FOUND.code()));
 		mockMvc.perform(delete("/api/v1/direction/inbox/{postRecipientId}/skip", POST_RECIPIENT_ID))
-			.andExpect(status().isNotFound())
-			.andExpect(jsonPath("$.errorDetail.code").value(FeedErrorCode.INBOX_ITEM_NOT_FOUND.code()));
+				.andExpect(status().isNotFound())
+				.andExpect(jsonPath("$.errorDetail.code").value(FeedErrorCode.INBOX_ITEM_NOT_FOUND.code()));
 	}
 
 	@Test
@@ -180,23 +214,36 @@ class InboxApiMockMvcTest {
 	private MockMvc buildMockMvc(boolean authenticated) {
 		Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
 		return MockMvcTestSupport.standalone(
-			new InboxController(applicationService, new ApiResponseFactory(clock)), authenticated, RECIPIENT_ID, clock);
+				new InboxController(applicationService, new ApiResponseFactory(clock)), authenticated, RECIPIENT_ID,
+				clock);
 	}
 
 	private static InboxCard card() {
-		return new InboxCard(POST_RECIPIENT_ID, 71L, PostRecipientStatus.OPENED, "질문", "본문", List.of(3L),
-			"KR-11", BigDecimal.valueOf(90), null, "NEAR", NOW.minusSeconds(60), NOW.plusSeconds(3600), 0, false, 0, 0);
+		return new InboxCard(POST_RECIPIENT_ID, 71L, PostRecipientStatus.OPENED, "질문", "본문", List.of(mediaView()),
+				"KR-11", BigDecimal.valueOf(90), null, "NEAR", NOW.minusSeconds(60), NOW.plusSeconds(3600), 0, false, 0,
+				0);
+	}
+
+	private static MediaView mediaView() {
+		try {
+			return new MediaView(3L, URI.create("https://media.example.test/view/3?signature=test").toURL(),
+					NOW.plusSeconds(300));
+		} catch (MalformedURLException exception) {
+			throw new IllegalStateException(exception);
+		}
 	}
 
 	private static PostRecipient skipPending() {
 		return PostRecipient.restore(POST_RECIPIENT_ID, 71L, RECIPIENT_ID, PostRecipientStatus.SKIP_PENDING,
-			"NEAR", BigDecimal.valueOf(270), "KR-11", NOW.minusSeconds(60), NOW.minusSeconds(30), NOW.minusSeconds(20),
-			NOW, null, null, null, null, BigDecimal.valueOf(90), 100, null);
+				"NEAR", BigDecimal.valueOf(270), "KR-11", NOW.minusSeconds(60), NOW.minusSeconds(30),
+				NOW.minusSeconds(20),
+				NOW, null, null, null, null, BigDecimal.valueOf(90), 100, null);
 	}
 
 	private static PostRecipient openedRecipient() {
 		return PostRecipient.restore(POST_RECIPIENT_ID, 71L, RECIPIENT_ID, PostRecipientStatus.OPENED,
-			"NEAR", BigDecimal.valueOf(270), "KR-11", NOW.minusSeconds(60), NOW.minusSeconds(30), NOW.minusSeconds(20),
-			null, null, null, null, null, BigDecimal.valueOf(90), 100, null);
+				"NEAR", BigDecimal.valueOf(270), "KR-11", NOW.minusSeconds(60), NOW.minusSeconds(30),
+				NOW.minusSeconds(20),
+				null, null, null, null, null, BigDecimal.valueOf(90), 100, null);
 	}
 }
