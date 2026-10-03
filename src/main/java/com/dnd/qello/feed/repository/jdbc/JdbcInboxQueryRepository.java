@@ -14,6 +14,7 @@ import org.springframework.stereotype.Repository;
 import com.dnd.qello.direction.config.DirectionSchemeProperties;
 import com.dnd.qello.direction.domain.PostRecipientStatus;
 import com.dnd.qello.feed.config.FeedDistanceProperties;
+import com.dnd.qello.feed.repository.FeedMediaViewIssuer;
 import com.dnd.qello.feed.repository.InboxQueryRepository;
 import com.dnd.qello.feed.repository.jdbc.sql.InboxQuerySql;
 import com.dnd.qello.feed.view.DirectionChip;
@@ -33,6 +34,7 @@ public class JdbcInboxQueryRepository implements InboxQueryRepository {
 	private final NamedParameterJdbcTemplate jdbc;
 	private final FeedDistanceProperties feedDistanceProperties;
 	private final DirectionSchemeProperties directionSchemeProperties;
+	private final FeedMediaViewIssuer mediaViewIssuer;
 
 	@Override
 	public List<InboxCard> findInbox(long recipientId, InboxCategory category, String directionSegmentKey, Instant at) {
@@ -44,15 +46,15 @@ public class JdbcInboxQueryRepository implements InboxQueryRepository {
 		// 텍스트 블록은 줄 끝 공백을 잘라내므로 "AND" 뒤에 이어붙이면
 		// "ANDpr.status..."처럼 토큰이 붙는다.
 		String sql = InboxQuerySql.SELECT_CARD
-			+ (filterByDirection ? InboxQuerySql.SEGMENT_JOIN : "")
-			+ "WHERE pr.recipient_id = :recipientId AND " + statusFilter(category)
-			+ (filterByDirection ? " AND seg.segment_key = :directionSegmentKey" : "")
-			+ InboxQuerySql.SCOPE_FILTER
-			+ "ORDER BY pr.matched_at DESC, pr.id DESC\n";
+				+ (filterByDirection ? InboxQuerySql.SEGMENT_JOIN : "")
+				+ "WHERE pr.recipient_id = :recipientId AND " + statusFilter(category)
+				+ (filterByDirection ? " AND seg.segment_key = :directionSegmentKey" : "")
+				+ InboxQuerySql.SCOPE_FILTER
+				+ "ORDER BY pr.matched_at DESC, pr.id DESC\n";
 		MapSqlParameterSource params = params(recipientId).addValue("at", Timestamp.from(at));
 		if (filterByDirection) {
 			params.addValue("schemeCode", directionSchemeProperties.schemeCode())
-				.addValue("directionSegmentKey", directionSegmentKey);
+					.addValue("directionSegmentKey", directionSegmentKey);
 		}
 		return jdbc.query(sql, params, (rs, rowNum) -> card(rs));
 	}
@@ -60,31 +62,31 @@ public class JdbcInboxQueryRepository implements InboxQueryRepository {
 	@Override
 	public List<DirectionChip> countByDirection(long recipientId, InboxCategory category, Instant at) {
 		String sql = InboxQuerySql.SELECT_CHIP_AGGREGATE
-			+ "WHERE pr.recipient_id = :recipientId AND " + statusFilter(category)
-			+ InboxQuerySql.SCOPE_FILTER
-			+ """
-				GROUP BY seg.segment_key, seg.display_name, seg.sort_order
-				ORDER BY seg.sort_order
-				""";
+				+ "WHERE pr.recipient_id = :recipientId AND " + statusFilter(category)
+				+ InboxQuerySql.SCOPE_FILTER
+				+ """
+						GROUP BY seg.segment_key, seg.display_name, seg.sort_order
+						ORDER BY seg.sort_order
+						""";
 		MapSqlParameterSource params = params(recipientId).addValue("at", Timestamp.from(at))
-			.addValue("schemeCode", directionSchemeProperties.schemeCode());
+				.addValue("schemeCode", directionSchemeProperties.schemeCode());
 		return jdbc.query(sql, params, (rs, rowNum) -> new DirectionChip(
-			rs.getString("segment_key"), rs.getString("display_name"),
-			rs.getInt("sort_order"), rs.getLong("chip_count")));
+				rs.getString("segment_key"), rs.getString("display_name"),
+				rs.getInt("sort_order"), rs.getLong("chip_count")));
 	}
 
 	@Override
 	public Optional<InboxDetail> findDetail(long recipientId, long postRecipientId, Instant at) {
 		return jdbc.query(InboxQuerySql.SELECT_CARD + """
-			WHERE pr.id = :postRecipientId
-			  AND pr.recipient_id = :recipientId
-			""" + InboxQuerySql.DETAIL_SCOPE_FILTER,
-			params(recipientId).addValue("postRecipientId", postRecipientId)
-				.addValue("at", Timestamp.from(at)),
-			rs -> rs.next()
-				? Optional.of(new InboxDetail(card(rs), FeedRowMappers.instant(rs, "opened_at"),
-					FeedRowMappers.instant(rs, "skip_requested_at")))
-				: Optional.empty());
+				WHERE pr.id = :postRecipientId
+				  AND pr.recipient_id = :recipientId
+				""" + InboxQuerySql.DETAIL_SCOPE_FILTER,
+				params(recipientId).addValue("postRecipientId", postRecipientId)
+						.addValue("at", Timestamp.from(at)),
+				rs -> rs.next()
+						? Optional.of(new InboxDetail(card(rs), FeedRowMappers.instant(rs, "opened_at"),
+								FeedRowMappers.instant(rs, "skip_requested_at")))
+						: Optional.empty());
 	}
 
 	private static String statusFilter(InboxCategory category) {
@@ -96,27 +98,27 @@ public class JdbcInboxQueryRepository implements InboxQueryRepository {
 
 	private MapSqlParameterSource params(long recipientId) {
 		return new MapSqlParameterSource().addValue("recipientId", recipientId)
-			.addValue("nearFloor", feedDistanceProperties.nearDistanceFloorM())
-			.addValue("nearDistanceLabel", feedDistanceProperties.nearDistanceLabel());
+				.addValue("nearFloor", feedDistanceProperties.nearDistanceFloorM())
+				.addValue("nearDistanceLabel", feedDistanceProperties.nearDistanceLabel());
 	}
 
-	private static InboxCard card(ResultSet rs) throws SQLException {
+	private InboxCard card(ResultSet rs) throws SQLException {
 		return new InboxCard(
-			rs.getLong("post_recipient_id"),
-			rs.getLong("post_id"),
-			PostRecipientStatus.valueOf(rs.getString("status")),
-			rs.getString("question_text"),
-			rs.getString("body_text"),
-			FeedRowMappers.mediaIds(rs),
-			rs.getString("sender_region_code"),
-			rs.getBigDecimal("inbound_bearing_deg"),
-			rs.getObject("distance_m", Long.class),
-			rs.getString("distance_band"),
-			rs.getTimestamp("matched_at").toInstant(),
-			rs.getTimestamp("expires_at").toInstant(),
-			rs.getLong("answer_count"),
-			rs.getBoolean("reacted_by_me"),
-			rs.getLong("reaction_count"),
-			rs.getLong("unread_answer_count"));
+				rs.getLong("post_recipient_id"),
+				rs.getLong("post_id"),
+				PostRecipientStatus.valueOf(rs.getString("status")),
+				rs.getString("question_text"),
+				rs.getString("body_text"),
+				mediaViewIssuer.issue(FeedRowMappers.attachedMedia(rs)),
+				rs.getString("sender_region_code"),
+				rs.getBigDecimal("inbound_bearing_deg"),
+				rs.getObject("distance_m", Long.class),
+				rs.getString("distance_band"),
+				rs.getTimestamp("matched_at").toInstant(),
+				rs.getTimestamp("expires_at").toInstant(),
+				rs.getLong("answer_count"),
+				rs.getBoolean("reacted_by_me"),
+				rs.getLong("reaction_count"),
+				rs.getLong("unread_answer_count"));
 	}
 }

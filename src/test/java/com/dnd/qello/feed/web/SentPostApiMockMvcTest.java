@@ -1,10 +1,13 @@
 /**
  * Created at: 2026-08-19T15:29:03+09:00
  * Source scenario: TEST-PLAN-GH-170-FEED-READ-INTERACTION-API-UNIT-013,
- * UNIT-014
+ * UNIT-014, TEST-PLAN-GH-300-FEED-MEDIA-VIEW-URL-UNIT-005 (added 2026-10-02T17:02:54+09:00),
+ * TEST-PLAN-GH-300-FEED-MEDIA-VIEW-URL-UNIT-009 (added 2026-10-02T17:33:30+09:00)
  */
 package com.dnd.qello.feed.web;
 
+import java.net.MalformedURLException;
+import java.net.URI;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -23,6 +26,7 @@ import com.dnd.qello.common.web.response.ApiResponseFactory;
 import com.dnd.qello.feed.error.FeedErrorCode;
 import com.dnd.qello.feed.error.FeedException;
 import com.dnd.qello.feed.service.FeedInteractionApplicationService;
+import com.dnd.qello.feed.view.MediaView;
 import com.dnd.qello.feed.view.SentPostCard;
 import com.dnd.qello.feed.view.SentPostDetail;
 import com.dnd.qello.feed.view.SentPostFilter;
@@ -69,6 +73,35 @@ class SentPostApiMockMvcTest {
 			.andExpect(jsonPath("$.data.cards[0].latitude").doesNotExist());
 
 		verify(applicationService).listSentPosts(SENDER_ID, SentPostFilter.ALL, null, null, 20);
+	}
+
+	@Test
+	@DisplayName("목록 카드의 첨부 이미지는 media의 mediaId·url·expiresAt으로 나가고 mediaIds와 storage key는 나가지 않는다")
+	void listExposesMediaViewUrlsWithoutStorageKey() throws Exception {
+		when(applicationService.listSentPosts(SENDER_ID, SentPostFilter.ALL, null, null, 20))
+			.thenReturn(List.of(sentPostCard()));
+
+		mockMvc.perform(get("/api/v1/direction/posts"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.data.cards[0].media[0].mediaId").value(3))
+			.andExpect(jsonPath("$.data.cards[0].media[0].url").value("https://media.example.test/view/3?signature=test"))
+			.andExpect(jsonPath("$.data.cards[0].media[0].expiresAt").value("2026-08-19T06:05:00Z"))
+			.andExpect(jsonPath("$.data.cards[0].media[0].storageKey").doesNotExist())
+			.andExpect(jsonPath("$.data.cards[0].mediaIds").doesNotExist());
+	}
+
+	@Test
+	@DisplayName("상세 카드의 첨부 이미지도 media의 mediaId·url·expiresAt으로 나가고 mediaIds와 storage key는 나가지 않는다")
+	void detailExposesMediaViewUrlsWithoutStorageKey() throws Exception {
+		when(applicationService.sentPostDetail(SENDER_ID, POST_ID)).thenReturn(new SentPostDetail(sentPostCard(), NOW));
+
+		mockMvc.perform(get("/api/v1/direction/posts/{postId}", POST_ID))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.data.card.media[0].mediaId").value(3))
+			.andExpect(jsonPath("$.data.card.media[0].url").value("https://media.example.test/view/3?signature=test"))
+			.andExpect(jsonPath("$.data.card.media[0].expiresAt").value("2026-08-19T06:05:00Z"))
+			.andExpect(jsonPath("$.data.card.media[0].storageKey").doesNotExist())
+			.andExpect(jsonPath("$.data.card.mediaIds").doesNotExist());
 	}
 
 	@Test
@@ -147,7 +180,16 @@ class SentPostApiMockMvcTest {
 	}
 
 	private static SentPostCard sentPostCard() {
-		return new SentPostCard(POST_ID, "질문", "본문", List.of(3L), "KR-11", NOW.minusSeconds(60),
+		return new SentPostCard(POST_ID, "질문", "본문", List.of(mediaView()), "KR-11", NOW.minusSeconds(60),
 				NOW.plusSeconds(3600), 2, 1, 0);
+	}
+
+	private static MediaView mediaView() {
+		try {
+			return new MediaView(3L, URI.create("https://media.example.test/view/3?signature=test").toURL(),
+					NOW.plusSeconds(300));
+		} catch (MalformedURLException exception) {
+			throw new IllegalStateException(exception);
+		}
 	}
 }
