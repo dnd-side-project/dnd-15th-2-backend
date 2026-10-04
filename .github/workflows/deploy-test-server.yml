@@ -39,7 +39,6 @@ jobs:
       id-token: write
     outputs:
       image_sha: ${{ steps.resolve-image.outputs.image_sha }}
-      image_ref: ${{ steps.resolve-image.outputs.image_ref }}
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -105,7 +104,6 @@ jobs:
             docker push "$ECR_REPOSITORY_URL:$IMAGE_SHA"
           elif [ "$IMAGE_STATE" != "exists" ]; then echo "Unexpected image state: $IMAGE_STATE" >&2; exit 1; fi
           echo "image_sha=$IMAGE_SHA" >> "$GITHUB_OUTPUT"
-          echo "image_ref=$ECR_REPOSITORY_URL:$IMAGE_SHA" >> "$GITHUB_OUTPUT"
 
   deploy:
     needs: build-and-push
@@ -129,17 +127,17 @@ jobs:
           AWS_REGION: ${{ vars.AWS_REGION }}
           INSTANCE_ID: ${{ vars.TEST_SERVER_INSTANCE_ID }}
           ECR_REPOSITORY_URL: ${{ vars.ECR_REPOSITORY_URL }}
-          IMAGE_REF: ${{ needs.build-and-push.outputs.image_ref }}
+          IMAGE_SHA: ${{ needs.build-and-push.outputs.image_sha }}
         run: |
           set -euo pipefail
 
           if ! [[ "$ECR_REPOSITORY_URL" =~ ^[0-9]{12}\.dkr\.ecr\.[a-z0-9-]+\.amazonaws\.com(\.cn)?/[a-z0-9][a-z0-9._/-]*$ ]] || [[ "$ECR_REPOSITORY_URL" == */*//* || "$ECR_REPOSITORY_URL" == */ ]]; then
             echo "Invalid ECR_REPOSITORY_URL" >&2; exit 1
           fi
-          IMAGE_SHA="${IMAGE_REF#"$ECR_REPOSITORY_URL:"}"
-          if [ "$IMAGE_REF" != "$ECR_REPOSITORY_URL:$IMAGE_SHA" ] || ! [[ "$IMAGE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
-            echo "Invalid resolved image reference" >&2; exit 1
+          if ! [[ "$IMAGE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Invalid resolved image SHA" >&2; exit 1
           fi
+          export IMAGE_REF="$ECR_REPOSITORY_URL:$IMAGE_SHA"
 
           python3 - <<'PY'
           import json, os, shlex
