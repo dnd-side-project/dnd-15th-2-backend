@@ -1,53 +1,33 @@
-# GitHub Issue #287 Task Contract
+# GitHub Issue #304 Task Contract
 
-> Generated at: `2026-10-01T14:25:25+09:00`
+> Generated at: `2026-10-04T18:26:47+09:00`
 >
 > 이 파일은 현재 작업 브랜치의 계약이다. 저장소 전역 정책은 `AGENTS.md`를
 > 따른다.
 
 ## Work gate
 
-- Title: `닉네임·답변 moderation placeholder를 실제 구현으로 교체`
-- GitHub Issue: `#287`
-- Branch: `feat/gh-287-moderation-placeholder-replacement`
+- Title: `ClickUp 작업 연결 Issue·PR 템플릿 정리`
+- GitHub Issue: `#304`
+- Branch: `chore/gh-304-clickup-work-templates`
 - Base branch: `main`
 
 ## Objective
 
-닉네임·답변 moderation 경로의 OpenAI 주 판정기와 config 조립은 구현돼 있으나(#168),
-`PassthroughTextNormalizer`(trim만 수행), `NoMatchLocalRuleEngine`(항상 noMatch)가 placeholder다.
-이 두 placeholder를 실제 구현으로 교체하고 `qello.filtering.production.enabled=true`에서
-두 경로가 실제 판정으로 끝까지 동작하는지 검증한다.
+- ClickUp 명세·스프린트 산출물과 GitHub 구현·검증 증거를 양방향으로 연결한다.
 
 ## Scope
 
-- `TextNormalizer` 실제 구현체로 `PassthroughTextNormalizer`를 교체한다. 정규화 규칙은
-  구현 전에 설계로 확정한다(미결정).
-- `LocalRuleEngine` 실제 구현체로 `NoMatchLocalRuleEngine`을 교체한다. 규칙 출처와 갱신
-  방식은 미결정이며 규칙 원문을 로그·metric tag에 남기지 않는다(`INV-CMP-001`, `INV-CMP-002`).
-- `NicknameModerationGateConfig`와 `AnswerModerationExecutionConfig`의 placeholder 조립을
-  새 구현체로 바꾼다.
-- `production.enabled=true`에서 닉네임 게이트와 답변 pipeline의 기동·판정 경로를 점검하고,
-  `docs/filtering-production-gate.md` 3절 미배선 항목 중 이번 교체로 영향받는 것만 목록화한다.
-
-## Design decisions
-
-- 정규화 `v1`(확정 2026-10-01): NFKC, zero-width·제어 문자 제거, 연속 공백 축소, trim. 구분자 제거와
-  동형 문자 처리는 정규화가 아니라 로컬 규칙 엔진 내부 비교용 접기에서만 한다. null·정규화 후 빈 문자열과
-  알 수 없는 `normalizationRef`는 `FilteringException`으로 fail-closed 한다.
-- 로컬 규칙(확정 2026-10-01): `localRulesetRef`로 classpath 리소스를 고르는 엔진만 구현한다. 운영 규칙 목록은
-  비워 두고(매칭 없음), 목록 추가는 OpenAI 판정 결과를 본 뒤 후속 작업으로 한다. 로그·metric에는 `ruleId`만 남긴다.
-- 보조 판정기(확정 2026-10-01): 공급자가 미정이라 #298로 분리했다. #287은 `UnavailableSecondaryModerationClient`를
-  그대로 둔다.
+- .github/ISSUE_TEMPLATE/backend_work.yml
+- .github/PULL_REQUEST_TEMPLATE.md
+- docs/harness/CLICKUP_LINKAGE.md
+- 현재 작업용 TASK.md
 
 ## Explicit exclusions
 
-- 독립 보조 판정기 구현체와 `UnavailableSecondaryModerationClient` 교체(#298)
-- 공급자 DPA·데이터 거주지·보관 정책 등 `filtering-production-gate.md` 2절의 사람 확인 항목
-- 스케줄러 배선, `SlackNotifier` 실제 구현체, metric exporter와 경보 규칙
-- `OpenAiModerationProviderClient`의 호출·재시도·실패 분류 로직 변경
-- `FlaggedCategoryPolicyEngine`의 정책 변경
-- 이미지·미디어 moderation
+- 앱 코드·DB·인프라·배포·보호 규칙 변경.
+- ClickUp 작업 생성·상태 변경·담당자 배정 및 팀 보드 복제.
+- 다른 전용 Issue Form과 전체 하네스 정책 마이그레이션.
 - 인프라 apply, 배포, 프로덕션 변경은 별도 승인 없이는 실행하지 않는다.
 - Secret, 계정 식별자, 토큰, `.env` 값은 기록하지 않는다.
 
@@ -55,12 +35,12 @@
 
 | Area | Owner | Required review |
 | --- | --- | --- |
-| TextNormalizer·LocalRuleEngine 구현과 config 교체 | 실행 에이전트 | 설계 확정 후 사용자 PR 리뷰 |
-| 신규 단위 테스트 | 실행 에이전트 | `/harness-test-plan` 승인 후 작성 |
+| 템플릿·연계 문서 | 현재 Codex 작업 | 저장소 PR 리뷰 |
 
 ## Existing user-owned changes
 
-- 작업 시작 시 `git status --short`는 깨끗했고 `TASK.md`만 `task-init`으로 수정되었다.
+- 별도 clone의 최신 origin/main에서 시작했으며 시작 시 변경 없음.
+- 원래 사용자 체크아웃은 수정하지 않고, 기존 main의 이전 TASK.md는 현재 브랜치에 한해 갱신한다.
 
 ## Validation
 
@@ -72,8 +52,13 @@ git diff --check
 
 ## Completion criteria
 
-- `TextNormalizer`·`LocalRuleEngine` 신규 단위 테스트가 통과하고 빈 입력·null·비정상 유니코드에서 ALLOW로 새지 않는다.
-- `PassthroughTextNormalizer`, `NoMatchLocalRuleEngine`이 프로덕션 조립에서 참조되지 않는다(`grep` 확인).
-- API 키와 사용자 콘텐츠 원문이 로그·예외 메시지·metric tag에 없다.
-- `NicknameModerationGateConfigTest`, `AnswerModerationExecutionConfigTest`, `ModerationPipelineIntegrationTest`가 통과한다.
-- `./harness check`와 `./harness pr-ready --project-tests`가 통과한다.
+- ClickUp 실제 작업 ID·URL과 기능명세서 ID·링크, 가변 스프린트 ID가 폼에 포함된다.
+- PR은 관찰 결과·검증 방법·실제 결과·증빙과 양방향 링크 확인을 기록한다.
+- 기존 canonical 라벨·Issue 번호·커밋 규칙을 보존한다.
+- 특정 Sprint 주차·목록 ID와 테스트 성공을 기본값으로 고정하지 않는다.
+- YAML·하네스 검증 결과와 실행하지 못한 항목을 보고한다.
+
+## Decisions
+
+- 2026-10-04 사용자 제공 ClickUp 규칙과 템플릿 수정 요청을 범위 근거로 사용한다. 일정·스프린트는 해당 최신 규칙을 적용한다.
+- 이 템플릿 정리 요청의 ClickUp 작업·기능명세서·스프린트 ID는 제공되지 않았다. 임의 생성하지 않는다.
