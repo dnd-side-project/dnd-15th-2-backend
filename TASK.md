@@ -99,3 +99,19 @@ git diff --check
   immutable SHA 재사용은 최초 등록 이미지를 유지한다. 헬스체크 실패 시 자동 롤백하지 않는다.
 - required_human_decisions: 추가 로컬 수정 승인 불필요. 병합 전 전체 검증 실패를 해소해야 한다.
   실제 서버 배포와 병합은 이번 작업에서 실행하지 않았다.
+
+## 반영 및 재검증 (2026-10-05)
+
+- status: PASS (로컬 필수 검사). 위 최초 실패 기록은 이력으로 보존한다.
+- 커밋: `f16833a` — SHA 이미지 배포 수정. 최신 `origin/main` 동기화 후 작업 브랜치를 push했다.
+- `git push -u origin fix/gh-306-ecr-immutable-sha-deploy`의 pre-push 훅에서
+  `./harness pr-ready --project-tests`를 재실행했고 exit 0으로 통과했다.
+  Gradle `check`는 `BUILD SUCCESSFUL`이며 실행 시간은 21분 56초다.
+- 단위 1,098개(기존 성공 결과를 Gradle이 UP-TO-DATE로 재사용), 통합 759개(이번 실행)를
+  확인했다. 실패·오류·skip은 모두 0이다.
+  최초 실행의 컨테이너 시작 오류로 실행되지 못한 테스트도 이번 실행에서 수행됐다.
+- `./harness check`, `npm run hooks:validate`, actionlint, `git diff --check`도 통과했다.
+- failed_checks: 없음 (최신 검사 기준).
+- blocked_checks: 없음 (로컬 필수 검사 기준).
+- 실제 AWS 배포와 병합은 미실행이며, 원격 CI 결과와 로컬 통과를 구분한다.
+- required_human_decisions: PR 검토·병합. 승인 절차를 우회하지 않는다.
