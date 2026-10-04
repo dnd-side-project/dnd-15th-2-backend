@@ -17,7 +17,16 @@ on:
       - "settings.gradle"
       - "gradle/**"
       - "gradlew"
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      image_sha:
+        description: "배포할 기존 ECR 이미지의 40자리 lowercase commit SHA (선택)"
+        required: false
+        type: string
+
+concurrency:
+  group: deploy-test-server
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -28,6 +37,9 @@ jobs:
     permissions:
       contents: read
       id-token: write
+    outputs:
+      image_sha: ${{ steps.resolve-image.outputs.image_sha }}
+      image_ref: ${{ steps.resolve-image.outputs.image_ref }}
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -39,23 +51,61 @@ jobs:
           aws-region: ${{ vars.AWS_REGION }}
           mask-aws-account-id: true
 
-      - name: Log in to ECR
-        run: >-
-          aws ecr get-login-password --region "${{ vars.AWS_REGION }}" |
-          docker login --username AWS --password-stdin "${{ vars.ECR_REPOSITORY_URL }}"
-
-      - name: Build runtime image
-        run: docker build -t "${{ vars.ECR_REPOSITORY_URL }}:${{ github.sha }}" .
-
-      # 배포된 이미지를 commit으로 추적하기 위해 SHA 태그를 우선 push하고,
-      # EC2의 compose.yaml이 참조하는 latest 태그를 같은 이미지로 갱신한다.
-      - name: Tag latest
-        run: docker tag "${{ vars.ECR_REPOSITORY_URL }}:${{ github.sha }}" "${{ vars.ECR_REPOSITORY_URL }}:latest"
-
-      - name: Push images
+      - name: Resolve or build immutable SHA image
+        id: resolve-image
+        env:
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          ECR_REPOSITORY_URL: ${{ vars.ECR_REPOSITORY_URL }}
+          REQUESTED_IMAGE_SHA: ${{ inputs.image_sha }}
+          DEFAULT_IMAGE_SHA: ${{ github.sha }}
         run: |
-          docker push "${{ vars.ECR_REPOSITORY_URL }}:${{ github.sha }}"
-          docker push "${{ vars.ECR_REPOSITORY_URL }}:latest"
+          set -euo pipefail
+          case "$AWS_REGION" in ''|*[!a-zA-Z0-9._-]*) echo "Invalid AWS_REGION" >&2; exit 1 ;; esac
+          if ! [[ "$ECR_REPOSITORY_URL" =~ ^[0-9]{12}\.dkr\.ecr\.[a-z0-9-]+\.amazonaws\.com(\.cn)?/[a-z0-9][a-z0-9._/-]*$ ]] || [[ "$ECR_REPOSITORY_URL" == */*//* || "$ECR_REPOSITORY_URL" == */ ]]; then
+            echo "Invalid ECR_REPOSITORY_URL" >&2; exit 1
+          fi
+          ECR_REGISTRY="${ECR_REPOSITORY_URL%%/*}"
+          ECR_REPOSITORY="${ECR_REPOSITORY_URL#*/}"
+          IMAGE_SHA="${REQUESTED_IMAGE_SHA:-$DEFAULT_IMAGE_SHA}"
+          if ! [[ "$IMAGE_SHA" =~ ^[0-9a-f]{40}$ ]]; then echo "image_sha must be 40 lowercase hexadecimal characters" >&2; exit 1; fi
+          aws ecr get-login-password --region "$AWS_REGION" | docker login --username AWS --password-stdin "$ECR_REGISTRY"
+          set +e
+          aws ecr batch-get-image --region "$AWS_REGION" --repository-name "$ECR_REPOSITORY" --image-ids "imageTag=$IMAGE_SHA" --output json > /tmp/batch-get-image.json
+          BATCH_STATUS=$?
+          set -e
+          if [ "$BATCH_STATUS" -ne 0 ]; then echo "ECR BatchGetImage API failed" >&2; exit "$BATCH_STATUS"; fi
+          set +e
+          IMAGE_STATE=$(python3 - /tmp/batch-get-image.json "$IMAGE_SHA" <<'PY'
+          import json, sys
+          try:
+              with open(sys.argv[1], encoding="utf-8") as stream: response = json.load(stream)
+              if not isinstance(response, dict): raise ValueError("malformed BatchGetImage response")
+              images, failures = response.get("images"), response.get("failures")
+              if not isinstance(images, list) or not isinstance(failures, list) or any(not isinstance(item, dict) for item in images + failures): raise ValueError("malformed BatchGetImage response")
+              requested = sys.argv[2]
+              if len(images) == 1 and not failures:
+                  image_id = images[0].get("imageId")
+                  if not isinstance(image_id, dict) or image_id.get("imageTag") != requested: raise ValueError("unexpected BatchGetImage image")
+                  print("exists")
+              elif not images and len(failures) == 1 and failures[0].get("failureCode") == "ImageNotFound":
+                  failure_id = failures[0].get("imageId")
+                  if failure_id is not None and (not isinstance(failure_id, dict) or failure_id.get("imageTag") != requested): raise ValueError("unexpected BatchGetImage failure image")
+                  print("missing")
+              else: raise ValueError("unexpected BatchGetImage response")
+          except (OSError, ValueError, TypeError, json.JSONDecodeError) as error:
+              print(error, file=sys.stderr); sys.exit(2)
+          PY
+          )
+          PARSE_STATUS=$?
+          set -e
+          if [ "$PARSE_STATUS" -ne 0 ]; then echo "Malformed or unexpected ECR BatchGetImage response" >&2; exit "$PARSE_STATUS"; fi
+          if [ "$IMAGE_STATE" = "missing" ]; then
+            if [ -n "$REQUESTED_IMAGE_SHA" ]; then echo "Requested rollback image does not exist in ECR" >&2; exit 1; fi
+            docker build -t "$ECR_REPOSITORY_URL:$IMAGE_SHA" .
+            docker push "$ECR_REPOSITORY_URL:$IMAGE_SHA"
+          elif [ "$IMAGE_STATE" != "exists" ]; then echo "Unexpected image state: $IMAGE_STATE" >&2; exit 1; fi
+          echo "image_sha=$IMAGE_SHA" >> "$GITHUB_OUTPUT"
+          echo "image_ref=$ECR_REPOSITORY_URL:$IMAGE_SHA" >> "$GITHUB_OUTPUT"
 
   deploy:
     needs: build-and-push
@@ -78,22 +128,54 @@ jobs:
         env:
           AWS_REGION: ${{ vars.AWS_REGION }}
           INSTANCE_ID: ${{ vars.TEST_SERVER_INSTANCE_ID }}
+          ECR_REPOSITORY_URL: ${{ vars.ECR_REPOSITORY_URL }}
+          IMAGE_REF: ${{ needs.build-and-push.outputs.image_ref }}
         run: |
           set -euo pipefail
 
-          cat > /tmp/ssm-params.json <<'JSON'
-          {
-            "commands": [
-              "set -e",
+          if ! [[ "$ECR_REPOSITORY_URL" =~ ^[0-9]{12}\.dkr\.ecr\.[a-z0-9-]+\.amazonaws\.com(\.cn)?/[a-z0-9][a-z0-9._/-]*$ ]] || [[ "$ECR_REPOSITORY_URL" == */*//* || "$ECR_REPOSITORY_URL" == */ ]]; then
+            echo "Invalid ECR_REPOSITORY_URL" >&2; exit 1
+          fi
+          IMAGE_SHA="${IMAGE_REF#"$ECR_REPOSITORY_URL:"}"
+          if [ "$IMAGE_REF" != "$ECR_REPOSITORY_URL:$IMAGE_SHA" ] || ! [[ "$IMAGE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Invalid resolved image reference" >&2; exit 1
+          fi
+
+          python3 - <<'PY'
+          import json, os, shlex
+          q = shlex.quote
+          region = os.environ["AWS_REGION"]
+          repository_url = os.environ["ECR_REPOSITORY_URL"]
+          image_ref = os.environ["IMAGE_REF"]
+          registry = repository_url.split("/", 1)[0]
+          commands = [
+              "set -euo pipefail",
               "cd /opt/qello",
+              f"export AWS_REGION={q(region)}",
+              f"export ECR_REPOSITORY_URL={q(repository_url)}",
+              f"export APP_IMAGE={q(image_ref)}",
+              f"aws ecr get-login-password --region {q(region)} | docker login --username AWS --password-stdin {q(registry)}",
+              "env_file=/opt/qello/.env",
+              "tmp_file=$(mktemp \"${env_file}.tmp.XXXXXX\")",
+              "trap 'rm -f \"$tmp_file\"' EXIT",
+              "if [ -f \"$env_file\" ]; then",
+              "  awk -v image=\"$APP_IMAGE\" 'BEGIN { updated=0 } /^[[:space:]]*APP_IMAGE[[:space:]]*=/ { if (!updated) { print \"APP_IMAGE=\" image; updated=1 }; next } { print } END { if (!updated) print \"APP_IMAGE=\" image }' \"$env_file\" > \"$tmp_file\"",
+              "  chmod --reference=\"$env_file\" \"$tmp_file\"",
+              "  chown --reference=\"$env_file\" \"$tmp_file\"",
+              "else",
+              "  printf 'APP_IMAGE=%s\\n' \"$APP_IMAGE\" > \"$tmp_file\"",
+              "fi",
+              "mv \"$tmp_file\" \"$env_file\"",
+              "trap - EXIT",
               "docker compose --env-file .env pull",
               "docker compose --env-file .env up -d",
               "for i in $(seq 1 30); do curl -fsS http://localhost:8080/actuator/health >/dev/null 2>&1 && exit 0; sleep 2; done",
-              "echo health check timed out >&2",
-              "exit 1"
-            ]
-          }
-          JSON
+              "echo 'health check timed out' >&2",
+              "exit 1",
+          ]
+          with open("/tmp/ssm-params.json", "w", encoding="utf-8") as stream:
+              json.dump({"commands": commands}, stream)
+          PY
 
           COMMAND_ID=$(aws ssm send-command \
             --region "$AWS_REGION" \

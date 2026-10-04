@@ -195,19 +195,14 @@ workflow dispatch가 모두 필요합니다.
 
 `main`에 애플리케이션 코드가 병합되면 `.github/workflows/deploy-test-server.yml`이
 백엔드 이미지를 ECR에 push하고 dev 테스트 서버(#229)에 자동 배포합니다.
-이미지 태그는 commit SHA와 `latest` 두 가지이며, EC2의 compose 설정은
-`latest`를 참조합니다.
+이미지는 commit SHA 태그만 사용하며, 같은 SHA 이미지가 이미 있으면 재사용합니다.
+배포 중복 실행은 직렬화됩니다.
 
-이 workflow는 롤백을 자동화하지 않습니다. 이전 커밋의 이미지로 되돌려야
-하면 다음을 수동으로 실행합니다.
+이전 커밋의 기존 이미지로 롤백하려면 `main`의
+`deploy-test-server.yml`을 `workflow_dispatch`로 실행하고 `image_sha`에
+40자리 lowercase commit SHA를 입력합니다. 이 입력은 ECR에 이미 존재하는
+이미지만 배포하며, 없는 SHA를 새로 빌드하지 않습니다.
 
-1. 되돌릴 commit SHA를 확인합니다.
-2. 그 SHA 태그 이미지를 `latest`로 다시 태깅해 ECR에 push합니다
-   (`docker pull <repo>:<이전 SHA>` → `docker tag <repo>:<이전 SHA>
-   <repo>:latest` → `docker push <repo>:latest`. ECR 리포지토리 URL은
-   드러내지 않고 실제 값으로 치환해 실행합니다).
-3. GitHub Actions에서 아무 `deploy-test-server.yml` 실행이나 열어 `deploy`
-   job만 다시 실행합니다(`gh run rerun <run-id> --job <deploy-job-id>`
-   또는 UI의 "Re-run jobs" → 개별 job 선택). `deploy` job은 소스를
-   checkout하지 않고 ECR의 `latest`만 pull하므로, `build-and-push`를
-   다시 실행해 방금 되돌린 태그를 덮어쓰지 않습니다.
+기존 workflow 실행을 재실행해 롤백하지 마십시오. 이전 workflow는
+`latest`를 덮어쓸 수 있으므로, 항상 `main`의 최신 workflow에서
+`image_sha`를 지정해 새 실행을 시작합니다.
