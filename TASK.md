@@ -1,33 +1,49 @@
-# GitHub Issue #308 Task Contract
+# GitHub Issue #132 Task Contract
 
-> Generated at: `2026-10-05T02:43:56+09:00`
+> Generated at: `2026-08-12T10:10:54+09:00`
 >
 > 이 파일은 현재 작업 브랜치의 계약이다. 저장소 전역 정책은 `AGENTS.md`를
 > 따른다.
 
 ## Work gate
 
-- Title: `배포 job의 이미지 주소 출력 누락 수정`
-- GitHub Issue: `#308`
-- Branch: `fix/gh-308-deploy-sha-output`
+- Title: `MVP AWS 아키텍처 전체 설계`
+- GitHub Issue: `#132`
+- Branch: `infra/gh-132-mvp-infra-design`
 - Base branch: `main`
+- DESIGN-ID: `D-2`
+- Design report: `docs/reports/infrastructure/gh-132-D-2.md`
+- Design status: `READY_FOR_DESIGN_REVIEW` — 사람 결정 6건 확정(2026-08-12).
+  선택안 Option C, 월 약 125 USD 추정
 
 ## Objective
 
-- TASK-ID: GH-308-DEPLOY-SHA-OUTPUT
-- 실제 실패 로그: 실행 #37217587602의 build 종료에서 image_ref output을 secret으로 간주해 생략했다.
-- 사용자 요청(2026-10-05): 실제 테스트 서버 배포와 헬스체크 성공까지 진행한다.
+- Qello MVP를 실제로 구동할 AWS 컴퓨팅·데이터베이스·네트워크·배포·관측
+  계층을 설계하고, Terraform 구현 전에 검토 가능한 Infrastructure Design
+  Report를 만든다.
+- D-1(#63)이 만든 State Backend·OIDC·S3 자산 위에 얹는 설계이며, 기존 자산을
+  재설계하지 않는다.
+- 설계만 수행한다. Terraform 구현과 apply는 이 이슈 범위 밖이다.
 
 ## Scope
 
-- `.github/workflows/deploy-test-server.yml`: image_ref output 제거, image_sha만 전달,
-  deploy에서 SHA 검증 후 ECR 주소와 조합. 계정 마스킹과 기존 배포 안전장치를 유지한다.
-- `TASK.md`: 계약과 검증 증거.
-- 기존 테스트 서버 배포 workflow dispatch 및 실행·SSM·헬스체크 결과 확인.
+1. 요구사항 intake — 확인된 값과 가정을 `CONFIRMED`/`ASSUMED`/`UNKNOWN`/
+   `BLOCKED`로 분류한다.
+2. 컴퓨팅·데이터베이스·네트워크 egress·비밀 관리 후보를 비교하고 탈락 이유를
+   기록한다.
+3. AWS Price List API의 공식 단가로 예산 구간별 월 비용을 산정한다.
+4. IAM·네트워크·암호화·State 관점의 독립 보안 검토를 수행한다.
+5. 변경 위험도, 실패 모드, 롤백·복구 절차를 기록한다.
+6. Terraform 소유 파일 경계와 검증 계획을 정의한다.
 
 ## Explicit exclusions
 
-- 앱 코드, Java 테스트, Terraform, IAM, DB, 운영 환경 변경과 승인 우회.
+- Terraform 코드 구현 — `/harness-infra-build`와 별도 이슈에서 수행한다.
+- `terraform apply`, `terraform plan`(자격 증명 필요), 실제 AWS 리소스 변경.
+- 애플리케이션 코드 변경. 특히 health 엔드포인트(actuator) 도입은 이 이슈
+  범위 밖이며 별도 이슈로 분리해야 한다(보고서 §15-5).
+- 배포 workflow(`.github/workflows/*deploy*`) 신규 작성.
+- `infra/environments/dev/storage/**`와 D-1 소유 리소스의 재설계.
 - 인프라 apply, 배포, 프로덕션 변경은 별도 승인 없이는 실행하지 않는다.
 - Secret, 계정 식별자, 토큰, `.env` 값은 기록하지 않는다.
 
@@ -35,47 +51,45 @@
 
 | Area | Owner | Required review |
 | --- | --- | --- |
-| workflow 수정 | executor | 독립 verifier의 job 출력·mock 검증 |
-| 작업 계약·원격 배포 확인 | root | 현재 commit의 승인·CI 확인 |
+| Infrastructure Design Report D-2(아키텍처 대안, 비용, 보안, 위험) | Infrastructure orchestrator | 대안 탈락 이유의 타당성, 공식 단가 근거, `infra-apply` 권한 확대 범위(SEC-A), RDS 자격증명 State 노출 방지(SEC-C), Option C 선택과 x86 채택 근거 |
+| 사람 결정 6건 | `@Byuntil`, `@tkv00` | 2026-08-12 확정 완료 — 예산 B~C, prod 단일, 도메인 추후 구매, 장기 운영, actuator 도입, 이미지 아키텍처 위임 |
 
 ## Existing user-owned changes
 
-- 작업 시작 시 변경 없음. origin/main의 be85a3e에서 분기했다.
+- 격리된 worktree(`.claude/worktrees/gh-132-mvp-infra-design`)에서
+  `origin/main`(commit `2d6aba2`) 기준으로 분기했다. 분기 시점
+  `git status --short`는 비어 있었다.
+- 같은 저장소의 `feat/gh-106-nickname-sync-filter` 브랜치에 있던 사용자
+  변경(`TASK.md` 수정, `docs/test-plans/gh-106-*.md`)은 건드리지 않았다.
 
 ## Validation
 
 ```bash
 ./harness check
 ./harness pr-ready --project-tests
-npm run hooks:validate
-actionlint .github/workflows/deploy-test-server.yml
 git diff --check
 ```
 
+인프라 정적 검증(`terraform fmt`/`validate`/`tflint`/`checkov`)은 이 이슈가
+Terraform 파일을 만들지 않으므로 대상이 없다. 빌드 이슈에서 수행한다.
+
 ## Completion criteria
 
-- [x] 전체 이미지 주소를 job output으로 전달하지 않는다.
-- [x] job 간 SHA 전달·재구성과 잘못된 SHA 거부를 독립 mock으로 검증한다.
-- [ ] 필수 전체 검사와 원격 CI를 확인한다.
-- [ ] 현재 head의 사람 승인 후 PR을 병합한다.
-- [ ] 최신 main workflow를 실행하고 build 및 deploy·SSM·헬스체크 성공을 확인한다.
+- [x] `templates/infrastructure-design-report.md` 형식의 보고서를 생성하고
+      `DESIGN-ID` `D-2`를 부여한다.
+- [x] 컴퓨팅·데이터베이스 각각 최소 두 가지 대안과 탈락 이유를 기록한다.
+- [x] `AGENTS.md` 4.5의 검토 영역을 모두 다룬다.
+- [x] 비용을 AWS 공식 단가(Price List API, 조회일 기록)로 산정한다.
+- [x] 독립 보안 검토 finding을 severity와 함께 기록한다.
+- [x] 변경 위험도, 실패 모드, 롤백·복구 절차를 기록한다.
+- [x] 사람 결정 6건이 확정된다(보고서 §15) — 2026-08-12.
+- [x] 확정된 결정을 반영해 선택안을 하나로 확정한다(Option C).
+- [ ] 설계 상태가 `APPROVED_FOR_BUILD`로 승인된다.
+- [ ] `@Byuntil`, `@tkv00`의 PR 승인.
 
-## 로컬 검증 (2026-10-05)
+## 후속 이슈 (이 이슈 범위 밖, 보고서 §15.1)
 
-- status: PASS (로컬 구현·검증); 실제 배포는 아래 완료 조건으로 별도 확인한다.
-- issue_number: 308
-- task_id: GH-308-DEPLOY-SHA-OUTPUT
-- design_id: N/A
-- changed_files: `.github/workflows/deploy-test-server.yml`, `TASK.md`
-- executed_checks / passed_checks: `./harness check`, `./harness pr-ready --project-tests`,
-  `npm run hooks:validate`, actionlint, workflow run 블록 shellcheck, `git diff --check`.
-  Gradle check는 exit 0이며 단위·통합 테스트는 기존 성공 결과를 UP-TO-DATE로 재사용했다.
-- 독립 mock: `/private/tmp/gh308_mock_verify.py` PASS.
-  실제 build output을 deploy에 전달하고, 계정 마스킹에 의해 주소 출력이 제거되는 조건을
-  모의했다. SHA만 전달되어 정확한 SSM APP_IMAGE로 재구성되며 빈·잘못된 SHA는 SSM 전 거부한다.
-  기존 이미지 재사용·빌드·롤백·오류 전파·환경값 및 파일 권한 보존도 확인했다.
-- failed_checks: 없음.
-- blocked_checks: 로컬 검사에는 없음. 원격 CI·사람 승인·실제 배포는 진행 중이다.
-- assumptions: 기존 승인된 ECR·SSM 역할과 서버 compose의 APP_IMAGE 계약을 사용한다.
-- risks: 로컬 검증은 실제 서버 헬스체크 성공을 대신하지 않는다.
-- required_human_decisions: PR의 현재 head 승인. 승인·CI 게이트를 우회하지 않는다.
+- [ ] actuator 도입(애플리케이션 변경) — ALB health check의 선행 조건.
+- [ ] 배포 workflow 작성(ECR push + ECS 서비스 갱신).
+- [ ] 도메인 구매와 Route53 위임 — 실사용자 공개 전 필수.
+- [ ] OpenAI API Key를 SSM SecureString에 사람이 사전 등록.
