@@ -19,15 +19,21 @@ import com.dnd.qello.question.repository.ApprovedQuestionRepository;
 import com.dnd.qello.question.repository.QuestionProposalRepository;
 import com.dnd.qello.question.repository.QuestionProposalReviewRepository;
 
+import lombok.RequiredArgsConstructor;
+
 /**
  * Proposal 상태, append-only review와 사용자 제안 승인 질문을 한 transaction으로 변경한다.
  *
- * <p>승인·반려 판정은 같은 transaction에서 {@code QUESTION_PROPOSAL_REVIEWED} outbox
- * event를 남긴다(producer 측만). 이 event를 실제 인앱 알림·push로 fan-out하는 worker
- * 배선은 다른 {@code *_REVIEWED}/{@code *_RECEIVED} 계열 event들과 마찬가지로 별도
- * production gate 이슈에서 다룬다.</p>
+ * <p>
+ * 승인·반려 판정은 같은 transaction에서 {@code QUESTION_PROPOSAL_REVIEWED} outbox event를
+ * 남긴다(producer 측만). 이 event를 실제 인앱 알림·push로 fan-out하는 worker 배선은 다른
+ * {@code *_REVIEWED}/{@code *_RECEIVED} 계열 event들과 마찬가지로 별도 production gate
+ * 이슈에서 다룬다.
+ * </p>
  */
 @Service
+@RequiredArgsConstructor
+@Transactional(readOnly = true)
 public class QuestionReviewService {
 
 	private final QuestionProposalRepository proposalRepository;
@@ -35,21 +41,9 @@ public class QuestionReviewService {
 	private final ApprovedQuestionRepository approvedQuestionRepository;
 	private final OutboxEventRepository outboxEventRepository;
 
-	public QuestionReviewService(
-		QuestionProposalRepository proposalRepository,
-		QuestionProposalReviewRepository reviewRepository,
-		ApprovedQuestionRepository approvedQuestionRepository,
-		OutboxEventRepository outboxEventRepository
-	) {
-		this.proposalRepository = proposalRepository;
-		this.reviewRepository = reviewRepository;
-		this.approvedQuestionRepository = approvedQuestionRepository;
-		this.outboxEventRepository = outboxEventRepository;
-	}
-
 	/**
-	 * DRAFT 제안을 생성과 동시에 SUBMITTED로 전이한다. 사용자가 별도의 임시저장
-	 * 단계 없이 한 번에 제안을 제출하는 API 경로에서 쓴다.
+	 * DRAFT 제안을 생성과 동시에 SUBMITTED로 전이한다. 사용자가 별도의 임시저장 단계 없이 한 번에 제안을 제출하는 API 경로에서
+	 * 쓴다.
 	 */
 	@Transactional
 	public QuestionProposal propose(long proposerId, String proposedText, Instant submittedAt) {
@@ -71,12 +65,11 @@ public class QuestionReviewService {
 
 	@Transactional
 	public QuestionProposalReview reject(
-		long proposalId, long reviewerId, String reason, Instant reviewedAt
-	) {
+			long proposalId, long reviewerId, String reason, Instant reviewedAt) {
 		QuestionProposal proposal = lockProposal(proposalId);
 		QuestionProposal rejected = proposal.reject(reason);
 		QuestionProposalReview review = QuestionProposalReview.reject(
-			proposalId, reviewerId, reason, reviewedAt);
+				proposalId, reviewerId, reason, reviewedAt);
 		QuestionProposalReview savedReview = reviewRepository.save(review);
 		proposalRepository.save(rejected);
 		publishReviewed(proposal.getProposerId(), proposalId, "REJECTED", reviewedAt);
@@ -85,20 +78,19 @@ public class QuestionReviewService {
 
 	@Transactional
 	public ApprovedQuestion approve(
-		long proposalId,
-		long reviewerId,
-		AnswerFormat answerFormat,
-		Instant activeFrom,
-		Instant activeUntil,
-		Instant approvedAt
-	) {
+			long proposalId,
+			long reviewerId,
+			AnswerFormat answerFormat,
+			Instant activeFrom,
+			Instant activeUntil,
+			Instant approvedAt) {
 		QuestionProposal proposal = lockProposal(proposalId);
 		QuestionProposal approved = proposal.approve(null);
 		QuestionProposalReview review = QuestionProposalReview.approve(
-			proposalId, reviewerId, null, approvedAt);
+				proposalId, reviewerId, null, approvedAt);
 		ApprovedQuestion approvedQuestion = ApprovedQuestion.activeUserProposal(
-			proposalId, proposal.getProposedText(), answerFormat,
-			activeFrom, activeUntil, approvedAt, reviewerId);
+				proposalId, proposal.getProposedText(), answerFormat,
+				activeFrom, activeUntil, approvedAt, reviewerId);
 
 		reviewRepository.save(review);
 		proposalRepository.save(approved);
@@ -108,17 +100,46 @@ public class QuestionReviewService {
 	}
 
 	/**
+	 * 제안자 본인의 제안을 지운다. 판정과 같은 행 잠금을 잡아, 삭제와 운영자 판정이 동시에 들어와도 하나만 먼저 반영되고 뒤의 요청은 갱신된
+	 * 상태를 읽는다.
+	 */
+	@Transactional
+	public QuestionProposal delete(long proposalId, long proposerId, Instant deletedAt) {
+		QuestionProposal proposal = lockOwnedProposal(proposalId, proposerId);
+		if (proposal.isDeleted()) {
+			return proposal;
+		}
+		return proposalRepository.save(proposal.delete(deletedAt));
+	}
+
+	@Transactional
+	public QuestionProposal changeNotificationMuted(long proposalId, long proposerId, boolean muted) {
+		QuestionProposal proposal = lockOwnedProposal(proposalId, proposerId);
+		return proposalRepository.save(proposal.changeNotificationMuted(muted));
+	}
+
+	// 다른 사용자의 제안은 존재 여부를 드러내지 않도록 없는 제안과 같은 404로 응답한다.
+	private QuestionProposal lockOwnedProposal(long proposalId, long proposerId) {
+		QuestionProposal proposal = lockProposal(proposalId);
+		if (proposal.getProposerId() != proposerId) {
+			throw new QuestionException(QuestionErrorCode.PROPOSAL_NOT_FOUND, "proposalId");
+		}
+		return proposal;
+	}
+
+	/**
 	 * 상태 전이 경로 전용 조회. 행 잠금으로 동시 판정을 직렬화한다.
 	 *
-	 * <p>잠금 없이 읽으면 두 운영자의 동시 판정이 모두 `UNDER_REVIEW`를 통과해
-	 * 판정 이력이 두 번 남는다. `publishReviewed()`의 dedupKey 사전 조회는 이
-	 * 상황을 막지 못한다 — 뒤늦은 transaction이 먼저 커밋된 event를 발견하면
-	 * 삽입을 건너뛰고 그대로 성공하기 때문이다. 잠금을 걸면 뒤늦은 transaction이
-	 * 갱신된 상태를 읽고 `INVALID_PROPOSAL_STATUS`로 거절된다.</p>
+	 * <p>
+	 * 잠금 없이 읽으면 두 운영자의 동시 판정이 모두 `UNDER_REVIEW`를 통과해 판정 이력이 두 번 남는다.
+	 * `publishReviewed()`의 dedupKey 사전 조회는 이 상황을 막지 못한다 — 뒤늦은 transaction이 먼저 커밋된
+	 * event를 발견하면 삽입을 건너뛰고 그대로 성공하기 때문이다. 잠금을 걸면 뒤늦은 transaction이 갱신된 상태를 읽고
+	 * `INVALID_PROPOSAL_STATUS`로 거절된다.
+	 * </p>
 	 */
 	private QuestionProposal lockProposal(long proposalId) {
 		return proposalRepository.findByIdForUpdate(proposalId)
-			.orElseThrow(() -> new QuestionException(QuestionErrorCode.PROPOSAL_NOT_FOUND, "proposalId"));
+				.orElseThrow(() -> new QuestionException(QuestionErrorCode.PROPOSAL_NOT_FOUND, "proposalId"));
 	}
 
 	// dedupKey를 proposalId에 고정한다. QuestionProposal은 UNDER_REVIEW에서 APPROVED나
@@ -130,9 +151,9 @@ public class QuestionReviewService {
 			return;
 		}
 		String payload = String.format(
-			"{\"proposalId\":%d,\"proposerId\":%d,\"decision\":\"%s\"}", proposalId, proposerId, decision);
+				"{\"proposalId\":%d,\"proposerId\":%d,\"decision\":\"%s\"}", proposalId, proposerId, decision);
 		outboxEventRepository.save(OutboxEvent.pending(
-			OutboxAggregateType.QUESTION_PROPOSAL, proposalId,
-			OutboxEventType.QUESTION_PROPOSAL_REVIEWED, dedupKey, payload, at));
+				OutboxAggregateType.QUESTION_PROPOSAL, proposalId,
+				OutboxEventType.QUESTION_PROPOSAL_REVIEWED, dedupKey, payload, at));
 	}
 }
