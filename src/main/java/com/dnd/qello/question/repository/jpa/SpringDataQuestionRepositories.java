@@ -4,18 +4,18 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
+import jakarta.persistence.LockModeType;
+
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
-import jakarta.persistence.LockModeType;
-
 import com.dnd.qello.question.domain.ApprovedQuestionStatus;
 
 interface SpringDataQuestionProposalRepository extends JpaRepository<QuestionProposalJpaEntity, Long> {
 
-	List<QuestionProposalJpaEntity> findAllByProposerIdOrderByCreatedAtDesc(long proposerId);
+	List<QuestionProposalJpaEntity> findAllByProposerIdAndDeletedAtIsNullOrderByCreatedAtDesc(long proposerId);
 
 	// 판정 경로 전용 조회. version column이 없어 낙관적 잠금이 없으므로 행 잠금으로
 	// 동시 판정을 직렬화한다.
@@ -32,15 +32,15 @@ interface SpringDataQuestionProposalReviewRepository extends JpaRepository<Quest
 interface SpringDataApprovedQuestionRepository extends JpaRepository<ApprovedQuestionJpaEntity, Long> {
 
 	@Query("""
-		select question
-		from ApprovedQuestionJpaEntity question
-		where question.status = :status
-		  and question.activeFrom <= :at
-		  and (question.activeUntil is null or question.activeUntil > :at)
-		order by question.id
-		""")
+			select question
+			from ApprovedQuestionJpaEntity question
+			where question.status = :status
+			  and question.activeFrom <= :at
+			  and (question.activeUntil is null or question.activeUntil > :at)
+			order by question.id
+			""")
 	List<ApprovedQuestionJpaEntity> findAssignableAt(
-		@Param("status") ApprovedQuestionStatus status, @Param("at") Instant at);
+			@Param("status") ApprovedQuestionStatus status, @Param("at") Instant at);
 }
 
 interface SpringDataQuestionAssignmentCycleRepository extends JpaRepository<QuestionAssignmentCycleJpaEntity, Long> {

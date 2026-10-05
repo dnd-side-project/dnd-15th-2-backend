@@ -17,17 +17,20 @@ public final class QuestionProposal {
 	private final Instant submittedAt;
 	private final Instant createdAt;
 	private final Instant updatedAt;
+	private final Instant deletedAt;
+	private final boolean notificationMuted;
 
 	private QuestionProposal(
-		Long id,
-		Long proposerId,
-		QuestionProposalStatus status,
-		String proposedText,
-		String decisionReason,
-		Instant submittedAt,
-		Instant createdAt,
-		Instant updatedAt
-	) {
+			Long id,
+			Long proposerId,
+			QuestionProposalStatus status,
+			String proposedText,
+			String decisionReason,
+			Instant submittedAt,
+			Instant createdAt,
+			Instant updatedAt,
+			Instant deletedAt,
+			boolean notificationMuted) {
 		this.id = validateId(id, "id");
 		this.proposerId = requirePositive(proposerId, "proposerId");
 		this.status = requireValue(status, "status");
@@ -36,34 +39,51 @@ public final class QuestionProposal {
 		this.submittedAt = submittedAt;
 		this.createdAt = createdAt;
 		this.updatedAt = updatedAt;
+		this.deletedAt = deletedAt;
+		this.notificationMuted = notificationMuted;
 		validateState();
 	}
 
 	public static QuestionProposal create(Long proposerId, String proposedText) {
 		return new QuestionProposal(
-			null, proposerId, QuestionProposalStatus.DRAFT, proposedText,
-			null, null, null, null);
+				null, proposerId, QuestionProposalStatus.DRAFT, proposedText,
+				null, null, null, null, null, false);
 	}
 
 	public static QuestionProposal restore(
-		Long id,
-		Long proposerId,
-		QuestionProposalStatus status,
-		String proposedText,
-		String decisionReason,
-		Instant submittedAt,
-		Instant createdAt,
-		Instant updatedAt
-	) {
+			Long id,
+			Long proposerId,
+			QuestionProposalStatus status,
+			String proposedText,
+			String decisionReason,
+			Instant submittedAt,
+			Instant createdAt,
+			Instant updatedAt) {
+		return restore(
+				id, proposerId, status, proposedText, decisionReason,
+				submittedAt, createdAt, updatedAt, null, false);
+	}
+
+	public static QuestionProposal restore(
+			Long id,
+			Long proposerId,
+			QuestionProposalStatus status,
+			String proposedText,
+			String decisionReason,
+			Instant submittedAt,
+			Instant createdAt,
+			Instant updatedAt,
+			Instant deletedAt,
+			boolean notificationMuted) {
 		return new QuestionProposal(
-			id, proposerId, status, proposedText, decisionReason,
-			submittedAt, createdAt, updatedAt);
+				id, proposerId, status, proposedText, decisionReason,
+				submittedAt, createdAt, updatedAt, deletedAt, notificationMuted);
 	}
 
 	public QuestionProposal reviseDraft(String text) {
 		if (status != QuestionProposalStatus.DRAFT) {
 			throw new QuestionException(
-				QuestionErrorCode.INVALID_PROPOSAL_STATUS, "status", "DRAFT 제안만 수정할 수 있습니다");
+					QuestionErrorCode.INVALID_PROPOSAL_STATUS, "status", "DRAFT 제안만 수정할 수 있습니다");
 		}
 		return copy(status, text, decisionReason, submittedAt);
 	}
@@ -88,39 +108,73 @@ public final class QuestionProposal {
 		return copy(QuestionProposalStatus.REJECTED, proposedText, requireReason(reason), submittedAt);
 	}
 
-	private QuestionProposal copy(
-		QuestionProposalStatus nextStatus,
-		String nextText,
-		String nextReason,
-		Instant nextSubmittedAt
-	) {
+	/**
+	 * 사용자 목록에서 제안을 지운다. 검토 이력과 승인 질문이 이 행을 참조하므로 상태는 그대로 두고 삭제 시각만 남긴다. 검토 전·중인 제안은
+	 * 이후 판정이 거부되어 철회와 같아진다. 이미 지운 제안은 최초 삭제 시각을 유지한다.
+	 */
+	public QuestionProposal delete(Instant at) {
+		Instant requested = requireTime(at, "deletedAt");
+		if (isDeleted()) {
+			return this;
+		}
 		return new QuestionProposal(
-			id, proposerId, nextStatus, nextText, nextReason,
-			nextSubmittedAt, createdAt, updatedAt);
+				id, proposerId, status, proposedText, decisionReason,
+				submittedAt, createdAt, updatedAt, requested, notificationMuted);
+	}
+
+	public QuestionProposal changeNotificationMuted(boolean muted) {
+		if (isDeleted()) {
+			throw new QuestionException(QuestionErrorCode.PROPOSAL_NOT_FOUND, "proposalId");
+		}
+		return new QuestionProposal(
+				id, proposerId, status, proposedText, decisionReason,
+				submittedAt, createdAt, updatedAt, deletedAt, muted);
+	}
+
+	public boolean isDeleted() {
+		return deletedAt != null;
+	}
+
+	/** 사용자가 지운 제안도 검토 결과 push를 받지 않는다. */
+	public boolean isPushMuted() {
+		return notificationMuted || isDeleted();
+	}
+
+	private QuestionProposal copy(
+			QuestionProposalStatus nextStatus,
+			String nextText,
+			String nextReason,
+			Instant nextSubmittedAt) {
+		return new QuestionProposal(
+				id, proposerId, nextStatus, nextText, nextReason,
+				nextSubmittedAt, createdAt, updatedAt, deletedAt, notificationMuted);
 	}
 
 	private void requireStatus(QuestionProposalStatus expected, String action) {
+		if (isDeleted()) {
+			throw new QuestionException(
+					QuestionErrorCode.INVALID_PROPOSAL_STATUS, "status", "삭제된 제안은 " + action + "할 수 없습니다");
+		}
 		if (status != expected) {
 			throw new QuestionException(
-				QuestionErrorCode.INVALID_PROPOSAL_STATUS,
-				"status",
-				status + " 상태에서는 " + action + "할 수 없습니다"
-			);
+					QuestionErrorCode.INVALID_PROPOSAL_STATUS,
+					"status",
+					status + " 상태에서는 " + action + "할 수 없습니다");
 		}
 	}
 
 	private void validateState() {
 		if (status != QuestionProposalStatus.DRAFT && submittedAt == null) {
 			throw new QuestionException(
-				QuestionErrorCode.INVALID_PROPOSAL_STATE, "submittedAt", "제출 이후 상태에는 submittedAt이 필요합니다");
+					QuestionErrorCode.INVALID_PROPOSAL_STATE, "submittedAt", "제출 이후 상태에는 submittedAt이 필요합니다");
 		}
 		if (status == QuestionProposalStatus.DRAFT && decisionReason != null) {
 			throw new QuestionException(
-				QuestionErrorCode.INVALID_PROPOSAL_STATE, "decisionReason", "DRAFT에는 decisionReason을 저장할 수 없습니다");
+					QuestionErrorCode.INVALID_PROPOSAL_STATE, "decisionReason", "DRAFT에는 decisionReason을 저장할 수 없습니다");
 		}
 		if (createdAt != null && updatedAt != null && updatedAt.isBefore(createdAt)) {
 			throw new QuestionException(
-				QuestionErrorCode.INVALID_AUDIT_TIMESTAMPS, "updatedAt", "updatedAt은 createdAt보다 빠를 수 없습니다");
+					QuestionErrorCode.INVALID_AUDIT_TIMESTAMPS, "updatedAt", "updatedAt은 createdAt보다 빠를 수 없습니다");
 		}
 	}
 
@@ -131,7 +185,7 @@ public final class QuestionProposal {
 	private static <T> T requireValue(T value, String field) {
 		if (value == null) {
 			throw new QuestionException(
-				QuestionErrorCode.REQUIRED_VALUE_MISSING, field, field + "은 필수입니다");
+					QuestionErrorCode.REQUIRED_VALUE_MISSING, field, field + "은 필수입니다");
 		}
 		return value;
 	}
@@ -139,7 +193,7 @@ public final class QuestionProposal {
 	private static long requirePositive(Long value, String field) {
 		if (value == null || value <= 0) {
 			throw new QuestionException(
-				QuestionErrorCode.INVALID_ID, field, field + "는 양수여야 합니다");
+					QuestionErrorCode.INVALID_ID, field, field + "는 양수여야 합니다");
 		}
 		return value;
 	}
@@ -147,11 +201,11 @@ public final class QuestionProposal {
 	private static String requireText(String value, String field) {
 		if (value == null || value.isBlank()) {
 			throw new QuestionException(
-				QuestionErrorCode.REQUIRED_VALUE_MISSING, field, field + "은 비어 있을 수 없습니다");
+					QuestionErrorCode.REQUIRED_VALUE_MISSING, field, field + "은 비어 있을 수 없습니다");
 		}
 		if (value.length() > TEXT_MAX_LENGTH) {
 			throw new QuestionException(
-				QuestionErrorCode.TEXT_TOO_LONG, field, field + "은 " + TEXT_MAX_LENGTH + "자를 초과할 수 없습니다");
+					QuestionErrorCode.TEXT_TOO_LONG, field, field + "은 " + TEXT_MAX_LENGTH + "자를 초과할 수 없습니다");
 		}
 		return value;
 	}
@@ -168,12 +222,34 @@ public final class QuestionProposal {
 		return requireValue(value, field);
 	}
 
-	public Long getId() { return id; }
-	public Long getProposerId() { return proposerId; }
-	public QuestionProposalStatus getStatus() { return status; }
-	public String getProposedText() { return proposedText; }
-	public String getDecisionReason() { return decisionReason; }
-	public Instant getSubmittedAt() { return submittedAt; }
-	public Instant getCreatedAt() { return createdAt; }
-	public Instant getUpdatedAt() { return updatedAt; }
+	public Long getId() {
+		return id;
+	}
+	public Long getProposerId() {
+		return proposerId;
+	}
+	public QuestionProposalStatus getStatus() {
+		return status;
+	}
+	public String getProposedText() {
+		return proposedText;
+	}
+	public String getDecisionReason() {
+		return decisionReason;
+	}
+	public Instant getSubmittedAt() {
+		return submittedAt;
+	}
+	public Instant getCreatedAt() {
+		return createdAt;
+	}
+	public Instant getUpdatedAt() {
+		return updatedAt;
+	}
+	public Instant getDeletedAt() {
+		return deletedAt;
+	}
+	public boolean isNotificationMuted() {
+		return notificationMuted;
+	}
 }
