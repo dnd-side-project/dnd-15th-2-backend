@@ -3,6 +3,7 @@ package com.dnd.qello;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.stream.IntStream;
 
 import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.FlywayException;
@@ -166,6 +167,8 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 			"ct_media_status_preserves_content",
 			"ct_answer_reaction_reactor_can_view");
 
+	private static final int LATEST_MIGRATION_VERSION = 29;
+
 	@Autowired
 	private Flyway flyway;
 
@@ -173,186 +176,23 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 	private JdbcTemplate jdbcTemplate;
 
 	@Test
-	@DisplayName("빈 PostGIS 데이터베이스의 startup에서 V1부터 V27까지 migration을 적용한다")
+	@DisplayName("빈 PostGIS 데이터베이스의 startup에서 V1부터 최신 버전까지 migration을 적용한다")
 	void appliesAllMigrationsOnApplicationStartup() {
-		Integer successfulV1 = jdbcTemplate.queryForObject("""
-				SELECT count(*)
+		// 버전마다 성공 이력이 정확히 한 행이어야 한다. 새 migration을 추가하면
+		// LATEST_MIGRATION_VERSION만 올린다.
+		List<String> successfulVersions = jdbcTemplate.queryForList("""
+				SELECT version
 				FROM flyway_schema_history
-				WHERE version = '1' AND success
-				""", Integer.class);
-		Integer successfulV2 = jdbcTemplate.queryForObject("""
-				SELECT count(*)
-				FROM flyway_schema_history
-				WHERE version = '2' AND success
-				""", Integer.class);
-		Integer successfulV3 = jdbcTemplate.queryForObject("""
-				SELECT count(*)
-				FROM flyway_schema_history
-				WHERE version = '3' AND success
-				""", Integer.class);
-		Integer successfulV4 = jdbcTemplate.queryForObject("""
-				SELECT count(*)
-				FROM flyway_schema_history
-				WHERE version = '4' AND success
-				""", Integer.class);
-		Integer successfulV5 = jdbcTemplate.queryForObject("""
-				SELECT count(*)
-				FROM flyway_schema_history
-				WHERE version = '5' AND success
-				""", Integer.class);
-		Integer successfulV6 = jdbcTemplate.queryForObject("""
-				SELECT count(*)
-				FROM flyway_schema_history
-				WHERE version = '6' AND success
-				""", Integer.class);
-		Integer successfulV7 = jdbcTemplate.queryForObject("""
-				SELECT count(*)
-				FROM flyway_schema_history
-				WHERE version = '7' AND success
-				""", Integer.class);
-		Integer successfulV8 = jdbcTemplate.queryForObject("""
-				SELECT count(*)
-				FROM flyway_schema_history
-				WHERE version = '8' AND success
-				""", Integer.class);
-		Integer successfulV9 = jdbcTemplate.queryForObject("""
-				SELECT count(*)
-				FROM flyway_schema_history
-				WHERE version = '9' AND success
-				""", Integer.class);
-		Integer successfulV10 = jdbcTemplate.queryForObject("""
-				SELECT count(*)
-				FROM flyway_schema_history
-				WHERE version = '10' AND success
-				""", Integer.class);
-		Integer successfulV11 = jdbcTemplate.queryForObject("""
-				SELECT count(*)
-				FROM flyway_schema_history
-				WHERE version = '11' AND success
-				""", Integer.class);
-		Integer successfulV12 = jdbcTemplate.queryForObject("""
-				SELECT count(*)
-				FROM flyway_schema_history
-				WHERE version = '12' AND success
-				""", Integer.class);
-		Integer successfulV13 = jdbcTemplate.queryForObject("""
-				SELECT count(*)
-				FROM flyway_schema_history
-				WHERE version = '13' AND success
-				""", Integer.class);
-		Integer successfulV14 = jdbcTemplate.queryForObject("""
-				SELECT count(*)
-				FROM flyway_schema_history
-				WHERE version = '14' AND success
-				""", Integer.class);
-		Integer successfulV15 = jdbcTemplate.queryForObject("""
-				SELECT count(*)
-				FROM flyway_schema_history
-				WHERE version = '15' AND success
-				""", Integer.class);
-		Integer successfulV16 = jdbcTemplate.queryForObject("""
-				SELECT count(*)
-				FROM flyway_schema_history
-				WHERE version = '16' AND success
-				""", Integer.class);
-		Integer successfulV17 = jdbcTemplate.queryForObject("""
-				SELECT count(*)
-				FROM flyway_schema_history
-				WHERE version = '17' AND success
-				""", Integer.class);
-		Integer successfulV18 = jdbcTemplate.queryForObject("""
-				SELECT count(*)
-				FROM flyway_schema_history
-				WHERE version = '18' AND success
-				""", Integer.class);
-		Integer successfulV19 = jdbcTemplate.queryForObject("""
-				SELECT count(*)
-				FROM flyway_schema_history
-				WHERE version = '19' AND success
-				""", Integer.class);
-		Integer successfulV20 = jdbcTemplate.queryForObject("""
-				SELECT count(*)
-				FROM flyway_schema_history
-				WHERE version = '20' AND success
-				""", Integer.class);
-		Integer successfulV21 = jdbcTemplate.queryForObject("""
-				SELECT count(*)
-				FROM flyway_schema_history
-				WHERE version = '21' AND success
-				""", Integer.class);
-		Integer successfulV22 = jdbcTemplate.queryForObject("""
-				SELECT count(*)
-				FROM flyway_schema_history
-				WHERE version = '22' AND success
-				""", Integer.class);
-		Integer successfulV23 = jdbcTemplate.queryForObject("""
-				SELECT count(*)
-				FROM flyway_schema_history
-				WHERE version = '23' AND success
-				""", Integer.class);
-		Integer successfulV24 = jdbcTemplate.queryForObject("""
-				SELECT count(*)
-				FROM flyway_schema_history
-				WHERE version = '24' AND success
-				""", Integer.class);
-		Integer successfulV25 = jdbcTemplate.queryForObject("""
-				SELECT count(*)
-				FROM flyway_schema_history
-				WHERE version = '25' AND success
-				""", Integer.class);
-		Integer successfulV26 = jdbcTemplate.queryForObject("""
-				SELECT count(*)
-				FROM flyway_schema_history
-				WHERE version = '26' AND success
-				""", Integer.class);
-		Integer successfulV27 = jdbcTemplate.queryForObject("""
-				SELECT count(*)
-				FROM flyway_schema_history
-				WHERE version = '27' AND success
-				""", Integer.class);
-		Integer successfulV28 = jdbcTemplate.queryForObject("""
-				SELECT count(*)
-				FROM flyway_schema_history
-				WHERE version = '28' AND success
-				""", Integer.class);
-		Integer successfulV29 = jdbcTemplate.queryForObject("""
-				SELECT count(*)
-				FROM flyway_schema_history
-				WHERE version = '29' AND success
-				""", Integer.class);
+				WHERE success AND version IS NOT NULL
+				""", String.class);
 		String postgisVersion = jdbcTemplate.queryForObject(
 				"SELECT PostGIS_Version()", String.class);
 
-		assertThat(successfulV1).isEqualTo(1);
-		assertThat(successfulV2).isEqualTo(1);
-		assertThat(successfulV3).isEqualTo(1);
-		assertThat(successfulV4).isEqualTo(1);
-		assertThat(successfulV5).isEqualTo(1);
-		assertThat(successfulV6).isEqualTo(1);
-		assertThat(successfulV7).isEqualTo(1);
-		assertThat(successfulV8).isEqualTo(1);
-		assertThat(successfulV9).isEqualTo(1);
-		assertThat(successfulV10).isEqualTo(1);
-		assertThat(successfulV11).isEqualTo(1);
-		assertThat(successfulV12).isEqualTo(1);
-		assertThat(successfulV13).isEqualTo(1);
-		assertThat(successfulV14).isEqualTo(1);
-		assertThat(successfulV15).isEqualTo(1);
-		assertThat(successfulV16).isEqualTo(1);
-		assertThat(successfulV17).isEqualTo(1);
-		assertThat(successfulV18).isEqualTo(1);
-		assertThat(successfulV19).isEqualTo(1);
-		assertThat(successfulV20).isEqualTo(1);
-		assertThat(successfulV21).isEqualTo(1);
-		assertThat(successfulV22).isEqualTo(1);
-		assertThat(successfulV23).isEqualTo(1);
-		assertThat(successfulV24).isEqualTo(1);
-		assertThat(successfulV25).isEqualTo(1);
-		assertThat(successfulV26).isEqualTo(1);
-		assertThat(successfulV27).isEqualTo(1);
-		assertThat(successfulV28).isEqualTo(1);
-		assertThat(successfulV29).isEqualTo(1);
-		assertThat(flyway.info().applied()).hasSize(29);
+		assertThat(successfulVersions).containsExactlyInAnyOrderElementsOf(IntStream
+				.rangeClosed(1, LATEST_MIGRATION_VERSION)
+				.mapToObj(String::valueOf)
+				.toList());
+		assertThat(flyway.info().applied()).hasSize(LATEST_MIGRATION_VERSION);
 		assertThat(postgisVersion).isNotBlank();
 	}
 
@@ -373,29 +213,7 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 	@Test
 	@DisplayName("적용된 schema의 catalog와 고정 방향 seed가 승인 manifest와 일치한다")
 	void catalogMatchesApprovedManifest() {
-		assertCatalogNames("""
-				SELECT table_name
-				FROM information_schema.tables
-				WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
-				""", EXPECTED_TABLES);
-		assertCatalogNames("""
-				SELECT indexname
-				FROM pg_indexes
-				WHERE schemaname = 'public'
-				""", EXPECTED_INDEXES);
-		assertCatalogNames("""
-				SELECT p.proname
-				FROM pg_proc p
-				JOIN pg_namespace n ON n.oid = p.pronamespace
-				WHERE n.nspname = 'public'
-				""", EXPECTED_FUNCTIONS);
-		assertCatalogNames("""
-				SELECT t.tgname
-				FROM pg_trigger t
-				JOIN pg_class c ON c.oid = t.tgrelid
-				JOIN pg_namespace n ON n.oid = c.relnamespace
-				WHERE n.nspname = 'public' AND NOT t.tgisinternal
-				""", EXPECTED_TRIGGERS);
+		assertCatalogObjectNames();
 
 		List<ConstraintDescriptor> constraints = jdbcTemplate.query("""
 				SELECT c.relname, pc.contype::text
@@ -751,6 +569,32 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 
 		assertThat(successfulV2).isZero();
 		assertThat(rolledBackColumn).isZero();
+	}
+
+	private void assertCatalogObjectNames() {
+		assertCatalogNames("""
+				SELECT table_name
+				FROM information_schema.tables
+				WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
+				""", EXPECTED_TABLES);
+		assertCatalogNames("""
+				SELECT indexname
+				FROM pg_indexes
+				WHERE schemaname = 'public'
+				""", EXPECTED_INDEXES);
+		assertCatalogNames("""
+				SELECT p.proname
+				FROM pg_proc p
+				JOIN pg_namespace n ON n.oid = p.pronamespace
+				WHERE n.nspname = 'public'
+				""", EXPECTED_FUNCTIONS);
+		assertCatalogNames("""
+				SELECT t.tgname
+				FROM pg_trigger t
+				JOIN pg_class c ON c.oid = t.tgrelid
+				JOIN pg_namespace n ON n.oid = c.relnamespace
+				WHERE n.nspname = 'public' AND NOT t.tgisinternal
+				""", EXPECTED_TRIGGERS);
 	}
 
 	private void assertCatalogNames(String sql, Set<String> expectedNames) {
