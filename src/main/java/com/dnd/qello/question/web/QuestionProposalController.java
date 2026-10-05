@@ -13,12 +13,13 @@ import com.dnd.qello.common.web.response.ApiResponse;
 import com.dnd.qello.common.web.response.ApiResponseFactory;
 import com.dnd.qello.question.domain.QuestionProposal;
 import com.dnd.qello.question.service.QuestionProposalApplicationService;
+import com.dnd.qello.question.web.request.ChangeProposalNotificationRequest;
 import com.dnd.qello.question.web.request.SubmitQuestionProposalRequest;
 import com.dnd.qello.question.web.response.QuestionProposalResponse;
 
 /**
- * 질문 제안의 HTTP 경계. 인증 사용자 식별만 여기서 하고, 계정 자격과 상태
- * 전이는 {@link QuestionProposalApplicationService}에 위임한다.
+ * 질문 제안의 HTTP 경계. 인증 사용자 식별만 여기서 하고, 계정 자격과 상태 전이는
+ * {@link QuestionProposalApplicationService}에 위임한다.
  */
 @RestController
 @RequestMapping("/api/v1/questions")
@@ -28,28 +29,41 @@ public class QuestionProposalController implements QuestionProposalApiSpec {
 	private final ApiResponseFactory responseFactory;
 
 	public QuestionProposalController(
-		QuestionProposalApplicationService applicationService,
-		ApiResponseFactory responseFactory
-	) {
+			QuestionProposalApplicationService applicationService,
+			ApiResponseFactory responseFactory) {
 		this.applicationService = applicationService;
 		this.responseFactory = responseFactory;
 	}
 
 	@Override
 	public ResponseEntity<ApiResponse<QuestionProposalResponse>> submit(
-		SubmitQuestionProposalRequest request, Authentication authentication) {
+			SubmitQuestionProposalRequest request, Authentication authentication) {
 		QuestionProposal proposal = applicationService.submit(
-			AuthenticatedUserId.require(authentication), request.proposedText());
+				AuthenticatedUserId.require(authentication), request.proposedText());
 		return ResponseEntity.status(HttpStatus.CREATED)
-			.body(responseFactory.success(QuestionProposalResponse.from(proposal)));
+				.body(responseFactory.success(QuestionProposalResponse.from(proposal)));
 	}
 
 	@Override
 	public ResponseEntity<ApiResponse<List<QuestionProposalResponse>>> findMine(Authentication authentication) {
 		List<QuestionProposalResponse> proposals = applicationService.findMine(
 				AuthenticatedUserId.require(authentication)).stream()
-			.map(QuestionProposalResponse::from)
-			.toList();
+				.map(QuestionProposalResponse::from)
+				.toList();
 		return ResponseEntity.ok(responseFactory.success(proposals));
+	}
+
+	@Override
+	public ResponseEntity<ApiResponse<Void>> delete(long proposalId, Authentication authentication) {
+		applicationService.delete(AuthenticatedUserId.require(authentication), proposalId);
+		return ResponseEntity.noContent().build();
+	}
+
+	@Override
+	public ResponseEntity<ApiResponse<QuestionProposalResponse>> changeNotification(
+			long proposalId, ChangeProposalNotificationRequest request, Authentication authentication) {
+		QuestionProposal proposal = applicationService.changeNotificationMuted(
+				AuthenticatedUserId.require(authentication), proposalId, request.muted());
+		return ResponseEntity.ok(responseFactory.success(QuestionProposalResponse.from(proposal)));
 	}
 }
