@@ -24,11 +24,10 @@ public class JpaQuestionProposalRepository implements QuestionProposalRepository
 	@Transactional
 	public QuestionProposal save(QuestionProposal proposal) {
 		QuestionProposalJpaEntity entity = QuestionJpaMapper.toEntity(proposal);
-		if (proposal.getId() != null && proposal.getStatus()
-			== QuestionProposalStatus.DRAFT) {
+		if (proposal.getId() != null && proposal.getStatus() == QuestionProposalStatus.DRAFT) {
 			boolean textChanged = repository.findById(proposal.getId())
-				.map(existing -> !existing.getProposedText().equals(proposal.getProposedText()))
-				.orElse(false);
+					.map(existing -> !existing.getProposedText().equals(proposal.getProposedText()))
+					.orElse(false);
 			if (textChanged) {
 				// V1's shared trigger references approved_question.question_text even for
 				// question_proposal rows. Replace only an unsubmitted draft so that this
@@ -36,8 +35,9 @@ public class JpaQuestionProposalRepository implements QuestionProposalRepository
 				repository.deleteById(proposal.getId());
 				repository.flush();
 				entity = new QuestionProposalJpaEntity(
-					null, proposal.getProposerId(), proposal.getStatus(), proposal.getProposedText(),
-					proposal.getDecisionReason(), proposal.getSubmittedAt(), null, null);
+						null, proposal.getProposerId(), proposal.getStatus(), proposal.getProposedText(),
+						proposal.getDecisionReason(), proposal.getSubmittedAt(), null, null,
+						proposal.getDeletedAt(), proposal.isNotificationMuted());
 			}
 		}
 		return QuestionJpaMapper.toDomain(repository.saveAndFlush(entity));
@@ -55,8 +55,8 @@ public class JpaQuestionProposalRepository implements QuestionProposalRepository
 
 	@Override
 	public List<QuestionProposal> findAllByProposerIdOrderByCreatedAtDesc(long proposerId) {
-		return repository.findAllByProposerIdOrderByCreatedAtDesc(proposerId).stream()
-			.map(QuestionJpaMapper::toDomain)
-			.toList();
+		return repository.findAllByProposerIdAndDeletedAtIsNullOrderByCreatedAtDesc(proposerId).stream()
+				.map(QuestionJpaMapper::toDomain)
+				.toList();
 	}
 }

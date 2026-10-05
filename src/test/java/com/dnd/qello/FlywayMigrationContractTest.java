@@ -69,6 +69,7 @@ class FlywayMigrationContractTest {
 				"V28__add_push_dispatch_group_and_budget.sql",
 				"V29__seed_country_region_code.sql",
 				"V2__add_reactions_and_skip_pending.sql",
+				"V30__add_question_proposal_delete_and_mute.sql",
 				"V3__add_user_account_password_hash.sql",
 				"V4__add_user_account_optimistic_lock.sql",
 				"V5__add_operator_credential.sql",

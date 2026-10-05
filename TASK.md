@@ -1,33 +1,37 @@
-# GitHub Issue #304 Task Contract
+# GitHub Issue #310 Task Contract
 
-> Generated at: `2026-10-04T18:26:47+09:00`
+> Generated at: `2026-10-05T17:51:33+09:00`
 >
 > 이 파일은 현재 작업 브랜치의 계약이다. 저장소 전역 정책은 `AGENTS.md`를
 > 따른다.
 
 ## Work gate
 
-- Title: `ClickUp 작업 연결 Issue·PR 템플릿 정리`
-- GitHub Issue: `#304`
-- Branch: `chore/gh-304-clickup-work-templates`
+- Title: `질문 제안 삭제·제안별 알림 끄기 API`
+- GitHub Issue: `#310`
+- Branch: `feat/gh-310-question-proposal-delete-mute`
 - Base branch: `main`
 
 ## Objective
 
-- ClickUp 명세·스프린트 산출물과 GitHub 구현·검증 증거를 양방향으로 연결한다.
+- "제안한 질문" 화면의 삭제하기·알림 받지 않기에 대응하는 제안 1건 단위 소프트 삭제와 알림 끄기 API를 추가한다.
 
 ## Scope
 
-- .github/ISSUE_TEMPLATE/backend_work.yml
-- .github/PULL_REQUEST_TEMPLATE.md
-- docs/harness/CLICKUP_LINKAGE.md
-- 현재 작업용 TASK.md
+- `question_proposal` 소프트 삭제 시각·알림 끄기 컬럼 Flyway 마이그레이션
+- `QuestionProposal` 도메인 삭제(모든 상태 허용, 검토 전·중 삭제는 철회)·알림 끄기/켜기
+- `DELETE /api/v1/questions/proposals/{proposalId}`와 제안별 알림 끄기·켜기 endpoint
+- `GET /proposals/me`에서 삭제 제안 제외, 응답에 알림 끄기 여부 추가
+- `QuestionReviewService`가 삭제된 제안의 검수 시작·승인·반려를 거부
+- `NotificationFanOutWorker`가 알림 꺼진 제안의 `QUESTION_PROPOSAL_REVIEWED` push delivery를 만들지 않음(인박스 기록 유지)
+- `QuestionProposalApiSpec` OpenAPI 갱신과 단위·통합 테스트
+- 변경한 `@Service`의 convention ratchet 충족: `QuestionReviewService`·`QuestionProposalApplicationService`·`QuestionProposalReviewedNotificationResolver`·`NotificationFanOutWorker`와 `config/java-conventions/baseline.json`의 해소된 LEGACY 항목 삭제
+- `docs/harness/JAVA_CONVENTIONS.md`에 직접 트랜잭션을 여는 Service 규칙 추가
 
 ## Explicit exclusions
 
-- 앱 코드·DB·인프라·배포·보호 규칙 변경.
-- ClickUp 작업 생성·상태 변경·담당자 배정 및 팀 보드 복제.
-- 다른 전용 Issue Form과 전체 하네스 정책 마이그레이션.
+- 알림 종류 단위 설정(`PUT /notifications/preferences`) 동작 변경
+- `GET /proposals/me` 상태 필터·페이지네이션, 승인 질문 ID 응답 추가, 삭제 복구 API
 - 인프라 apply, 배포, 프로덕션 변경은 별도 승인 없이는 실행하지 않는다.
 - Secret, 계정 식별자, 토큰, `.env` 값은 기록하지 않는다.
 
@@ -35,12 +39,11 @@
 
 | Area | Owner | Required review |
 | --- | --- | --- |
-| 템플릿·연계 문서 | 현재 Codex 작업 | 저장소 PR 리뷰 |
+| question·notification 모듈, Flyway 마이그레이션 | 현재 Claude Code 작업 | 저장소 PR 리뷰 |
 
 ## Existing user-owned changes
 
-- 별도 clone의 최신 origin/main에서 시작했으며 시작 시 변경 없음.
-- 원래 사용자 체크아웃은 수정하지 않고, 기존 main의 이전 TASK.md는 현재 브랜치에 한해 갱신한다.
+- 최신 origin/main에서 분기했으며 시작 시 변경 없음.
 
 ## Validation
 
@@ -52,13 +55,10 @@ git diff --check
 
 ## Completion criteria
 
-- ClickUp 실제 작업 ID·URL과 기능명세서 ID·링크, 가변 스프린트 ID가 폼에 포함된다.
-- PR은 관찰 결과·검증 방법·실제 결과·증빙과 양방향 링크 확인을 기록한다.
-- 기존 canonical 라벨·Issue 번호·커밋 규칙을 보존한다.
-- 특정 Sprint 주차·목록 ID와 테스트 성공을 기본값으로 고정하지 않는다.
-- YAML·하네스 검증 결과와 실행하지 못한 항목을 보고한다.
+- Issue #310 완료 조건 7개(삭제 후 목록 제외, 타인 제안 404, 중복 삭제 멱등, 삭제된 UNDER_REVIEW 판정 409, 알림 꺼진 제안 delivery 미생성, 도메인 단위 테스트, 하네스 검증 통과)를 충족한다.
 
 ## Decisions
 
-- 2026-10-04 사용자 제공 ClickUp 규칙과 템플릿 수정 요청을 범위 근거로 사용한다. 일정·스프린트는 해당 최신 규칙을 적용한다.
-- 이 템플릿 정리 요청의 ClickUp 작업·기능명세서·스프린트 ID는 제공되지 않았다. 임의 생성하지 않는다.
+- 2026-10-05 사용자 결정: 삭제는 모든 상태에서 허용하고 물리 삭제 대신 소프트 삭제로 한다. 알림 끄기는 제안 1건 단위다.
+- 2026-10-05 사용자 결정: 테스트 계획 D1~D3 권장안 승인(삭제 제안은 push 없음·알림함 유지, 삭제 제안 알림 설정 404, 삭제 204).
+- 2026-10-05 사용자 결정: `TransactionTemplate`을 쓰는 worker의 TX-001 처리 방식을 `docs/harness/JAVA_CONVENTIONS.md`에 규칙으로 추가한다(클래스 read-only + 진입 메서드 `NOT_SUPPORTED`, baseline 예외 없음).

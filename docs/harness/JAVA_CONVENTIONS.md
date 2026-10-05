@@ -62,10 +62,47 @@ public class ExampleService {
 - private/protected transaction method와 self-invocation을 금지한다.
   self-invocation은 같은 클래스 내부에서 `@Transactional` 메서드를 직접 호출하는
   경우다. 다른 Spring bean의 트랜잭션 메서드 호출은 해당하지 않는다.
-- `TransactionTemplate`, `Propagation.NOT_SUPPORTED`, external I/O boundary와 특별한
-  propagation/isolation은 중앙 baseline의 `JUSTIFIED_EXCEPTION`으로 등록한다.
+- 특별한 propagation/isolation은 아래 "직접 트랜잭션을 여는 Service" 형태를 따르고,
+  그 형태로 표현할 수 없을 때만 중앙 baseline의 `JUSTIFIED_EXCEPTION`으로 등록한다.
 - 정적 규칙은 업무 의미상 read/write를 완전히 추론하지 않는다. class read-only 기본값과
   package별 integration test로 실제 transaction behavior를 확인한다.
+
+### 직접 트랜잭션을 여는 Service
+
+outbox worker, sweep worker처럼 `TransactionTemplate`으로 건별 쓰기 트랜잭션을 직접 열거나
+external I/O 동안 트랜잭션을 열어 두면 안 되는 Service도 클래스 단위
+`@Transactional(readOnly = true)`를 붙인다. 이 상태로 두면 진입 메서드가 읽기 전용
+트랜잭션을 열고, 내부 `TransactionTemplate`(기본 `REQUIRED`)이 그 트랜잭션에 합류해 쓰기가
+실패한다. 그래서 프록시를 거쳐 호출되는 진입 메서드에만
+`@Transactional(propagation = Propagation.NOT_SUPPORTED)`를 붙여 바깥 트랜잭션을 열지
+않는다.
+
+```java
+@Service
+@RequiredArgsConstructor
+@Transactional(readOnly = true)
+public class ExampleWorker {
+
+    private final PlatformTransactionManager transactionManager;
+
+    // 건별 쓰기 트랜잭션은 TransactionTemplate이 연다. 클래스 read-only 트랜잭션에
+    // 합류하지 않도록 진입 메서드는 트랜잭션 없이 실행한다.
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public BatchResult processBatch(BatchCommand command) {
+        // new TransactionTemplate(transactionManager).execute(...)
+    }
+}
+```
+
+- `NOT_SUPPORTED`에는 위 예처럼 이유를 한 줄 주석으로 남긴다.
+- `TX-001`은 클래스 read-only 여부만 검사하므로 이 형태는 baseline 항목 없이 통과한다.
+  `JUSTIFIED_EXCEPTION`의 `decisionId`는 현재 브랜치 `TASK.md`에서 검증되어 다음 브랜치에서
+  사라지므로, 이 형태에 baseline 예외를 추가하지 않는다.
+- `NOT_SUPPORTED`는 호출자 트랜잭션을 중단한다. 호출자 트랜잭션 안에서 함께 커밋·롤백되어야
+  하는 Service에는 쓰지 않는다. scheduler adapter처럼 트랜잭션 밖에서만 호출되는 진입점에
+  쓴다.
+- `TransactionTemplate` 대신 같은 클래스의 `@Transactional` 메서드를 호출하는 방식으로
+  바꾸지 않는다. self-invocation(`TX-003`)이 되어 프록시가 적용되지 않는다.
 
 ## production scan과 changed-file ratchet
 

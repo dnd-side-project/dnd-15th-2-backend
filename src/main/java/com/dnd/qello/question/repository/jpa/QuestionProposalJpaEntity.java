@@ -2,11 +2,6 @@ package com.dnd.qello.question.repository.jpa;
 
 import java.time.Instant;
 
-import org.hibernate.annotations.DynamicUpdate;
-
-import com.dnd.qello.common.persistence.JpaAuditableEntity;
-import com.dnd.qello.question.domain.QuestionProposalStatus;
-
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -15,6 +10,11 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+
+import org.hibernate.annotations.DynamicUpdate;
+
+import com.dnd.qello.common.persistence.JpaAuditableEntity;
+import com.dnd.qello.question.domain.QuestionProposalStatus;
 
 @Entity
 @Table(name = "question_proposal")
@@ -41,13 +41,19 @@ public class QuestionProposalJpaEntity extends JpaAuditableEntity {
 	@Column(name = "submitted_at")
 	private Instant submittedAt;
 
+	@Column(name = "deleted_at")
+	private Instant deletedAt;
+
+	@Column(name = "notification_muted", nullable = false)
+	private boolean notificationMuted;
+
 	protected QuestionProposalJpaEntity() {
 	}
 
 	QuestionProposalJpaEntity(
-		Long id, Long proposerId, QuestionProposalStatus status, String proposedText,
-		String decisionReason, Instant submittedAt, Instant createdAt, Instant updatedAt
-	) {
+			Long id, Long proposerId, QuestionProposalStatus status, String proposedText,
+			String decisionReason, Instant submittedAt, Instant createdAt, Instant updatedAt,
+			Instant deletedAt, boolean notificationMuted) {
 		super(createdAt, updatedAt);
 		this.id = id;
 		this.proposerId = proposerId;
@@ -55,12 +61,32 @@ public class QuestionProposalJpaEntity extends JpaAuditableEntity {
 		this.proposedText = proposedText;
 		this.decisionReason = decisionReason;
 		this.submittedAt = submittedAt;
+		this.deletedAt = deletedAt;
+		this.notificationMuted = notificationMuted;
 	}
 
-	Long getId() { return id; }
-	Long getProposerId() { return proposerId; }
-	QuestionProposalStatus getStatus() { return status; }
-	String getProposedText() { return proposedText; }
-	String getDecisionReason() { return decisionReason; }
-	Instant getSubmittedAt() { return submittedAt; }
+	Long getId() {
+		return id;
+	}
+	Long getProposerId() {
+		return proposerId;
+	}
+	QuestionProposalStatus getStatus() {
+		return status;
+	}
+	String getProposedText() {
+		return proposedText;
+	}
+	String getDecisionReason() {
+		return decisionReason;
+	}
+	Instant getSubmittedAt() {
+		return submittedAt;
+	}
+	Instant getDeletedAt() {
+		return deletedAt;
+	}
+	boolean isNotificationMuted() {
+		return notificationMuted;
+	}
 }
