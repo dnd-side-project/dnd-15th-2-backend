@@ -1,5 +1,7 @@
 package com.dnd.qello.auth.web;
 
+import jakarta.servlet.http.HttpServletRequest;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -17,6 +19,7 @@ import com.dnd.qello.common.web.response.ApiResponseFactory;
 //
 // 두 경로 모두 SecurityConfiguration의 appApiSecurityFilterChain에서 인증 없이
 // 열려 있다. 등록·재발급 자체가 인증 수단을 얻는 과정이라 그 전에는 인증할 수 없다.
+// 대신 AuthRequestRateLimiter가 클라이언트 IP 단위로 요청 수를 제한한다(#315).
 //
 // 경로와 문서 애노테이션은 DeviceAuthApiSpec에 있다.
 @RestController
@@ -25,20 +28,25 @@ public class DeviceAuthController implements DeviceAuthApiSpec {
 
 	private final DeviceRegistrationService registrationService;
 	private final DeviceTokenService tokenService;
+	private final AuthRequestRateLimiter rateLimiter;
 	private final ApiResponseFactory responseFactory;
 
 	public DeviceAuthController(
 			DeviceRegistrationService registrationService,
 			DeviceTokenService tokenService,
+			AuthRequestRateLimiter rateLimiter,
 			ApiResponseFactory responseFactory) {
 		this.registrationService = registrationService;
 		this.tokenService = tokenService;
+		this.rateLimiter = rateLimiter;
 		this.responseFactory = responseFactory;
 	}
 
 	@Override
 	public ResponseEntity<ApiResponse<DeviceRegistrationResponse>> register(
-			DeviceRegistrationRequest request) {
+			DeviceRegistrationRequest request,
+			HttpServletRequest httpRequest) {
+		rateLimiter.checkDeviceRegistration(httpRequest);
 		DeviceRegistrationResult result = registrationService.register(
 				request.installationId(),
 				request.platform(),
@@ -57,7 +65,9 @@ public class DeviceAuthController implements DeviceAuthApiSpec {
 
 	@Override
 	public ResponseEntity<ApiResponse<DeviceTokenResponse>> reissue(
-			DeviceTokenRequest request) {
+			DeviceTokenRequest request,
+			HttpServletRequest httpRequest) {
+		rateLimiter.checkTokenReissue(httpRequest);
 		IssuedAccessToken issuedToken = tokenService.reissue(
 				request.installationId(), new DeviceSecret(request.deviceSecret()));
 

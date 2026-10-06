@@ -2,6 +2,10 @@ package com.dnd.qello.auth.web;
 
 import java.util.List;
 
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import jakarta.servlet.http.HttpSession;
+
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
@@ -19,10 +23,6 @@ import com.dnd.qello.auth.service.OperatorLoginService;
 import com.dnd.qello.common.web.response.ApiResponse;
 import com.dnd.qello.common.web.response.ApiResponseFactory;
 
-import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
-import jakarta.servlet.http.HttpSession;
-
 // 백오피스 로그인과 로그아웃.
 //
 // 운영자 계정 생성 엔드포인트는 두지 않는다. 자체 가입 경로는 그 자체가 공격면이며
@@ -36,26 +36,29 @@ public class OperatorLoginController implements OperatorLoginApiSpec {
 	private static final String OPERATOR_AUTHORITY = "ROLE_OPERATOR";
 
 	private final OperatorLoginService operatorLoginService;
+	private final AuthRequestRateLimiter rateLimiter;
 	private final ApiResponseFactory responseFactory;
-	private final SecurityContextRepository securityContextRepository =
-		new HttpSessionSecurityContextRepository();
+	private final SecurityContextRepository securityContextRepository = new HttpSessionSecurityContextRepository();
 
 	public OperatorLoginController(
-		OperatorLoginService operatorLoginService,
-		ApiResponseFactory responseFactory
-	) {
+			OperatorLoginService operatorLoginService,
+			AuthRequestRateLimiter rateLimiter,
+			ApiResponseFactory responseFactory) {
 		this.operatorLoginService = operatorLoginService;
+		this.rateLimiter = rateLimiter;
 		this.responseFactory = responseFactory;
 	}
 
 	@Override
 	public ResponseEntity<ApiResponse<OperatorSessionResponse>> login(
-		OperatorLoginRequest request,
-		HttpServletRequest httpRequest,
-		HttpServletResponse httpResponse
-	) {
+			OperatorLoginRequest request,
+			HttpServletRequest httpRequest,
+			HttpServletResponse httpResponse) {
+		// 계정 단위 잠금(423)과 별개로 IP 단위로도 막는다. 잠금만으로는 여러 계정을
+		// 번갈아 시도하는 대입을 막지 못한다(#315).
+		rateLimiter.checkOperatorLogin(httpRequest);
 		long userId = operatorLoginService.login(
-			LoginId.of(request.loginId()), new RawPassword(request.password()));
+				LoginId.of(request.loginId()), new RawPassword(request.password()));
 
 		// 인증 전에 심어진 세션 ID를 버리고 새로 발급한다. SecurityFilterChain의
 		// sessionFixation 설정은 필터가 인증을 수행할 때 동작하므로, 컨트롤러가 직접
@@ -67,7 +70,7 @@ public class OperatorLoginController implements OperatorLoginApiSpec {
 		httpRequest.getSession(true);
 
 		Authentication authentication = UsernamePasswordAuthenticationToken.authenticated(
-			String.valueOf(userId), null, List.of(new SimpleGrantedAuthority(OPERATOR_AUTHORITY)));
+				String.valueOf(userId), null, List.of(new SimpleGrantedAuthority(OPERATOR_AUTHORITY)));
 		SecurityContext context = SecurityContextHolder.createEmptyContext();
 		context.setAuthentication(authentication);
 		SecurityContextHolder.setContext(context);

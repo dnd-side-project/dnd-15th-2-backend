@@ -43,7 +43,11 @@ public enum AuthErrorCode implements ErrorCode {
 	DEVICE_ALREADY_REGISTERED(HttpStatus.CONFLICT, "AUT-APP-005", ErrorCategory.APP, "이미 등록된 기기입니다."),
 
 	// 토큰 재발급 시 device_secret이 일치하지 않거나 자격증명이 REVOKED 상태. 재등록이 필요하다
-	DEVICE_CREDENTIAL_INVALID(HttpStatus.UNAUTHORIZED, "AUT-APP-006", ErrorCategory.APP, "기기 자격증명이 유효하지 않습니다.");
+	DEVICE_CREDENTIAL_INVALID(HttpStatus.UNAUTHORIZED, "AUT-APP-006", ErrorCategory.APP, "기기 자격증명이 유효하지 않습니다."),
+
+	// 기기 등록·토큰 재발급·운영자 로그인에서 클라이언트 IP 단위 요청 한도를 넘음(#315)
+	RATE_LIMIT_EXCEEDED(
+			HttpStatus.TOO_MANY_REQUESTS, "AUT-APP-007", ErrorCategory.APP, "요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.");
 
 	private final HttpStatus httpStatus;
 	private final String code;
