@@ -2,7 +2,6 @@ package com.dnd.qello.harness;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.List;
 
 import org.junit.jupiter.api.DisplayName;
@@ -13,12 +12,15 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assumptions.assumeFalse;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
  * <pre>
  * Created at: 2026-09-30T03:35:08+09:00
  * Source scenario: TEST-PLAN-GH-290-REPO-MAP-UNIT-001
  * Additional scenarios: UNIT-002, UNIT-003, UNIT-004, UNIT-005, UNIT-009, UNIT-010, UNIT-011
+ * Windows execution: TEST-PLAN-GH-312-COUNTRY-ONLY-REGISTRATION-UNIT-006 through UNIT-007
  * </pre>
  */
 class RepoMapToolTest {
@@ -87,8 +89,8 @@ class RepoMapToolTest {
 	}
 
 	@Test
-	@DisplayName("UNIT-002 actual tool bytes and reported runtime changes invalidate unchanged index")
-	void actualFingerprintChanges() throws Exception {
+	@DisplayName("UNIT-002 actual tool bytes changes invalidate unchanged index")
+	void actualToolChanges() throws Exception {
 		init();
 		source("One.java", "class One {}");
 		Path copiedTools = Files.createDirectories(root.resolve("build/copied-tools"));
@@ -101,6 +103,16 @@ class RepoMapToolTest {
 		assertThat(run("query", "--symbol", "One").code()).isNotZero();
 		Files.writeString(helper, original);
 		assertThat(run("check").code()).isZero();
+	}
+
+	@Test
+	@DisplayName("UNIT-002 reported runtime changes invalidate unchanged index")
+	void reportedRuntimeChanges() throws Exception {
+		// 가짜 java는 shebang Python 스크립트다. Windows는 확장자 없는 스크립트를 java 실행 파일로 실행하지 못한다.
+		assumeFalse(PlatformCommands.isWindows(), "script-based java fixture needs a POSIX shebang");
+		init();
+		source("One.java", "class One {}");
+		generate();
 		Path bin = Files.createDirectories(root.resolve("build/runtime/bin"));
 		Path java = bin.resolve("java");
 		String wrapper = "#!/usr/bin/env python3\nimport os, sys\n"
@@ -163,16 +175,26 @@ class RepoMapToolTest {
 	}
 
 	@Test
-	@DisplayName("UNIT-004 symlink escape and source output targets are rejected without modification")
-	void unsafePaths() throws Exception {
+	@DisplayName("UNIT-004 source output targets are rejected without modification")
+	void unsafeOutputTarget() throws Exception {
 		init();
 		Path file = source("One.java", "class One {}");
 		generate();
-		String old = Files.readString(index());
-		Result unsafe = command("python3", TOOL.toString(), "generate", "--root", root.toString(),
-				"--output", file.toString());
+		Result unsafe = command(PlatformCommands.python(TOOL.toString(), "generate", "--root", root.toString(),
+				"--output", file.toString()).toArray(String[]::new));
 		assertThat(unsafe.code()).isNotZero();
 		assertThat(Files.readString(file)).isEqualTo("class One {}");
+	}
+
+	@Test
+	@DisplayName("UNIT-004 symlink escape is rejected without modification")
+	void symlinkEscape() throws Exception {
+		assumeTrue(PlatformCommands.canCreateSymbolicLinks(root),
+				"symbolic links are not permitted (Windows needs Developer Mode)");
+		init();
+		source("One.java", "class One {}");
+		generate();
+		String old = Files.readString(index());
 		Files.createSymbolicLink(root.resolve("src/main/java/Escape.java"), TOOL);
 		assertThat(run("generate").code()).isNotZero();
 		assertThat(Files.readString(index())).isEqualTo(old);
@@ -358,8 +380,8 @@ class RepoMapToolTest {
 	}
 
 	private Result run(String action, String... args) throws Exception {
-		List<String> command = new ArrayList<>(List.of("python3", executableTool.toString(), action,
-				"--root", root.toString(), "--output", index().toString()));
+		List<String> command = PlatformCommands.python(executableTool.toString(), action,
+				"--root", root.toString(), "--output", index().toString());
 		command.addAll(List.of(args));
 		return command(command.toArray(String[]::new));
 	}
