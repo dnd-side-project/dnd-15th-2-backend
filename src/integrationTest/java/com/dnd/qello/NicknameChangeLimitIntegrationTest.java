@@ -78,7 +78,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class NicknameChangeLimitIntegrationTest extends PostgisContainerIntegrationTestSupport {
 
 	private static final String COUNTRY_CODE = "KR";
-	private static final String REGION_CODE = "TEST-NICKNAME-LIMIT-REGION";
 	private static final Duration COOLDOWN = Duration.ofDays(30);
 
 	@Autowired
@@ -112,11 +111,6 @@ class NicknameChangeLimitIntegrationTest extends PostgisContainerIntegrationTest
 				VALUES (?, NULL, 'Korea', 'COUNTRY')
 				ON CONFLICT (code) DO NOTHING
 				""", COUNTRY_CODE);
-		jdbcTemplate.update("""
-				INSERT INTO region_code (code, parent_code, display_name, level)
-				VALUES (?, ?, 'Nickname Limit Region', 'REGION')
-				ON CONFLICT (code) DO NOTHING
-				""", REGION_CODE, COUNTRY_CODE);
 		transactionActiveAtModeration.clear();
 		reset(moderationChecker);
 		doAnswer(invocation -> {
@@ -192,7 +186,7 @@ class NicknameChangeLimitIntegrationTest extends PostgisContainerIntegrationTest
 				INSERT INTO user_account (role, status, country_code, coarse_region_code, locale, timezone, nickname)
 				VALUES ('USER', 'ACTIVE', ?, ?, 'ko-KR', 'Asia/Seoul', '이전형태')
 				RETURNING id
-				""", Long.class, COUNTRY_CODE, REGION_CODE);
+				""", Long.class, COUNTRY_CODE, COUNTRY_CODE);
 
 		assertThat(column).containsEntry("data_type", "timestamp with time zone").containsEntry("is_nullable", "YES");
 		assertThat(nicknameChangedAt(id)).isNull();
@@ -235,11 +229,10 @@ class NicknameChangeLimitIntegrationTest extends PostgisContainerIntegrationTest
 						  "installationId": "nickname-limit-%d",
 						  "platform": "IOS",
 						  "countryCode": "%s",
-						  "coarseRegionCode": "%s",
 						  "locale": "ko-KR",
 						  "timezone": "Asia/Seoul"%s
 						}
-						""".formatted(installationSequence, COUNTRY_CODE, REGION_CODE, nicknameField)))
+						""".formatted(installationSequence, COUNTRY_CODE, nicknameField)))
 				.andExpect(status().isCreated())
 				.andReturn();
 		JsonNode data = objectMapper.readTree(result.getResponse().getContentAsString()).get("data");

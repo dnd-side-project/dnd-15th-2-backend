@@ -61,7 +61,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class AuthRateLimitIntegrationTest extends PostgisContainerIntegrationTestSupport {
 
 	private static final String COUNTRY_CODE = "KR";
-	private static final String REGION_CODE = "TEST-RATE-LIMIT-REGION";
 	private static final String LOGIN_ID = "qello-rate-admin";
 	private static final String PASSWORD = "example-operator-password";
 
@@ -91,11 +90,6 @@ class AuthRateLimitIntegrationTest extends PostgisContainerIntegrationTestSuppor
 				VALUES (?, NULL, 'Korea', 'COUNTRY')
 				ON CONFLICT (code) DO NOTHING
 				""", COUNTRY_CODE);
-		jdbcTemplate.update("""
-				INSERT INTO region_code (code, parent_code, display_name, level)
-				VALUES (?, ?, 'Rate Limit Region', 'REGION')
-				ON CONFLICT (code) DO NOTHING
-				""", REGION_CODE, COUNTRY_CODE);
 	}
 
 	@Test
@@ -187,11 +181,10 @@ class AuthRateLimitIntegrationTest extends PostgisContainerIntegrationTestSuppor
 						  "installationId": "%s",
 						  "platform": "IOS",
 						  "countryCode": "%s",
-						  "coarseRegionCode": "%s",
 						  "locale": "ko-KR",
 						  "timezone": "Asia/Seoul"
 						}
-						""".formatted(installationId, COUNTRY_CODE, REGION_CODE));
+						""".formatted(installationId, COUNTRY_CODE));
 	}
 
 	private MockHttpServletRequestBuilder reissue(String installationId, String deviceSecret) {
