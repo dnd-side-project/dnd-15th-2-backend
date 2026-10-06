@@ -1,57 +1,44 @@
-# GitHub Issue #312 Task Contract
+# GitHub Issue #315 Task Contract
 
-> Generated at: `2026-10-06T11:02:59+09:00`
+> Generated at: `2026-10-06T13:59:46+09:00`
 >
 > 이 파일은 현재 작업 브랜치의 계약이다. 저장소 전역 정책은 `AGENTS.md`를
 > 따른다.
 
 ## Work gate
 
-- Title: `기기 등록 요청의 coarseRegionCode 제거와 국가코드 단일 입력`
-- GitHub Issue: `#312`
-- Branch: `feat/gh-312-country-only-registration`
+- Title: `인증·닉네임 변경 요청 한도와 닉네임 변경 주기 제한`
+- GitHub Issue: `#315`
+- Branch: `feat/gh-315-auth-nickname-rate-limit`
 - Base branch: `main`
 
 ## Objective
 
-기기 등록 API(`POST /api/v1/auth/devices`)가 `countryCode`와 함께 `coarseRegionCode`를 필수로 받는다.
-2026-10-06 팀 회의에서 지역코드를 쓰지 않고 국가코드만 입력받기로 결정했고, 이 결정으로 #283의
-`coarse_region_code` 단위 확정 항목을 대체한다. 등록 요청 계약과 관련 문서만 바꾸고 DB 스키마는 유지한다.
+기기 등록, 토큰 재발급, 운영자 로그인, 닉네임 변경에 요청 한도가 없다. `docs/product/AUTH_DESIGN.md` §8.2는
+기기 등록의 IP 단위 rate limit을 1차 필수 방어로 정했고, 닉네임 변경은 요청마다 OpenAI moderation을 호출해
+비용이 든다. 네 경로에 설정으로 주입하는 요청 한도를 두고, F01의 닉네임 변경 주기 제한을 구현한다.
 
 ## Scope
 
-- `DeviceRegistrationRequest`에서 `coarseRegionCode` 필드를 제거한다.
-- `DeviceRegistrationService.register`가 정규화한 `countryCode`를 `Account.createUser`의 `coarseRegionCode` 인자로 넘긴다.
-- `DeviceRegistrationService.validateCountry`에서 `findCountryAncestors` 호출을 제거하고, 호출처가 없어지는
-  `CountryCatalogRepository.findCountryAncestors`와 `JdbcCountryCatalogRepository` 구현을 삭제한다.
-- `DeviceAuthApiSpec`의 요청 설명과 `docs/api/openapi.json`을 새 요청 계약에 맞춘다.
-- `docs/product/ONBOARDING_COUNTRY_DESIGN.md`, `docs/product/AUTH_DESIGN.md`의 요청 예시·처리 순서·실패 표에서
-  `coarseRegionCode`를 제거한다.
-- `docs/adr/0007-require-country-before-user-account-creation.md`의 계층 일치 검증 결정이 이번 결정으로 대체됐음을
-  기록한다. ADR 본문 수정과 신규 ADR 중 어느 쪽으로 할지는 미결정이다.
-- `coarseRegionCode`를 요청에 넣는 테스트를 새 계약에 맞춘다(`DeviceRegistrationServiceTest`,
-  `DeviceAuthIntegrationTest` 등 7개 파일).
-
-### 추가 범위: Windows 개발 환경 지원 (사용자 지시 2026-10-06)
-
-별도 Issue 없이 이 PR에서 진행한다. macOS 동작은 바꾸지 않고 Windows에서도 하네스·훅·테스트가 실패하지 않게 한다.
-
-- Python 실행기 선택을 `QELLO_PYTHON` → 실제로 실행되는 `python3` → `python` → `py -3` 순서로 통일한다.
-  Windows의 `python3` 실행 별칭(Store 안내)은 실행 확인에서 걸러낸다. 대상: `harness`, `.husky/*`,
-  `scripts/python.mjs`, `build.gradle`(`validateJavaConventionBaseline`), Python을 호출하는 테스트.
-- `scripts/run-hook.py`와 테스트가 Windows에서 `gradlew.bat`을 실행하게 한다.
-- `*PersistenceBoundaryTest`, `AnswerJdbcBoundaryTest`의 경로 비교를 구분자와 무관하게 한다.
-- `StructuredLoggingProfileIntegrationTest`의 하위 JVM classpath를 argument file로 넘긴다.
-- `.gitattributes`에 텍스트 파일 LF 규칙을 추가한다. 저장소의 기존 파일은 모두 LF라 내용 변경이 없다.
-- 심볼릭 링크를 만들 수 없는 환경(개발자 모드가 꺼진 Windows)에서는 링크가 필요한 단언만 건너뛴다.
+- 단일 인스턴스 메모리 고정 윈도 카운터(Clock 주입, 만료 키 정리). 새 의존성은 추가하지 않는다.
+- 기기 등록(`POST /api/v1/auth/devices`)·토큰 재발급(`POST /api/v1/auth/token`)·운영자 로그인: 클라이언트 IP 단위 한도.
+  클라이언트 IP는 연결 주소(`remoteAddr`)를 쓰고 `X-Forwarded-For`는 신뢰하지 않는다(현재 앞단 프록시 없음).
+- 닉네임 변경 시도: 사용자 단위 한도. 중복·moderation 거절로 실패한 시도도 센다.
+- 닉네임 변경 주기(F01): 마지막 성공 변경 후 일정 기간 재변경 거절. 가입 시 지정한 닉네임은 주기에 넣지 않는다.
+  주기 위반은 moderation 호출 전에 거절한다.
+- Flyway: `user_account.nickname_changed_at` 컬럼 추가(nullable, 기존 행 NULL)
+- 오류 코드: `AUT-APP-007`, `ACC-APP-003`(닉네임 변경 시도 한도), `ACC-APP-004`(닉네임 변경 주기). 모두 429
+- 한도·윈도·주기 값은 `application.yml` 기본값과 환경 변수로 주입한다.
+  기본값: 등록 IP당 10회/1시간, 재발급 IP당 60회/1시간, 운영자 로그인 IP당 20회/15분,
+  닉네임 변경 시도 사용자당 10회/1일, 닉네임 변경 주기 30일
+- 문서: 해당 ApiSpec의 429 응답, `docs/api/openapi.json`, `docs/error-codes.md`, `AUTH_DESIGN.md` §8.2·§9
 
 ## Explicit exclusions
 
-- `coarse_region_code`, `matched_region_code` 컬럼 이름 변경과 삭제
-- 피드 응답 필드 이름 변경
-- 운영자 시드 설정(`OperatorSeedProperties.coarseRegionCode`) 변경
-- dev DB에 수동 투입한 REGION 행(`KR-11` 등)과 그 코드로 등록된 계정 데이터 정리
-- 매칭 범위 변경(`delivery-scope: GLOBAL` 기본값 유지)
+- Redis 등 공유 저장소와 다중 인스턴스 지원(재시작 시 카운터 초기화를 수용)
+- 프록시·LB 도입 시 필요한 forwarded header 신뢰 설정
+- `Retry-After` 헤더
+- Play Integrity / App Attest 기기 무결성 검증(§8.2 2차)
 - 인프라 apply, 배포, 프로덕션 변경은 별도 승인 없이는 실행하지 않는다.
 - Secret, 계정 식별자, 토큰, `.env` 값은 기록하지 않는다.
 
@@ -59,15 +46,14 @@
 
 | Area | Owner | Required review |
 | --- | --- | --- |
-| 등록 요청 계약·서비스·repository 변경 | 실행 에이전트 | 사용자 PR 리뷰 |
-| 설계 문서·ADR·OpenAPI 갱신 | 실행 에이전트 | ADR 처리 방식 사용자 결정 후 PR 리뷰 |
+| 요청 한도 컴포넌트·auth/account 서비스·오류 코드·설정 | 실행 에이전트 | 사용자 PR 리뷰 |
+| Flyway 마이그레이션(`nickname_changed_at`) | 실행 에이전트 | 사용자 PR 리뷰 |
+| ApiSpec·OpenAPI·`docs/error-codes.md`·`AUTH_DESIGN.md` | 실행 에이전트 | 사용자 PR 리뷰 |
 | 테스트 수정·추가 | 실행 에이전트 | `/harness-test-plan` 승인 후 작성 |
-| Windows 지원(하네스·훅·빌드·테스트·`.gitattributes`) | 실행 에이전트 | 사용자 지시로 범위 추가, PR 리뷰 |
 
 ## Existing user-owned changes
 
-- 작업 시작 시 `git status --short`는 깨끗했다. 직전 브랜치에서 내용 차이 없이 수정됨으로 표시되던 파일 1159개는
-  사용자 확인 후 `git restore .`로 정리했다.
+- 작업 시작 시 `git status --short`는 깨끗했다. 최신 `origin/main`(`18b1adc`)에서 분기했다.
 
 ## Validation
 
@@ -79,12 +65,23 @@ git diff --check
 
 ## Completion criteria
 
-- `coarseRegionCode` 없이 `countryCode=KR`로 등록하면 201이고 `user_account.coarse_region_code`가 `KR`이다(`DeviceAuthIntegrationTest`).
-- `coarseRegionCode`를 함께 보내는 기존 형식 요청도 201이다(Jackson 미지정 필드 무시 기본값 확인).
-- 형식 오류·미지원 `countryCode`는 400 `AUT-VAL-004`이고 계정·기기 자격증명 저장이 0건이다.
-- `grep -rn "findCountryAncestors" src/main` 결과가 0건이다.
-- `docs/api/openapi.json`의 `DeviceRegistrationRequest` 스키마에 `coarseRegionCode`가 없다.
+- 네 경로 모두 한도를 넘은 요청이 429와 해당 오류 코드로 거절된다.
+- 한도 값은 설정으로 주입되고 테스트에서 바꾼 값이 반영된다.
+- 주기 안의 닉네임 재변경은 429이고 닉네임이 바뀌지 않으며 moderation을 호출하지 않는다.
+- 윈도가 지나면 다시 허용된다(Clock 기반 검증).
 - `./harness check`와 `./harness pr-ready --project-tests`가 통과한다.
-- Windows(이 PC)에서 `./gradlew test`와 `./gradlew integrationTest`가 환경 요인 실패 없이 통과한다.
-  심볼릭 링크 단언처럼 플랫폼 기능이 없어 건너뛴 항목은 보고서에 skipped로 기록한다.
-- `git ls-files --eol`에서 `gradlew.bat` 외 모든 텍스트 파일이 `eol=lf` 속성을 갖는다.
+
+## Decisions
+
+- 2026-10-06 사용자 결정: 초안 범위·권장 기본값 승인. 닉네임 변경 주기 기본값은 30일.
+- 2026-10-06 사용자 결정: #312 위에 쌓지 않고 `origin/main`에서 분기한다. #312(PR #314)와 등록 코드가 겹치므로
+  먼저 머지된 쪽에 맞춰 rebase한다.
+- 2026-10-06 사용자 결정: 테스트 계획 `TEST-PLAN-GH-315-AUTH-NICKNAME-RATE-LIMIT` 승인. D1 IP 한도는 컨트롤러에 도달한
+  요청을 성공·실패와 무관하게 센다. D2 닉네임 변경은 시도 한도 → 계정 조회·주기 → 중복 → moderation → 저장 순서이고
+  주기 위반도 시도 1회로 센다. D3 마지막 변경 시각 + 주기 시점부터 허용한다. D4 IPv6는 /64 접두사 단위로 센다.
+
+## Environment notes
+
+- `origin/main`에는 #312의 Windows 수정이 없어 이 PC에서 `./harness`와 Husky 훅이 `python3` Store 별칭에 막힌다.
+  하네스는 `python scripts/harness.py`로 직접 실행한다. 훅과 Gradle Python 태스크의 Windows 실패는 #312 머지 전까지
+  환경 요인으로 보고서에 기록한다.
