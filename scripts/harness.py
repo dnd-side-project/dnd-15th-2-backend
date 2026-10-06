@@ -144,7 +144,10 @@ def scaffold(template: str, destination: Path, replacements: dict[str, str]) -> 
 
 def command_doctor(_: argparse.Namespace) -> None:
     print("Qello harness doctor")
-    required = ("git", "python3", "java")
+    # Python은 이 스크립트를 실행 중인 인터프리터로 확인한다. 실행 파일 이름(python3·python·py)은
+    # OS마다 달라 scripts/find-python.sh가 고른다.
+    print(f"[ok] python {sys.version.split()[0]}")
+    required = ("git", "java")
     optional = (
         "gh",
         "claude",

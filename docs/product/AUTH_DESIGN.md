@@ -140,6 +140,8 @@ CREATE INDEX device_credential_user_idx
 
 국가는 공개용 기준 지역인 `coarse_region_code`와 별도 속성으로 저장한다. 기준 지역은
 향후 도시나 권역으로 바뀔 수 있지만, 온보딩에서 확정한 국가는 그대로 남아야 한다.
+#312부터 지역코드는 입력받지 않으며 일반 사용자의 `coarse_region_code`에는
+`country_code`와 같은 COUNTRY 코드를 저장한다.
 화면 표시 이름은 복사하지 않고 `region_code.display_name`에서 조회한다.
 
 DB 무결성은 다음 형태로 구성한다. 아래 DDL은 구현 시 새 Flyway migration으로
@@ -214,7 +216,6 @@ Content-Type: application/json
   "installationId": "a3f1...",
   "platform": "IOS",
   "countryCode": "KR",
-  "coarseRegionCode": "KR-11",
   "locale": "ko-KR",
   "timezone": "Asia/Seoul",
   "nickname": "바람"
@@ -236,19 +237,19 @@ Content-Type: application/json
 
 1. `installation_id`로 ACTIVE 자격증명 조회. 존재하면 409 Conflict.
 2. `countryCode`가 `region_code.level = COUNTRY`인 코드인지 확인한다.
-3. `coarseRegionCode`의 최상위 국가가 `countryCode`와 같은지 확인한다.
-4. `Account.createUser(countryCode, coarseRegionCode, locale, timezone, nickname)` 호출.
-5. `AccountRepository.save()`.
-6. `SecureRandom` 32바이트 생성 → SHA-256 → `device_credential` insert.
-7. Access token 발급.
+3. `Account.createUser(countryCode, countryCode, locale, timezone, nickname)` 호출.
+   두 번째 인자는 `coarse_region_code`이며 국가 코드를 그대로 쓴다(#312).
+4. `AccountRepository.save()`.
+5. `SecureRandom` 32바이트 생성 → SHA-256 → `device_credential` insert.
+6. Access token 발급.
 
-`countryCode`, `coarseRegionCode`, `locale`, `timezone`은 일반 사용자 등록 요청의
-필수값이다. `countryCode`는 ISO 3166-1 alpha-2 대문자 코드로 정규화한다. 앱은 최초
+`countryCode`, `locale`, `timezone`은 일반 사용자 등록 요청의
+필수값이다. 지역코드(`coarseRegionCode`)는 받지 않는다(#312). `countryCode`는 ISO 3166-1 alpha-2 대문자 코드로 정규화한다. 앱은 최초
 실행 시 국가를 선택하고 나머지 값을 확보한 뒤 등록을 호출한다. 자유 입력 국가명은
 API 식별자로 사용하지 않으며 화면 표시 이름은 국가 코드 마스터에서 현지화한다.
 
 국가 코드가 누락·공백·형식 오류이거나 마스터에 없거나 COUNTRY가 아니면 400으로
-거절한다. `coarseRegionCode`가 다른 국가에 속해도 같은 방식으로 거절한다. 누락·공백
+거절한다. 누락·공백
 외의 국가 검증 실패는 `AUT-VAL-004 INVALID_COUNTRY_CODE`로 통일한다. 이 검증은 쓰기
 전에 수행하므로 실패한 요청은 `user_account`와 `device_credential`을 만들지 않고
 access token도 발급하지 않는다. 국가 미입력 상태를 위한 `INACTIVE` 계정이나 별도

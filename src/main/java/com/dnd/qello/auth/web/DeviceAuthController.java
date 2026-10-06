@@ -28,10 +28,9 @@ public class DeviceAuthController implements DeviceAuthApiSpec {
 	private final ApiResponseFactory responseFactory;
 
 	public DeviceAuthController(
-		DeviceRegistrationService registrationService,
-		DeviceTokenService tokenService,
-		ApiResponseFactory responseFactory
-	) {
+			DeviceRegistrationService registrationService,
+			DeviceTokenService tokenService,
+			ApiResponseFactory responseFactory) {
 		this.registrationService = registrationService;
 		this.tokenService = tokenService;
 		this.responseFactory = responseFactory;
@@ -39,36 +38,31 @@ public class DeviceAuthController implements DeviceAuthApiSpec {
 
 	@Override
 	public ResponseEntity<ApiResponse<DeviceRegistrationResponse>> register(
-		DeviceRegistrationRequest request
-	) {
+			DeviceRegistrationRequest request) {
 		DeviceRegistrationResult result = registrationService.register(
-			request.installationId(),
-			request.platform(),
-			request.countryCode(),
-			request.coarseRegionCode(),
-			request.locale(),
-			request.timezone(),
-			request.nickname()
-		);
+				request.installationId(),
+				request.platform(),
+				request.countryCode(),
+				request.locale(),
+				request.timezone(),
+				request.nickname());
 
 		DeviceRegistrationResponse body = new DeviceRegistrationResponse(
-			result.userId(),
-			result.deviceSecret().value(),
-			result.accessToken().value(),
-			result.accessToken().expiresInSeconds()
-		);
+				result.userId(),
+				result.deviceSecret().value(),
+				result.accessToken().value(),
+				result.accessToken().expiresInSeconds());
 		return ResponseEntity.status(HttpStatus.CREATED).body(responseFactory.success(body));
 	}
 
 	@Override
 	public ResponseEntity<ApiResponse<DeviceTokenResponse>> reissue(
-		DeviceTokenRequest request
-	) {
+			DeviceTokenRequest request) {
 		IssuedAccessToken issuedToken = tokenService.reissue(
-			request.installationId(), new DeviceSecret(request.deviceSecret()));
+				request.installationId(), new DeviceSecret(request.deviceSecret()));
 
 		return ResponseEntity.ok(responseFactory.success(
-			new DeviceTokenResponse(issuedToken.value(), issuedToken.expiresInSeconds())));
+				new DeviceTokenResponse(issuedToken.value(), issuedToken.expiresInSeconds())));
 	}
 
 }

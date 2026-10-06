@@ -7,6 +7,8 @@
 > 작성일: 2026-08-08
 >
 > 상태: `APPROVED_FOR_IMPLEMENTATION`
+>
+> 변경: #312(2026-10-06) 지역코드 입력을 제거하고 국가코드만 입력받는다.
 
 ## 1. 목표와 불변식
 
@@ -29,7 +31,6 @@
   "installationId": "<installation-id>",
   "platform": "IOS",
   "countryCode": "KR",
-  "coarseRegionCode": "KR-11",
   "locale": "ko-KR",
   "timezone": "Asia/Seoul",
   "nickname": "바람"
@@ -44,7 +45,8 @@
 - `region_code`에 같은 코드의 `COUNTRY` 행이 있어야 한다. 마스터에 없는 국가는
   ISO 형식이어도 현재 서비스의 미지원 국가로 처리한다.
 - 자유 입력 국가명과 부분 일치, 별칭, locale 기반 추정은 허용하지 않는다.
-- `coarseRegionCode`의 최상위 조상이 같은 `countryCode`여야 한다.
+- 지역코드는 입력받지 않는다. 서버는 정규화한 `countryCode`를 `coarse_region_code`에도
+  저장한다(#312).
 
 등록 성공 응답은 기존 `userId`, `deviceSecret`, `accessToken`, `expiresIn` 계약을
 유지한다. `countryCode`를 토큰 claim이나 등록 응답에 추가하지 않는다.
@@ -55,7 +57,6 @@
 요청 값 검증
   → 기존 installation 중복 확인
   → countryCode 정규화·국가 마스터 확인
-  → coarseRegionCode 최상위 국가 일치 확인
   → USER 계정 저장
   → 기기 자격증명 저장
   → 첫 access token 발급
@@ -70,11 +71,10 @@
 | `countryCode` 누락·공백 | 400 | 공통 요청 검증 오류 | 0건 |
 | 형식 오류·미지원 코드 | 400 | `AUT-VAL-004` | 0건 |
 | COUNTRY가 아닌 지역 코드 | 400 | `AUT-VAL-004` | 0건 |
-| `coarseRegionCode`와 국가 불일치 | 400 | `AUT-VAL-004` | 0건 |
 | 기존 ACTIVE installation | 409 | `AUT-APP-005` | 0건 |
 | 계정·자격증명 저장 실패 | 기존 5xx/충돌 계약 | 기존 예외 매핑 | 전체 rollback |
 
-오류 응답의 `field`는 `countryCode` 또는 `coarseRegionCode`만 사용하고 제출된 값을
+오류 응답의 `field`는 `countryCode`만 사용하고 제출된 값을
 `reason`, 애플리케이션 로그, APM에 포함하지 않는다.
 
 ## 4. 도메인과 저장 모델
@@ -96,15 +96,17 @@
 
 `coarse_region_code`는 공개 기준 지역이므로 유지한다. 국가와 기준 지역을 한 컬럼으로
 합치면 기준 지역을 도시로 변경할 때 온보딩 국가가 사라지므로 별도 컬럼이 필요하다.
+#312부터 일반 사용자의 `coarse_region_code`에는 `country_code`와 같은 COUNTRY 코드를
+저장한다.
 
 ## 5. 조회 경계
 
-지역 계층 확인은 DB 재귀 조회가 필요하므로 ADR-0002에 따라 JDBC adapter가 담당한다.
+국가 마스터 확인은 ADR-0002에 따라 JDBC adapter가 담당한다.
 
 - account 영역에 국가 조회 repository port를 둔다.
-- JDBC adapter는 국가 코드가 COUNTRY인지 확인하고, `coarseRegionCode`에서 최상위
-  COUNTRY를 한 번의 읽기 쿼리로 결정한다.
-- 결과가 없거나 하나로 확정되지 않으면 유효하지 않은 입력으로 처리한다.
+- JDBC adapter는 국가 코드가 `region_code`의 COUNTRY 행인지 확인한다.
+- COUNTRY 행이 없으면 유효하지 않은 입력으로 처리한다.
+- `coarseRegionCode`에서 최상위 COUNTRY를 찾던 재귀 조회는 #312에서 제거했다.
 - `DeviceRegistrationService`는 이 port의 검증 결과를 받은 뒤에만
   `AccountRepository.save`를 호출한다.
 
@@ -143,7 +145,7 @@ DBML, 설명 ERD와 schema manifest는 같은 변경에서 migration과 동기�
 - null, 빈 문자열과 공백뿐인 `countryCode`를 거절한다.
 - 소문자 alpha-2 코드는 정규화하고 저장값은 대문자인지 확인한다.
 - alpha-2 형식이 아닌 값, 마스터에 없는 값과 REGION/CITY/DISTRICT 코드를 거절한다.
-- 국가와 `coarseRegionCode`의 최상위 국가가 다르면 거절한다.
+- 요청에 `coarseRegionCode`를 함께 보내도 등록 결과에 영향이 없다(#312).
 - 모든 거절 사례에서 account·credential repository 저장과 token issuer 호출이
   발생하지 않았는지 검증한다.
 - 정상 요청은 국가, 계정과 기기 자격증명을 한 트랜잭션으로 저장하고 토큰을 발급한다.

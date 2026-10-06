@@ -127,6 +127,11 @@ tasks.register('checkstyleFixture', Checkstyle) {
 	dependsOn 'validateJavaConventionBaseline'
 }
 
+// Windows의 python3는 Microsoft Store 안내만 여는 실행 별칭이라 python을 기본값으로 쓴다.
+// 다른 인터프리터는 QELLO_PYTHON으로 지정한다(scripts/find-python.sh와 같은 변수).
+def qelloPython = providers.environmentVariable('QELLO_PYTHON')
+	.orElse(System.getProperty('os.name').toLowerCase(Locale.ROOT).contains('windows') ? 'python' : 'python3')
+
 tasks.register('validateJavaConventionBaseline', Exec) {
 	description = 'Validates Java convention baseline metadata.'
 	group = 'verification'
@@ -134,7 +139,7 @@ tasks.register('validateJavaConventionBaseline', Exec) {
 	outputs.file(suppressionOutput)
 	inputs.file('config/java-conventions/baseline.json')
 	inputs.file('TASK.md')
-	commandLine 'python3', 'scripts/validate-java-conventions.py',
+	commandLine qelloPython.get(), 'scripts/validate-java-conventions.py',
 		'--suppression-output', suppressionOutput.get().asFile.absolutePath
 }
 

@@ -1,6 +1,7 @@
 /**
  * Created at: 2026-09-05T03:45:38+09:00
- * Source scenario: TEST-PLAN-GH-215-STRUCTURED-REQUEST-LOGGING-INT-004 through INT-005
+ * Source scenario: TEST-PLAN-GH-215-STRUCTURED-REQUEST-LOGGING-INT-004 through INT-005,
+ * TEST-PLAN-GH-312-COUNTRY-ONLY-REGISTRATION-INT-005
  */
 package com.dnd.qello;
 
@@ -9,6 +10,7 @@ import java.net.URISyntaxException;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -55,11 +57,15 @@ class StructuredLoggingProfileIntegrationTest {
 	}
 
 	private static ChildRun runProbe(String profile) throws Exception {
+		// classpath를 명령줄에 그대로 넣으면 Windows 명령줄 길이 제한(32,767자)을 넘는다.
+		// JDK argument file(@file)로 넘긴다. 따옴표 안의 역슬래시는 이스케이프 문자라 두 번 쓴다.
+		Path argumentFile = Files.createTempFile("structured-logging-probe", ".args");
+		Files.writeString(argumentFile,
+				"-cp \"" + childClasspath().replace("\\", "\\\\") + "\"", StandardCharsets.UTF_8);
 		ProcessBuilder builder = new ProcessBuilder(
 				Path.of(System.getProperty("java.home"), "bin", "java").toString(),
 				"-Dfile.encoding=UTF-8",
-				"-cp",
-				childClasspath(),
+				"@" + argumentFile,
 				PROBE_MAIN,
 				"--spring.main.banner-mode=off",
 				"--spring.output.ansi.enabled=never",
@@ -82,6 +88,7 @@ class StructuredLoggingProfileIntegrationTest {
 			return new ChildRun(exitCode, probeLine(output));
 		} finally {
 			process.destroyForcibly();
+			Files.deleteIfExists(argumentFile);
 		}
 	}
 

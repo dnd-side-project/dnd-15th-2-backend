@@ -1,6 +1,7 @@
 /*
  * Created at: 2026-09-02T00:38:56+09:00
- * Source scenario: TEST-PLAN-GH-208-JAVA-CONVENTION-GATES-UNIT-001 through UNIT-007
+ * Source scenario: TEST-PLAN-GH-208-JAVA-CONVENTION-GATES-UNIT-001 through UNIT-007,
+ * TEST-PLAN-GH-312-COUNTRY-ONLY-REGISTRATION-UNIT-006
  */
 package com.dnd.qello.convention;
 
@@ -8,10 +9,13 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+
+import com.dnd.qello.harness.PlatformCommands;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -56,7 +60,7 @@ class JavaConventionBaselineTest {
 	@Test
 	@DisplayName("Gradle은 validateJavaConventionBaseline task를 제공한다")
 	void registersBaselineValidationTask() throws IOException, InterruptedException {
-		Process process = new ProcessBuilder("./gradlew", "tasks", "--all", "--console=plain")
+		Process process = new ProcessBuilder(PlatformCommands.gradlew("tasks", "--all", "--console=plain"))
 				.redirectErrorStream(true)
 				.start();
 		String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
@@ -134,7 +138,8 @@ class JavaConventionBaselineTest {
 	@Test
 	@DisplayName("validateJavaConventionBaseline task는 generated suppression을 만든다")
 	void gradleBaselineTaskGeneratesSuppression() throws IOException, InterruptedException {
-		Process process = new ProcessBuilder("./gradlew", "validateJavaConventionBaseline", "--console=plain")
+		Process process = new ProcessBuilder(
+				PlatformCommands.gradlew("validateJavaConventionBaseline", "--console=plain"))
 				.redirectErrorStream(true)
 				.start();
 		String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
@@ -145,10 +150,8 @@ class JavaConventionBaselineTest {
 	}
 
 	private static CommandResult run(String... arguments) throws IOException, InterruptedException {
-		String[] command = new String[arguments.length + 2];
-		command[0] = "python3";
-		command[1] = "scripts/validate-java-conventions.py";
-		System.arraycopy(arguments, 0, command, 2, arguments.length);
+		List<String> command = PlatformCommands.python("scripts/validate-java-conventions.py");
+		command.addAll(List.of(arguments));
 		Process process = new ProcessBuilder(command)
 				.redirectErrorStream(true)
 				.start();

@@ -1329,13 +1329,8 @@
       "DeviceRegistrationRequest" : {
         "description" : "새 계정과 기기 자격증명을 만들 때 보내는 등록 정보",
         "properties" : {
-          "coarseRegionCode" : {
-            "description" : "국가 안의 대략적인 지역 코드",
-            "minLength" : 1,
-            "type" : "string"
-          },
           "countryCode" : {
-            "description" : "ISO 3166-1 alpha-2 국가 코드입니다. 기준 지역의 최상위 국가와 일치해야 합니다.",
+            "description" : "ISO 3166-1 alpha-2 국가 코드입니다. 지원 국가 목록에 있어야 합니다.",
             "minLength" : 1,
             "type" : "string"
           },
@@ -1368,7 +1363,6 @@
           }
         },
         "required" : [
-          "coarseRegionCode",
           "countryCode",
           "installationId",
           "locale",
@@ -5145,7 +5139,7 @@
     },
     "/api/v1/auth/devices" : {
       "post" : {
-        "description" : "기기를 등록하고 새 계정을 만듭니다. 첫 액세스 토큰과, 토큰을 다시 발급받을 때 쓸 deviceSecret을 함께 반환합니다.\n\n로그인 없이 호출할 수 있습니다.\n\ndeviceSecret은 이 응답에서만 받을 수 있으니 앱에 저장해야 합니다. 잃어버리면 기기를 새로 등록해야 합니다. countryCode는 coarseRegionCode의 국가와 같아야 합니다.",
+        "description" : "기기를 등록하고 새 계정을 만듭니다. 첫 액세스 토큰과, 토큰을 다시 발급받을 때 쓸 deviceSecret을 함께 반환합니다.\n\n로그인 없이 호출할 수 있습니다.\n\ndeviceSecret은 이 응답에서만 받을 수 있으니 앱에 저장해야 합니다. 잃어버리면 기기를 새로 등록해야 합니다. countryCode는 지원 국가의 ISO 3166-1 alpha-2 코드여야 합니다.",
         "operationId" : "register",
         "requestBody" : {
           "content" : {
@@ -5176,7 +5170,7 @@
                 }
               }
             },
-            "description" : "필수 값·기기 식별자·국가·지역·계정 입력값이 올바르지 않거나 닉네임 검사를 통과하지 못했습니다."
+            "description" : "필수 값·기기 식별자·국가·계정 입력값이 올바르지 않거나 닉네임 검사를 통과하지 못했습니다."
           },
           "409" : {
             "content" : {

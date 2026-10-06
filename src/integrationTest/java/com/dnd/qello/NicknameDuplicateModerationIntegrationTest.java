@@ -4,13 +4,6 @@
  */
 package com.dnd.qello;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.reset;
-import static org.mockito.Mockito.when;
-
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -42,6 +35,13 @@ import com.dnd.qello.filtering.moderation.NicknameModerationChecker;
 import com.dnd.qello.filtering.moderation.NicknameModerationOutcome;
 import com.dnd.qello.filtering.moderation.NicknameModerationOutcome.Reason;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.reset;
+import static org.mockito.Mockito.when;
+
 @SpringBootTest
 @ActiveProfiles({"test", "account-persistence"})
 @Import(NicknameDuplicateModerationIntegrationTest.TestModerationConfiguration.class)
@@ -70,9 +70,9 @@ class NicknameDuplicateModerationIntegrationTest extends PostgisContainerIntegra
 		jdbcTemplate.update("DELETE FROM region_code WHERE code = ?", REGION_CODE);
 		jdbcTemplate.update("DELETE FROM region_code WHERE code = 'KR'");
 		jdbcTemplate.update("""
-			INSERT INTO region_code (code, parent_code, display_name, level)
-			VALUES ('KR', NULL, 'Korea', 'COUNTRY'), (?, 'KR', 'Test Region', 'REGION')
-			""", REGION_CODE);
+				INSERT INTO region_code (code, parent_code, display_name, level)
+				VALUES ('KR', NULL, 'Korea', 'COUNTRY'), (?, 'KR', 'Test Region', 'REGION')
+				""", REGION_CODE);
 		reset(nicknameModerationChecker);
 		when(nicknameModerationChecker.check(anyString(), any())).thenReturn(NicknameModerationOutcome.allowed());
 	}
@@ -83,19 +83,19 @@ class NicknameDuplicateModerationIntegrationTest extends PostgisContainerIntegra
 		insertAccount("여름");
 
 		org.assertj.core.api.Assertions.assertThatThrownBy(() -> insertAccount("여름"))
-			.isInstanceOf(DataIntegrityViolationException.class)
-			.hasStackTraceContaining("uq_user_account_nickname_ci");
+				.isInstanceOf(DataIntegrityViolationException.class)
+				.hasStackTraceContaining("uq_user_account_nickname_ci");
 	}
 
 	@Test
 	@DisplayName("INT-002: 이미 존재하는 닉네임으로 두 번째 계정을 등록하면 계정 행 수가 늘지 않는다")
 	void secondRegistrationWithDuplicateNicknameDoesNotCreateAccount() {
-		registrationService.register("install-int-a", DevicePlatform.IOS, "KR", REGION_CODE, "ko-KR", "Asia/Seoul", "여름");
+		registrationService.register("install-int-a", DevicePlatform.IOS, "KR", "ko-KR", "Asia/Seoul", "여름");
 
 		org.assertj.core.api.Assertions.assertThatThrownBy(() -> registrationService.register(
-				"install-int-b", DevicePlatform.IOS, "KR", REGION_CODE, "ko-KR", "Asia/Seoul", "여름"))
-			.isInstanceOf(AccountException.class)
-			.hasFieldOrPropertyWithValue("errorCode", AccountErrorCode.DUPLICATED_NICKNAME);
+				"install-int-b", DevicePlatform.IOS, "KR", "ko-KR", "Asia/Seoul", "여름"))
+				.isInstanceOf(AccountException.class)
+				.hasFieldOrPropertyWithValue("errorCode", AccountErrorCode.DUPLICATED_NICKNAME);
 
 		Integer accountCount = jdbcTemplate.queryForObject("SELECT count(*) FROM user_account", Integer.class);
 		assertThat(accountCount).isEqualTo(1);
@@ -105,10 +105,10 @@ class NicknameDuplicateModerationIntegrationTest extends PostgisContainerIntegra
 	@DisplayName("INT-003: 서로 다른 두 설치가 대소문자만 다른 같은 닉네임으로 동시에 등록하면 하나만 성공한다")
 	void concurrentRegistrationsWithCaseVariantNicknameYieldExactlyOneWinner() throws Exception {
 		RacePair<Long, Long> race = race(
-			() -> registrationService.register(
-				"install-int-race-a", DevicePlatform.IOS, "KR", REGION_CODE, "ko-KR", "Asia/Seoul", "여름").userId(),
-			() -> registrationService.register(
-				"install-int-race-b", DevicePlatform.IOS, "KR", REGION_CODE, "ko-KR", "Asia/Seoul", "여름").userId());
+				() -> registrationService.register(
+						"install-int-race-a", DevicePlatform.IOS, "KR", "ko-KR", "Asia/Seoul", "여름").userId(),
+				() -> registrationService.register(
+						"install-int-race-b", DevicePlatform.IOS, "KR", "ko-KR", "Asia/Seoul", "여름").userId());
 
 		boolean firstSucceeded = race.first().failure() == null;
 		boolean secondSucceeded = race.second().failure() == null;
@@ -122,16 +122,16 @@ class NicknameDuplicateModerationIntegrationTest extends PostgisContainerIntegra
 	@DisplayName("INT-004: 닉네임 변경에 성공하면 이전 닉네임을 다른 계정이 재사용할 수 있다")
 	void changingNicknameFreesThePreviousValueForReuse() {
 		var first = registrationService.register(
-			"install-int-c", DevicePlatform.IOS, "KR", REGION_CODE, "ko-KR", "Asia/Seoul", "봄");
+				"install-int-c", DevicePlatform.IOS, "KR", "ko-KR", "Asia/Seoul", "봄");
 		registrationService.register(
-			"install-int-d", DevicePlatform.IOS, "KR", REGION_CODE, "ko-KR", "Asia/Seoul", "겨울");
+				"install-int-d", DevicePlatform.IOS, "KR", "ko-KR", "Asia/Seoul", "겨울");
 
 		Account updated = nicknameRegistrationService.changeNickname(first.userId(), "가을");
 		assertThat(updated.getNickname()).isEqualTo("가을");
 
 		// "봄"은 이제 아무도 쓰지 않으므로 다른 계정이 새로 등록하며 그 값을 쓸 수 있어야 한다.
 		var third = registrationService.register(
-			"install-int-e", DevicePlatform.IOS, "KR", REGION_CODE, "ko-KR", "Asia/Seoul", "봄");
+				"install-int-e", DevicePlatform.IOS, "KR", "ko-KR", "Asia/Seoul", "봄");
 		assertThat(accountRepository.findById(third.userId()).orElseThrow().getNickname()).isEqualTo("봄");
 	}
 
@@ -139,7 +139,7 @@ class NicknameDuplicateModerationIntegrationTest extends PostgisContainerIntegra
 	@DisplayName("INT-005: moderation이 Allowed를 반환하면 닉네임 변경이 반영된다")
 	void changeNicknameSucceedsWhenModerationAllows() {
 		var account = registrationService.register(
-			"install-int-f", DevicePlatform.IOS, "KR", REGION_CODE, "ko-KR", "Asia/Seoul", "원래닉네임");
+				"install-int-f", DevicePlatform.IOS, "KR", "ko-KR", "Asia/Seoul", "원래닉네임");
 		when(nicknameModerationChecker.check(anyString(), any())).thenReturn(NicknameModerationOutcome.allowed());
 
 		Account updated = nicknameRegistrationService.changeNickname(account.userId(), "새닉네임");
@@ -152,14 +152,14 @@ class NicknameDuplicateModerationIntegrationTest extends PostgisContainerIntegra
 	@DisplayName("INT-006: moderation이 BLOCK을 반환하면 닉네임 변경이 반영되지 않는다")
 	void changeNicknameFailsWhenModerationBlocks() {
 		var account = registrationService.register(
-			"install-int-g", DevicePlatform.IOS, "KR", REGION_CODE, "ko-KR", "Asia/Seoul", "원래닉네임2");
+				"install-int-g", DevicePlatform.IOS, "KR", "ko-KR", "Asia/Seoul", "원래닉네임2");
 		when(nicknameModerationChecker.check(anyString(), any()))
-			.thenReturn(NicknameModerationOutcome.rejected(Reason.BLOCKED_BY_PRIMARY));
+				.thenReturn(NicknameModerationOutcome.rejected(Reason.BLOCKED_BY_PRIMARY));
 
 		org.assertj.core.api.Assertions.assertThatThrownBy(
 				() -> nicknameRegistrationService.changeNickname(account.userId(), "부적절한닉네임"))
-			.isInstanceOf(AccountException.class)
-			.hasFieldOrPropertyWithValue("errorCode", AccountErrorCode.NICKNAME_REJECTED_BY_MODERATION);
+				.isInstanceOf(AccountException.class)
+				.hasFieldOrPropertyWithValue("errorCode", AccountErrorCode.NICKNAME_REJECTED_BY_MODERATION);
 
 		assertThat(rawNickname(account.userId())).isEqualTo("원래닉네임2");
 	}
@@ -168,28 +168,28 @@ class NicknameDuplicateModerationIntegrationTest extends PostgisContainerIntegra
 	@DisplayName("INT-007: 주·보조 판정기가 모두 실패(UNAVAILABLE)하면 닉네임 변경이 반영되지 않는다")
 	void changeNicknameFailsWhenModerationIsUnavailable() {
 		var account = registrationService.register(
-			"install-int-h", DevicePlatform.IOS, "KR", REGION_CODE, "ko-KR", "Asia/Seoul", "원래닉네임3");
+				"install-int-h", DevicePlatform.IOS, "KR", "ko-KR", "Asia/Seoul", "원래닉네임3");
 		when(nicknameModerationChecker.check(anyString(), any()))
-			.thenReturn(NicknameModerationOutcome.rejected(Reason.UNAVAILABLE));
+				.thenReturn(NicknameModerationOutcome.rejected(Reason.UNAVAILABLE));
 
 		org.assertj.core.api.Assertions.assertThatThrownBy(
 				() -> nicknameRegistrationService.changeNickname(account.userId(), "새닉네임4"))
-			.isInstanceOf(AccountException.class)
-			.hasFieldOrPropertyWithValue("errorCode", AccountErrorCode.NICKNAME_MODERATION_UNAVAILABLE);
+				.isInstanceOf(AccountException.class)
+				.hasFieldOrPropertyWithValue("errorCode", AccountErrorCode.NICKNAME_MODERATION_UNAVAILABLE);
 
 		assertThat(rawNickname(account.userId())).isEqualTo("원래닉네임3");
 	}
 
 	private void insertAccount(String nickname) {
 		jdbcTemplate.update("""
-			INSERT INTO user_account (role, status, country_code, coarse_region_code, locale, timezone, nickname)
-			VALUES ('USER', 'ACTIVE', 'KR', ?, 'ko-KR', 'Asia/Seoul', ?)
-			""", REGION_CODE, nickname);
+				INSERT INTO user_account (role, status, country_code, coarse_region_code, locale, timezone, nickname)
+				VALUES ('USER', 'ACTIVE', 'KR', ?, 'ko-KR', 'Asia/Seoul', ?)
+				""", REGION_CODE, nickname);
 	}
 
 	private String rawNickname(long accountId) {
 		return jdbcTemplate.queryForObject(
-			"SELECT nickname FROM user_account WHERE id = ?", String.class, accountId);
+				"SELECT nickname FROM user_account WHERE id = ?", String.class, accountId);
 	}
 
 	private static <A, B> RacePair<A, B> race(Callable<A> first, Callable<B> second) throws Exception {
