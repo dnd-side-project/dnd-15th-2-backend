@@ -23,6 +23,20 @@ qello:
       # HS256 서명에 필요한 32바이트 이상 키. 운영 환경에서는 환경변수로만 주입하고
       # 이 값은 테스트 컨텍스트 기동 전용이다.
       secret: test-only-access-token-signing-key-do-not-use-in-production
+    # 테스트는 MockMvc 기본 주소 하나로 기기 등록과 운영자 로그인을 반복한다. 기본 한도로는 기존
+    # 테스트가 429로 실패하므로 크게 올린다. 한도 동작은 AuthRateLimitIntegrationTest가 낮은 값으로 검증한다.
+    rate-limit:
+      device-registration:
+        max-requests: 100000
+      token-reissue:
+        max-requests: 100000
+      operator-login:
+        max-requests: 100000
+  account:
+    nickname-change:
+      # 닉네임 변경 시도 한도도 같은 이유로 올린다. 변경 주기(cooldown)는 운영 기본값을 그대로 쓴다.
+      attempt-rate-limit:
+        max-requests: 100000
   notification:
     push:
       fcm:
