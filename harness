@@ -3,9 +3,10 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-if command -v python3 >/dev/null 2>&1; then
-  exec python3 "$ROOT/scripts/harness.py" "$@"
+# 선택 규칙은 scripts/find-python.sh 하나에 둔다(Windows의 python3 실행 별칭을 거른다).
+if PYTHON="$(sh "$ROOT/scripts/find-python.sh")"; then
+  exec "$PYTHON" "$ROOT/scripts/harness.py" "$@"
 fi
 
-echo "python3 is required. Run: ./scripts/setup-macos.sh --install" >&2
+echo "Python 3 is required. macOS: ./scripts/setup-macos.sh --install" >&2
 exit 127

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import subprocess
 import sys
@@ -18,7 +19,11 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def run(command: Sequence[str]) -> None:
     print(f"[hook] {' '.join(command)}")
-    result = subprocess.run(list(command), cwd=ROOT, check=False)
+    resolved = list(command)
+    # Windows는 셸 스크립트인 ./gradlew를 직접 실행하지 못한다. harness.py의 run과 같은 규칙이다.
+    if os.name == "nt" and resolved and resolved[0] == "./gradlew":
+        resolved[0] = str(ROOT / "gradlew.bat")
+    result = subprocess.run(resolved, cwd=ROOT, check=False)
     if result.returncode != 0:
         raise SystemExit(result.returncode)
 
