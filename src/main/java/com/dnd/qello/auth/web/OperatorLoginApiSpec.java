@@ -37,7 +37,7 @@ public interface OperatorLoginApiSpec {
 
 			로그인 전에 GET /admin/csrf로 CSRF 토큰을 받아 함께 보내야 합니다.
 
-			이후 백오피스 요청은 발급된 세션 쿠키로 보냅니다.""")
+			이후 백오피스 요청은 발급된 세션 쿠키로 보냅니다. 같은 IP에서 짧은 시간에 너무 많이 호출하면 429를 반환합니다.""")
 	@ApiResponses({
 			// content를 비워 두면 springdoc이 반환 타입으로 채운다. 200을 아예 적지 않으면
 			// 선언한 오류 응답만 남고 성공 응답이 통째로 빠진다.
@@ -45,7 +45,8 @@ public interface OperatorLoginApiSpec {
 			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "loginId 또는 password가 비어 있거나 loginId 길이가 허용 범위를 벗어났습니다.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
 			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "로그인 정보가 올바르지 않습니다.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
 			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "사용할 수 없는 계정이거나 CSRF 토큰이 유효하지 않습니다.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
-			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "423", description = "로그인을 연속으로 실패해 잠긴 계정입니다. 잠시 후 다시 시도해 주세요.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class)))
+			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "423", description = "로그인을 연속으로 실패해 잠긴 계정입니다. 잠시 후 다시 시도해 주세요.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
+			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "429", description = "같은 IP의 로그인 요청이 한도를 넘었습니다. 잠시 후 다시 시도해 주세요.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class)))
 	})
 	@PostMapping("/login")
 	ResponseEntity<ApiResponse<OperatorSessionResponse>> login(

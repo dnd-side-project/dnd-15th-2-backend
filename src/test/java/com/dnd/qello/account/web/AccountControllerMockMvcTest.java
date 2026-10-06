@@ -1,18 +1,9 @@
 /*
  * Created at: 2026-08-19T03:30:00+09:00
- * Source scenario: TEST-PLAN-GH-168-NICKNAME-DUPLICATE-MODERATION-UNIT-016 through UNIT-021
+ * Source scenario: TEST-PLAN-GH-168-NICKNAME-DUPLICATE-MODERATION-UNIT-016 through UNIT-021,
+ * TEST-PLAN-GH-315-AUTH-NICKNAME-RATE-LIMIT-UNIT-014
  */
 package com.dnd.qello.account.web;
-
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -50,6 +41,16 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
 @ExtendWith(MockitoExtension.class)
 class AccountControllerMockMvcTest {
 
@@ -68,17 +69,18 @@ class AccountControllerMockMvcTest {
 
 	private MockMvc buildMockMvc(boolean authenticated) {
 		Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
-		AccountController controller = new AccountController(nicknameRegistrationService, new ApiResponseFactory(clock));
+		AccountController controller = new AccountController(nicknameRegistrationService,
+				new ApiResponseFactory(clock));
 		ObjectMapper objectMapper = new ObjectMapper()
-			.registerModule(new JavaTimeModule())
-			.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+				.registerModule(new JavaTimeModule())
+				.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
 		return MockMvcBuilders.standaloneSetup(controller)
-			.setCustomArgumentResolvers(new AuthenticationResolver(authenticated))
-			.setMessageConverters(new MappingJackson2HttpMessageConverter(objectMapper))
-			.setValidator(new LocalValidatorFactoryBean())
-			.setControllerAdvice(new GlobalExceptionHandler(
-				new ApiErrorResponseFactory(clock), new ConstraintExceptionMapper()))
-			.build();
+				.setCustomArgumentResolvers(new AuthenticationResolver(authenticated))
+				.setMessageConverters(new MappingJackson2HttpMessageConverter(objectMapper))
+				.setValidator(new LocalValidatorFactoryBean())
+				.setControllerAdvice(new GlobalExceptionHandler(
+						new ApiErrorResponseFactory(clock), new ConstraintExceptionMapper()))
+				.build();
 	}
 
 	@Test
@@ -87,7 +89,7 @@ class AccountControllerMockMvcTest {
 		buildMockMvc(false).perform(patch("/api/v1/users/me/nickname")
 				.contentType("application/json")
 				.content("{\"nickname\":\"새닉네임\"}"))
-			.andExpect(status().isUnauthorized());
+				.andExpect(status().isUnauthorized());
 
 		verify(nicknameRegistrationService, never()).changeNickname(anyLong(), any());
 	}
@@ -98,7 +100,7 @@ class AccountControllerMockMvcTest {
 		mockMvc.perform(patch("/api/v1/users/me/nickname")
 				.contentType("application/json")
 				.content("{\"nickname\":\"  \"}"))
-			.andExpect(status().isBadRequest());
+				.andExpect(status().isBadRequest());
 
 		verify(nicknameRegistrationService, never()).changeNickname(anyLong(), any());
 	}
@@ -155,9 +157,35 @@ class AccountControllerMockMvcTest {
 			.andExpect(jsonPath("$.errorDetail.code").value(AccountErrorCode.NICKNAME_MODERATION_UNAVAILABLE.code()));
 	}
 
+	@Test
+	@DisplayName("#315 UNIT-014: 서비스가 닉네임 변경 시도 한도 오류를 던지면 429와 ACC-APP-003이다")
+	void changeNicknameReturnsTooManyRequestsForAttemptLimit() throws Exception {
+		when(nicknameRegistrationService.changeNickname(eq(USER_ID), eq("새닉네임"))).thenThrow(
+			new AccountException(AccountErrorCode.NICKNAME_CHANGE_RATE_LIMIT_EXCEEDED, null, "닉네임 변경 시도 한도를 넘었습니다"));
+
+		mockMvc.perform(patch("/api/v1/users/me/nickname")
+				.contentType("application/json")
+				.content("{\"nickname\":\"새닉네임\"}"))
+			.andExpect(status().isTooManyRequests())
+			.andExpect(jsonPath("$.errorDetail.code").value("ACC-APP-003"));
+	}
+
+	@Test
+	@DisplayName("#315 UNIT-014: 서비스가 닉네임 변경 주기 오류를 던지면 429와 ACC-APP-004다")
+	void changeNicknameReturnsTooManyRequestsForCooldown() throws Exception {
+		when(nicknameRegistrationService.changeNickname(eq(USER_ID), eq("새닉네임"))).thenThrow(
+			new AccountException(AccountErrorCode.NICKNAME_CHANGE_TOO_SOON, "nickname", "닉네임 변경 주기가 지나지 않았습니다"));
+
+		mockMvc.perform(patch("/api/v1/users/me/nickname")
+				.contentType("application/json")
+				.content("{\"nickname\":\"새닉네임\"}"))
+			.andExpect(status().isTooManyRequests())
+			.andExpect(jsonPath("$.errorDetail.code").value("ACC-APP-004"));
+	}
+
 	private static Account sampleAccount(String nickname) {
 		return Account.restore(USER_ID, AccountRole.USER, AccountStatus.ACTIVE, "KR", "KR-11", "ko-KR", "Asia/Seoul",
-			nickname, null);
+				nickname, null);
 	}
 
 	private static final class AuthenticationResolver implements HandlerMethodArgumentResolver {
@@ -174,10 +202,10 @@ class AccountControllerMockMvcTest {
 
 		@Override
 		public Object resolveArgument(MethodParameter parameter, ModelAndViewContainer mavContainer,
-			NativeWebRequest webRequest, org.springframework.web.bind.support.WebDataBinderFactory binderFactory) {
+				NativeWebRequest webRequest, org.springframework.web.bind.support.WebDataBinderFactory binderFactory) {
 			return authenticated
-				? UsernamePasswordAuthenticationToken.authenticated(String.valueOf(USER_ID), null, List.of())
-				: null;
+					? UsernamePasswordAuthenticationToken.authenticated(String.valueOf(USER_ID), null, List.of())
+					: null;
 		}
 	}
 }

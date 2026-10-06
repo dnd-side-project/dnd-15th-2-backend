@@ -43,6 +43,27 @@ qello:
     # Core worker scheduling은 운영 수치 승인과 명시적 활성화 전까지 꺼 둔다.
     scheduling:
       enabled: ${QELLO_WORKER_SCHEDULING_ENABLED:false}
+  auth:
+    # 인증 없이 열린 경로의 클라이언트 IP 단위 요청 한도(#315). 카운터는 인스턴스 메모리에 있어
+    # 재시작하면 초기화된다. 앱 한 대가 프록시 없이 포트를 직접 노출한다는 전제의 값이다.
+    rate-limit:
+      device-registration:
+        max-requests: ${QELLO_AUTH_DEVICE_REGISTRATION_RATE_LIMIT:10}
+        window: PT1H
+      token-reissue:
+        max-requests: ${QELLO_AUTH_TOKEN_REISSUE_RATE_LIMIT:60}
+        window: PT1H
+      operator-login:
+        max-requests: ${QELLO_AUTH_OPERATOR_LOGIN_RATE_LIMIT:20}
+        window: PT15M
+  account:
+    nickname-change:
+      # 마지막 변경 후 다음 변경까지의 최소 간격(F01). 가입 때 정한 닉네임은 이 주기에 넣지 않는다.
+      cooldown: ${QELLO_ACCOUNT_NICKNAME_CHANGE_COOLDOWN:P30D}
+      # 사용자 단위 변경 시도 한도. 변경마다 외부 moderation을 호출하므로 실패한 시도도 센다.
+      attempt-rate-limit:
+        max-requests: ${QELLO_ACCOUNT_NICKNAME_CHANGE_ATTEMPT_LIMIT:10}
+        window: P1D
   direction:
     # 사용자별 활성 미처리 수신 상한. DB CHECK가 아니라 운영 설정값이며, DB는 안전 상한 50만만 강제한다.
     receive-capacity: 5

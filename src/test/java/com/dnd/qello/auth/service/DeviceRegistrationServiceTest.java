@@ -10,6 +10,7 @@ package com.dnd.qello.auth.service;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.HashMap;
@@ -23,7 +24,9 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.oauth2.jwt.JwtEncoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
+import org.springframework.transaction.PlatformTransactionManager;
 
+import com.dnd.qello.account.config.NicknameChangeProperties;
 import com.dnd.qello.account.domain.Account;
 import com.dnd.qello.account.repository.AccountRepository;
 import com.dnd.qello.account.service.NicknameRegistrationService;
@@ -37,6 +40,7 @@ import com.dnd.qello.auth.security.DeviceSecretGenerator;
 import com.dnd.qello.auth.security.DeviceSecretHasher;
 import com.dnd.qello.auth.token.AccessTokenIssuer;
 import com.dnd.qello.auth.token.AccessTokenProperties;
+import com.dnd.qello.common.ratelimit.RateLimitPolicy;
 import com.dnd.qello.filtering.moderation.ModerationLanguage;
 import com.dnd.qello.filtering.moderation.NicknameModerationChecker;
 import com.dnd.qello.filtering.moderation.NicknameModerationOutcome;
@@ -45,6 +49,7 @@ import com.nimbusds.jose.jwk.source.ImmutableSecret;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
 
 class DeviceRegistrationServiceTest {
 
@@ -72,7 +77,12 @@ class DeviceRegistrationServiceTest {
 				accountRepository,
 				new FakeCountryCatalogRepository(),
 				credentialRepository,
-				new NicknameRegistrationService(accountRepository, moderationChecker),
+				new NicknameRegistrationService(
+						accountRepository,
+						moderationChecker,
+						new NicknameChangeProperties(Duration.ofDays(30), new RateLimitPolicy(10, Duration.ofDays(1))),
+						mock(PlatformTransactionManager.class),
+						Clock.fixed(NOW, ZoneOffset.UTC)),
 				new DeviceSecretGenerator(),
 				new DeviceSecretHasher(),
 				accessTokenIssuer,

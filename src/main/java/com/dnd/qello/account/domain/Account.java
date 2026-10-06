@@ -1,6 +1,7 @@
 package com.dnd.qello.account.domain;
 
 import java.time.DateTimeException;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.util.Locale;
@@ -26,30 +27,32 @@ public final class Account {
 	private final String timezone;
 	private final String nickname;
 	private final Long profileImageMediaId;
+	private final Instant nicknameChangedAt;
 	private final Instant deletedAt;
 
 	private Account(
-		Long id,
-		AccountRole role,
-		AccountStatus status,
-		String countryCode,
-		String coarseRegionCode,
-		String locale,
-		String timezone,
-		String nickname,
-		Long profileImageMediaId,
-		Instant deletedAt
-	) {
+			Long id,
+			AccountRole role,
+			AccountStatus status,
+			String countryCode,
+			String coarseRegionCode,
+			String locale,
+			String timezone,
+			String nickname,
+			Long profileImageMediaId,
+			Instant nicknameChangedAt,
+			Instant deletedAt) {
 		this.id = validateId(id);
 		this.role = requireValue(role, "role");
 		this.status = requireValue(status, "status");
 		this.countryCode = validateCountryCode(role, countryCode);
 		this.coarseRegionCode = requireText(
-			coarseRegionCode, "coarseRegionCode", REGION_CODE_MAX_LENGTH);
+				coarseRegionCode, "coarseRegionCode", REGION_CODE_MAX_LENGTH);
 		this.locale = requireText(locale, "locale", LOCALE_MAX_LENGTH);
 		this.timezone = requireTimezone(timezone);
 		this.nickname = validateNickname(nickname);
 		this.profileImageMediaId = validateProfileImageMediaId(profileImageMediaId);
+		this.nicknameChangedAt = nicknameChangedAt;
 		this.deletedAt = deletedAt;
 		validateDeletionState(status, deletedAt);
 	}
@@ -57,111 +60,108 @@ public final class Account {
 	/**
 	 * 일반 사용자 생성. 비밀번호를 사용하지 않으며 role을 외부에서 지정할 수 없다.
 	 *
-	 * <p>프로필 이미지는 여기서 받지 않는다. 자산의 소유자와 상태를 검증한 뒤에만 붙일 수
-	 * 있고 그 검증은 서비스 계층의 몫이므로, 생성은 항상 기본 이미지 상태(null)에서
-	 * 시작하고 {@link #withProfileImage(long)}로 합성한다.
+	 * <p>
+	 * 프로필 이미지는 여기서 받지 않는다. 자산의 소유자와 상태를 검증한 뒤에만 붙일 수 있고 그 검증은 서비스 계층의 몫이므로, 생성은 항상
+	 * 기본 이미지 상태(null)에서 시작하고 {@link #withProfileImage(long)}로 합성한다.
 	 */
 	public static Account createUser(
-		String countryCode,
-		String coarseRegionCode,
-		String locale,
-		String timezone,
-		String nickname
-	) {
+			String countryCode,
+			String coarseRegionCode,
+			String locale,
+			String timezone,
+			String nickname) {
 		return new Account(
-			null,
-			AccountRole.USER,
-			AccountStatus.ACTIVE,
-			countryCode,
-			coarseRegionCode,
-			locale,
-			timezone,
-			nickname,
-			null,
-			null
-		);
+				null,
+				AccountRole.USER,
+				AccountStatus.ACTIVE,
+				countryCode,
+				coarseRegionCode,
+				locale,
+				timezone,
+				nickname,
+				null,
+				null,
+				null);
 	}
 
 	/**
 	 * 관리자 계정 생성. 일반 가입 유스케이스에서는 호출할 수 없다.
 	 *
-	 * <p>자격증명은 이 애그리거트에 없다. 운영자 생성은 계정 생성과
-	 * {@code operator_credential} 생성 두 단계로 나뉜다. 근거는
-	 * {@code docs/adr/0006-split-operator-and-device-authentication.md}에 있다.
+	 * <p>
+	 * 자격증명은 이 애그리거트에 없다. 운영자 생성은 계정 생성과 {@code operator_credential} 생성 두 단계로 나뉜다.
+	 * 근거는 {@code docs/adr/0006-split-operator-and-device-authentication.md}에 있다.
 	 */
 	public static Account createOperator(
-		String coarseRegionCode,
-		String locale,
-		String timezone,
-		String nickname
-	) {
+			String coarseRegionCode,
+			String locale,
+			String timezone,
+			String nickname) {
 		return new Account(
-			null,
-			AccountRole.OPERATOR,
-			AccountStatus.ACTIVE,
-			null,
-			coarseRegionCode,
-			locale,
-			timezone,
-			nickname,
-			null,
-			null
-		);
+				null,
+				AccountRole.OPERATOR,
+				AccountStatus.ACTIVE,
+				null,
+				coarseRegionCode,
+				locale,
+				timezone,
+				nickname,
+				null,
+				null,
+				null);
 	}
 
 	/**
 	 * 영속화된 계정을 복원한다. id가 없는 상태는 신규 생성 경로와 구분되어야 하므로 허용하지 않는다.
 	 *
-	 * <p>프로필 이미지는 이 시그니처에 없다. 인자로 추가하면 기존 호출자가 값을 빠뜨렸을 때
-	 * 프로필이 조용히 사라지므로, 복원한 뒤 {@link #withProfileImage(long)}로 합성한다.
+	 * <p>
+	 * 프로필 이미지는 이 시그니처에 없다. 인자로 추가하면 기존 호출자가 값을 빠뜨렸을 때 프로필이 조용히 사라지므로, 복원한 뒤
+	 * {@link #withProfileImage(long)}로 합성한다.
 	 */
 	public static Account restore(
-		Long id,
-		AccountRole role,
-		AccountStatus status,
-		String countryCode,
-		String coarseRegionCode,
-		String locale,
-		String timezone,
-		String nickname,
-		Instant deletedAt
-	) {
+			Long id,
+			AccountRole role,
+			AccountStatus status,
+			String countryCode,
+			String coarseRegionCode,
+			String locale,
+			String timezone,
+			String nickname,
+			Instant deletedAt) {
 		if (id == null) {
 			throw new AccountException(
-				AccountErrorCode.INVALID_ID, "id", "restore는 유효한 기존 id가 필요합니다");
+					AccountErrorCode.INVALID_ID, "id", "restore는 유효한 기존 id가 필요합니다");
 		}
 		return new Account(
-			id,
-			role,
-			status,
-			countryCode,
-			coarseRegionCode,
-			locale,
-			timezone,
-			nickname,
-			null,
-			deletedAt
-		);
+				id,
+				role,
+				status,
+				countryCode,
+				coarseRegionCode,
+				locale,
+				timezone,
+				nickname,
+				null,
+				null,
+				deletedAt);
 	}
 
 	public Account updateProfile(
-		String coarseRegionCode,
-		String locale,
-		String timezone,
-		String nickname
-	) {
+			String coarseRegionCode,
+			String locale,
+			String timezone,
+			String nickname) {
 		return new Account(
-			id,
-			role,
-			status,
-			countryCode,
-			coarseRegionCode,
-			locale,
-			timezone,
-			nickname,
-			profileImageMediaId,
-			deletedAt
-		);
+				id,
+				role,
+				status,
+				countryCode,
+				coarseRegionCode,
+				locale,
+				timezone,
+				nickname,
+				profileImageMediaId,
+				nicknameChangedAt,
+				deletedAt);
 	}
 
 	/**
@@ -178,50 +178,78 @@ public final class Account {
 		return copyWithProfileImage(null);
 	}
 
+	/**
+	 * 본인 요청으로 닉네임을 바꾸고 그 시각을 기록한다. 변경 주기는 호출 전에
+	 * {@link #canChangeNicknameAt(Instant, Duration)}로 확인한다.
+	 */
+	public Account changeNickname(String newNickname, Instant changedAt) {
+		requireValue(changedAt, "nicknameChangedAt");
+		return new Account(
+				id, role, status, countryCode, coarseRegionCode, locale, timezone, newNickname,
+				profileImageMediaId, changedAt, deletedAt);
+	}
+
+	/**
+	 * 영속화된 마지막 닉네임 변경 시각을 합성한다. 프로필 이미지와 같은 이유로 restore 인자에 두지 않는다.
+	 */
+	public Account withNicknameChangedAt(Instant changedAt) {
+		return new Account(
+				id, role, status, countryCode, coarseRegionCode, locale, timezone, nickname,
+				profileImageMediaId, changedAt, deletedAt);
+	}
+
+	/**
+	 * 마지막 변경 후 cooldown이 지났으면 true다. 가입할 때 정한 닉네임은 변경 이력이 없으므로 첫 변경은 언제든 허용한다(F01,
+	 * #315).
+	 */
+	public boolean canChangeNicknameAt(Instant now, Duration cooldown) {
+		return nicknameChangedAt == null || !now.isBefore(nicknameChangedAt.plus(cooldown));
+	}
+
 	private Account copyWithProfileImage(Long nextProfileImageMediaId) {
 		return new Account(
-			id,
-			role,
-			status,
-			countryCode,
-			coarseRegionCode,
-			locale,
-			timezone,
-			nickname,
-			nextProfileImageMediaId,
-			deletedAt
-		);
+				id,
+				role,
+				status,
+				countryCode,
+				coarseRegionCode,
+				locale,
+				timezone,
+				nickname,
+				nextProfileImageMediaId,
+				nicknameChangedAt,
+				deletedAt);
 	}
 
 	public Account block() {
 		if (status == AccountStatus.DELETED) {
 			throw new AccountException(
-				AccountErrorCode.INVALID_STATUS_TRANSITION, "status", "삭제된 계정은 차단할 수 없습니다");
+					AccountErrorCode.INVALID_STATUS_TRANSITION, "status", "삭제된 계정은 차단할 수 없습니다");
 		}
 		return new Account(
-			id, role, AccountStatus.BLOCKED, countryCode, coarseRegionCode, locale, timezone, nickname,
-			profileImageMediaId, deletedAt);
+				id, role, AccountStatus.BLOCKED, countryCode, coarseRegionCode, locale, timezone, nickname,
+				profileImageMediaId, nicknameChangedAt, deletedAt);
 	}
 
 	public Account unblock() {
 		if (status != AccountStatus.BLOCKED) {
 			throw new AccountException(
-				AccountErrorCode.INVALID_STATUS_TRANSITION, "status", "차단 상태인 계정만 차단 해제할 수 있습니다");
+					AccountErrorCode.INVALID_STATUS_TRANSITION, "status", "차단 상태인 계정만 차단 해제할 수 있습니다");
 		}
 		return new Account(
-			id, role, AccountStatus.ACTIVE, countryCode, coarseRegionCode, locale, timezone, nickname,
-			profileImageMediaId, deletedAt);
+				id, role, AccountStatus.ACTIVE, countryCode, coarseRegionCode, locale, timezone, nickname,
+				profileImageMediaId, nicknameChangedAt, deletedAt);
 	}
 
 	public Account delete(Instant deletedAt) {
 		requireValue(deletedAt, "deletedAt");
 		if (status == AccountStatus.DELETED) {
 			throw new AccountException(
-				AccountErrorCode.INVALID_STATUS_TRANSITION, "status", "이미 삭제된 계정입니다");
+					AccountErrorCode.INVALID_STATUS_TRANSITION, "status", "이미 삭제된 계정입니다");
 		}
 		return new Account(
-			id, role, AccountStatus.DELETED, countryCode, coarseRegionCode, locale, timezone, nickname,
-			profileImageMediaId, deletedAt);
+				id, role, AccountStatus.DELETED, countryCode, coarseRegionCode, locale, timezone, nickname,
+				profileImageMediaId, nicknameChangedAt, deletedAt);
 	}
 
 	public Long getId() {
@@ -261,6 +289,11 @@ public final class Account {
 		return profileImageMediaId;
 	}
 
+	/** null이면 가입 후 닉네임을 바꾼 적이 없다는 뜻이다. */
+	public Instant getNicknameChangedAt() {
+		return nicknameChangedAt;
+	}
+
 	public Instant getDeletedAt() {
 		return deletedAt;
 	}
@@ -275,7 +308,7 @@ public final class Account {
 	private static Long validateProfileImageMediaId(Long profileImageMediaId) {
 		if (profileImageMediaId != null && profileImageMediaId <= 0) {
 			throw new AccountException(
-				AccountErrorCode.INVALID_ID, "profileImageMediaId", "profileImageMediaId는 양수여야 합니다");
+					AccountErrorCode.INVALID_ID, "profileImageMediaId", "profileImageMediaId는 양수여야 합니다");
 		}
 		return profileImageMediaId;
 	}
@@ -283,7 +316,7 @@ public final class Account {
 	private static long requirePositiveMediaId(long mediaId) {
 		if (mediaId <= 0) {
 			throw new AccountException(
-				AccountErrorCode.INVALID_ID, "profileImageMediaId", "profileImageMediaId는 양수여야 합니다");
+					AccountErrorCode.INVALID_ID, "profileImageMediaId", "profileImageMediaId는 양수여야 합니다");
 		}
 		return mediaId;
 	}
@@ -291,7 +324,7 @@ public final class Account {
 	private static String validateCountryCode(AccountRole role, String countryCode) {
 		if (role == AccountRole.USER && countryCode == null) {
 			throw new AccountException(
-				AccountErrorCode.REQUIRED_VALUE_MISSING, "countryCode", "countryCode는 필수입니다");
+					AccountErrorCode.REQUIRED_VALUE_MISSING, "countryCode", "countryCode는 필수입니다");
 		}
 		if (countryCode == null) {
 			return null;
@@ -299,7 +332,7 @@ public final class Account {
 		String normalized = countryCode.trim().toUpperCase(Locale.ROOT);
 		if (!COUNTRY_CODE_PATTERN.matcher(normalized).matches()) {
 			throw new AccountException(
-				AccountErrorCode.INVALID_COUNTRY_CODE, "countryCode", "countryCode 형식이 올바르지 않습니다");
+					AccountErrorCode.INVALID_COUNTRY_CODE, "countryCode", "countryCode 형식이 올바르지 않습니다");
 		}
 		return normalized;
 	}
@@ -307,7 +340,7 @@ public final class Account {
 	private static <T> T requireValue(T value, String field) {
 		if (value == null) {
 			throw new AccountException(
-				AccountErrorCode.REQUIRED_VALUE_MISSING, field, field + "은 필수입니다");
+					AccountErrorCode.REQUIRED_VALUE_MISSING, field, field + "은 필수입니다");
 		}
 		return value;
 	}
@@ -315,11 +348,11 @@ public final class Account {
 	private static String requireText(String value, String field, int maxLength) {
 		if (value == null || value.isBlank()) {
 			throw new AccountException(
-				AccountErrorCode.REQUIRED_VALUE_MISSING, field, field + "은 비어 있을 수 없습니다");
+					AccountErrorCode.REQUIRED_VALUE_MISSING, field, field + "은 비어 있을 수 없습니다");
 		}
 		if (codePointLength(value) > maxLength) {
 			throw new AccountException(
-				AccountErrorCode.TEXT_TOO_LONG, field, field + "은 " + maxLength + "자를 초과할 수 없습니다");
+					AccountErrorCode.TEXT_TOO_LONG, field, field + "은 " + maxLength + "자를 초과할 수 없습니다");
 		}
 		return value;
 	}
@@ -330,7 +363,7 @@ public final class Account {
 			ZoneId.of(validated);
 		} catch (DateTimeException exception) {
 			throw new AccountException(
-				AccountErrorCode.INVALID_TIMEZONE, "timezone", "timezone은 유효한 IANA ID여야 합니다", exception);
+					AccountErrorCode.INVALID_TIMEZONE, "timezone", "timezone은 유효한 IANA ID여야 합니다", exception);
 		}
 		return validated;
 	}
@@ -345,14 +378,13 @@ public final class Account {
 		String trimmed = nickname.trim();
 		if (trimmed.isBlank()) {
 			throw new AccountException(
-				AccountErrorCode.REQUIRED_VALUE_MISSING, "nickname", "nickname은 공백일 수 없습니다");
+					AccountErrorCode.REQUIRED_VALUE_MISSING, "nickname", "nickname은 공백일 수 없습니다");
 		}
 		if (codePointLength(trimmed) > NICKNAME_MAX_LENGTH) {
 			throw new AccountException(
-				AccountErrorCode.TEXT_TOO_LONG,
-				"nickname",
-				"nickname은 " + NICKNAME_MAX_LENGTH + "자를 초과할 수 없습니다"
-			);
+					AccountErrorCode.TEXT_TOO_LONG,
+					"nickname",
+					"nickname은 " + NICKNAME_MAX_LENGTH + "자를 초과할 수 없습니다");
 		}
 		return trimmed;
 	}
@@ -361,7 +393,7 @@ public final class Account {
 		boolean deleted = status == AccountStatus.DELETED;
 		if (deleted != (deletedAt != null)) {
 			throw new AccountException(
-				AccountErrorCode.INVALID_DELETION_STATE, "deletedAt", "DELETED 상태와 deletedAt은 함께 설정되어야 합니다");
+					AccountErrorCode.INVALID_DELETION_STATE, "deletedAt", "DELETED 상태와 deletedAt은 함께 설정되어야 합니다");
 		}
 	}
 

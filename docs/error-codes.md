@@ -118,6 +118,8 @@
 | `ACC-DOM-004` | INVALID_STATUS_TRANSITION | 409 | DOM | 현재 계정 상태로는 요청을 처리할 수 없습니다. |
 | `ACC-APP-001` | ACCOUNT_NOT_FOUND | 404 | APP | 계정을 찾을 수 없습니다. |
 | `ACC-APP-002` | DUPLICATED_NICKNAME | 409 | APP | 이미 사용 중인 닉네임입니다. |
+| `ACC-APP-003` | NICKNAME_CHANGE_RATE_LIMIT_EXCEEDED | 429 | APP | 닉네임 변경 요청이 너무 많습니다. 잠시 후 다시 시도해 주세요. |
+| `ACC-APP-004` | NICKNAME_CHANGE_TOO_SOON | 429 | APP | 닉네임은 변경한 뒤 일정 기간이 지나야 다시 바꿀 수 있습니다. |
 | `ACC-DOM-005` | NICKNAME_REJECTED_BY_MODERATION | 400 | DOM | 닉네임이 정책을 위반해 사용할 수 없습니다. |
 | `ACC-INFRA-001` | NICKNAME_MODERATION_UNAVAILABLE | 503 | INFRA | 닉네임 검증 서비스를 일시적으로 사용할 수 없습니다. |
 
@@ -126,6 +128,12 @@
 `ACC-DOM-003`은 자격증명이 `operator_credential`로 분리되면서(#72) 사용을 중단했다.
 `Account`가 비밀번호를 알지 못하게 됐고, role과 자격증명의 조합은 `(user_id, role)`
 복합 FK가 DB에서 거절한다.
+
+`ACC-APP-003`과 `ACC-APP-004`는 `PATCH /api/v1/users/me/nickname`에서만 쓴다(#315). 시도 한도는
+사용자 단위로 세고 중복(`ACC-APP-002`)·moderation 거절(`ACC-DOM-005`)·판정 불가(`ACC-INFRA-001`)로
+실패한 요청도 포함한다. 변경 주기는 마지막으로 변경에 성공한 시각부터 계산하며, 가입할 때 정한
+닉네임은 주기에 넣지 않는다. 두 경우 모두 moderation을 호출하기 전에 거절한다. 같은 사용자의
+변경 요청이 동시에 저장 단계에 들어가면 뒤늦은 쪽은 `CMN-DOM-003`으로 나갈 수 있다.
 
 ## 7. question (QUE)
 
@@ -268,6 +276,7 @@
 | `AUT-APP-004` | CREDENTIAL_NOT_FOUND | 404 | APP | 자격증명을 찾을 수 없습니다. |
 | `AUT-APP-005` | DEVICE_ALREADY_REGISTERED | 409 | APP | 이미 등록된 기기입니다. |
 | `AUT-APP-006` | DEVICE_CREDENTIAL_INVALID | 401 | APP | 기기 자격증명이 유효하지 않습니다. |
+| `AUT-APP-007` | RATE_LIMIT_EXCEEDED | 429 | APP | 요청이 너무 많습니다. 잠시 후 다시 시도해 주세요. |
 
 `AUT-APP-001`은 존재하지 않는 `login_id`와 잘못된 비밀번호를 **구분하지 않는다**. 두 경우에
 다른 코드나 다른 `reason`을 주면 계정 열거에 쓰인다. 같은 이유로 자격증명이 없을 때도 더미
@@ -282,6 +291,11 @@
 교차 검증 실패, `credential_status != ACTIVE`를 모두 같은 코드로 응답한다. `device_secret`은
 256bit 랜덤이라 무차별 대입이 불가능하므로 `AUT-APP-001`과 달리 원인별 응답 시간을
 맞출 필요는 없지만, 클라이언트가 재등록해야 하는 상태라는 신호는 통일한다.
+
+`AUT-APP-007`은 `POST /api/v1/auth/devices`, `POST /api/v1/auth/token`, `POST /admin/login`에서
+클라이언트 IP 단위 요청 한도를 넘으면 나간다(#315). 한도 검사는 서비스 호출보다 먼저 하므로 거절된
+요청은 계정·자격증명을 만들지 않고 운영자 로그인 실패 횟수도 올리지 않는다. 계정 단위 잠금인
+`AUT-APP-002`와는 별개다.
 
 필터 단계에서 끝나는 인증·인가 실패는 controller에 닿지 않아 `GlobalExceptionHandler`를
 거치지 않는다. `AuthEntryPoints`가 같은 형식으로 `CMN-VAL-003`(401)과 `CMN-DOM-001`(403)을

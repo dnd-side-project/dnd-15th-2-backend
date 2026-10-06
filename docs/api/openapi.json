@@ -4554,7 +4554,7 @@
     },
     "/admin/login" : {
       "post" : {
-        "description" : "운영자 계정으로 로그인하고 세션 쿠키를 발급합니다.\n\n로그인 전에 GET /admin/csrf로 CSRF 토큰을 받아 함께 보내야 합니다.\n\n이후 백오피스 요청은 발급된 세션 쿠키로 보냅니다.",
+        "description" : "운영자 계정으로 로그인하고 세션 쿠키를 발급합니다.\n\n로그인 전에 GET /admin/csrf로 CSRF 토큰을 받아 함께 보내야 합니다.\n\n이후 백오피스 요청은 발급된 세션 쿠키로 보냅니다. 같은 IP에서 짧은 시간에 너무 많이 호출하면 429를 반환합니다.",
         "operationId" : "login",
         "requestBody" : {
           "content" : {
@@ -4616,6 +4616,16 @@
               }
             },
             "description" : "로그인을 연속으로 실패해 잠긴 계정입니다. 잠시 후 다시 시도해 주세요."
+          },
+          "429" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "같은 IP의 로그인 요청이 한도를 넘었습니다. 잠시 후 다시 시도해 주세요."
           },
           "500" : {
             "content" : {
@@ -5139,7 +5149,7 @@
     },
     "/api/v1/auth/devices" : {
       "post" : {
-        "description" : "기기를 등록하고 새 계정을 만듭니다. 첫 액세스 토큰과, 토큰을 다시 발급받을 때 쓸 deviceSecret을 함께 반환합니다.\n\n로그인 없이 호출할 수 있습니다.\n\ndeviceSecret은 이 응답에서만 받을 수 있으니 앱에 저장해야 합니다. 잃어버리면 기기를 새로 등록해야 합니다. countryCode는 지원 국가의 ISO 3166-1 alpha-2 코드여야 합니다.",
+        "description" : "기기를 등록하고 새 계정을 만듭니다. 첫 액세스 토큰과, 토큰을 다시 발급받을 때 쓸 deviceSecret을 함께 반환합니다.\n\n로그인 없이 호출할 수 있습니다. 같은 IP에서 짧은 시간에 너무 많이 호출하면 429를 반환합니다.\n\ndeviceSecret은 이 응답에서만 받을 수 있으니 앱에 저장해야 합니다. 잃어버리면 기기를 새로 등록해야 합니다. countryCode는 지원 국가의 ISO 3166-1 alpha-2 코드여야 합니다.",
         "operationId" : "register",
         "requestBody" : {
           "content" : {
@@ -5182,6 +5192,16 @@
             },
             "description" : "이미 등록된 기기이거나 닉네임이 이미 사용 중입니다."
           },
+          "429" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "같은 IP의 기기 등록 요청이 한도를 넘었습니다. 잠시 후 다시 시도해 주세요."
+          },
           "500" : {
             "content" : {
               "application/json" : {
@@ -5211,7 +5231,7 @@
     },
     "/api/v1/auth/token" : {
       "post" : {
-        "description" : "기기 등록 때 받은 installationId와 deviceSecret으로 새 액세스 토큰을 발급합니다.\n\n로그인 없이 호출할 수 있습니다.",
+        "description" : "기기 등록 때 받은 installationId와 deviceSecret으로 새 액세스 토큰을 발급합니다.\n\n로그인 없이 호출할 수 있습니다. 같은 IP에서 짧은 시간에 너무 많이 호출하면 429를 반환합니다.",
         "operationId" : "reissue",
         "requestBody" : {
           "content" : {
@@ -5263,6 +5283,16 @@
               }
             },
             "description" : "사용할 수 없는 계정입니다."
+          },
+          "429" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "같은 IP의 토큰 재발급 요청이 한도를 넘었습니다. 잠시 후 다시 시도해 주세요."
           },
           "500" : {
             "content" : {
@@ -9348,7 +9378,7 @@
     },
     "/api/v1/users/me/nickname" : {
       "patch" : {
-        "description" : "내 닉네임을 변경합니다. 앞뒤 공백은 지우고 저장합니다.\n\n앱 로그인이 필요합니다. Authorization 헤더에 앱 액세스 토큰이 필요합니다.\n\n이미 사용 중인 닉네임은 쓸 수 없고 지금 내 닉네임과 같아도 409를 반환합니다.",
+        "description" : "내 닉네임을 변경합니다. 앞뒤 공백은 지우고 저장합니다.\n\n앱 로그인이 필요합니다. Authorization 헤더에 앱 액세스 토큰이 필요합니다.\n\n이미 사용 중인 닉네임은 쓸 수 없고 지금 내 닉네임과 같아도 409를 반환합니다.\n\n닉네임을 바꾼 뒤 일정 기간 안에는 다시 바꿀 수 없습니다. 가입할 때 정한 닉네임은 바로 바꿀 수 있습니다. 실패한 요청을 포함해 하루 변경 요청 수에도 한도가 있습니다.",
         "operationId" : "changeNickname",
         "requestBody" : {
           "content" : {
@@ -9410,6 +9440,16 @@
               }
             },
             "description" : "이미 사용 중인 닉네임입니다. 자기 자신의 현재 닉네임도 포함됩니다."
+          },
+          "429" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "닉네임 변경 주기가 지나지 않았거나 변경 요청 한도를 넘었습니다."
           },
           "500" : {
             "content" : {

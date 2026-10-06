@@ -2,10 +2,6 @@ package com.dnd.qello.account.repository.jpa;
 
 import java.time.Instant;
 
-import com.dnd.qello.account.domain.AccountRole;
-import com.dnd.qello.account.domain.AccountStatus;
-import com.dnd.qello.common.persistence.JpaAuditableEntity;
-
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -15,6 +11,11 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.persistence.Version;
+
+import com.dnd.qello.account.domain.AccountRole;
+import com.dnd.qello.account.domain.AccountStatus;
+import com.dnd.qello.common.persistence.JpaAuditableEntity;
+
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -49,7 +50,7 @@ public class AccountJpaEntity extends JpaAuditableEntity {
 	@Column(name = "timezone", nullable = false, length = 64)
 	private String timezone;
 
-	//TODO(#48): Nickname Null 허용 유무 논의
+	// TODO(#48): Nickname Null 허용 유무 논의
 	@Column(name = "nickname", length = 50)
 	private String nickname;
 
@@ -57,6 +58,10 @@ public class AccountJpaEntity extends JpaAuditableEntity {
 	// 복합 FK가 강제하므로 JPA 연관을 두지 않고 식별자만 보관한다.
 	@Column(name = "profile_image_media_id")
 	private Long profileImageMediaId;
+
+	// 본인 요청으로 닉네임을 마지막으로 바꾼 시각. 가입 때 정한 닉네임은 NULL로 남는다(#315).
+	@Column(name = "nickname_changed_at")
+	private Instant nicknameChangedAt;
 
 	@Column(name = "deleted_at")
 	private Instant deletedAt;
@@ -68,29 +73,34 @@ public class AccountJpaEntity extends JpaAuditableEntity {
 	private Long version;
 
 	AccountJpaEntity(
-		AccountRole role,
-		AccountStatus status,
-		String countryCode,
-		String coarseRegionCode,
-		String locale,
-		String timezone,
-		String nickname
-	) {
+			AccountRole role,
+			AccountStatus status,
+			String countryCode,
+			String coarseRegionCode,
+			String locale,
+			String timezone,
+			String nickname) {
 		this.role = role;
 		this.status = status;
 		this.countryCode = countryCode;
 		this.coarseRegionCode = coarseRegionCode;
 		this.locale = locale;
 		this.timezone = timezone;
-		//TODO(#48): Nickname Null 허용 유무 논의
+		// TODO(#48): Nickname Null 허용 유무 논의
 		this.nickname = nickname;
 	}
 
-	void updateProfile(String coarseRegionCode, String locale, String timezone, String nickname) {
+	void updateProfile(
+			String coarseRegionCode,
+			String locale,
+			String timezone,
+			String nickname,
+			Instant nicknameChangedAt) {
 		this.coarseRegionCode = coarseRegionCode;
 		this.locale = locale;
 		this.timezone = timezone;
 		this.nickname = nickname;
+		this.nicknameChangedAt = nicknameChangedAt;
 	}
 
 	void updateProfileImage(Long profileImageMediaId) {

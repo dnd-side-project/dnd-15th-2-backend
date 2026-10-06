@@ -6,7 +6,8 @@
  * TEST-PLAN-GH-178-NOTIFICATION-PREFERENCES-INT-012 (added 2026-08-21T21:25:00+09:00),
  * TEST-PLAN-GH-179-PUSH-DELIVERY-INT-018 (added 2026-08-25T00:17:40+09:00),
  * TEST-PLAN-GH-300-FEED-MEDIA-VIEW-URL-INT-008 (added 2026-10-02T17:07:28+09:00,
- * 상세 card 확장 2026-10-02T17:33:49+09:00)
+ * 상세 card 확장 2026-10-02T17:33:49+09:00),
+ * TEST-PLAN-GH-315-AUTH-NICKNAME-RATE-LIMIT-INT-012 (added 2026-10-06T14:26:52+09:00)
  */
 package com.dnd.qello;
 
@@ -321,6 +322,25 @@ class OpenApiSpecificationIntegrationTest extends PostgisContainerIntegrationTes
 		assertThat(registerResponse.has("content")).isFalse();
 		assertThat(revokeResponse.isMissingNode()).isFalse();
 		assertThat(revokeResponse.has("content")).isFalse();
+	}
+
+	@Test
+	@DisplayName("#315 INT-012: 기기 등록·토큰 재발급·운영자 로그인·닉네임 변경은 429 오류 응답을 문서화한다")
+	void documentsRateLimitResponses() throws Exception {
+		JsonNode specification = objectMapper.readTree(fetchSpecification());
+		List<JsonNode> operations = List.of(
+				operation(specification, "/api/v1/auth/devices", "post"),
+				operation(specification, "/api/v1/auth/token", "post"),
+				operation(specification, "/admin/login", "post"),
+				operation(specification, "/api/v1/users/me/nickname", "patch"));
+
+		for (JsonNode operation : operations) {
+			assertThat(operation.isMissingNode()).isFalse();
+			JsonNode tooManyRequests = operation.at("/responses/429");
+			assertThat(tooManyRequests.isMissingNode()).isFalse();
+			assertThat(tooManyRequests.at("/content/application~1json/schema/$ref").asText())
+					.endsWith("/ApiErrorResponse");
+		}
 	}
 
 	private JsonNode operation(JsonNode specification, String path, String method) {

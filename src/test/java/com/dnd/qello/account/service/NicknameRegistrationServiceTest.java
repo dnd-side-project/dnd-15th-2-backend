@@ -1,40 +1,61 @@
 /*
  * Created at: 2026-08-19T03:00:00+09:00
- * Source scenario: TEST-PLAN-GH-168-NICKNAME-DUPLICATE-MODERATION-UNIT-008 through UNIT-012
+ * Source scenario: TEST-PLAN-GH-168-NICKNAME-DUPLICATE-MODERATION-UNIT-008 through UNIT-012,
+ * TEST-PLAN-GH-315-AUTH-NICKNAME-RATE-LIMIT-UNIT-009 through UNIT-013
  */
 package com.dnd.qello.account.service;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.util.ArrayDeque;
+import java.util.Deque;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.TransactionStatus;
+import org.springframework.transaction.support.SimpleTransactionStatus;
 
+import com.dnd.qello.account.config.NicknameChangeProperties;
 import com.dnd.qello.account.domain.Account;
 import com.dnd.qello.account.error.AccountErrorCode;
 import com.dnd.qello.account.error.AccountException;
 import com.dnd.qello.account.repository.AccountRepository;
+import com.dnd.qello.common.ratelimit.RateLimitPolicy;
 import com.dnd.qello.filtering.moderation.ModerationLanguage;
 import com.dnd.qello.filtering.moderation.NicknameModerationChecker;
 import com.dnd.qello.filtering.moderation.NicknameModerationOutcome;
 import com.dnd.qello.filtering.moderation.NicknameModerationOutcome.Reason;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
 class NicknameRegistrationServiceTest {
+
+	private static final Instant NOW = Instant.parse("2026-10-06T05:00:00Z");
+	private static final Duration COOLDOWN = Duration.ofDays(30);
+	private static final int GENEROUS_ATTEMPTS = 100;
+
+	private final FakeTransactionManager transactionManager = new FakeTransactionManager();
 
 	@Test
 	@DisplayName("UNIT-008: 이미 존재하는(대소문자 다른) 닉네임이면 DUPLICATED_NICKNAME이고 moderation은 호출되지 않는다")
 	void rejectsDuplicateNicknameWithoutCallingModeration() {
 		FakeAccountRepository accountRepository = new FakeAccountRepository(true);
-		FakeNicknameModerationChecker moderationChecker = new FakeNicknameModerationChecker(NicknameModerationOutcome.allowed());
-		NicknameRegistrationService service = new NicknameRegistrationService(accountRepository, moderationChecker);
+		FakeNicknameModerationChecker moderationChecker = new FakeNicknameModerationChecker(
+				NicknameModerationOutcome.allowed());
+		NicknameRegistrationService service = service(accountRepository, moderationChecker);
 
 		assertThatThrownBy(() -> service.ensureAvailable("Summer", "ko-KR"))
-			.isInstanceOf(AccountException.class)
-			.hasFieldOrPropertyWithValue("errorCode", AccountErrorCode.DUPLICATED_NICKNAME);
+				.isInstanceOf(AccountException.class)
+				.hasFieldOrPropertyWithValue("errorCode", AccountErrorCode.DUPLICATED_NICKNAME);
 		assertThat(moderationChecker.callCount).isZero();
 	}
 
@@ -43,14 +64,15 @@ class NicknameRegistrationServiceTest {
 	void rejectsSelfDuplicateNicknameTheSameAsOtherDuplicates() {
 		FakeAccountRepository accountRepository = new FakeAccountRepository(true);
 		accountRepository.store(1L, Account.restore(
-			1L, com.dnd.qello.account.domain.AccountRole.USER, com.dnd.qello.account.domain.AccountStatus.ACTIVE,
-			"KR", "KR-11", "ko-KR", "Asia/Seoul", "여름", null));
-		FakeNicknameModerationChecker moderationChecker = new FakeNicknameModerationChecker(NicknameModerationOutcome.allowed());
-		NicknameRegistrationService service = new NicknameRegistrationService(accountRepository, moderationChecker);
+				1L, com.dnd.qello.account.domain.AccountRole.USER, com.dnd.qello.account.domain.AccountStatus.ACTIVE,
+				"KR", "KR-11", "ko-KR", "Asia/Seoul", "여름", null));
+		FakeNicknameModerationChecker moderationChecker = new FakeNicknameModerationChecker(
+				NicknameModerationOutcome.allowed());
+		NicknameRegistrationService service = service(accountRepository, moderationChecker);
 
 		assertThatThrownBy(() -> service.changeNickname(1L, "여름"))
-			.isInstanceOf(AccountException.class)
-			.hasFieldOrPropertyWithValue("errorCode", AccountErrorCode.DUPLICATED_NICKNAME);
+				.isInstanceOf(AccountException.class)
+				.hasFieldOrPropertyWithValue("errorCode", AccountErrorCode.DUPLICATED_NICKNAME);
 	}
 
 	@Test
@@ -58,8 +80,9 @@ class NicknameRegistrationServiceTest {
 	void normalizesWhitespaceBeforeDuplicateCheckAndPersist() {
 		FakeAccountRepository accountRepository = new FakeAccountRepository(false);
 		accountRepository.store(1L, sampleAccount());
-		FakeNicknameModerationChecker moderationChecker = new FakeNicknameModerationChecker(NicknameModerationOutcome.allowed());
-		NicknameRegistrationService service = new NicknameRegistrationService(accountRepository, moderationChecker);
+		FakeNicknameModerationChecker moderationChecker = new FakeNicknameModerationChecker(
+				NicknameModerationOutcome.allowed());
+		NicknameRegistrationService service = service(accountRepository, moderationChecker);
 
 		Account updated = service.changeNickname(1L, "  새닉네임  ");
 
@@ -72,13 +95,13 @@ class NicknameRegistrationServiceTest {
 	void rejectsNicknameBlockedByModeration() {
 		FakeAccountRepository accountRepository = new FakeAccountRepository(false);
 		accountRepository.store(1L, sampleAccount());
-		FakeNicknameModerationChecker moderationChecker =
-			new FakeNicknameModerationChecker(NicknameModerationOutcome.rejected(Reason.BLOCKED_BY_PRIMARY));
-		NicknameRegistrationService service = new NicknameRegistrationService(accountRepository, moderationChecker);
+		FakeNicknameModerationChecker moderationChecker = new FakeNicknameModerationChecker(
+				NicknameModerationOutcome.rejected(Reason.BLOCKED_BY_PRIMARY));
+		NicknameRegistrationService service = service(accountRepository, moderationChecker);
 
 		assertThatThrownBy(() -> service.changeNickname(1L, "새닉네임"))
-			.isInstanceOf(AccountException.class)
-			.hasFieldOrPropertyWithValue("errorCode", AccountErrorCode.NICKNAME_REJECTED_BY_MODERATION);
+				.isInstanceOf(AccountException.class)
+				.hasFieldOrPropertyWithValue("errorCode", AccountErrorCode.NICKNAME_REJECTED_BY_MODERATION);
 		assertThat(accountRepository.updateProfileCallCount).isZero();
 	}
 
@@ -87,13 +110,13 @@ class NicknameRegistrationServiceTest {
 	void rejectsNicknameWhenModerationUnavailable() {
 		FakeAccountRepository accountRepository = new FakeAccountRepository(false);
 		accountRepository.store(1L, sampleAccount());
-		FakeNicknameModerationChecker moderationChecker =
-			new FakeNicknameModerationChecker(NicknameModerationOutcome.rejected(Reason.UNAVAILABLE));
-		NicknameRegistrationService service = new NicknameRegistrationService(accountRepository, moderationChecker);
+		FakeNicknameModerationChecker moderationChecker = new FakeNicknameModerationChecker(
+				NicknameModerationOutcome.rejected(Reason.UNAVAILABLE));
+		NicknameRegistrationService service = service(accountRepository, moderationChecker);
 
 		assertThatThrownBy(() -> service.changeNickname(1L, "새닉네임"))
-			.isInstanceOf(AccountException.class)
-			.hasFieldOrPropertyWithValue("errorCode", AccountErrorCode.NICKNAME_MODERATION_UNAVAILABLE);
+				.isInstanceOf(AccountException.class)
+				.hasFieldOrPropertyWithValue("errorCode", AccountErrorCode.NICKNAME_MODERATION_UNAVAILABLE);
 		assertThat(accountRepository.updateProfileCallCount).isZero();
 	}
 
@@ -102,8 +125,9 @@ class NicknameRegistrationServiceTest {
 	void savesNewNicknameWhenModerationAllows() {
 		FakeAccountRepository accountRepository = new FakeAccountRepository(false);
 		accountRepository.store(1L, sampleAccount());
-		FakeNicknameModerationChecker moderationChecker = new FakeNicknameModerationChecker(NicknameModerationOutcome.allowed());
-		NicknameRegistrationService service = new NicknameRegistrationService(accountRepository, moderationChecker);
+		FakeNicknameModerationChecker moderationChecker = new FakeNicknameModerationChecker(
+				NicknameModerationOutcome.allowed());
+		NicknameRegistrationService service = service(accountRepository, moderationChecker);
 
 		Account updated = service.changeNickname(1L, "새닉네임");
 
@@ -117,7 +141,7 @@ class NicknameRegistrationServiceTest {
 	void passesWithDuplicateCheckOnlyWhenGateIsNoOp() {
 		FakeAccountRepository accountRepository = new FakeAccountRepository(false);
 		NicknameModerationChecker noOpChecker = (nickname, language) -> NicknameModerationOutcome.allowed();
-		NicknameRegistrationService service = new NicknameRegistrationService(accountRepository, noOpChecker);
+		NicknameRegistrationService service = service(accountRepository, noOpChecker);
 
 		service.ensureAvailable("아무닉네임", "ko-KR");
 		// 예외 없이 끝나면 통과 — noOpChecker는 항상 allowed이므로 별도 검증 대상 상태가 없다.
@@ -127,23 +151,175 @@ class NicknameRegistrationServiceTest {
 	@DisplayName("locale이 en으로 시작하면 EN 언어로 moderation을 호출한다")
 	void usesEnglishLanguageForNonKoreanLocale() {
 		FakeAccountRepository accountRepository = new FakeAccountRepository(false);
-		FakeNicknameModerationChecker moderationChecker = new FakeNicknameModerationChecker(NicknameModerationOutcome.allowed());
-		NicknameRegistrationService service = new NicknameRegistrationService(accountRepository, moderationChecker);
+		FakeNicknameModerationChecker moderationChecker = new FakeNicknameModerationChecker(
+				NicknameModerationOutcome.allowed());
+		NicknameRegistrationService service = service(accountRepository, moderationChecker);
 
 		service.ensureAvailable("newNickname", "en-US");
 
 		assertThat(moderationChecker.lastLanguage).isEqualTo(ModerationLanguage.EN);
 	}
 
+	@Test
+	@DisplayName("#315 UNIT-009: 변경 주기 안이면 NICKNAME_CHANGE_TOO_SOON이고 중복 검사·moderation·저장을 하지 않는다")
+	void rejectsChangeInsideCooldownBeforeExternalCalls() {
+		FakeAccountRepository accountRepository = new FakeAccountRepository(false);
+		accountRepository.store(1L, sampleAccount().withNicknameChangedAt(NOW.minus(Duration.ofDays(1))));
+		FakeNicknameModerationChecker moderationChecker = new FakeNicknameModerationChecker(
+				NicknameModerationOutcome.allowed());
+		NicknameRegistrationService service = service(accountRepository, moderationChecker);
+
+		assertThatThrownBy(() -> service.changeNickname(1L, "새닉네임"))
+				.isInstanceOf(AccountException.class)
+				.hasFieldOrPropertyWithValue("errorCode", AccountErrorCode.NICKNAME_CHANGE_TOO_SOON);
+		assertThat(accountRepository.lastCheckedNickname).isNull();
+		assertThat(moderationChecker.callCount).isZero();
+		assertThat(accountRepository.updateProfileCallCount).isZero();
+		assertThat(transactionManager.begun).isZero();
+	}
+
+	@Test
+	@DisplayName("#315 UNIT-009: moderation을 기다리는 사이 다른 변경이 저장됐으면 저장 트랜잭션 안에서 다시 거절한다")
+	void rechecksCooldownInsideWriteTransaction() {
+		FakeAccountRepository accountRepository = new FakeAccountRepository(false);
+		accountRepository.queueReads(sampleAccount(), sampleAccount().changeNickname("먼저바꾼닉네임", NOW));
+		FakeNicknameModerationChecker moderationChecker = new FakeNicknameModerationChecker(
+				NicknameModerationOutcome.allowed());
+		NicknameRegistrationService service = service(accountRepository, moderationChecker);
+
+		assertThatThrownBy(() -> service.changeNickname(1L, "새닉네임"))
+				.isInstanceOf(AccountException.class)
+				.hasFieldOrPropertyWithValue("errorCode", AccountErrorCode.NICKNAME_CHANGE_TOO_SOON);
+		assertThat(moderationChecker.callCount).isEqualTo(1);
+		assertThat(accountRepository.updateProfileCallCount).isZero();
+		assertThat(transactionManager.rolledBack).isEqualTo(1);
+		assertThat(transactionManager.committed).isZero();
+	}
+
+	@Test
+	@DisplayName("#315 UNIT-010: 시도 한도를 넘으면 NICKNAME_CHANGE_RATE_LIMIT_EXCEEDED이고 계정 조회·moderation·저장을 하지 않는다")
+	void rejectsWhenAttemptLimitExceeded() {
+		FakeAccountRepository accountRepository = new FakeAccountRepository(false);
+		accountRepository.store(1L, sampleAccount());
+		FakeNicknameModerationChecker moderationChecker = new FakeNicknameModerationChecker(
+				NicknameModerationOutcome.rejected(Reason.BLOCKED_BY_PRIMARY));
+		NicknameRegistrationService service = service(accountRepository, moderationChecker, 2);
+		attemptAndIgnore(service, 1L, "첫시도");
+		attemptAndIgnore(service, 1L, "두번째시도");
+		int readsBefore = accountRepository.findByIdCallCount;
+
+		assertThatThrownBy(() -> service.changeNickname(1L, "세번째시도"))
+				.isInstanceOf(AccountException.class)
+				.hasFieldOrPropertyWithValue("errorCode", AccountErrorCode.NICKNAME_CHANGE_RATE_LIMIT_EXCEEDED);
+		assertThat(accountRepository.findByIdCallCount).isEqualTo(readsBefore);
+		assertThat(moderationChecker.callCount).isEqualTo(2);
+		assertThat(accountRepository.updateProfileCallCount).isZero();
+	}
+
+	@Test
+	@DisplayName("#315 UNIT-010: 시도 한도는 사용자별로 따로 센다")
+	void countsAttemptsPerUser() {
+		FakeAccountRepository accountRepository = new FakeAccountRepository(false);
+		accountRepository.store(1L, sampleAccount());
+		accountRepository.store(2L, Account.restore(2L, com.dnd.qello.account.domain.AccountRole.USER,
+				com.dnd.qello.account.domain.AccountStatus.ACTIVE, "KR", "KR-11", "ko-KR", "Asia/Seoul", "둘째", null));
+		FakeNicknameModerationChecker moderationChecker = new FakeNicknameModerationChecker(
+				NicknameModerationOutcome.allowed());
+		NicknameRegistrationService service = service(accountRepository, moderationChecker, 1);
+		service.changeNickname(1L, "첫사용자닉네임");
+
+		Account second = service.changeNickname(2L, "둘째사용자닉네임");
+
+		assertThat(second.getNickname()).isEqualTo("둘째사용자닉네임");
+	}
+
+	@Test
+	@DisplayName("#315 UNIT-011: 변경에 성공하면 Clock의 현재 시각을 마지막 변경 시각으로 저장하고 쓰기 트랜잭션을 커밋한다")
+	void recordsChangedAtOnSuccess() {
+		FakeAccountRepository accountRepository = new FakeAccountRepository(false);
+		accountRepository.store(1L, sampleAccount());
+		FakeNicknameModerationChecker moderationChecker = new FakeNicknameModerationChecker(
+				NicknameModerationOutcome.allowed());
+		NicknameRegistrationService service = service(accountRepository, moderationChecker);
+
+		Account updated = service.changeNickname(1L, "새닉네임");
+
+		assertThat(updated.getNicknameChangedAt()).isEqualTo(NOW);
+		assertThat(accountRepository.findById(1L)).get()
+				.extracting(Account::getNicknameChangedAt).isEqualTo(NOW);
+		assertThat(transactionManager.committed).isEqualTo(1);
+	}
+
+	@Test
+	@DisplayName("#315 UNIT-012: 중복·moderation 판정 불가로 실패한 시도도 한도에 들어가고 변경 주기는 시작되지 않는다")
+	void failedAttemptsCountButDoNotStartCooldown() {
+		FakeAccountRepository accountRepository = new FakeAccountRepository(true);
+		accountRepository.store(1L, sampleAccount());
+		FakeNicknameModerationChecker moderationChecker = new FakeNicknameModerationChecker(
+				NicknameModerationOutcome.rejected(Reason.UNAVAILABLE));
+		NicknameRegistrationService service = service(accountRepository, moderationChecker, 2);
+
+		assertThatThrownBy(() -> service.changeNickname(1L, "중복닉네임"))
+				.hasFieldOrPropertyWithValue("errorCode", AccountErrorCode.DUPLICATED_NICKNAME);
+		accountRepository.alwaysDuplicate = false;
+		assertThatThrownBy(() -> service.changeNickname(1L, "새닉네임"))
+				.hasFieldOrPropertyWithValue("errorCode", AccountErrorCode.NICKNAME_MODERATION_UNAVAILABLE);
+		assertThatThrownBy(() -> service.changeNickname(1L, "새닉네임"))
+				.hasFieldOrPropertyWithValue("errorCode", AccountErrorCode.NICKNAME_CHANGE_RATE_LIMIT_EXCEEDED);
+
+		assertThat(accountRepository.findById(1L)).get()
+				.extracting(Account::getNicknameChangedAt).isNull();
+		assertThat(accountRepository.updateProfileCallCount).isZero();
+	}
+
+	@Test
+	@DisplayName("#315 UNIT-013: 등록 경로의 ensureAvailable은 변경 시도 한도와 무관하게 검사를 수행한다")
+	void ensureAvailableIgnoresChangeAttemptLimit() {
+		FakeAccountRepository accountRepository = new FakeAccountRepository(false);
+		accountRepository.store(1L, sampleAccount());
+		FakeNicknameModerationChecker moderationChecker = new FakeNicknameModerationChecker(
+				NicknameModerationOutcome.allowed());
+		NicknameRegistrationService service = service(accountRepository, moderationChecker, 1);
+		service.changeNickname(1L, "새닉네임");
+
+		service.ensureAvailable("가입닉네임", "ko-KR");
+		service.ensureAvailable("가입닉네임2", "ko-KR");
+
+		assertThat(moderationChecker.callCount).isEqualTo(3);
+	}
+
+	private NicknameRegistrationService service(AccountRepository accountRepository,
+			NicknameModerationChecker checker) {
+		return service(accountRepository, checker, GENEROUS_ATTEMPTS);
+	}
+
+	private NicknameRegistrationService service(
+			AccountRepository accountRepository, NicknameModerationChecker checker, int maxAttempts) {
+		NicknameChangeProperties properties = new NicknameChangeProperties(COOLDOWN,
+				new RateLimitPolicy(maxAttempts, Duration.ofDays(1)));
+		return new NicknameRegistrationService(
+				accountRepository, checker, properties, transactionManager, Clock.fixed(NOW, ZoneOffset.UTC));
+	}
+
+	private static void attemptAndIgnore(NicknameRegistrationService service, long accountId, String nickname) {
+		try {
+			service.changeNickname(accountId, nickname);
+		} catch (AccountException ignored) {
+			// 한도 계산만 확인하므로 개별 실패 사유는 검증하지 않는다.
+		}
+	}
+
 	private static Account sampleAccount() {
 		return Account.restore(1L, com.dnd.qello.account.domain.AccountRole.USER,
-			com.dnd.qello.account.domain.AccountStatus.ACTIVE, "KR", "KR-11", "ko-KR", "Asia/Seoul", "기존닉네임", null);
+				com.dnd.qello.account.domain.AccountStatus.ACTIVE, "KR", "KR-11", "ko-KR", "Asia/Seoul", "기존닉네임", null);
 	}
 
 	private static final class FakeAccountRepository implements AccountRepository {
 		private final Map<Long, Account> accounts = new HashMap<>();
-		private final boolean alwaysDuplicate;
+		private final Deque<Account> queuedReads = new ArrayDeque<>();
+		private boolean alwaysDuplicate;
 		private int updateProfileCallCount;
+		private int findByIdCallCount;
 		private String lastCheckedNickname;
 
 		private FakeAccountRepository(boolean alwaysDuplicate) {
@@ -152,6 +328,11 @@ class NicknameRegistrationServiceTest {
 
 		void store(long id, Account account) {
 			accounts.put(id, account);
+		}
+
+		// findById가 차례로 돌려줄 계정. 다 쓰면 store한 값을 돌려준다.
+		void queueReads(Account... reads) {
+			queuedReads.addAll(List.of(reads));
 		}
 
 		@Override
@@ -178,6 +359,10 @@ class NicknameRegistrationServiceTest {
 
 		@Override
 		public Optional<Account> findById(long id) {
+			findByIdCallCount++;
+			if (!queuedReads.isEmpty()) {
+				return Optional.of(queuedReads.poll());
+			}
 			return Optional.ofNullable(accounts.get(id));
 		}
 
@@ -202,6 +387,28 @@ class NicknameRegistrationServiceTest {
 			callCount++;
 			lastLanguage = language;
 			return outcome;
+		}
+	}
+
+	private static final class FakeTransactionManager implements PlatformTransactionManager {
+		private int begun;
+		private int committed;
+		private int rolledBack;
+
+		@Override
+		public TransactionStatus getTransaction(TransactionDefinition definition) {
+			begun++;
+			return new SimpleTransactionStatus();
+		}
+
+		@Override
+		public void commit(TransactionStatus status) {
+			committed++;
+		}
+
+		@Override
+		public void rollback(TransactionStatus status) {
+			rolledBack++;
 		}
 	}
 }

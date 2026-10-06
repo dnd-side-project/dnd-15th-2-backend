@@ -167,7 +167,7 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 			"ct_media_status_preserves_content",
 			"ct_answer_reaction_reactor_can_view");
 
-	private static final int LATEST_MIGRATION_VERSION = 30;
+	private static final int LATEST_MIGRATION_VERSION = 31;
 
 	@Autowired
 	private Flyway flyway;
