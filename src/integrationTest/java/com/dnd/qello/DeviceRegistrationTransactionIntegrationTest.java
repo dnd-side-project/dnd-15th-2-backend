@@ -4,13 +4,6 @@
  */
 package com.dnd.qello;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.when;
-import static org.mockito.Mockito.mock;
-
 import java.util.Optional;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -30,6 +23,13 @@ import com.dnd.qello.auth.domain.DeviceCredential;
 import com.dnd.qello.auth.domain.DevicePlatform;
 import com.dnd.qello.auth.repository.DeviceCredentialRepository;
 import com.dnd.qello.auth.service.DeviceRegistrationService;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 @SpringBootTest
 @ActiveProfiles({"test", "account-persistence"})
@@ -56,9 +56,9 @@ class DeviceRegistrationTransactionIntegrationTest extends PostgisContainerInteg
 		jdbcTemplate.update("DELETE FROM region_code WHERE code = ?", REGION_CODE);
 		jdbcTemplate.update("DELETE FROM region_code WHERE code = 'KR'");
 		jdbcTemplate.update("""
-			INSERT INTO region_code (code, parent_code, display_name, level)
-			VALUES ('KR', NULL, 'Korea', 'COUNTRY'), (?, 'KR', 'Transaction Test', 'REGION')
-			""", REGION_CODE);
+				INSERT INTO region_code (code, parent_code, display_name, level)
+				VALUES ('KR', NULL, 'Korea', 'COUNTRY'), (?, 'KR', 'Transaction Test', 'REGION')
+				""", REGION_CODE);
 	}
 
 	@Test
@@ -72,7 +72,6 @@ class DeviceRegistrationTransactionIntegrationTest extends PostgisContainerInteg
 			"transaction-installation",
 			DevicePlatform.IOS,
 			"KR",
-			REGION_CODE,
 			"ko-KR",
 			"Asia/Seoul",
 			"바람"))

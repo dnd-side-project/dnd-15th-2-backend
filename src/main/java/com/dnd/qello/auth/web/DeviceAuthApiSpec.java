@@ -29,10 +29,10 @@ public interface DeviceAuthApiSpec {
 
 			로그인 없이 호출할 수 있습니다.
 
-			deviceSecret은 이 응답에서만 받을 수 있으니 앱에 저장해야 합니다. 잃어버리면 기기를 새로 등록해야 합니다. countryCode는 coarseRegionCode의 국가와 같아야 합니다.""")
+			deviceSecret은 이 응답에서만 받을 수 있으니 앱에 저장해야 합니다. 잃어버리면 기기를 새로 등록해야 합니다. countryCode는 지원 국가의 ISO 3166-1 alpha-2 코드여야 합니다.""")
 	@ApiResponses({
 			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "201", description = "기기를 등록했습니다. deviceSecret과 첫 액세스 토큰이 함께 발급됩니다."),
-			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "필수 값·기기 식별자·국가·지역·계정 입력값이 올바르지 않거나 닉네임 검사를 통과하지 못했습니다.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
+			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "필수 값·기기 식별자·국가·계정 입력값이 올바르지 않거나 닉네임 검사를 통과하지 못했습니다.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
 			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "409", description = "이미 등록된 기기이거나 닉네임이 이미 사용 중입니다.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
 			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "503", description = "닉네임 검증 서비스를 일시적으로 사용할 수 없습니다.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class)))
 	})
