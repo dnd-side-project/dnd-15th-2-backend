@@ -12,6 +12,7 @@ tags:
 related:
   - "#73"
   - "#88"
+  - "#312"
   - "ADR-0006"
 ---
 
@@ -44,7 +45,9 @@ ISO 3166-1 alpha-2 `countryCode`를 보낸다. 서버는 앞뒤 공백 제거와
 
 1. 값이 누락되거나 공백이 아니고 국가 코드 형식에 맞는다.
 2. `region_code` 마스터에 같은 코드가 존재하고 `level = 'COUNTRY'`다.
-3. 함께 전달된 `coarseRegionCode`가 같은 국가를 최상위 조상으로 가진다.
+
+지역코드(`coarseRegionCode`)는 입력받지 않는다. 일반 사용자의 `coarse_region_code`에는
+정규화한 `country_code`를 그대로 저장한다(#312, 아래 변경 이력 참고).
 
 검증은 계정 저장보다 먼저 수행한다. 하나라도 실패하면 HTTP 400을 반환하고
 `user_account`, `device_credential`과 access token을 생성하지 않는다. 검증에
@@ -52,7 +55,7 @@ ISO 3166-1 alpha-2 `countryCode`를 보낸다. 서버는 앞뒤 공백 제거와
 처리한다.
 
 누락·공백은 공통 필수값 오류로 처리하고, 형식 오류·미지원 코드·COUNTRY가 아닌
-코드·지역 계층 불일치는 신규 `AUT-VAL-004 INVALID_COUNTRY_CODE`로 통일한다. 오류
+코드는 신규 `AUT-VAL-004 INVALID_COUNTRY_CODE`로 통일한다. 오류
 응답과 로그에는 사용자가 제출한 원문을 포함하지 않는다.
 
 `user_account`에는 화면 표시 이름을 복사하지 않고 정규화된 `country_code`를
@@ -97,7 +100,8 @@ UNIQUE를 추가하고, `user_account`에는 `country_code`와 항상 `COUNTRY`�
 ### 단점
 
 - 기기 등록 요청과 계정 영속 모델에 `countryCode`가 추가된다.
-- 국가 코드와 `coarseRegionCode`의 계층 일치 검증이 필요하다.
+- 일반 사용자의 `coarse_region_code`가 국가 단위라 공개 기준 지역도 국가 수준으로만
+  표시된다(#312).
 - 기존 사용자 이관 전에 지역 계층 데이터의 완전성을 확인해야 한다.
 - 이전 앱 버전은 필수 필드를 보내지 않아 신규 기기 등록이 실패한다.
 
@@ -124,9 +128,27 @@ insert가 실패한다. 적용된 migration을 수정하거나 삭제하지 않�
 이 ADR은 사용자 지시에 따라 구현 대상으로 승인되었다. 구현 후 테스트 결과와
 PM/리뷰어 검토를 별도로 기록한다.
 
+## 변경 이력
+
+### 2026-10-06 지역코드 입력 제거 (#312)
+
+팀 회의에서 지역코드 단위(시·도 또는 시·군·구)를 정하지 않고 국가코드만 입력받기로
+결정했다. #283에 남아 있던 `coarse_region_code` 단위 확정 항목을 이 결정으로 대체한다.
+
+- 기기 등록 요청에서 `coarseRegionCode`를 제거하고, 결정 조건 3(`coarseRegionCode`의
+  최상위 국가 일치)을 삭제했다.
+- 일반 사용자의 `coarse_region_code`에는 `country_code`와 같은 COUNTRY 코드를 저장한다.
+  컬럼과 FK는 그대로 두며 COUNTRY 행은 #294의 V29 시드로 적재돼 있다.
+- `coarse_region_code`와 `country_code`를 별도 컬럼으로 두는 결정은 유지한다. 나중에
+  지역 단위를 다시 도입해도 온보딩 국가가 보존된다.
+
+배포 순서: 백엔드를 앱보다 먼저 배포한다. 새 백엔드는 `coarseRegionCode`를 함께 보내는
+이전 앱 요청도 받는다. 반대로 `coarseRegionCode`를 보내지 않는 앱이 먼저 배포되면 기존
+백엔드가 필수값 누락으로 400을 반환한다.
+
 ## 관련 자료
 
-- GitHub Issue: #88
+- GitHub Issue: #88, #312
 - 선행 Issue: #73
 - 관련 결정: `docs/adr/0006-split-operator-and-device-authentication.md`
 - 상세 설계: `docs/product/ONBOARDING_COUNTRY_DESIGN.md`,
