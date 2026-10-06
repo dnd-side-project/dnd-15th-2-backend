@@ -101,7 +101,7 @@ class AccountPersistenceBoundaryTest {
 		try (Stream<Path> paths = Files.walk(root)) {
 			List<String> otherFeatureSources = paths
 					.filter(path -> path.toString().endsWith(".java"))
-					.filter(path -> !path.toString().contains("/account/"))
+					.filter(path -> !path.toString().replace('\\', '/').contains("/account/"))
 					.map(this::readSource)
 					.toList();
 
