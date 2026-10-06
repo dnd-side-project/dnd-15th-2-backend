@@ -59,7 +59,8 @@ class QuestionProposalDeleteMuteMigrationIntegrationTest extends PostgisContaine
 				RETURNING id
 				""".formatted(schemaName), Long.class, userId);
 
-		MigrateResult result = flyway(null).migrate();
+		// V30만 적용해 본다. 뒤에 migration이 추가돼도 이 테스트가 세는 개수가 바뀌지 않는다(#315).
+		MigrateResult result = flyway("30").migrate();
 
 		assertThat(result.migrationsExecuted).isEqualTo(1);
 		Map<String, Object> row = jdbcTemplate.queryForMap("""
