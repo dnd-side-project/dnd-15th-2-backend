@@ -82,6 +82,8 @@ git diff --check
 
 ## Environment notes
 
-- `origin/main`에는 #312의 Windows 수정이 없어 이 PC에서 `./harness`와 Husky 훅이 `python3` Store 별칭에 막힌다.
-  하네스는 `python scripts/harness.py`로 직접 실행한다. 훅과 Gradle Python 태스크의 Windows 실패는 #312 머지 전까지
-  환경 요인으로 보고서에 기록한다.
+- 처음에는 #312의 Windows 수정이 없는 `origin/main`(`18b1adc`)에서 분기해, Java가 포함된 커밋 7개를 사용자 승인 아래
+  pre-commit 훅 단계를 직접 실행한 뒤 `--no-verify`로 커밋했다. 기록은 테스트 보고서 3절에 있다.
+- 2026-10-06 PR 전에 #314 머지 후의 `origin/main`(`c070ae0`)으로 rebase했다. 충돌은 `TASK.md`, `DeviceAuthController`,
+  `DeviceRegistrationServiceTest`, `docs/api/openapi.json`에서 났고 #314의 지역코드 제거와 #315의 한도 변경을 모두 남겼다.
+  `openapi.json`은 테스트로 다시 생성했다. 이후 커밋은 Windows에서도 훅을 켠 채로 만든다.

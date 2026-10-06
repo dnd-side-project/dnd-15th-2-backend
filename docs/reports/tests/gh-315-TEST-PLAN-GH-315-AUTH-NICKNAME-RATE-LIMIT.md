@@ -1,15 +1,17 @@
 # Test Report: TEST-PLAN-GH-315-AUTH-NICKNAME-RATE-LIMIT
 
 > Created at: `2026-10-06T14:57:36+09:00`
+> Updated at: `2026-10-06T15:42:16+09:00` (#314 머지 후 `origin/main` `c070ae0`으로 rebase하고 재검증)
 > GitHub Issue: `#315`
 > Branch: `feat/gh-315-auth-nickname-rate-limit`
-> Commit: `53af273` 기준 코드. 테스트는 커밋 전 같은 작업 트리에서 실행했다(base `18b1adc`)
+> Commit: rebase 후 `fe81713`에 통합 테스트 정리 변경을 더한 작업 트리(base `c070ae0`). 최초 실행은 base `18b1adc`
 
 ## 1. Executive summary
 
-- Result: `PARTIAL`. 승인된 계획의 단위 15개, 통합 12개 시나리오는 모두 통과했다. 다만 이 PC(Windows)에서는 전체
-  단위·통합 실행에 #312가 고친 Windows 환경 실패가 남아 있어, `./harness test-run`과
-  `./harness pr-ready --project-tests`가 끝까지 통과하지 못했다(5절).
+- Result: `PASS`. 승인된 계획의 단위 15개, 통합 12개 시나리오가 모두 통과했다. #314 머지 후 rebase한 상태에서
+  `./harness pr-ready --project-tests`가 이 PC(Windows)에서 통과했다(단위 1181건 중 skipped 2, 통합 784건, 실패 0).
+- 최초 실행(rebase 전, base `18b1adc`)은 #312의 Windows 수정이 없어 환경 요인 실패 14건이 남았고 `PARTIAL`이었다.
+  그 기록은 3절과 5절에 이력으로 남긴다.
 - Tested scope:
   - 메모리 고정 윈도 카운터와 클라이언트 주소 키
   - 기기 등록·토큰 재발급·운영자 로그인의 IP 단위 429(`AUT-APP-007`)
@@ -21,8 +23,7 @@
   - 프록시나 LB 뒤에서의 클라이언트 IP 판별
   - 운영 한도 수치의 적정성(통신사 공유 IP 실측)
   - 실제 OpenAI 호출
-- Release recommendation: 기능 시나리오 기준으로 병합할 수 있다. 다만 Linux CI의 `check`(단위·통합 전체) 통과를 병합
-  조건으로 둔다. 이 PC의 환경 실패 14건은 #312(PR #314)가 머지되면 사라진다.
+- Release recommendation: 병합할 수 있다. macOS·Linux 결과는 PR CI의 `check`로 확인한다.
 
 ## 2. Environment
 
@@ -34,9 +35,23 @@
 | Gradle | 8.14.3 (wrapper) |
 | Database | Testcontainers `postgis/postgis:16-3.5-alpine` |
 | Test runner | JUnit 5 |
-| Python | 3.12. `origin/main`에는 #312의 Windows 수정이 없다. Gradle과 하네스의 `python3` 호출을 위해 세션 임시 venv의 `python3.exe`를 PATH 앞에 두고 실행했다(저장소 파일 변경 없음) |
+| Python | 3.12. rebase 후에는 #312의 인터프리터 선택 규칙으로 실행했다. rebase 전 최초 실행은 세션 임시 venv의 `python3.exe`를 PATH 앞에 두고 실행했다(저장소 파일 변경 없음) |
 
 ## 3. Execution results
+
+### rebase 후 (base `c070ae0`)
+
+| Command / suite | Result | Tests | Duration | Evidence |
+| --- | --- | --- | --- | --- |
+| `./harness pr-ready --project-tests` | PASS | 단위 1181(skipped 2), 통합 784, 실패 0 | 17m 12s | `./harness check` + `./gradlew check`(Checkstyle, 컨벤션, Spotless, 단위, 통합) + `git diff --check`. skipped 2건은 Windows에서 심볼릭 링크를 만들 수 없어 건너뛰는 `RepoMapToolTest` 2건(#312 보고서 UNIT-007) |
+| `npm run hooks:validate` | PASS | — | — | |
+| `OpenApiSpecificationIntegrationTest` | PASS | 13 | 28s | rebase 충돌을 푼 뒤 `docs/api/openapi.json`을 이 테스트로 다시 생성했다 |
+
+rebase 충돌은 `TASK.md`, `DeviceAuthController`, `DeviceRegistrationServiceTest`, `docs/api/openapi.json`에서 났다.
+#314의 지역코드 제거와 #315의 한도 변경을 모두 남겼다. rebase 뒤 새 통합 테스트 두 개의 등록 요청에서
+`coarseRegionCode`와 지역(REGION) fixture를 지워 국가코드 단일 입력 계약에 맞췄다.
+
+### rebase 전 최초 실행 (base `18b1adc`, 이력)
 
 | Command / suite | Result | Tests | Duration | Evidence |
 | --- | --- | --- | --- | --- |
@@ -86,6 +101,8 @@
 
 ## 5. Failures and diagnostics
 
+rebase 후 실행에는 실패가 없다. 아래는 rebase 전 최초 실행의 기록이다.
+
 ### 이번 변경이 원인이었고 고친 실패
 
 | 실패한 테스트 | 원인 | 조치 |
@@ -111,10 +128,7 @@
     JPA 파일까지 검사 대상에 들어간다. account 밖에서 `account.repository.jpa`를 참조하는 파일은 0개다.
 - 재현 조건: `origin/main` 기준 브랜치를 Windows(Git Bash)에서 실행
 - 미검증 범위: 위 14개 테스트의 본래 검증 대상(다른 기능의 경계 규칙 등). 이번 변경은 해당 경계를 건드리지 않는다.
-- 남은 위험: Linux CI에서 통과를 확인하기 전까지는 이 14건을 실패로 본다.
-- 후속 검증 방법:
-  - PR CI의 `check`
-  - #314 머지 후 이 브랜치를 rebase하고 이 PC에서 `./harness pr-ready --project-tests` 재실행
+- 해소: #314 머지 후 rebase한 상태에서 14건 모두 통과했다(3절 rebase 후 결과).
 
 ## 6. Potential issues
 
@@ -167,9 +181,7 @@
 
 ## 7. Regression and residual risk
 
-- #312(PR #314)와 `DeviceAuthController`, `DeviceAuthApiSpec`, `DeviceRegistrationServiceTest`, `docs/api/openapi.json`이
-  겹친다. 먼저 머지된 쪽에 맞춰 rebase할 때 충돌을 손으로 풀어야 한다. 새 통합 테스트의 등록 요청에는
-  `coarseRegionCode`를 넣었는데, #312 이후에도 Jackson이 모르는 필드를 무시하므로 그대로 동작한다.
+- #314와 겹친 파일의 충돌은 rebase에서 풀었다(3절). 충돌 해결 결과는 rebase 후 전체 실행으로 확인했다.
 - 컨벤션 ratchet 때문에 수정한 Java 파일 전체가 Spotless 형식으로 다시 정리됐다. `Account.java`처럼 diff가 큰 파일이 있다.
 - 계획의 소유 파일 목록 밖에서 다음 파일을 고쳤다.
   - `auth/web/AuthRequestRateLimiter.java`(신규 production)
