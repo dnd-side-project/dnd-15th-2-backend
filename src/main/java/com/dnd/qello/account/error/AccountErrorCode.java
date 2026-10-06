@@ -51,18 +51,28 @@ public enum AccountErrorCode implements ErrorCode {
 	// ConstraintExceptionMapper가 최종 방어선으로 같은 코드를 던진다.
 	DUPLICATED_NICKNAME(HttpStatus.CONFLICT, "ACC-APP-002", ErrorCategory.APP, "이미 사용 중인 닉네임입니다."),
 
+	// 사용자 단위 닉네임 변경 시도 한도 초과(#315). 변경마다 외부 moderation을 호출하므로
+	// 중복·moderation 거절로 실패한 시도도 센다
+	NICKNAME_CHANGE_RATE_LIMIT_EXCEEDED(
+			HttpStatus.TOO_MANY_REQUESTS, "ACC-APP-003", ErrorCategory.APP, "닉네임 변경 요청이 너무 많습니다. 잠시 후 다시 시도해 주세요."),
+
+	// 마지막 닉네임 변경 후 변경 주기가 지나지 않음(F01, #315). 가입할 때 정한 닉네임은 주기에 넣지 않는다
+	NICKNAME_CHANGE_TOO_SOON(
+			HttpStatus.TOO_MANY_REQUESTS, "ACC-APP-004", ErrorCategory.APP, "닉네임은 변경한 뒤 일정 기간이 지나야 다시 바꿀 수 있습니다."),
+
 	// moderation 주 판정기(또는 timeout/error 후 보조 판정기)가 명시적으로 BLOCK한
-	// 닉네임(#168, #106 NicknameModerationOutcome.Rejected.BLOCKED_BY_PRIMARY/SECONDARY).
+	// 닉네임(#168, #106
+	// NicknameModerationOutcome.Rejected.BLOCKED_BY_PRIMARY/SECONDARY).
 	// 재시도해도 같은 닉네임으로는 통과하지 못하므로 DOM으로 분류한다.
 	NICKNAME_REJECTED_BY_MODERATION(
-		HttpStatus.BAD_REQUEST, "ACC-DOM-005", ErrorCategory.DOM, "닉네임이 정책을 위반해 사용할 수 없습니다."),
+			HttpStatus.BAD_REQUEST, "ACC-DOM-005", ErrorCategory.DOM, "닉네임이 정책을 위반해 사용할 수 없습니다."),
 
 	// 주·보조 판정기가 모두 timeout/error여서 판정 자체를 할 수 없는 상태(#168, #106
 	// NicknameModerationOutcome.Rejected.UNAVAILABLE). 같은 닉네임이라도 판정 서비스가
 	// 복구되면 통과할 수 있으므로 재시도 후보인 INFRA로 분류하고, 400이 아닌 503으로
 	// NICKNAME_REJECTED_BY_MODERATION과 구분한다.
 	NICKNAME_MODERATION_UNAVAILABLE(
-		HttpStatus.SERVICE_UNAVAILABLE, "ACC-INFRA-001", ErrorCategory.INFRA, "닉네임 검증 서비스를 일시적으로 사용할 수 없습니다.");
+			HttpStatus.SERVICE_UNAVAILABLE, "ACC-INFRA-001", ErrorCategory.INFRA, "닉네임 검증 서비스를 일시적으로 사용할 수 없습니다.");
 
 	private final HttpStatus httpStatus;
 	private final String code;
