@@ -1,6 +1,7 @@
 /**
  * Created at: 2026-08-14T12:44:00+09:00
  * Source scenario: TEST-PLAN-GH-122-DIRECTION-PREVIEW-SUBMISSION-API-UNIT-001 through UNIT-007
+ * Source scenario: TEST-PLAN-GH-137-DIRECTION-POST-MODERATION-UNIT-016 through UNIT-019 (added 2026-10-07T22:11:06+09:00)
  */
 package com.dnd.qello.direction;
 
@@ -14,6 +15,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -41,6 +45,12 @@ import com.dnd.qello.direction.repository.DirectionPostRepository;
 import com.dnd.qello.direction.repository.DirectionSchemeRepository;
 import com.dnd.qello.direction.repository.PostAudienceRepository;
 import com.dnd.qello.direction.service.DirectionPostService;
+import com.dnd.qello.filtering.domain.FilterTarget;
+import com.dnd.qello.filtering.domain.FilterTargetType;
+import com.dnd.qello.filtering.error.FilteringErrorCode;
+import com.dnd.qello.filtering.error.FilteringException;
+import com.dnd.qello.filtering.moderation.AnswerModerationIntake;
+import com.dnd.qello.filtering.moderation.ModerationLanguage;
 import com.dnd.qello.notification.domain.OutboxEvent;
 import com.dnd.qello.notification.repository.OutboxEventRepository;
 import com.dnd.qello.question.domain.AnswerFormat;
@@ -85,6 +95,8 @@ class DirectionPostSubmissionServiceTest {
 	private OutboxEventRepository outboxEventRepository;
 	@Mock
 	private MediaAttachmentService mediaAttachmentService;
+	@Mock
+	private AnswerModerationIntake moderationIntake;
 	@Mock
 	private PlatformTransactionManager transactionManager;
 
@@ -287,6 +299,79 @@ class DirectionPostSubmissionServiceTest {
 				.hasFieldOrPropertyWithValue("errorCode", DirectionErrorCode.IDEMPOTENCY_KEY_REUSED);
 		verify(postRepository, never()).updateRequestFingerprintIfNull(anyLong(),
 				any(DirectionRequestFingerprint.class));
+	}
+
+	@ParameterizedTest(name = "media={0}")
+	@MethodSource("bodyPostMediaIds")
+	@DisplayName("TEST-PLAN-GH-137-DIRECTION-POST-MODERATION-UNIT-016: 본문이 있는 질문글은 같은 transaction에서 질문글 대상 moderation job을 한 번 접수하고 PENDING으로 저장한다")
+	void bodyPostSubmitsModerationJobOnce(List<Long> mediaIds) {
+		savePostsWithGeneratedId();
+
+		service.send(new DirectionPostService.SendCommand(SENDER_ID, QUESTION_ID, SCHEME_ID, "S0", 0, 500,
+				"TEST-REGION", "moderated-key", "본문", mediaIds, AT, AT.plusSeconds(3600)));
+
+		verify(moderationIntake, times(1)).submit(FilterTarget.of(FilterTargetType.DIRECTION_POST, 101L), "본문",
+				ModerationLanguage.KO, "direction-post-moderation:101");
+		assertThat(savedPostArgument().getModerationStatus()).isEqualTo(DirectionPostModerationStatus.PENDING);
+		verify(transactionManager, never()).rollback(any(TransactionStatus.class));
+	}
+
+	static List<List<Long>> bodyPostMediaIds() {
+		return List.of(List.of(), List.of(77L));
+	}
+
+	@Test
+	@DisplayName("TEST-PLAN-GH-137-DIRECTION-POST-MODERATION-UNIT-017: 미디어 단독 질문글은 moderation job을 접수하지 않고 PASSED로 저장한다")
+	void mediaOnlyPostSkipsModerationJobAndPasses() {
+		savePostsWithGeneratedId();
+
+		service.send(new DirectionPostService.SendCommand(SENDER_ID, QUESTION_ID, SCHEME_ID, "S0", 0, 500,
+				"TEST-REGION", "media-only-key", null, List.of(77L), AT, AT.plusSeconds(3600)));
+
+		verify(moderationIntake, never()).submit(any(), any(), any(), any());
+		assertThat(savedPostArgument().getModerationStatus()).isEqualTo(DirectionPostModerationStatus.PASSED);
+		verify(outboxEventRepository, times(1)).save(any(OutboxEvent.class));
+	}
+
+	@Test
+	@DisplayName("TEST-PLAN-GH-137-DIRECTION-POST-MODERATION-UNIT-018: 같은 멱등키의 기존 질문글을 재생하는 요청은 moderation job을 다시 접수하지 않는다")
+	void idempotentReplayDoesNotSubmitModerationAgain() {
+		when(postRepository.findBySenderAndIdempotencyKey(SENDER_ID, "submission-key"))
+			.thenReturn(Optional.of(savedPost));
+
+		service.send(command("submission-key", "본문"));
+
+		verify(moderationIntake, never()).submit(any(), any(), any(), any());
+		verify(postRepository, never()).save(any(DirectionPost.class));
+	}
+
+	@Test
+	@DisplayName("TEST-PLAN-GH-137-DIRECTION-POST-MODERATION-UNIT-019: 승격된 release가 없어 job 접수가 거절되면 예외를 그대로 전파하고 제출 transaction을 commit하지 않는다")
+	void moderationIntakeRejectionPropagatesAndRollsBack() {
+		when(moderationIntake.submit(any(), any(), any(), any()))
+			.thenThrow(new FilteringException(FilteringErrorCode.NO_ACTIVE_RELEASE, "release"));
+
+		assertThatThrownBy(() -> service.send(command("no-release-key", "본문")))
+			.isInstanceOf(FilteringException.class)
+			.hasFieldOrPropertyWithValue("errorCode", FilteringErrorCode.NO_ACTIVE_RELEASE);
+		verify(transactionManager).rollback(any(TransactionStatus.class));
+		verify(transactionManager, never()).commit(any(TransactionStatus.class));
+	}
+
+	private void savePostsWithGeneratedId() {
+		when(postRepository.save(any(DirectionPost.class))).thenAnswer(invocation -> {
+			DirectionPost post = invocation.getArgument(0);
+			return DirectionPost.restore(101L, post.getSenderId(), post.getApprovedQuestionId(),
+				post.getRequestFingerprint(), post.getStatus(), post.getIdempotencyKey(), post.getBodyText(),
+				post.getCoarseRegionCode(), post.getModerationStatus(), post.getSubmittedAt(), post.getPublishedAt(),
+				post.getExpiresAt(), post.getAnswersReadAt(), post.getDeletedAt());
+		});
+	}
+
+	private DirectionPost savedPostArgument() {
+		ArgumentCaptor<DirectionPost> captor = ArgumentCaptor.forClass(DirectionPost.class);
+		verify(postRepository).save(captor.capture());
+		return captor.getValue();
 	}
 
 	private DirectionPostService.SendCommand command(String idempotencyKey, String body) {
