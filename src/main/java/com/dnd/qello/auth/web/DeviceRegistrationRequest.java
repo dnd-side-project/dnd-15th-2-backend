@@ -15,5 +15,5 @@ public record DeviceRegistrationRequest(
 		@Schema(description = "ISO 3166-1 alpha-2 국가 코드입니다. 지원 국가 목록에 있어야 합니다.") @NotBlank(message = "countryCode는 필수입니다") String countryCode,
 		@Schema(description = "계정의 언어·지역 설정") @NotBlank(message = "locale은 필수입니다") String locale,
 		@Schema(description = "계정의 IANA 시간대 식별자") @NotBlank(message = "timezone은 필수입니다") String timezone,
-		@Schema(description = "선택할 수 있는 계정 닉네임") String nickname) {
+		@Schema(description = "선택할 수 있는 계정 닉네임. 닉네임 변경과 같은 규칙으로 보이지 않는 문자와 공백을 정규화한 뒤 저장합니다.") String nickname) {
 }
