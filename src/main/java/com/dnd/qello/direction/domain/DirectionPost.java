@@ -1,6 +1,8 @@
 package com.dnd.qello.direction.domain;
 
 import java.time.Instant;
+import java.util.Optional;
+import java.util.Set;
 
 import com.dnd.qello.direction.error.DirectionErrorCode;
 import com.dnd.qello.direction.error.DirectionException;
@@ -9,6 +11,9 @@ import lombok.Getter;
 
 @Getter
 public final class DirectionPost {
+
+	private static final Set<DirectionPostModerationStatus> UNDECIDED_MODERATION = Set.of(
+			DirectionPostModerationStatus.PENDING, DirectionPostModerationStatus.REVIEW_HELD);
 
 	private final Long id;
 	private final Long senderId;
@@ -74,6 +79,11 @@ public final class DirectionPost {
 				submittedAt, null, expiresAt, null, null);
 	}
 
+	/**
+	 * 본문이 있는 질문글은 텍스트 moderation 판정 전까지 PENDING이다. 본문이 없는 질문글(미디어 단독)은 MVP에 적용할 검사가
+	 * 없어 PASSED로 만든다(#137). 이 PASSED는 미디어 자체의 안전성을 검증했다는 뜻이 아니며, 미디어 검사가 생기면 이 규칙을
+	 * 바꾼다.
+	 */
 	public static DirectionPost submit(Long senderId, Long approvedQuestionId,
 			DirectionRequestFingerprint requestFingerprint, String idempotencyKey, String bodyText,
 			String coarseRegionCode, Instant submittedAt, Instant expiresAt) {
@@ -82,8 +92,11 @@ public final class DirectionPost {
 					DirectionErrorCode.REQUIRED_VALUE_MISSING, "requestFingerprint",
 					"새 제출에는 requestFingerprint가 필요합니다");
 		}
+		DirectionPostModerationStatus moderationStatus = bodyText == null
+				? DirectionPostModerationStatus.PASSED
+				: DirectionPostModerationStatus.PENDING;
 		return new DirectionPost(null, senderId, approvedQuestionId, DirectionPostStatus.MATCHING,
-				idempotencyKey, requestFingerprint, bodyText, coarseRegionCode, DirectionPostModerationStatus.PENDING,
+				idempotencyKey, requestFingerprint, bodyText, coarseRegionCode, moderationStatus,
 				submittedAt, null, expiresAt, null, null);
 	}
 
@@ -142,6 +155,41 @@ public final class DirectionPost {
 					DirectionErrorCode.INVALID_POST_STATE, "status", "현재 질문글은 만료 처리할 수 없습니다");
 		}
 		return copy(DirectionPostStatus.EXPIRED, publishedAt, expiresAt, answersReadAt, deletedAt);
+	}
+
+	/** 텍스트 moderation ALLOW를 반영한다. 판정 전(PENDING·REVIEW_HELD)이 아니면 바꾸지 않는다. */
+	public Optional<DirectionPost> passModeration(Instant at) {
+		return moderate(DirectionPostModerationStatus.PASSED, UNDECIDED_MODERATION, at);
+	}
+
+	/**
+	 * 텍스트 moderation BLOCK을 반영한다. `status`는 바꾸지 않고 매칭 워커가 REJECTED를 보고 매칭하지 않는다.
+	 */
+	public Optional<DirectionPost> rejectModeration(Instant at) {
+		return moderate(DirectionPostModerationStatus.REJECTED, UNDECIDED_MODERATION, at);
+	}
+
+	/**
+	 * deadline까지 판정이 오지 않았음을 반영한다. 이 신호는 승인이 아니므로 매칭 보류를 유지하고, 이후 도착한 판정(수동 검토 포함)이
+	 * PASSED·REJECTED로 바꿀 수 있다.
+	 */
+	public Optional<DirectionPost> holdModerationForReview(Instant at) {
+		return moderate(DirectionPostModerationStatus.REVIEW_HELD, Set.of(DirectionPostModerationStatus.PENDING), at);
+	}
+
+	// 판정 이벤트는 중복되거나 순서가 바뀌어 도착할 수 있다. 이미 확정된 판정은 되돌리지 않고, 만료가
+	// 판정보다 우선하므로 매칭 대기 중이 아니거나 만료 시각이 지난 질문글은 바꾸지 않는다.
+	private Optional<DirectionPost> moderate(DirectionPostModerationStatus next,
+			Set<DirectionPostModerationStatus> allowedFrom, Instant at) {
+		requireValue(at, "at");
+		if (status != DirectionPostStatus.MATCHING || !expiresAt.isAfter(at)
+				|| !allowedFrom.contains(moderationStatus)) {
+			return Optional.empty();
+		}
+		return Optional.of(new DirectionPost(id, senderId, approvedQuestionId, status, idempotencyKey,
+				requestFingerprint, bodyText, coarseRegionCode, next, submittedAt, publishedAt, expiresAt,
+				answersReadAt,
+				deletedAt));
 	}
 
 	private DirectionPost copy(DirectionPostStatus nextStatus, Instant nextPublishedAt, Instant nextExpiresAt,
