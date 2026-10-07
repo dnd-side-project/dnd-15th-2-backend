@@ -116,8 +116,11 @@ class NicknameInvalidInputRejectionTest {
 	}
 
 	@Test
-	@DisplayName("UNIT-009: 실제 정규화기·게이트를 거치면 보이지 않는 문자만 있는 닉네임은 공급자·보조 판정기 호출 없이 400이다")
+	@DisplayName("UNIT-009: 실제 정규화기·게이트를 연결한 서비스에서 보이지 않는 문자만 있는 닉네임은 공급자·보조 판정기 호출 없이 400이다")
 	void productionGateCompositionRejectsInvisibleOnlyNicknameAsBadRequest() {
+		// #317 이후 서비스가 moderation 전에 닉네임을 정규화해 이 입력을 먼저 거절한다. 어느 층에서 거절하든
+		// 400이고 외부 호출이 없어야 한다. 게이트 단독 분류는 NicknameSyncModerationGateTest UNIT-003이
+		// 확인한다.
 		CountingProviderClient provider = new CountingProviderClient();
 		// 보조 판정기를 ALLOW로 둔다 — 호출됐다면 닉네임이 통과해 저장까지 간다.
 		CountingSecondaryClient secondary = new CountingSecondaryClient();
