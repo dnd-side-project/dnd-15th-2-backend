@@ -1,6 +1,7 @@
 /*
  * Created at: 2026-08-03T17:45:39+09:00
  * Source scenario: TEST-PLAN-GH-36-FLYWAY-BASELINE-UNIT-001 through UNIT-002, TEST-PLAN-GH-78-SCHEMA-REVISION-V7-UNIT-001, TEST-PLAN-GH-88-COUNTRY-ONBOARDING-UNIT-004, TEST-PLAN-GH-115-DIRECTION-MATCHING-CONTRACT-INT-001
+ * Source scenario: TEST-PLAN-GH-137-DIRECTION-POST-MODERATION-UNIT-020 (added 2026-10-07T22:12:28+09:00)
  */
 package com.dnd.qello;
 
@@ -71,6 +72,7 @@ class FlywayMigrationContractTest {
 				"V2__add_reactions_and_skip_pending.sql",
 				"V30__add_question_proposal_delete_and_mute.sql",
 				"V31__add_user_account_nickname_changed_at.sql",
+				"V32__allow_direction_post_moderation_target.sql",
 				"V3__add_user_account_password_hash.sql",
 				"V4__add_user_account_optimistic_lock.sql",
 				"V5__add_operator_credential.sql",

@@ -25,7 +25,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * TEST-PLAN-GH-88-COUNTRY-ONBOARDING-INT-003,
  * TEST-PLAN-GH-88-COUNTRY-ONBOARDING-INT-004,
  * TEST-PLAN-GH-115-DIRECTION-MATCHING-CONTRACT-INT-001,
- * TEST-PLAN-GH-294-COUNTRY-SEED-INT-006
+ * TEST-PLAN-GH-294-COUNTRY-SEED-INT-006,
+ * TEST-PLAN-GH-137-DIRECTION-POST-MODERATION (V32 latest version, added 2026-10-07T22:38:41+09:00)
  */
 @SpringBootTest
 @ActiveProfiles({"test", "flyway-migration"})
@@ -167,7 +168,7 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 			"ct_media_status_preserves_content",
 			"ct_answer_reaction_reactor_can_view");
 
-	private static final int LATEST_MIGRATION_VERSION = 31;
+	private static final int LATEST_MIGRATION_VERSION = 32;
 
 	@Autowired
 	private Flyway flyway;

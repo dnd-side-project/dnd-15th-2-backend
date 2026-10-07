@@ -3,18 +3,12 @@
  * Source scenario: TEST-PLAN-GH-125-ANSWER-SUBMISSION-PUBLICATION-API-UNIT-010 through UNIT-014
  * (UNIT-010 stable idempotency key/single execution-requested event is already covered by
  * AnswerModerationJobIntakeServiceTest emitsHistoryAndExecutionRequestedEvent, created for #107)
+ * Source scenario: TEST-PLAN-GH-137-DIRECTION-POST-MODERATION-UNIT-011 through UNIT-015 (added 2026-10-07T22:11:06+09:00;
+ * UNIT-013 is the GH-125 scenarios above running through the real AnswerModerationVerdictApplier)
  */
 package com.dnd.qello.filtering.moderation;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
-
+import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -30,6 +24,7 @@ import com.dnd.qello.answer.domain.AnswerModerationStatus;
 import com.dnd.qello.answer.domain.AnswerStatus;
 import com.dnd.qello.answer.error.AnswerErrorCode;
 import com.dnd.qello.answer.error.AnswerException;
+import com.dnd.qello.answer.service.AnswerModerationVerdictApplier;
 import com.dnd.qello.answer.service.AnswerNotificationService;
 import com.dnd.qello.filtering.domain.FilterTargetType;
 import com.dnd.qello.filtering.domain.FilterVerdict;
@@ -39,7 +34,16 @@ import com.dnd.qello.notification.domain.OutboxEventType;
 import com.dnd.qello.notification.repository.OutboxEventRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-import java.math.BigDecimal;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 class AnswerModerationVerdictWorkerTest {
 
@@ -47,18 +51,22 @@ class AnswerModerationVerdictWorkerTest {
 	private static final ObjectMapper MAPPER = new ObjectMapper();
 	private static final long ANSWER_ID = 42L;
 	private static final long FILTER_JOB_ID = 900L;
+	private static final long POST_ID = 77L;
 
 	private final OutboxEventRepository outboxEventRepository = mock(OutboxEventRepository.class);
 	private final AnswerNotificationService answerNotificationService = mock(AnswerNotificationService.class);
+	private final ModerationVerdictApplier directionPostApplier = directionPostApplier();
 
 	@Test
 	@DisplayName("UNIT-011: ALLOW verdict는 publish만 호출하고 reject 경로를 실행하지 않는다")
 	void appliesAllowVerdictByPublishingOnly() {
 		OutboxEvent event = claimedVerdictEvent(FilterVerdict.ALLOW, 1L);
 		when(outboxEventRepository.claimDue(any(), eq(10), eq("worker-1"), eq(NOW), eq(NOW.plusSeconds(30))))
-			.thenReturn(List.of(event));
-		when(outboxEventRepository.complete(eq(1L), eq("worker-1"), eq(event.leaseGeneration()), any())).thenReturn(true);
-		when(answerNotificationService.publish(ANSWER_ID, NOW)).thenReturn(safetyChecking().markSafetyPassed().publish(NOW));
+				.thenReturn(List.of(event));
+		when(outboxEventRepository.complete(eq(1L), eq("worker-1"), eq(event.leaseGeneration()), any()))
+				.thenReturn(true);
+		when(answerNotificationService.publish(ANSWER_ID, NOW))
+				.thenReturn(safetyChecking().markSafetyPassed().publish(NOW));
 		AnswerModerationVerdictWorker worker = worker();
 
 		AnswerModerationVerdictWorker.BatchResult result = worker.processBatch(command());
@@ -73,8 +81,9 @@ class AnswerModerationVerdictWorkerTest {
 	void appliesBlockVerdictByRejectingOnly() {
 		OutboxEvent event = claimedVerdictEvent(FilterVerdict.BLOCK, 2L);
 		when(outboxEventRepository.claimDue(any(), eq(10), eq("worker-1"), eq(NOW), eq(NOW.plusSeconds(30))))
-			.thenReturn(List.of(event));
-		when(outboxEventRepository.complete(eq(2L), eq("worker-1"), eq(event.leaseGeneration()), any())).thenReturn(true);
+				.thenReturn(List.of(event));
+		when(outboxEventRepository.complete(eq(2L), eq("worker-1"), eq(event.leaseGeneration()), any()))
+				.thenReturn(true);
 		when(answerNotificationService.reject(ANSWER_ID, NOW)).thenReturn(safetyChecking().rejectSafety());
 		AnswerModerationVerdictWorker worker = worker();
 
@@ -90,9 +99,9 @@ class AnswerModerationVerdictWorkerTest {
 	void treatsDeadlineElapsedAsFailClosedAndStillAppliesLateAllow() {
 		OutboxEvent deadlineEvent = claimedDeadlineEvent(3L);
 		when(outboxEventRepository.claimDue(any(), eq(10), eq("worker-1"), eq(NOW), eq(NOW.plusSeconds(30))))
-			.thenReturn(List.of(deadlineEvent));
+				.thenReturn(List.of(deadlineEvent));
 		when(outboxEventRepository.complete(eq(3L), eq("worker-1"), eq(deadlineEvent.leaseGeneration()), any()))
-			.thenReturn(true);
+				.thenReturn(true);
 		AnswerModerationVerdictWorker worker = worker();
 
 		AnswerModerationVerdictWorker.BatchResult first = worker.processBatch(command());
@@ -103,9 +112,11 @@ class AnswerModerationVerdictWorkerTest {
 
 		OutboxEvent lateAllow = claimedVerdictEvent(FilterVerdict.ALLOW, 4L);
 		when(outboxEventRepository.claimDue(any(), eq(10), eq("worker-1"), eq(NOW), eq(NOW.plusSeconds(30))))
-			.thenReturn(List.of(lateAllow));
-		when(outboxEventRepository.complete(eq(4L), eq("worker-1"), eq(lateAllow.leaseGeneration()), any())).thenReturn(true);
-		when(answerNotificationService.publish(ANSWER_ID, NOW)).thenReturn(safetyChecking().markSafetyPassed().publish(NOW));
+				.thenReturn(List.of(lateAllow));
+		when(outboxEventRepository.complete(eq(4L), eq("worker-1"), eq(lateAllow.leaseGeneration()), any()))
+				.thenReturn(true);
+		when(answerNotificationService.publish(ANSWER_ID, NOW))
+				.thenReturn(safetyChecking().markSafetyPassed().publish(NOW));
 
 		AnswerModerationVerdictWorker.BatchResult second = worker.processBatch(command());
 
@@ -118,8 +129,9 @@ class AnswerModerationVerdictWorkerTest {
 	void delegatesTerminalIdempotencyToNotificationService() {
 		OutboxEvent event = claimedVerdictEvent(FilterVerdict.ALLOW, 5L);
 		when(outboxEventRepository.claimDue(any(), eq(10), eq("worker-1"), eq(NOW), eq(NOW.plusSeconds(30))))
-			.thenReturn(List.of(event));
-		when(outboxEventRepository.complete(eq(5L), eq("worker-1"), eq(event.leaseGeneration()), any())).thenReturn(true);
+				.thenReturn(List.of(event));
+		when(outboxEventRepository.complete(eq(5L), eq("worker-1"), eq(event.leaseGeneration()), any()))
+				.thenReturn(true);
 		Answer alreadyPublished = safetyChecking().markSafetyPassed().publish(NOW.minusSeconds(60));
 		when(answerNotificationService.publish(ANSWER_ID, NOW)).thenReturn(alreadyPublished);
 		AnswerModerationVerdictWorker worker = worker();
@@ -140,13 +152,15 @@ class AnswerModerationVerdictWorkerTest {
 	@DisplayName("ANSWER가 아닌 target의 VERDICT_READY는 answer 처리 없이 스킵 완료한다")
 	void skipsVerdictForNonAnswerTarget() {
 		AnswerModerationEventPayloads.VerdictReady payload = new AnswerModerationEventPayloads.VerdictReady(
-			FILTER_JOB_ID, FilterTargetType.NICKNAME, 1L, 0L, FilterVerdict.ALLOW);
+				FILTER_JOB_ID, FilterTargetType.NICKNAME, 1L, 0L, FilterVerdict.ALLOW);
 		OutboxEvent event = withId(6L, OutboxEvent.pending(OutboxAggregateType.FILTER_JOB, FILTER_JOB_ID,
-			OutboxEventType.MODERATION_VERDICT_READY, "filter-job:" + FILTER_JOB_ID + ":VERDICT_READY",
-			AnswerModerationEventPayloads.toJson(MAPPER, payload), NOW).claimed("worker-1", NOW, NOW.plusSeconds(30)));
+				OutboxEventType.MODERATION_VERDICT_READY, "filter-job:" + FILTER_JOB_ID + ":VERDICT_READY",
+				AnswerModerationEventPayloads.toJson(MAPPER, payload), NOW)
+				.claimed("worker-1", NOW, NOW.plusSeconds(30)));
 		when(outboxEventRepository.claimDue(any(), eq(10), eq("worker-1"), eq(NOW), eq(NOW.plusSeconds(30))))
-			.thenReturn(List.of(event));
-		when(outboxEventRepository.complete(eq(6L), eq("worker-1"), eq(event.leaseGeneration()), any())).thenReturn(true);
+				.thenReturn(List.of(event));
+		when(outboxEventRepository.complete(eq(6L), eq("worker-1"), eq(event.leaseGeneration()), any()))
+				.thenReturn(true);
 		AnswerModerationVerdictWorker worker = worker();
 
 		AnswerModerationVerdictWorker.BatchResult result = worker.processBatch(command());
@@ -156,48 +170,138 @@ class AnswerModerationVerdictWorkerTest {
 		verify(answerNotificationService, never()).reject(anyLong(), any());
 	}
 
+	@Test
+	@DisplayName("TEST-PLAN-GH-137-DIRECTION-POST-MODERATION-UNIT-011: 질문글 VERDICT_READY는 질문글 적용기에만 전달되고 답변 공개 경로는 호출되지 않는다")
+	void dispatchesDirectionPostVerdictToItsApplier() {
+		OutboxEvent event = claimedEvent(7L, OutboxEventType.MODERATION_VERDICT_READY,
+				new AnswerModerationEventPayloads.VerdictReady(
+						FILTER_JOB_ID, FilterTargetType.DIRECTION_POST, POST_ID, 0L, FilterVerdict.ALLOW));
+		when(outboxEventRepository.claimDue(any(), eq(10), eq("worker-1"), eq(NOW), eq(NOW.plusSeconds(30))))
+				.thenReturn(List.of(event));
+		when(outboxEventRepository.complete(eq(7L), eq("worker-1"), eq(event.leaseGeneration()), any()))
+				.thenReturn(true);
+
+		AnswerModerationVerdictWorker.BatchResult result = worker().processBatch(command());
+
+		assertThat(result.outcomes()).containsExactly(AnswerModerationVerdictWorker.Outcome.RESOLVED);
+		verify(directionPostApplier).applyVerdict(POST_ID, FilterVerdict.ALLOW, NOW);
+		verify(answerNotificationService, never()).publish(anyLong(), any());
+		verify(answerNotificationService, never()).reject(anyLong(), any());
+	}
+
+	@Test
+	@DisplayName("TEST-PLAN-GH-137-DIRECTION-POST-MODERATION-UNIT-012: 질문글 DEADLINE_ELAPSED는 질문글 적용기의 deadline 처리로 전달되고 claim이 완료된다")
+	void dispatchesDirectionPostDeadlineToItsApplier() {
+		OutboxEvent event = claimedEvent(8L, OutboxEventType.MODERATION_DEADLINE_ELAPSED,
+				new AnswerModerationEventPayloads.DeadlineElapsed(FILTER_JOB_ID, FilterTargetType.DIRECTION_POST,
+						POST_ID, 0L));
+		when(outboxEventRepository.claimDue(any(), eq(10), eq("worker-1"), eq(NOW), eq(NOW.plusSeconds(30))))
+				.thenReturn(List.of(event));
+		when(outboxEventRepository.complete(eq(8L), eq("worker-1"), eq(event.leaseGeneration()), any()))
+				.thenReturn(true);
+
+		AnswerModerationVerdictWorker.BatchResult result = worker().processBatch(command());
+
+		assertThat(result.outcomes()).containsExactly(AnswerModerationVerdictWorker.Outcome.RESOLVED);
+		verify(directionPostApplier).applyDeadlineElapsed(POST_ID, NOW);
+		verify(directionPostApplier, never()).applyVerdict(anyLong(), any(), any());
+		verify(outboxEventRepository).complete(eq(8L), eq("worker-1"), eq(event.leaseGeneration()), any());
+	}
+
+	@Test
+	@DisplayName("TEST-PLAN-GH-137-DIRECTION-POST-MODERATION-UNIT-014: 적용기가 실패한 질문글 이벤트는 FAILED로 claim을 남기고 같은 batch의 답변 이벤트는 처리된다")
+	void isolatesApplierFailurePerEvent() {
+		OutboxEvent failing = claimedEvent(9L, OutboxEventType.MODERATION_VERDICT_READY,
+				new AnswerModerationEventPayloads.VerdictReady(
+						FILTER_JOB_ID, FilterTargetType.DIRECTION_POST, POST_ID, 0L, FilterVerdict.ALLOW));
+		OutboxEvent answer = claimedVerdictEvent(FilterVerdict.ALLOW, 10L);
+		when(outboxEventRepository.claimDue(any(), eq(10), eq("worker-1"), eq(NOW), eq(NOW.plusSeconds(30))))
+				.thenReturn(List.of(failing, answer));
+		when(outboxEventRepository.complete(eq(10L), eq("worker-1"), eq(answer.leaseGeneration()), any()))
+				.thenReturn(true);
+		doThrow(new IllegalStateException("db unavailable"))
+				.when(directionPostApplier).applyVerdict(POST_ID, FilterVerdict.ALLOW, NOW);
+		when(answerNotificationService.publish(ANSWER_ID, NOW))
+				.thenReturn(safetyChecking().markSafetyPassed().publish(NOW));
+
+		AnswerModerationVerdictWorker.BatchResult result = worker().processBatch(command());
+
+		assertThat(result.outcomes()).containsExactly(AnswerModerationVerdictWorker.Outcome.FAILED,
+				AnswerModerationVerdictWorker.Outcome.RESOLVED);
+		verify(outboxEventRepository, never()).complete(eq(9L), any(), anyLong(), any());
+		verify(answerNotificationService).publish(ANSWER_ID, NOW);
+	}
+
+	@Test
+	@DisplayName("TEST-PLAN-GH-137-DIRECTION-POST-MODERATION-UNIT-015: 같은 대상 종류의 적용기가 둘이면 worker 생성 시점에 실패한다")
+	void rejectsDuplicateAppliersForSameTargetType() {
+		ModerationVerdictApplier duplicate = directionPostApplier();
+
+		assertThatThrownBy(() -> new AnswerModerationVerdictWorker(outboxEventRepository,
+				List.of(directionPostApplier, duplicate), MAPPER, mock(PlatformTransactionManager.class),
+				Clock.fixed(NOW, ZoneOffset.UTC)))
+				.isInstanceOf(IllegalStateException.class)
+				.hasMessageContaining("DIRECTION_POST");
+	}
+
 	private AnswerModerationVerdictWorker.BatchCommand command() {
 		return new AnswerModerationVerdictWorker.BatchCommand(10, "worker-1", NOW, NOW.plusSeconds(30));
 	}
 
 	private OutboxEvent claimedVerdictEvent(FilterVerdict verdict, long eventId) {
 		AnswerModerationEventPayloads.VerdictReady payload = new AnswerModerationEventPayloads.VerdictReady(
-			FILTER_JOB_ID, FilterTargetType.ANSWER, ANSWER_ID, 0L, verdict);
+				FILTER_JOB_ID, FilterTargetType.ANSWER, ANSWER_ID, 0L, verdict);
 		String json = AnswerModerationEventPayloads.toJson(MAPPER, payload);
 		return withId(eventId, OutboxEvent.pending(OutboxAggregateType.FILTER_JOB, FILTER_JOB_ID,
-			OutboxEventType.MODERATION_VERDICT_READY, "filter-job:" + FILTER_JOB_ID + ":VERDICT_READY", json, NOW)
-			.claimed("worker-1", NOW, NOW.plusSeconds(30)));
+				OutboxEventType.MODERATION_VERDICT_READY, "filter-job:" + FILTER_JOB_ID + ":VERDICT_READY", json, NOW)
+				.claimed("worker-1", NOW, NOW.plusSeconds(30)));
+	}
+
+	private static OutboxEvent claimedEvent(long eventId, OutboxEventType eventType, Object payload) {
+		return withId(eventId, OutboxEvent.pending(OutboxAggregateType.FILTER_JOB, FILTER_JOB_ID, eventType,
+				"filter-job:" + FILTER_JOB_ID + ":" + eventType, AnswerModerationEventPayloads.toJson(MAPPER, payload),
+				NOW)
+				.claimed("worker-1", NOW, NOW.plusSeconds(30)));
 	}
 
 	private OutboxEvent claimedDeadlineEvent(long eventId) {
 		AnswerModerationEventPayloads.DeadlineElapsed payload = new AnswerModerationEventPayloads.DeadlineElapsed(
-			FILTER_JOB_ID, FilterTargetType.ANSWER, ANSWER_ID, 0L);
+				FILTER_JOB_ID, FilterTargetType.ANSWER, ANSWER_ID, 0L);
 		String json = AnswerModerationEventPayloads.toJson(MAPPER, payload);
 		return withId(eventId, OutboxEvent.pending(OutboxAggregateType.FILTER_JOB, FILTER_JOB_ID,
-			OutboxEventType.MODERATION_DEADLINE_ELAPSED, "filter-job:" + FILTER_JOB_ID + ":DEADLINE_ELAPSED", json, NOW)
-			.claimed("worker-1", NOW, NOW.plusSeconds(30)));
+				OutboxEventType.MODERATION_DEADLINE_ELAPSED, "filter-job:" + FILTER_JOB_ID + ":DEADLINE_ELAPSED", json,
+				NOW)
+				.claimed("worker-1", NOW, NOW.plusSeconds(30)));
 	}
 
 	private static OutboxEvent withId(long id, OutboxEvent event) {
 		return new OutboxEvent(id, event.aggregateType(), event.aggregateId(), event.eventType(), event.dedupKey(),
-			event.payload(), event.status(), event.attemptCount(), event.nextAttemptAt(), event.createdAt(),
-			event.processedAt(), event.matchRound(), event.leaseOwner(), event.leaseExpiresAt(),
-			event.leaseGeneration());
+				event.payload(), event.status(), event.attemptCount(), event.nextAttemptAt(), event.createdAt(),
+				event.processedAt(), event.matchRound(), event.leaseOwner(), event.leaseExpiresAt(),
+				event.leaseGeneration());
 	}
 
 	private static Answer safetyChecking() {
 		Answer submitted = Answer.submit(7L, 11L, "key", "본문", "TEST", BigDecimal.valueOf(90), "NEAR", NOW, 5000L);
 		Answer withId = Answer.restore(ANSWER_ID, submitted.getPostRecipientId(), submitted.getAuthorId(),
-			AnswerStatus.SUBMITTED, submitted.getIdempotencyKey(), submitted.getBodyText(),
-			submitted.getCoarseRegionCode(), submitted.getBearingFromSenderDegrees(), submitted.getDistanceBand(),
-			AnswerModerationStatus.PENDING, submitted.getSubmittedAt(), null, null, submitted.getDistanceM(), null, 0);
+				AnswerStatus.SUBMITTED, submitted.getIdempotencyKey(), submitted.getBodyText(),
+				submitted.getCoarseRegionCode(), submitted.getBearingFromSenderDegrees(), submitted.getDistanceBand(),
+				AnswerModerationStatus.PENDING, submitted.getSubmittedAt(), null, null, submitted.getDistanceM(), null,
+				0);
 		return withId.startSafetyCheck();
 	}
 
 	private AnswerModerationVerdictWorker worker() {
 		PlatformTransactionManager transactionManager = mock(PlatformTransactionManager.class);
 		when(transactionManager.getTransaction(any())).thenReturn(mock(TransactionStatus.class));
-		return new AnswerModerationVerdictWorker(outboxEventRepository, answerNotificationService, MAPPER,
-			transactionManager, Clock.fixed(NOW, ZoneOffset.UTC));
+		return new AnswerModerationVerdictWorker(outboxEventRepository,
+				List.of(new AnswerModerationVerdictApplier(answerNotificationService), directionPostApplier), MAPPER,
+				transactionManager, Clock.fixed(NOW, ZoneOffset.UTC));
+	}
+
+	private static ModerationVerdictApplier directionPostApplier() {
+		ModerationVerdictApplier applier = mock(ModerationVerdictApplier.class);
+		when(applier.targetType()).thenReturn(FilterTargetType.DIRECTION_POST);
+		return applier;
 	}
 }

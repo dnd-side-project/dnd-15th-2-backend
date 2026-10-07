@@ -2,10 +2,9 @@
  * Created at: 2026-08-13T17:45:00+09:00
  * Source scenario: TEST-PLAN-GH-120-DIRECTION-MATCHING-WORKER-INT-001 through INT-009, INT-013, INT-015
  * Source scenario: TEST-PLAN-GH-122-DIRECTION-PREVIEW-SUBMISSION-API-INT-014
+ * Source scenario: TEST-PLAN-GH-137-DIRECTION-POST-MODERATION (release fixture and DIRECTION_POST outbox filter, added 2026-10-07T22:14:59+09:00)
  */
 package com.dnd.qello;
-
-import static org.assertj.core.api.Assertions.assertThat;
 
 import java.math.BigDecimal;
 import java.sql.Timestamp;
@@ -28,13 +27,16 @@ import com.dnd.qello.direction.domain.DirectionScheme;
 import com.dnd.qello.direction.domain.DirectionSegment;
 import com.dnd.qello.direction.matching.DirectionMatchingWorker;
 import com.dnd.qello.direction.repository.ActiveUserPresenceRepository;
-import com.dnd.qello.direction.repository.RecipientReceiveStateRepository;
 import com.dnd.qello.direction.repository.DirectionSchemeRepository;
+import com.dnd.qello.direction.repository.RecipientReceiveStateRepository;
 import com.dnd.qello.direction.service.DirectionPostService;
+import com.dnd.qello.filtering.service.FilterReleaseRegistryService;
 import com.dnd.qello.notification.domain.OutboxEvent;
 import com.dnd.qello.notification.domain.OutboxEventType;
 import com.dnd.qello.notification.domain.OutboxStatus;
 import com.dnd.qello.notification.repository.OutboxEventRepository;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 @SpringBootTest
 @ActiveProfiles("test")
@@ -45,6 +47,8 @@ class DirectionMatchingWorkerIntegrationTest extends PostgisContainerIntegration
 	private static final String OTHER_REGION = "TEST-DIRECTION-MATCHING-WORKER-OTHER";
 	private static final Instant NOW = Instant.parse("2026-08-13T08:30:00Z");
 
+	@Autowired
+	private FilterReleaseRegistryService releaseRegistryService;
 	@Autowired
 	private JdbcTemplate jdbc;
 	@Autowired
@@ -78,9 +82,16 @@ class DirectionMatchingWorkerIntegrationTest extends PostgisContainerIntegration
 		jdbc.update("DELETE FROM user_account WHERE coarse_region_code = ?", OTHER_REGION);
 		jdbc.update("DELETE FROM region_code WHERE code = ?", REGION);
 		jdbc.update("DELETE FROM region_code WHERE code = ?", OTHER_REGION);
-		jdbc.update("INSERT INTO region_code (code, parent_code, display_name, level) VALUES ('KR', NULL, 'Korea', 'COUNTRY') ON CONFLICT (code, level) DO NOTHING");
-		jdbc.update("INSERT INTO region_code (code, parent_code, display_name, level) VALUES (?, 'KR', 'Matching Worker', 'REGION')", REGION);
-		jdbc.update("INSERT INTO region_code (code, parent_code, display_name, level) VALUES (?, 'KR', 'Matching Worker Other', 'REGION')", OTHER_REGION);
+		jdbc.update(
+				"INSERT INTO region_code (code, parent_code, display_name, level) VALUES ('KR', NULL, 'Korea', 'COUNTRY') ON CONFLICT (code, level) DO NOTHING");
+		jdbc.update(
+				"INSERT INTO region_code (code, parent_code, display_name, level) VALUES (?, 'KR', 'Matching Worker', 'REGION')",
+				REGION);
+		jdbc.update(
+				"INSERT INTO region_code (code, parent_code, display_name, level) VALUES (?, 'KR', 'Matching Worker Other', 'REGION')",
+				OTHER_REGION);
+		// #137: 본문 있는 질문글 제출은 승격된 release가 없으면 moderation job 접수에서 거절된다.
+		AnswerModerationReleaseTestFixture.promotedRelease(releaseRegistryService, 1L);
 	}
 
 	@Test
@@ -92,14 +103,19 @@ class DirectionMatchingWorkerIntegrationTest extends PostgisContainerIntegration
 		DirectionMatchingWorker.BatchResult result = worker.processBatch(command());
 
 		assertThat(result.outcomes()).containsExactly(DirectionMatchingWorker.Outcome.PROCESSED);
-		assertThat(jdbc.queryForObject("SELECT status FROM direction_post WHERE id = ?", String.class, postId)).isEqualTo("ACTIVE");
-		assertThat(jdbc.queryForObject("SELECT status FROM outbox_event WHERE aggregate_type = 'DIRECTION_POST' AND aggregate_id = ?",
-			String.class, postId)).isEqualTo(OutboxStatus.PROCESSED.name());
-		assertThat(jdbc.queryForObject("SELECT count(*) FROM post_recipient WHERE post_id = ?", Long.class, postId)).isEqualTo(3L);
-		assertThat(jdbc.queryForObject("SELECT sum(active_unhandled_count) FROM recipient_receive_state WHERE user_id IN (?, ?, ?)",
-			Long.class, fixture.candidateIds().toArray())).isEqualTo(3L);
-		assertThat(jdbc.queryForObject("SELECT count(*) FROM outbox_event WHERE aggregate_type = 'POST_RECIPIENT' AND event_type = ?",
-			Long.class, OutboxEventType.RECIPIENTS_CONFIRMED.name())).isEqualTo(3L);
+		assertThat(jdbc.queryForObject("SELECT status FROM direction_post WHERE id = ?", String.class, postId))
+				.isEqualTo("ACTIVE");
+		assertThat(jdbc.queryForObject(
+				"SELECT status FROM outbox_event WHERE aggregate_type = 'DIRECTION_POST' AND aggregate_id = ?",
+				String.class, postId)).isEqualTo(OutboxStatus.PROCESSED.name());
+		assertThat(jdbc.queryForObject("SELECT count(*) FROM post_recipient WHERE post_id = ?", Long.class, postId))
+				.isEqualTo(3L);
+		assertThat(jdbc.queryForObject(
+				"SELECT sum(active_unhandled_count) FROM recipient_receive_state WHERE user_id IN (?, ?, ?)",
+				Long.class, fixture.candidateIds().toArray())).isEqualTo(3L);
+		assertThat(jdbc.queryForObject(
+				"SELECT count(*) FROM outbox_event WHERE aggregate_type = 'POST_RECIPIENT' AND event_type = ?",
+				Long.class, OutboxEventType.RECIPIENTS_CONFIRMED.name())).isEqualTo(3L);
 		assertThat(jdbc.queryForObject("SELECT count(*) FROM notification", Long.class)).isZero();
 	}
 
@@ -109,15 +125,17 @@ class DirectionMatchingWorkerIntegrationTest extends PostgisContainerIntegration
 		Fixture fixture = fixtureWithCandidates(1);
 		long candidateId = fixture.candidateIds().getFirst();
 		jdbc.update("UPDATE user_account SET coarse_region_code = ? WHERE id = ?", OTHER_REGION, candidateId);
-		jdbc.update("UPDATE active_user_presence SET coarse_region_code = ? WHERE user_id = ?", OTHER_REGION, candidateId);
+		jdbc.update("UPDATE active_user_presence SET coarse_region_code = ? WHERE user_id = ?", OTHER_REGION,
+				candidateId);
 		long postId = submitAndPass(fixture, "worker-global-region");
 
 		assertThat(worker.processBatch(command()).outcomes())
-			.containsExactly(DirectionMatchingWorker.Outcome.PROCESSED);
+				.containsExactly(DirectionMatchingWorker.Outcome.PROCESSED);
 		assertThat(jdbc.queryForList("SELECT recipient_id FROM post_recipient WHERE post_id = ?", Long.class, postId))
-			.containsExactly(candidateId);
-		assertThat(jdbc.queryForObject("SELECT matched_region_code FROM post_recipient WHERE post_id = ?", String.class, postId))
-			.isEqualTo(OTHER_REGION);
+				.containsExactly(candidateId);
+		assertThat(jdbc.queryForObject("SELECT matched_region_code FROM post_recipient WHERE post_id = ?", String.class,
+				postId))
+				.isEqualTo(OTHER_REGION);
 	}
 
 	@Test
@@ -129,10 +147,13 @@ class DirectionMatchingWorkerIntegrationTest extends PostgisContainerIntegration
 		DirectionMatchingWorker.BatchResult result = worker.processBatch(command());
 
 		assertThat(result.outcomes()).containsExactly(DirectionMatchingWorker.Outcome.RETRYABLE);
-		assertThat(jdbc.queryForObject("SELECT count(*) FROM post_recipient WHERE post_id = ?", Long.class, postId)).isZero();
+		assertThat(jdbc.queryForObject("SELECT count(*) FROM post_recipient WHERE post_id = ?", Long.class, postId))
+				.isZero();
 		assertThat(jdbc.queryForObject("SELECT count(*) FROM recipient_receive_state", Long.class)).isZero();
-		assertThat(jdbc.queryForObject("SELECT status FROM outbox_event WHERE aggregate_id = ?", String.class, postId))
-			.isEqualTo(OutboxStatus.FAILED.name());
+		assertThat(jdbc.queryForObject(
+				"SELECT status FROM outbox_event WHERE aggregate_type = 'DIRECTION_POST' AND aggregate_id = ?",
+				String.class, postId))
+				.isEqualTo(OutboxStatus.FAILED.name());
 	}
 
 	@Test
@@ -145,8 +166,10 @@ class DirectionMatchingWorkerIntegrationTest extends PostgisContainerIntegration
 		DirectionMatchingWorker.BatchResult result = worker.processBatch(command());
 
 		assertThat(result.outcomes()).containsExactly(DirectionMatchingWorker.Outcome.PROCESSED);
-		assertThat(jdbc.queryForObject("SELECT status FROM direction_post WHERE id = ?", String.class, postId)).isEqualTo("EXPIRED");
-		assertThat(jdbc.queryForObject("SELECT count(*) FROM post_recipient WHERE post_id = ?", Long.class, postId)).isZero();
+		assertThat(jdbc.queryForObject("SELECT status FROM direction_post WHERE id = ?", String.class, postId))
+				.isEqualTo("EXPIRED");
+		assertThat(jdbc.queryForObject("SELECT count(*) FROM post_recipient WHERE post_id = ?", Long.class, postId))
+				.isZero();
 		assertThat(jdbc.queryForObject("SELECT count(*) FROM recipient_receive_state", Long.class)).isZero();
 	}
 
@@ -158,9 +181,12 @@ class DirectionMatchingWorkerIntegrationTest extends PostgisContainerIntegration
 
 		worker.processBatch(command());
 
-		assertThat(jdbc.queryForObject("SELECT status FROM direction_post WHERE id = ?", String.class, postId)).isEqualTo("ACTIVE");
-		assertThat(jdbc.queryForObject("SELECT count(*) FROM post_recipient WHERE post_id = ?", Long.class, postId)).isZero();
-		assertThat(jdbc.queryForObject("SELECT count(*) FROM outbox_event WHERE aggregate_type = 'POST_RECIPIENT'", Long.class)).isZero();
+		assertThat(jdbc.queryForObject("SELECT status FROM direction_post WHERE id = ?", String.class, postId))
+				.isEqualTo("ACTIVE");
+		assertThat(jdbc.queryForObject("SELECT count(*) FROM post_recipient WHERE post_id = ?", Long.class, postId))
+				.isZero();
+		assertThat(jdbc.queryForObject("SELECT count(*) FROM outbox_event WHERE aggregate_type = 'POST_RECIPIENT'",
+				Long.class)).isZero();
 	}
 
 	@Test
@@ -171,15 +197,18 @@ class DirectionMatchingWorkerIntegrationTest extends PostgisContainerIntegration
 		long expiredPresence = fixture.candidateIds().get(0);
 		long inactive = fixture.candidateIds().get(1);
 		long blocked = fixture.candidateIds().get(2);
-		jdbc.update("UPDATE active_user_presence SET expires_at = ? WHERE user_id = ?", Timestamp.from(NOW.minusSeconds(1)), expiredPresence);
+		jdbc.update("UPDATE active_user_presence SET expires_at = ? WHERE user_id = ?",
+				Timestamp.from(NOW.minusSeconds(1)), expiredPresence);
 		jdbc.update("UPDATE user_account SET status = 'BLOCKED' WHERE id = ?", inactive);
 		long senderId = fixture.senderId();
-		jdbc.update("INSERT INTO user_block (blocker_id, blocked_id, created_at) VALUES (?, ?, ?)", senderId, blocked, Timestamp.from(NOW));
+		jdbc.update("INSERT INTO user_block (blocker_id, blocked_id, created_at) VALUES (?, ?, ?)", senderId, blocked,
+				Timestamp.from(NOW));
 
 		worker.processBatch(command());
 
-		assertThat(jdbc.queryForList("SELECT recipient_id FROM post_recipient WHERE post_id = ? ORDER BY recipient_id", Long.class, postId))
-			.containsExactly(fixture.candidateIds().get(3));
+		assertThat(jdbc.queryForList("SELECT recipient_id FROM post_recipient WHERE post_id = ? ORDER BY recipient_id",
+				Long.class, postId))
+				.containsExactly(fixture.candidateIds().get(3));
 	}
 
 	@Test
@@ -189,8 +218,9 @@ class DirectionMatchingWorkerIntegrationTest extends PostgisContainerIntegration
 		long postId = submitAndPass(fixture, "worker-privacy");
 		worker.processBatch(command());
 
-		String payload = jdbc.queryForObject("SELECT payload::text FROM outbox_event WHERE aggregate_type = 'POST_RECIPIENT' AND aggregate_id IN (SELECT id FROM post_recipient WHERE post_id = ?)",
-			String.class, postId);
+		String payload = jdbc.queryForObject(
+				"SELECT payload::text FROM outbox_event WHERE aggregate_type = 'POST_RECIPIENT' AND aggregate_id IN (SELECT id FROM post_recipient WHERE post_id = ?)",
+				String.class, postId);
 		assertThat(payload).doesNotContain("latitude", "longitude", "distance", "bearing", "37.501", "127.000");
 	}
 
@@ -202,8 +232,8 @@ class DirectionMatchingWorkerIntegrationTest extends PostgisContainerIntegration
 		long schemeId = eightSegmentScheme();
 		presence(senderId, 37.5000, 127.0000, NOW.plusSeconds(3600), NOW.minusSeconds(120));
 		List<Long> inside = List.of(
-			account("worker-wrap-350"), account("worker-wrap-0"), account("worker-wrap-19"),
-			account("worker-wrap-250"));
+				account("worker-wrap-350"), account("worker-wrap-0"), account("worker-wrap-19"),
+				account("worker-wrap-250"));
 		presenceAtBearing(inside.get(0), 120, 350, NOW.plusSeconds(3600));
 		presenceAtBearing(inside.get(1), 250, 0, NOW.plusSeconds(3600));
 		presenceAtBearing(inside.get(2), 499, 19, NOW.plusSeconds(3600));
@@ -216,40 +246,51 @@ class DirectionMatchingWorkerIntegrationTest extends PostgisContainerIntegration
 		presenceAtBearing(aboveMax, 501, 0, NOW.plusSeconds(3600));
 
 		long postId = submitAndPass(new Fixture(senderId, questionId, schemeId, List.of()), "worker-wrap");
-		jdbc.update("UPDATE post_audience SET center_bearing_deg = 5, angular_width_deg = 30, min_distance_m = 100, max_distance_m = 500 WHERE post_id = ?", postId);
+		jdbc.update(
+				"UPDATE post_audience SET center_bearing_deg = 5, angular_width_deg = 30, min_distance_m = 100, max_distance_m = 500 WHERE post_id = ?",
+				postId);
 
 		worker.processBatch(command());
 
-		assertThat(jdbc.queryForList("SELECT recipient_id FROM post_recipient WHERE post_id = ? ORDER BY recipient_id", Long.class, postId))
-			.containsExactlyInAnyOrderElementsOf(inside.subList(0, 3));
+		assertThat(jdbc.queryForList("SELECT recipient_id FROM post_recipient WHERE post_id = ? ORDER BY recipient_id",
+				Long.class, postId))
+				.containsExactlyInAnyOrderElementsOf(inside.subList(0, 3));
 		assertThat(jdbc.queryForList("SELECT recipient_id FROM post_recipient WHERE post_id = ?", Long.class, postId))
-			.doesNotContain(outsideSector, belowMin, aboveMax);
+				.doesNotContain(outsideSector, belowMin, aboveMax);
 	}
 
 	@Test
 	@DisplayName("공정성 순서와 질문글별 최대 수신자 상한을 적용한다")
 	void appliesFairnessOrderAndPostLimit() {
 		Fixture fixture = fixtureWithCandidates(12);
-		fixture.candidateIds().forEach((id) -> jdbc.update("DELETE FROM recipient_receive_state WHERE user_id = ?", id));
-		jdbc.update("INSERT INTO recipient_receive_state (user_id, active_unhandled_count, recent_received_count, recent_window_started_at, updated_at) VALUES (?, 0, 0, ?, ?)",
-			fixture.candidateIds().get(0), Timestamp.from(NOW.minusSeconds(3600)), Timestamp.from(NOW));
-		jdbc.update("INSERT INTO recipient_receive_state (user_id, active_unhandled_count, recent_received_count, recent_window_started_at, updated_at) VALUES (?, 0, 0, ?, ?)",
-			fixture.candidateIds().get(1), Timestamp.from(NOW.minusSeconds(3600)), Timestamp.from(NOW));
+		fixture.candidateIds()
+				.forEach((id) -> jdbc.update("DELETE FROM recipient_receive_state WHERE user_id = ?", id));
+		jdbc.update(
+				"INSERT INTO recipient_receive_state (user_id, active_unhandled_count, recent_received_count, recent_window_started_at, updated_at) VALUES (?, 0, 0, ?, ?)",
+				fixture.candidateIds().get(0), Timestamp.from(NOW.minusSeconds(3600)), Timestamp.from(NOW));
+		jdbc.update(
+				"INSERT INTO recipient_receive_state (user_id, active_unhandled_count, recent_received_count, recent_window_started_at, updated_at) VALUES (?, 0, 0, ?, ?)",
+				fixture.candidateIds().get(1), Timestamp.from(NOW.minusSeconds(3600)), Timestamp.from(NOW));
 		IntStream.range(2, 10).forEach(index -> jdbc.update(
-			"INSERT INTO recipient_receive_state (user_id, active_unhandled_count, recent_received_count, recent_window_started_at, last_received_at, updated_at) VALUES (?, 0, ?, ?, ?, ?)",
-			fixture.candidateIds().get(index), index - 1, Timestamp.from(NOW.minusSeconds(3600)), Timestamp.from(NOW.minusSeconds(index)), Timestamp.from(NOW)));
+				"INSERT INTO recipient_receive_state (user_id, active_unhandled_count, recent_received_count, recent_window_started_at, last_received_at, updated_at) VALUES (?, 0, ?, ?, ?, ?)",
+				fixture.candidateIds().get(index), index - 1, Timestamp.from(NOW.minusSeconds(3600)),
+				Timestamp.from(NOW.minusSeconds(index)), Timestamp.from(NOW)));
 		IntStream.range(10, 12).forEach(index -> jdbc.update(
-			"INSERT INTO recipient_receive_state (user_id, active_unhandled_count, recent_received_count, recent_window_started_at, last_received_at, updated_at) VALUES (?, 0, 20, ?, ?, ?)",
-			fixture.candidateIds().get(index), Timestamp.from(NOW.minusSeconds(3600)), Timestamp.from(NOW.minusSeconds(index)), Timestamp.from(NOW)));
+				"INSERT INTO recipient_receive_state (user_id, active_unhandled_count, recent_received_count, recent_window_started_at, last_received_at, updated_at) VALUES (?, 0, 20, ?, ?, ?)",
+				fixture.candidateIds().get(index), Timestamp.from(NOW.minusSeconds(3600)),
+				Timestamp.from(NOW.minusSeconds(index)), Timestamp.from(NOW)));
 		long postId = submitAndPass(fixture, "worker-fairness-limit");
 
 		worker.processBatch(command());
 
-		assertThat(jdbc.queryForList("SELECT recipient_id FROM post_recipient WHERE post_id = ? ORDER BY recipient_id", Long.class, postId))
-			.containsExactlyInAnyOrderElementsOf(fixture.candidateIds().subList(0, 10));
-		assertThat(jdbc.queryForObject("SELECT count(*) FROM post_recipient WHERE post_id = ?", Long.class, postId)).isEqualTo(10L);
-		assertThat(jdbc.queryForObject("SELECT sum(active_unhandled_count) FROM recipient_receive_state WHERE user_id IN (?, ?)", Long.class,
-			fixture.candidateIds().get(10), fixture.candidateIds().get(11))).isZero();
+		assertThat(jdbc.queryForList("SELECT recipient_id FROM post_recipient WHERE post_id = ? ORDER BY recipient_id",
+				Long.class, postId))
+				.containsExactlyInAnyOrderElementsOf(fixture.candidateIds().subList(0, 10));
+		assertThat(jdbc.queryForObject("SELECT count(*) FROM post_recipient WHERE post_id = ?", Long.class, postId))
+				.isEqualTo(10L);
+		assertThat(jdbc.queryForObject(
+				"SELECT sum(active_unhandled_count) FROM recipient_receive_state WHERE user_id IN (?, ?)", Long.class,
+				fixture.candidateIds().get(10), fixture.candidateIds().get(11))).isZero();
 	}
 
 	@Test
@@ -258,17 +299,20 @@ class DirectionMatchingWorkerIntegrationTest extends PostgisContainerIntegration
 		Fixture fixture = fixtureWithCandidates(3);
 		List<Long> candidates = fixture.candidateIds();
 		receiveStateRepository.ensureForUsers(candidates, NOW);
-		jdbc.update("UPDATE recipient_receive_state SET active_unhandled_count = 4, recent_received_count = 0 WHERE user_id = ?",
-			candidates.get(0));
-		jdbc.update("UPDATE recipient_receive_state SET active_unhandled_count = 0, recent_received_count = 0 WHERE user_id = ?",
-			candidates.get(1));
-		jdbc.update("UPDATE recipient_receive_state SET active_unhandled_count = 0, recent_received_count = 0 WHERE user_id = ?",
-			candidates.get(2));
+		jdbc.update(
+				"UPDATE recipient_receive_state SET active_unhandled_count = 4, recent_received_count = 0 WHERE user_id = ?",
+				candidates.get(0));
+		jdbc.update(
+				"UPDATE recipient_receive_state SET active_unhandled_count = 0, recent_received_count = 0 WHERE user_id = ?",
+				candidates.get(1));
+		jdbc.update(
+				"UPDATE recipient_receive_state SET active_unhandled_count = 0, recent_received_count = 0 WHERE user_id = ?",
+				candidates.get(2));
 
 		List<Long> locked = receiveStateRepository.lockAvailableUserIds(List.of(
-			new RecipientReceiveStateRepository.LockCandidate(candidates.get(0), BigDecimal.valueOf(100)),
-			new RecipientReceiveStateRepository.LockCandidate(candidates.get(1), BigDecimal.valueOf(200)),
-			new RecipientReceiveStateRepository.LockCandidate(candidates.get(2), BigDecimal.valueOf(50))), 2, 5);
+				new RecipientReceiveStateRepository.LockCandidate(candidates.get(0), BigDecimal.valueOf(100)),
+				new RecipientReceiveStateRepository.LockCandidate(candidates.get(1), BigDecimal.valueOf(200)),
+				new RecipientReceiveStateRepository.LockCandidate(candidates.get(2), BigDecimal.valueOf(50))), 2, 5);
 
 		assertThat(locked).containsExactly(candidates.get(2), candidates.get(0));
 	}
@@ -281,21 +325,29 @@ class DirectionMatchingWorkerIntegrationTest extends PostgisContainerIntegration
 		long postId = submitAndPass(fixture, "worker-replay");
 
 		worker.processBatch(command());
-		assertThat(jdbc.queryForObject("SELECT active_unhandled_count FROM recipient_receive_state WHERE user_id = ?", Integer.class, candidateId)).isEqualTo(1);
-		assertThat(jdbc.queryForObject("SELECT recent_received_count FROM recipient_receive_state WHERE user_id = ?", Integer.class, candidateId)).isEqualTo(1);
+		assertThat(jdbc.queryForObject("SELECT active_unhandled_count FROM recipient_receive_state WHERE user_id = ?",
+				Integer.class, candidateId)).isEqualTo(1);
+		assertThat(jdbc.queryForObject("SELECT recent_received_count FROM recipient_receive_state WHERE user_id = ?",
+				Integer.class, candidateId)).isEqualTo(1);
 
 		jdbc.update("UPDATE direction_post SET status = 'MATCHING', published_at = NULL WHERE id = ?", postId);
-		jdbc.update("""
-			UPDATE outbox_event
-			SET status = 'PENDING', attempt_count = 0, next_attempt_at = ?, processed_at = NULL,
-				lease_owner = NULL, lease_expires_at = NULL
-			WHERE aggregate_id = ? AND aggregate_type = 'DIRECTION_POST' AND event_type = 'RECIPIENT_MATCH_REQUESTED'
-			""", Timestamp.from(NOW), postId);
+		jdbc.update(
+				"""
+						UPDATE outbox_event
+						SET status = 'PENDING', attempt_count = 0, next_attempt_at = ?, processed_at = NULL,
+							lease_owner = NULL, lease_expires_at = NULL
+						WHERE aggregate_id = ? AND aggregate_type = 'DIRECTION_POST' AND event_type = 'RECIPIENT_MATCH_REQUESTED'
+						""",
+				Timestamp.from(NOW), postId);
 		worker.processBatch(command());
 
-		assertThat(jdbc.queryForObject("SELECT count(*) FROM post_recipient WHERE post_id = ?", Long.class, postId)).isEqualTo(1L);
-		assertThat(jdbc.queryForObject("SELECT active_unhandled_count FROM recipient_receive_state WHERE user_id = ?", Integer.class, candidateId)).isEqualTo(1);
-		assertThat(jdbc.queryForObject("SELECT count(*) FROM outbox_event WHERE aggregate_type = 'POST_RECIPIENT' AND event_type = 'RECIPIENTS_CONFIRMED'", Long.class)).isEqualTo(1L);
+		assertThat(jdbc.queryForObject("SELECT count(*) FROM post_recipient WHERE post_id = ?", Long.class, postId))
+				.isEqualTo(1L);
+		assertThat(jdbc.queryForObject("SELECT active_unhandled_count FROM recipient_receive_state WHERE user_id = ?",
+				Integer.class, candidateId)).isEqualTo(1);
+		assertThat(jdbc.queryForObject(
+				"SELECT count(*) FROM outbox_event WHERE aggregate_type = 'POST_RECIPIENT' AND event_type = 'RECIPIENTS_CONFIRMED'",
+				Long.class)).isEqualTo(1L);
 	}
 
 	@Test
@@ -309,7 +361,10 @@ class DirectionMatchingWorkerIntegrationTest extends PostgisContainerIntegration
 
 		assertThat(result.outcomes()).containsExactly(DirectionMatchingWorker.Outcome.RETRYABLE);
 		assertThat(jdbc.queryForObject("SELECT count(*) FROM post_recipient", Long.class)).isZero();
-		assertThat(jdbc.queryForObject("SELECT status FROM outbox_event WHERE aggregate_id = ?", String.class, postId)).isEqualTo(OutboxStatus.FAILED.name());
+		assertThat(jdbc.queryForObject(
+				"SELECT status FROM outbox_event WHERE aggregate_type = 'DIRECTION_POST' AND aggregate_id = ?",
+				String.class, postId))
+				.isEqualTo(OutboxStatus.FAILED.name());
 	}
 
 	@Test
@@ -323,7 +378,10 @@ class DirectionMatchingWorkerIntegrationTest extends PostgisContainerIntegration
 
 		assertThat(result.outcomes()).containsExactly(DirectionMatchingWorker.Outcome.PROCESSED);
 		assertThat(jdbc.queryForObject("SELECT count(*) FROM post_recipient", Long.class)).isZero();
-		assertThat(jdbc.queryForObject("SELECT status FROM outbox_event WHERE aggregate_id = ?", String.class, postId)).isEqualTo(OutboxStatus.PROCESSED.name());
+		assertThat(jdbc.queryForObject(
+				"SELECT status FROM outbox_event WHERE aggregate_type = 'DIRECTION_POST' AND aggregate_id = ?",
+				String.class, postId))
+				.isEqualTo(OutboxStatus.PROCESSED.name());
 	}
 
 	@Test
@@ -331,11 +389,13 @@ class DirectionMatchingWorkerIntegrationTest extends PostgisContainerIntegration
 	void expiresBeforeWorkerNow() {
 		Fixture fixture = fixtureWithCandidates(1);
 		long postId = submitAndPass(fixture, "worker-expired-before-now");
-		jdbc.update("UPDATE direction_post SET expires_at = ? WHERE id = ?", Timestamp.from(NOW.minusSeconds(1)), postId);
+		jdbc.update("UPDATE direction_post SET expires_at = ? WHERE id = ?", Timestamp.from(NOW.minusSeconds(1)),
+				postId);
 
 		worker.processBatch(command());
 
-		assertThat(jdbc.queryForObject("SELECT status FROM direction_post WHERE id = ?", String.class, postId)).isEqualTo("EXPIRED");
+		assertThat(jdbc.queryForObject("SELECT status FROM direction_post WHERE id = ?", String.class, postId))
+				.isEqualTo("EXPIRED");
 		assertThat(jdbc.queryForObject("SELECT count(*) FROM post_recipient", Long.class)).isZero();
 	}
 
@@ -347,8 +407,10 @@ class DirectionMatchingWorkerIntegrationTest extends PostgisContainerIntegration
 
 		worker.processBatch(command());
 
-		assertThat(jdbc.queryForObject("SELECT status FROM direction_post WHERE id = ?", String.class, postId)).isEqualTo("ACTIVE");
-		assertThat(jdbc.queryForObject("SELECT count(*) FROM post_recipient WHERE post_id = ?", Long.class, postId)).isEqualTo(1L);
+		assertThat(jdbc.queryForObject("SELECT status FROM direction_post WHERE id = ?", String.class, postId))
+				.isEqualTo("ACTIVE");
+		assertThat(jdbc.queryForObject("SELECT count(*) FROM post_recipient WHERE post_id = ?", Long.class, postId))
+				.isEqualTo(1L);
 	}
 
 	@Test
@@ -357,29 +419,36 @@ class DirectionMatchingWorkerIntegrationTest extends PostgisContainerIntegration
 		Fixture fixture = fixtureWithCandidates(1);
 		long postId = submitAndPass(fixture, "worker-confirmed-rollback");
 		jdbc.execute("""
-			CREATE OR REPLACE FUNCTION test_gh120_fail_confirmed_outbox()
-			RETURNS trigger LANGUAGE plpgsql AS $$
-			BEGIN
-				IF NEW.event_type = 'RECIPIENTS_CONFIRMED' THEN
-					RAISE EXCEPTION 'TEST-PLAN-GH-120 confirmed outbox rollback';
-				END IF;
-				RETURN NEW;
-			END;
-			$$
-			""");
-		jdbc.execute("CREATE TRIGGER test_gh120_fail_confirmed_outbox BEFORE INSERT ON outbox_event FOR EACH ROW EXECUTE FUNCTION test_gh120_fail_confirmed_outbox()");
+				CREATE OR REPLACE FUNCTION test_gh120_fail_confirmed_outbox()
+				RETURNS trigger LANGUAGE plpgsql AS $$
+				BEGIN
+					IF NEW.event_type = 'RECIPIENTS_CONFIRMED' THEN
+						RAISE EXCEPTION 'TEST-PLAN-GH-120 confirmed outbox rollback';
+					END IF;
+					RETURN NEW;
+				END;
+				$$
+				""");
+		jdbc.execute(
+				"CREATE TRIGGER test_gh120_fail_confirmed_outbox BEFORE INSERT ON outbox_event FOR EACH ROW EXECUTE FUNCTION test_gh120_fail_confirmed_outbox()");
 		try {
-			assertThat(worker.processBatch(command()).outcomes()).containsExactly(DirectionMatchingWorker.Outcome.RETRYABLE);
+			assertThat(worker.processBatch(command()).outcomes())
+					.containsExactly(DirectionMatchingWorker.Outcome.RETRYABLE);
 		} finally {
 			jdbc.execute("DROP TRIGGER IF EXISTS test_gh120_fail_confirmed_outbox ON outbox_event");
 			jdbc.execute("DROP FUNCTION IF EXISTS test_gh120_fail_confirmed_outbox()");
 		}
 
-		assertThat(jdbc.queryForObject("SELECT status FROM direction_post WHERE id = ?", String.class, postId)).isEqualTo("MATCHING");
+		assertThat(jdbc.queryForObject("SELECT status FROM direction_post WHERE id = ?", String.class, postId))
+				.isEqualTo("MATCHING");
 		assertThat(jdbc.queryForObject("SELECT count(*) FROM post_recipient", Long.class)).isZero();
 		assertThat(jdbc.queryForObject("SELECT count(*) FROM recipient_receive_state", Long.class)).isZero();
-		assertThat(jdbc.queryForObject("SELECT count(*) FROM outbox_event WHERE aggregate_type = 'POST_RECIPIENT'", Long.class)).isZero();
-		assertThat(jdbc.queryForObject("SELECT status FROM outbox_event WHERE aggregate_id = ?", String.class, postId)).isEqualTo(OutboxStatus.FAILED.name());
+		assertThat(jdbc.queryForObject("SELECT count(*) FROM outbox_event WHERE aggregate_type = 'POST_RECIPIENT'",
+				Long.class)).isZero();
+		assertThat(jdbc.queryForObject(
+				"SELECT status FROM outbox_event WHERE aggregate_type = 'DIRECTION_POST' AND aggregate_id = ?",
+				String.class, postId))
+				.isEqualTo(OutboxStatus.FAILED.name());
 	}
 
 	@Test
@@ -388,13 +457,20 @@ class DirectionMatchingWorkerIntegrationTest extends PostgisContainerIntegration
 		Fixture fixture = fixtureWithCandidates(1);
 		long goodPostId = submitAndPass(fixture, "worker-batch-good");
 		long badPostId = 999_999_991L;
-		outboxRepository.save(OutboxEvent.matchingPending(badPostId, 1, "direction-match:batch-bad", "{\"postId\":999999991}", NOW));
+		outboxRepository.save(
+				OutboxEvent.matchingPending(badPostId, 1, "direction-match:batch-bad", "{\"postId\":999999991}", NOW));
 
 		DirectionMatchingWorker.BatchResult result = worker.processBatch(command());
 
-		assertThat(result.outcomes()).containsExactlyInAnyOrder(DirectionMatchingWorker.Outcome.PROCESSED, DirectionMatchingWorker.Outcome.DEAD);
-		assertThat(jdbc.queryForObject("SELECT status FROM direction_post WHERE id = ?", String.class, goodPostId)).isEqualTo("ACTIVE");
-		assertThat(jdbc.queryForObject("SELECT status FROM outbox_event WHERE aggregate_id = ?", String.class, badPostId)).isEqualTo(OutboxStatus.DEAD.name());
+		assertThat(result.outcomes()).containsExactlyInAnyOrder(DirectionMatchingWorker.Outcome.PROCESSED,
+				DirectionMatchingWorker.Outcome.DEAD);
+		assertThat(jdbc.queryForObject("SELECT status FROM direction_post WHERE id = ?", String.class, goodPostId))
+				.isEqualTo("ACTIVE");
+		assertThat(
+				jdbc.queryForObject(
+						"SELECT status FROM outbox_event WHERE aggregate_type = 'DIRECTION_POST' AND aggregate_id = ?",
+						String.class, badPostId))
+				.isEqualTo(OutboxStatus.DEAD.name());
 	}
 
 	private Fixture fixtureWithCandidates(int count) {
@@ -402,14 +478,19 @@ class DirectionMatchingWorkerIntegrationTest extends PostgisContainerIntegration
 		long questionId = activeQuestion(senderId);
 		long schemeId = eightSegmentScheme();
 		presence(senderId, 37.5000, 127.0000, NOW.plusSeconds(3600), NOW.minusSeconds(120));
-		List<Long> candidates = IntStream.range(0, count).mapToObj(index -> account("worker-candidate-" + index)).toList();
-		IntStream.range(0, count).forEach(index -> presence(candidates.get(index), 37.5010 + index * 0.0001, 127.0000, NOW.plusSeconds(3600)));
+		List<Long> candidates = IntStream.range(0, count).mapToObj(index -> account("worker-candidate-" + index))
+				.toList();
+		IntStream.range(0, count).forEach(
+				index -> presence(candidates.get(index), 37.5010 + index * 0.0001, 127.0000, NOW.plusSeconds(3600)));
 		return new Fixture(senderId, questionId, schemeId, candidates);
 	}
 
 	private long submit(Fixture fixture, String key) {
-		return postService.send(new DirectionPostService.SendCommand(fixture.senderId(), fixture.questionId(), fixture.schemeId(), "S0",
-			0, 5_000, REGION, key, "worker body", NOW.minusSeconds(60), NOW.plusSeconds(3600))).post().getId();
+		return postService
+				.send(new DirectionPostService.SendCommand(fixture.senderId(), fixture.questionId(), fixture.schemeId(),
+						"S0",
+						0, 5_000, REGION, key, "worker body", NOW.minusSeconds(60), NOW.plusSeconds(3600)))
+				.post().getId();
 	}
 
 	private long submitAndPass(Fixture fixture, String key) {
@@ -420,27 +501,33 @@ class DirectionMatchingWorkerIntegrationTest extends PostgisContainerIntegration
 
 	private DirectionMatchingWorker.BatchCommand command() {
 		return new DirectionMatchingWorker.BatchCommand(10, "matching-worker", NOW, NOW.plusSeconds(60),
-			new com.dnd.qello.notification.domain.OutboxRetryPolicy(3, attempt -> Duration.ofSeconds(1)));
+				new com.dnd.qello.notification.domain.OutboxRetryPolicy(3, attempt -> Duration.ofSeconds(1)));
 	}
 
 	private long account(String nickname) {
 		return jdbc.queryForObject("""
-			INSERT INTO user_account (role, country_code, status, coarse_region_code, locale, timezone, nickname)
-			VALUES ('USER', 'KR', 'ACTIVE', ?, 'ko-KR', 'Asia/Seoul', ?) RETURNING id
-			""", Long.class, REGION, nickname);
+				INSERT INTO user_account (role, country_code, status, coarse_region_code, locale, timezone, nickname)
+				VALUES ('USER', 'KR', 'ACTIVE', ?, 'ko-KR', 'Asia/Seoul', ?) RETURNING id
+				""", Long.class, REGION, nickname);
 	}
 
 	private long activeQuestion(long approverId) {
-		return jdbc.queryForObject("""
-			INSERT INTO approved_question (source_type, status, question_text, answer_format, active_from, active_until, approved_at, approved_by)
-			VALUES ('OPERATOR', 'ACTIVE', 'worker question', 'TEXT', ?, ?, ?, ?) RETURNING id
-			""", Long.class, Timestamp.from(NOW.minusSeconds(120)), Timestamp.from(NOW.plusSeconds(7200)), Timestamp.from(NOW.minusSeconds(120)), approverId);
+		return jdbc.queryForObject(
+				"""
+						INSERT INTO approved_question (source_type, status, question_text, answer_format, active_from, active_until, approved_at, approved_by)
+						VALUES ('OPERATOR', 'ACTIVE', 'worker question', 'TEXT', ?, ?, ?, ?) RETURNING id
+						""",
+				Long.class, Timestamp.from(NOW.minusSeconds(120)), Timestamp.from(NOW.plusSeconds(7200)),
+				Timestamp.from(NOW.minusSeconds(120)), approverId);
 	}
 
 	private long eightSegmentScheme() {
-		DirectionScheme scheme = schemeRepository.save(DirectionScheme.createEqual("TEST-WORKER", 1, 8, BigDecimal.ZERO));
-		IntStream.range(0, 8).forEach(index -> schemeRepository.saveSegment(DirectionSegment.create(scheme.getId(), "S" + index,
-			"worker-segment-" + index, BigDecimal.valueOf(index * 45L + 22.5), BigDecimal.valueOf(45), index)));
+		DirectionScheme scheme = schemeRepository
+				.save(DirectionScheme.createEqual("TEST-WORKER", 1, 8, BigDecimal.ZERO));
+		IntStream.range(0, 8)
+				.forEach(index -> schemeRepository.saveSegment(DirectionSegment.create(scheme.getId(), "S" + index,
+						"worker-segment-" + index, BigDecimal.valueOf(index * 45L + 22.5), BigDecimal.valueOf(45),
+						index)));
 		return scheme.getId();
 	}
 
@@ -449,16 +536,20 @@ class DirectionMatchingWorkerIntegrationTest extends PostgisContainerIntegration
 	}
 
 	private void presence(long userId, double latitude, double longitude, Instant expiresAt, Instant updatedAt) {
-		presenceRepository.save(ActiveUserPresence.create(userId, BigDecimal.valueOf(latitude), BigDecimal.valueOf(longitude),
-			null, REGION, BigDecimal.ONE, true, updatedAt, expiresAt));
+		presenceRepository
+				.save(ActiveUserPresence.create(userId, BigDecimal.valueOf(latitude), BigDecimal.valueOf(longitude),
+						null, REGION, BigDecimal.ONE, true, updatedAt, expiresAt));
 	}
 
 	private void presenceAtBearing(long userId, double distanceMeters, double bearingDegrees, Instant expiresAt) {
-		jdbc.update("""
-			INSERT INTO active_user_presence
-				(user_id, position, coarse_cell_id, coarse_region_code, accuracy_m, receive_allowed, location_at, expires_at)
-			VALUES (?, ST_Project(ST_SetSRID(ST_MakePoint(127.0000, 37.5000), 4326)::geography, ?, radians(?)), NULL, ?, 1, TRUE, ?, ?)
-			""", userId, distanceMeters, bearingDegrees, REGION, Timestamp.from(NOW.minusSeconds(10)), Timestamp.from(expiresAt));
+		jdbc.update(
+				"""
+						INSERT INTO active_user_presence
+							(user_id, position, coarse_cell_id, coarse_region_code, accuracy_m, receive_allowed, location_at, expires_at)
+						VALUES (?, ST_Project(ST_SetSRID(ST_MakePoint(127.0000, 37.5000), 4326)::geography, ?, radians(?)), NULL, ?, 1, TRUE, ?, ?)
+						""",
+				userId, distanceMeters, bearingDegrees, REGION, Timestamp.from(NOW.minusSeconds(10)),
+				Timestamp.from(expiresAt));
 	}
 
 	private record Fixture(long senderId, long questionId, long schemeId, List<Long> candidateIds) {

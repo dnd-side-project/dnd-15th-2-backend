@@ -2,11 +2,9 @@
  * Created at: 2026-08-11T20:14:20+09:00
  * Source scenario: TEST-PLAN-GH-115-DIRECTION-MATCHING-CONTRACT-INT-002 through INT-004,
  * TEST-PLAN-GH-118-DIRECTION-POST-SUBMISSION-INT-001 through INT-005
+ * Source scenario: TEST-PLAN-GH-137-DIRECTION-POST-MODERATION (release fixture only, added 2026-10-07T22:14:59+09:00)
  */
 package com.dnd.qello;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.math.BigDecimal;
 import java.sql.Timestamp;
@@ -41,10 +39,14 @@ import com.dnd.qello.direction.repository.ActiveUserPresenceRepository;
 import com.dnd.qello.direction.repository.DirectionPostRepository;
 import com.dnd.qello.direction.repository.DirectionSchemeRepository;
 import com.dnd.qello.direction.service.DirectionPostService;
+import com.dnd.qello.filtering.service.FilterReleaseRegistryService;
 import com.dnd.qello.notification.domain.OutboxAggregateType;
 import com.dnd.qello.notification.domain.OutboxEvent;
 import com.dnd.qello.notification.domain.OutboxEventType;
 import com.dnd.qello.notification.repository.OutboxEventRepository;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @SpringBootTest
 @ActiveProfiles("test")
@@ -53,6 +55,8 @@ class DirectionMatchingContractIntegrationTest extends PostgisContainerIntegrati
 	private static final String REGION = "TEST-DIRECTION-MATCHING-115";
 	private static final Instant NOW = Instant.parse("2026-08-11T11:00:00Z");
 
+	@Autowired
+	private FilterReleaseRegistryService releaseRegistryService;
 	@Autowired
 	private JdbcTemplate jdbc;
 	@Autowired
@@ -84,15 +88,20 @@ class DirectionMatchingContractIntegrationTest extends PostgisContainerIntegrati
 		jdbc.update("DELETE FROM approved_question");
 		jdbc.update("DELETE FROM user_account WHERE coarse_region_code = ?", REGION);
 		jdbc.update("DELETE FROM region_code WHERE code = ?", REGION);
-		jdbc.update("INSERT INTO region_code (code, parent_code, display_name, level) VALUES ('KR', NULL, 'Korea', 'COUNTRY') ON CONFLICT (code, level) DO NOTHING");
-		jdbc.update("INSERT INTO region_code (code, parent_code, display_name, level) VALUES (?, 'KR', 'Matching Test', 'REGION')", REGION);
+		jdbc.update(
+				"INSERT INTO region_code (code, parent_code, display_name, level) VALUES ('KR', NULL, 'Korea', 'COUNTRY') ON CONFLICT (code, level) DO NOTHING");
+		jdbc.update(
+				"INSERT INTO region_code (code, parent_code, display_name, level) VALUES (?, 'KR', 'Matching Test', 'REGION')",
+				REGION);
 
 		senderId = account("matching-sender");
 		questionId = activeQuestion();
 		schemeId = scheme();
 		presenceRepository.save(ActiveUserPresence.create(senderId, BigDecimal.valueOf(37.5),
-			BigDecimal.valueOf(127.0), null, REGION, BigDecimal.ONE, true,
-			NOW.minusSeconds(10), NOW.plusSeconds(3600)));
+				BigDecimal.valueOf(127.0), null, REGION, BigDecimal.ONE, true,
+				NOW.minusSeconds(10), NOW.plusSeconds(3600)));
+		// #137: 본문 있는 질문글 제출은 승격된 release가 없으면 moderation job 접수에서 거절된다.
+		AnswerModerationReleaseTestFixture.promotedRelease(releaseRegistryService, 1L);
 	}
 
 	@Test
@@ -104,46 +113,50 @@ class DirectionMatchingContractIntegrationTest extends PostgisContainerIntegrati
 		assertThat(restored.getRequestFingerprint()).isNotNull();
 		assertThat(restored.getRequestFingerprint()).isEqualTo(result.post().getRequestFingerprint());
 		assertThat(jdbc.queryForObject("SELECT request_fingerprint FROM direction_post WHERE id = ?",
-			String.class, result.post().getId())).isEqualTo(restored.getRequestFingerprint().value());
+				String.class, result.post().getId())).isEqualTo(restored.getRequestFingerprint().value());
 		assertThat(result.recipients()).isEmpty();
 		assertThat(jdbc.queryForObject("SELECT count(*) FROM post_audience WHERE post_id = ?", Long.class,
-			result.post().getId())).isEqualTo(1L);
+				result.post().getId())).isEqualTo(1L);
 		assertThat(jdbc.queryForObject("SELECT count(*) FROM outbox_event WHERE aggregate_id = ? AND event_type = ?",
-			Long.class, result.post().getId(), OutboxEventType.RECIPIENT_MATCH_REQUESTED.name())).isEqualTo(1L);
+				Long.class, result.post().getId(), OutboxEventType.RECIPIENT_MATCH_REQUESTED.name())).isEqualTo(1L);
 		assertThat(jdbc.queryForObject("SELECT count(*) FROM post_recipient WHERE post_id = ?", Long.class,
-			result.post().getId())).isZero();
+				result.post().getId())).isZero();
 	}
 
 	@Test
 	@DisplayName("matching Outbox 저장 실패는 post와 audience를 함께 rollback한다")
 	void rollsBackPostAndAudienceWhenMatchingOutboxFails() {
 		jdbc.execute("""
-			CREATE OR REPLACE FUNCTION test_gh118_fail_matching_outbox()
-			RETURNS trigger LANGUAGE plpgsql AS $$
-			BEGIN
-				RAISE EXCEPTION 'TEST-PLAN-GH-118 rollback injection';
-			END;
-			$$
-			""");
+				CREATE OR REPLACE FUNCTION test_gh118_fail_matching_outbox()
+				RETURNS trigger LANGUAGE plpgsql AS $$
+				BEGIN
+					RAISE EXCEPTION 'TEST-PLAN-GH-118 rollback injection';
+				END;
+				$$
+				""");
 		jdbc.execute("""
-			CREATE TRIGGER test_gh118_fail_matching_outbox
-			BEFORE INSERT ON outbox_event
-			FOR EACH ROW EXECUTE FUNCTION test_gh118_fail_matching_outbox()
-			""");
+				CREATE TRIGGER test_gh118_fail_matching_outbox
+				BEFORE INSERT ON outbox_event
+				FOR EACH ROW EXECUTE FUNCTION test_gh118_fail_matching_outbox()
+				""");
 		try {
 			assertThatThrownBy(() -> send("rollback-key", "rollback 의도"))
-				.isInstanceOf(DataAccessException.class);
+					.isInstanceOf(DataAccessException.class);
 		} finally {
 			jdbc.execute("DROP TRIGGER IF EXISTS test_gh118_fail_matching_outbox ON outbox_event");
 			jdbc.execute("DROP FUNCTION IF EXISTS test_gh118_fail_matching_outbox()");
 		}
 
-		assertThat(jdbc.queryForObject("SELECT count(*) FROM direction_post WHERE sender_id = ? AND idempotency_key = ?",
-			Long.class, senderId, "rollback-key")).isZero();
-		assertThat(jdbc.queryForObject("SELECT count(*) FROM post_audience pa JOIN direction_post p ON p.id = pa.post_id WHERE p.sender_id = ?",
-			Long.class, senderId)).isZero();
-		assertThat(jdbc.queryForObject("SELECT count(*) FROM outbox_event WHERE aggregate_type = 'DIRECTION_POST' AND aggregate_id NOT IN (SELECT id FROM direction_post)",
-			Long.class)).isZero();
+		assertThat(
+				jdbc.queryForObject("SELECT count(*) FROM direction_post WHERE sender_id = ? AND idempotency_key = ?",
+						Long.class, senderId, "rollback-key"))
+				.isZero();
+		assertThat(jdbc.queryForObject(
+				"SELECT count(*) FROM post_audience pa JOIN direction_post p ON p.id = pa.post_id WHERE p.sender_id = ?",
+				Long.class, senderId)).isZero();
+		assertThat(jdbc.queryForObject(
+				"SELECT count(*) FROM outbox_event WHERE aggregate_type = 'DIRECTION_POST' AND aggregate_id NOT IN (SELECT id FROM direction_post)",
+				Long.class)).isZero();
 	}
 
 	@Test
@@ -158,8 +171,8 @@ class DirectionMatchingContractIntegrationTest extends PostgisContainerIntegrati
 		assertThat(jdbc.queryForObject("SELECT count(*) FROM direction_post", Long.class)).isEqualTo(postCount);
 		assertThat(matchingOutboxCount()).isEqualTo(outboxCount);
 		assertThatThrownBy(() -> send("duplicate-key", "의도가 달라진 재사용"))
-			.isInstanceOf(DirectionException.class)
-			.hasFieldOrPropertyWithValue("errorCode", DirectionErrorCode.IDEMPOTENCY_KEY_REUSED);
+				.isInstanceOf(DirectionException.class)
+				.hasFieldOrPropertyWithValue("errorCode", DirectionErrorCode.IDEMPOTENCY_KEY_REUSED);
 		assertThat(jdbc.queryForObject("SELECT count(*) FROM direction_post", Long.class)).isEqualTo(postCount);
 		assertThat(matchingOutboxCount()).isEqualTo(outboxCount);
 	}
@@ -175,7 +188,7 @@ class DirectionMatchingContractIntegrationTest extends PostgisContainerIntegrati
 		assertThat(retry.post().getId()).isEqualTo(first.post().getId());
 		assertThat(retry.post().getRequestFingerprint()).isEqualTo(first.post().getRequestFingerprint());
 		assertThat(jdbc.queryForObject("SELECT request_fingerprint FROM direction_post WHERE id = ?",
-			String.class, first.post().getId())).isEqualTo(first.post().getRequestFingerprint().value());
+				String.class, first.post().getId())).isEqualTo(first.post().getRequestFingerprint().value());
 	}
 
 	@Test
@@ -185,10 +198,10 @@ class DirectionMatchingContractIntegrationTest extends PostgisContainerIntegrati
 		jdbc.update("UPDATE direction_post SET request_fingerprint = NULL WHERE id = ?", first.post().getId());
 
 		assertThatThrownBy(() -> send("legacy-different-key", "달라진 legacy 의도"))
-			.isInstanceOf(DirectionException.class)
-			.hasFieldOrPropertyWithValue("errorCode", DirectionErrorCode.IDEMPOTENCY_KEY_REUSED);
+				.isInstanceOf(DirectionException.class)
+				.hasFieldOrPropertyWithValue("errorCode", DirectionErrorCode.IDEMPOTENCY_KEY_REUSED);
 		assertThat(jdbc.queryForObject("SELECT request_fingerprint FROM direction_post WHERE id = ?",
-			String.class, first.post().getId())).isNull();
+				String.class, first.post().getId())).isNull();
 	}
 
 	@Test
@@ -200,8 +213,8 @@ class DirectionMatchingContractIntegrationTest extends PostgisContainerIntegrati
 		ExecutorService executor = Executors.newFixedThreadPool(2);
 		try {
 			List<Future<DirectionPostService.SendResult>> futures = List.of(
-				executor.submit(() -> sendAfterSignal(command, ready, start)),
-				executor.submit(() -> sendAfterSignal(command, ready, start)));
+					executor.submit(() -> sendAfterSignal(command, ready, start)),
+					executor.submit(() -> sendAfterSignal(command, ready, start)));
 			assertThat(ready.await(5, TimeUnit.SECONDS)).isTrue();
 			start.countDown();
 
@@ -210,7 +223,7 @@ class DirectionMatchingContractIntegrationTest extends PostgisContainerIntegrati
 			assertThat(second.post().getId()).isEqualTo(first.post().getId());
 			assertThat(jdbc.queryForObject("SELECT count(*) FROM direction_post", Long.class)).isEqualTo(1L);
 			assertThat(jdbc.queryForObject("SELECT count(*) FROM outbox_event WHERE event_type = ?",
-				Long.class, OutboxEventType.RECIPIENT_MATCH_REQUESTED.name())).isEqualTo(1L);
+					Long.class, OutboxEventType.RECIPIENT_MATCH_REQUESTED.name())).isEqualTo(1L);
 		} finally {
 			executor.shutdownNow();
 		}
@@ -226,18 +239,18 @@ class DirectionMatchingContractIntegrationTest extends PostgisContainerIntegrati
 		ExecutorService executor = Executors.newFixedThreadPool(2);
 		try {
 			List<Future<ConcurrentSendOutcome>> futures = List.of(
-				executor.submit(() -> sendOutcomeAfterSignal(firstCommand, ready, start)),
-				executor.submit(() -> sendOutcomeAfterSignal(secondCommand, ready, start)));
+					executor.submit(() -> sendOutcomeAfterSignal(firstCommand, ready, start)),
+					executor.submit(() -> sendOutcomeAfterSignal(secondCommand, ready, start)));
 			assertThat(ready.await(5, TimeUnit.SECONDS)).isTrue();
 			start.countDown();
 
 			List<ConcurrentSendOutcome> outcomes = List.of(
-				futures.get(0).get(10, TimeUnit.SECONDS),
-				futures.get(1).get(10, TimeUnit.SECONDS));
+					futures.get(0).get(10, TimeUnit.SECONDS),
+					futures.get(1).get(10, TimeUnit.SECONDS));
 
 			assertThat(outcomes).filteredOn(outcome -> outcome.errorCode() == null).hasSize(1);
 			assertThat(outcomes).extracting(ConcurrentSendOutcome::errorCode)
-				.contains(DirectionErrorCode.IDEMPOTENCY_KEY_REUSED);
+					.contains(DirectionErrorCode.IDEMPOTENCY_KEY_REUSED);
 			assertThat(jdbc.queryForObject("SELECT count(*) FROM direction_post", Long.class)).isEqualTo(1L);
 			assertThat(matchingOutboxCount()).isEqualTo(1L);
 		} finally {
@@ -251,43 +264,43 @@ class DirectionMatchingContractIntegrationTest extends PostgisContainerIntegrati
 		DirectionPostService.SendResult post = send("outbox-key", "매칭 payload");
 		String fingerprint = post.post().getRequestFingerprint().value();
 		String payload = "{\"postId\":" + post.post().getId()
-			+ ",\"matchRound\":1,\"eventType\":\"RECIPIENT_MATCH_REQUESTED\""
-			+ ",\"requestFingerprint\":\"" + fingerprint + "\",\"coarseRegionCode\":\"" + REGION + "\"}";
+				+ ",\"matchRound\":1,\"eventType\":\"RECIPIENT_MATCH_REQUESTED\""
+				+ ",\"requestFingerprint\":\"" + fingerprint + "\",\"coarseRegionCode\":\"" + REGION + "\"}";
 
 		String dedupKey = "direction-match:" + post.post().getId() + ":1:RECIPIENT_MATCH_REQUESTED";
 		OutboxEvent first = outboxRepository.findByDedupKey(dedupKey).orElseThrow();
 		assertThat(first.matchRound()).isEqualTo(1);
 		assertThat(first.eventType()).isEqualTo(OutboxEventType.RECIPIENT_MATCH_REQUESTED);
 		assertThat(jdbc.queryForObject("SELECT payload ->> 'coarseRegionCode' FROM outbox_event WHERE id = ?",
-			String.class, first.id())).isEqualTo(REGION);
+				String.class, first.id())).isEqualTo(REGION);
 		String storedPayload = jdbc.queryForObject("SELECT payload::text FROM outbox_event WHERE id = ?",
-			String.class, first.id());
+				String.class, first.id());
 		assertThat(storedPayload).doesNotContain("latitude", "longitude", "origin_position", "37.5", "127.0");
 		assertThat(jdbc.queryForList("""
-				SELECT jsonb_object_keys(payload)
-			FROM outbox_event
-			WHERE id = ?
-			""", String.class, first.id()))
-			.containsExactlyInAnyOrder("postId", "matchRound", "eventType", "requestFingerprint",
-				"schemeId", "segmentKey", "minDistanceMeters", "maxDistanceMeters", "coarseRegionCode");
+					SELECT jsonb_object_keys(payload)
+				FROM outbox_event
+				WHERE id = ?
+				""", String.class, first.id()))
+				.containsExactlyInAnyOrder("postId", "matchRound", "eventType", "requestFingerprint",
+						"schemeId", "segmentKey", "minDistanceMeters", "maxDistanceMeters", "coarseRegionCode");
 
 		assertThatThrownBy(() -> outboxRepository.save(OutboxEvent.matchingPending(post.post().getId(), 1,
-			"direction-match:duplicate-dedup", payload, NOW)))
-			.isInstanceOf(DataIntegrityViolationException.class);
+				"direction-match:duplicate-dedup", payload, NOW)))
+				.isInstanceOf(DataIntegrityViolationException.class);
 
 		OutboxEvent nextRound = outboxRepository.save(OutboxEvent.matchingPending(post.post().getId(), 2,
-			"direction-match:round-2", payload.replace("\"matchRound\":1", "\"matchRound\":2"), NOW));
+				"direction-match:round-2", payload.replace("\"matchRound\":1", "\"matchRound\":2"), NOW));
 		assertThat(nextRound.matchRound()).isEqualTo(2);
 		assertThat(jdbc.queryForObject("SELECT count(*) FROM outbox_event WHERE aggregate_id = ? AND event_type = ?",
-			Long.class, post.post().getId(), OutboxEventType.RECIPIENT_MATCH_REQUESTED.name())).isEqualTo(2);
+				Long.class, post.post().getId(), OutboxEventType.RECIPIENT_MATCH_REQUESTED.name())).isEqualTo(2);
 	}
 
 	@Test
 	@DisplayName("non-matching Outbox event에는 match round를 저장할 수 없다")
 	void rejectsRoundOnNonMatchingEvent() {
 		assertThatThrownBy(() -> OutboxEvent.pending(OutboxAggregateType.ANSWER, 1L,
-			OutboxEventType.ANSWER_PUBLISHED, "answer-round", "{\"answerId\":1}", 1, NOW))
-			.isInstanceOf(com.dnd.qello.notification.error.NotificationException.class);
+				OutboxEventType.ANSWER_PUBLISHED, "answer-round", "{\"answerId\":1}", 1, NOW))
+				.isInstanceOf(com.dnd.qello.notification.error.NotificationException.class);
 	}
 
 	private DirectionPostService.SendResult send(String idempotencyKey, String bodyText) {
@@ -296,18 +309,18 @@ class DirectionMatchingContractIntegrationTest extends PostgisContainerIntegrati
 
 	private DirectionPostService.SendCommand command(String idempotencyKey, String bodyText) {
 		return new DirectionPostService.SendCommand(senderId, questionId, schemeId, "S0",
-			0, 500, REGION, idempotencyKey, bodyText, NOW, NOW.plus(1, ChronoUnit.HOURS));
+				0, 500, REGION, idempotencyKey, bodyText, NOW, NOW.plus(1, ChronoUnit.HOURS));
 	}
 
 	private DirectionPostService.SendResult sendAfterSignal(DirectionPostService.SendCommand command,
-		CountDownLatch ready, CountDownLatch start) throws Exception {
+			CountDownLatch ready, CountDownLatch start) throws Exception {
 		ready.countDown();
 		assertThat(start.await(5, TimeUnit.SECONDS)).isTrue();
 		return postService.send(command);
 	}
 
 	private ConcurrentSendOutcome sendOutcomeAfterSignal(DirectionPostService.SendCommand command,
-		CountDownLatch ready, CountDownLatch start) throws Exception {
+			CountDownLatch ready, CountDownLatch start) throws Exception {
 		ready.countDown();
 		assertThat(start.await(5, TimeUnit.SECONDS)).isTrue();
 		try {
@@ -319,7 +332,7 @@ class DirectionMatchingContractIntegrationTest extends PostgisContainerIntegrati
 
 	private long matchingOutboxCount() {
 		return jdbc.queryForObject("SELECT count(*) FROM outbox_event WHERE event_type = ?",
-			Long.class, OutboxEventType.RECIPIENT_MATCH_REQUESTED.name());
+				Long.class, OutboxEventType.RECIPIENT_MATCH_REQUESTED.name());
 	}
 
 	private record ConcurrentSendOutcome(Long postId, ErrorCode errorCode) {
@@ -327,25 +340,27 @@ class DirectionMatchingContractIntegrationTest extends PostgisContainerIntegrati
 
 	private long account(String nickname) {
 		return jdbc.queryForObject("""
-			INSERT INTO user_account (role, country_code, status, coarse_region_code, locale, timezone, nickname)
-			VALUES ('USER', 'KR', 'ACTIVE', ?, 'ko-KR', 'Asia/Seoul', ?)
-			RETURNING id
-			""", Long.class, REGION, nickname);
+				INSERT INTO user_account (role, country_code, status, coarse_region_code, locale, timezone, nickname)
+				VALUES ('USER', 'KR', 'ACTIVE', ?, 'ko-KR', 'Asia/Seoul', ?)
+				RETURNING id
+				""", Long.class, REGION, nickname);
 	}
 
 	private long activeQuestion() {
 		return jdbc.queryForObject("""
-			INSERT INTO approved_question
-				(source_type, status, question_text, answer_format, active_from, approved_at, approved_by)
-			VALUES ('OPERATOR', 'ACTIVE', '매칭 계약 질문', 'TEXT', ?, ?, ?)
-			RETURNING id
-			""", Long.class, Timestamp.from(NOW.minusSeconds(60)), Timestamp.from(NOW), senderId);
+				INSERT INTO approved_question
+					(source_type, status, question_text, answer_format, active_from, approved_at, approved_by)
+				VALUES ('OPERATOR', 'ACTIVE', '매칭 계약 질문', 'TEXT', ?, ?, ?)
+				RETURNING id
+				""", Long.class, Timestamp.from(NOW.minusSeconds(60)), Timestamp.from(NOW), senderId);
 	}
 
 	private long scheme() {
-		DirectionScheme scheme = schemeRepository.save(DirectionScheme.createEqual("TEST-MATCHING-115", 1, 8, BigDecimal.ZERO));
+		DirectionScheme scheme = schemeRepository
+				.save(DirectionScheme.createEqual("TEST-MATCHING-115", 1, 8, BigDecimal.ZERO));
 		IntStream.range(0, 8).forEach(index -> schemeRepository.saveSegment(DirectionSegment.create(scheme.getId(),
-			"S" + index, "matching-segment-" + index, BigDecimal.valueOf(index * 45L + 22.5), BigDecimal.valueOf(45), index)));
+				"S" + index, "matching-segment-" + index, BigDecimal.valueOf(index * 45L + 22.5),
+				BigDecimal.valueOf(45), index)));
 		return scheme.getId();
 	}
 }
