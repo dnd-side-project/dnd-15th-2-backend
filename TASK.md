@@ -1,57 +1,48 @@
-# GitHub Issue #313 Task Contract
+# GitHub Issue #330 Task Contract
 
-> Generated at: `2026-10-06T12:00:15+09:00`
+> Generated at: `2026-10-08T00:48:09+09:00`
 >
 > 이 파일은 현재 작업 브랜치의 계약이다. 저장소 전역 정책은 `AGENTS.md`를
 > 따른다.
 
 ## Work gate
 
-- Title: `Harness Policy 같은 커밋 중복 실행 제거`
-- GitHub Issue: `#313`
-- Branch: `ci/gh-313-dedupe-workflow-runs`
+- Title: `CI 통합 테스트 측정 기록과 같은 커밋 반복 측정`
+- GitHub Issue: `#330`
+- Branch: `ci/gh-330-test-measurement`
 - Base branch: `main`
 
 ## Objective
 
-`.github/workflows/harness-policy.yml`이 같은 커밋을 트리거마다 다시 실행한다. 2026-07-24~10-05 전체 job 시간의
-65%(4,167 job-분)가 이 중복이다. workflow의 트리거와 job 실행 조건만 바꾼다.
+Harness Policy `test` job은 Gradle task 경계를 job 로그 줄 간격으로만 남겨 통합 테스트의 클래스별 시간,
+컨텍스트 생성 수, heap 사용량을 알 수 없다. 통합 테스트 lifecycle, Gradle 캐시, 중복 task 변경의 효과를
+같은 커밋에서 비교할 수 있도록 측정 기록과 반복 측정 절차를 만든다. 테스트 시간을 줄이는 변경은 하지 않는다.
 
 ## Scope
 
-| 중복 원인 | 변경 |
+| 대상 | 변경 |
 | --- | --- |
-| `concurrency` 없음 | 같은 PR·브랜치의 이전 실행을 취소한다 |
-| push와 PR이 둘 다 전체 job 실행 | push는 `policy` job만 있는 새 workflow(Branch Policy)가 받고 Harness Policy에서 push를 뺀다 |
-| PR 제목·본문 수정(`edited`)에도 전체 job 실행 | PR 브랜치·제목·본문 검사를 새 workflow(Pull Request Policy)로 옮기고 Harness Policy에서 `edited`를 뺀다 |
+| `build.gradle` `integrationTest` | `org.springframework.test.context.cache` DEBUG 로그(JUnit XML의 system-out에 남는다), 테스트 JVM 가비지 컬렉션 로그(`build/gc/`) |
+| `.github/workflows/harness-policy.yml` `test` job | `./gradlew check --profile`, JUnit XML과 가비지 컬렉션 로그와 profile 리포트를 artifact로 올림(취소되지 않은 run은 실패해도 올림) |
+| `.github/workflows/ci-benchmark.yml`(신규) | `workflow_dispatch`로 기준 ref와 비교 ref를 받아 ref마다 10회, job 20개를 동시에 실행 |
+| `scripts/experiments/ci-benchmark-compare.py`(신규) | 내려받은 artifact로 테스트 목록 일치, task 시간 중앙값 차이, Mann-Whitney U 단측 p값 출력, `--self-test` |
 
-- 수정 파일: `.github/workflows/harness-policy.yml`, `.github/workflows/branch-policy.yml`(신규),
-  `.github/workflows/pull-request-policy.yml`(신규)
-- push 처리 방식(사용자 결정, 2026-10-07): job `if`로 push run의 `test`, `java-conventions`를 건너뛰지 않고
-  push 전용 workflow로 분리한다. push run의 skipped job도 같은 head 커밋에 check로 남는 것을 확인했다
-  (기존 push run 37587951467의 `sync-api-docs` skipped check가 PR run check와 같은 커밋 d722910에 있다).
-  Branch Policy의 `policy` step은 Harness Policy `policy` job의 step을 복사했고 커밋 메시지 검사만 Branch Policy에 있다.
-- `edited` 처리 방식(사용자 결정, 2026-10-07): PR 검증 workflow 분리. concurrency 키에 `edited` 여부를 넣는
-  방식은 쓰지 않는다. `edited` run이 test를 건너뛰면 skipped check가 같은 커밋에 남고 GitHub는 이를
-  Success로 보고한다("A job that is skipped will report its status as "Success". It will not prevent a pull
-  request from merging, even if it is a required check.", GitHub Docs, Control jobs with conditions).
-- 새 workflow는 `opened`, `edited`, `synchronize`, `reopened`를 받는다. check가 head 커밋에 붙으므로
-  `synchronize`가 없으면 새 커밋에 제목·본문 검사 결과가 남지 않는다.
-- Harness Policy `policy` job의 PR 브랜치·제목·본문 검사 step은 새 workflow로 옮긴다. 남겨 두면 제목을 고쳐도
-  다음 push 전까지 `policy`가 이전 제목 기준 실패로 남는다.
-- `reopened`는 남긴다(닫혀 있는 동안 push됐을 수 있다). `workflow_dispatch`는 `policy`, `test`,
-  `java-conventions`를 그대로 실행한다.
-- 대가: PR이 없는 브랜치 push는 pre-push hook의 `./gradlew check`와 `workflow_dispatch`로만 테스트한다.
-  base 브랜치를 바꾸면 `edited`만 오므로 Harness Policy가 다시 돌지 않을 수 있다. 실제 동작은 확인해 PR에 기록한다.
-- PR 본문 문체 규칙 추가(사용자 결정, 2026-10-09): #322, #335 본문이 길고 커밋 해시, 브랜치 이름, 영어 용어가
-  섞여 읽기 어려웠다. 별도 Issue를 만들지 않고 이 PR에 넣는다. 수정 파일은 `harness-pr` 스킬의 `SKILL.md`와
-  `references/writing-style.md`이고, `.agents/skills`와 `.claude/skills` 두 사본에 같은 내용을 넣는다.
+- 측정 방식(사용자 결정, 2026-10-08): 같은 커밋에서 두 설정을 10회씩 동시에 돌리고 순위 검정(Mann-Whitney U
+  단측 p<0.05)으로 판정한다. 5회씩 돌려 시간 범위가 겹치지 않는지 보는 방식은 실제 차이가 표준편차의 4배쯤은
+  돼야 확실히 잡고, 횟수를 늘리면 더 엄격해져서 쓰지 않는다. 기존 기록에서 같은 커밋 test job 시간의 표준편차는
+  최근(통합 테스트 클래스 90개 이상) 약 64초다.
+- task 시간 기록(사용자 결정, 2026-10-08): Gradle 내장 `--profile` 리포트를 쓴다. 빌드 스캔(`--scan`)은 외부
+  서비스로 빌드 정보를 보내고 약관 동의가 필요해서 쓰지 않는다.
+- 반복 측정을 Harness Policy가 아니라 별도 workflow로 둔다. #313(PR #322)의 `concurrency`가 `workflow_dispatch`에도
+  적용돼 같은 브랜치에서 연달아 실행하면 앞 run이 취소된다.
+- `workflow_dispatch`는 workflow 파일이 default 브랜치에 있어야 실행할 수 있다. PR 검증 동안에만 이 브랜치 push로
+  `CI Benchmark`가 돌게 하는 임시 트리거를 두고, 검증 run ID를 남긴 뒤 머지 전에 지운다.
 
 ## Explicit exclusions
 
-- 한 번 실행 시간 단축(통합 테스트 수명주기, Gradle 캐시, job 내부 중복)
+- 테스트 시간을 줄이는 변경(컨테이너 공유, `@DirtiesContext` 제거, Gradle 캐시, 중복 task)
+- Harness Policy 트리거와 `concurrency`(#313 범위)
 - `main-ruleset` 활성화와 required check 변경
-- 다른 workflow(`infrastructure-*.yml`, `label-policy.yml`, `deploy-*.yml`)
 - 인프라 apply, 배포, 프로덕션 변경은 별도 승인 없이는 실행하지 않는다.
 - Secret, 계정 식별자, 토큰, `.env` 값은 기록하지 않는다.
 
@@ -59,21 +50,19 @@
 
 | Area | Owner | Required review |
 | --- | --- | --- |
-| `edited` 분리 방식 결정 | 사용자 | 2026-10-07 결정(PR 검증 workflow 분리) |
-| `harness-policy.yml`, `branch-policy.yml`, `pull-request-policy.yml` 변경 | 실행 에이전트 | 사용자 PR 리뷰 |
-| PR 본문 문체 규칙(`.agents/skills`, `.claude/skills`의 `harness-pr`) | 사용자 | 2026-10-09 결정 |
-| `main-ruleset` 활성화 시 새 required check(`Pull Request Policy / pull-request-metadata`) 반영 | 사용자 | 이 PR 범위 밖 |
+| 측정 방식(반복 횟수, 판정 규칙, `--profile`) | 사용자 | 2026-10-08 결정 |
+| `build.gradle`, workflow 2개, 비교 스크립트 변경 | 실행 에이전트 | 사용자 PR 리뷰 |
 
 ## Existing user-owned changes
 
-- `origin/main`(18b1adc)에서 만든 별도 worktree(`.worktrees/gh-313-dedupe-workflow-runs`)라 시작 시
-  `git status --short`가 깨끗했다. 원래 작업 공간의 #312 미커밋 변경은 건드리지 않았다.
-- 2026-10-07 구현 전에 `origin/main`(1a3b125)으로 fast-forward했다. 그 사이 `harness-policy.yml`은 바뀌지 않았다.
+- `origin/main`(0be1e92)에서 만든 별도 worktree(`~/Desktop/dnd-worktrees/gh-330-test-measurement`)라 시작 시
+  `git status --short`가 깨끗했다. `~/Desktop/dnd`의 #137 작업 브랜치는 건드리지 않았다.
 
 ## Validation
 
 ```bash
-python scripts/validate-workflows.py
+python3 scripts/validate-workflows.py
+python3 scripts/experiments/ci-benchmark-compare.py --self-test
 ./harness check
 ./harness pr-ready --project-tests
 git diff --check
@@ -81,13 +70,10 @@ git diff --check
 
 ## Completion criteria
 
-`gh run view <id> --json jobs`로 확인한다.
-
-- push로는 Branch Policy 실행만 생기고 `policy` job만 있다. Harness Policy 실행은 생기지 않는다.
-- 열린 PR에 연속 push하면 앞 실행이 `cancelled`로 끝난다.
-- PR 제목을 고치면 Harness Policy 실행이 생기지 않고 Pull Request Policy만 돈다. 진행 중이던 Harness Policy 실행은 끝까지 돈다.
-- 테스트가 실패한 PR에서 제목만 고쳤을 때 `test` check가 어떻게 표시되는지 기록한다.
-- base 브랜치를 바꿨을 때 테스트가 다시 도는지 기록한다.
-- `validate-workflows.py`, `./harness check`가 통과한다.
-- 시나리오별 run ID를 PR 본문에 기록한다.
-- 두 사본의 `harness-pr` 문체 규칙과 스킬에 같은 문장이 들어가고, 이 PR 본문이 새 점검 목록을 통과한다.
+- 이 PR의 Harness Policy `test` job artifact에 `test`와 `integrationTest`의 JUnit XML, 가비지 컬렉션 로그,
+  profile 리포트가 있고 `integrationTest` XML에 `org.springframework.test.context.cache` DEBUG 로그가 있다.
+- `CI Benchmark`를 두 ref로 실행한 run에서 job 20개가 모두 artifact를 남긴다. run ID를 PR 본문에 기록한다.
+- 비교 스크립트가 그 run의 artifact로 테스트 목록 일치 여부, `integrationTest`와 `test` task 시간의 중앙값 차이,
+  p값을 출력한다.
+- 변경 전 main run과 이 PR run의 `integrationTest` 실행, 건너뜀, 실패 수가 같다.
+- `validate-workflows.py`, `./harness check`, `./harness pr-ready --project-tests`가 통과한다.
