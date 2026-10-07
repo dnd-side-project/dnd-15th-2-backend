@@ -1,6 +1,7 @@
 package com.dnd.qello.filtering.moderation;
 
 import java.time.Duration;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
@@ -9,6 +10,7 @@ import java.util.concurrent.TimeoutException;
 import com.dnd.qello.filtering.domain.FilterRelease;
 import com.dnd.qello.filtering.domain.FilterTargetType;
 import com.dnd.qello.filtering.domain.FilterVerdict;
+import com.dnd.qello.filtering.error.EmptyNormalizedTextException;
 import com.dnd.qello.filtering.moderation.NicknameModerationOutcome.Reason;
 
 // 닉네임 설정·변경 전용 동기 fail-closed moderation 훅(GitHub #106).
@@ -24,6 +26,8 @@ import com.dnd.qello.filtering.moderation.NicknameModerationOutcome.Reason;
 // 않는다. 주 판정기가 timeout/error일 때만 보조 판정기를 호출하며(INV-NICK-003),
 // 주·보조 모두 실패하면 REJECTED(UNAVAILABLE)로 fail-closed 거부한다
 // (INV-NICK-005, INV-GEN-002) — 어떤 경로도 판정 불가를 ALLOWED로 바꾸지 않는다.
+// 정규화하면 빈 문자열이 되는 입력은 판정 불가가 아니라 입력 오류다. 보조 판정기 없이
+// REJECTED(INVALID_INPUT)로 거부한다(#318).
 //
 // primaryTimeout/secondaryTimeout은 각 단계를 개별적으로 경계 짓는다 — 주
 // 판정기 내부의 RestClient 자체 timeout 설정과 무관하게, 이 게이트는 자신의
@@ -38,13 +42,12 @@ public class NicknameSyncModerationGate {
 	private final FilterRelease release;
 
 	public NicknameSyncModerationGate(
-		ModerationPipelineService primaryPipeline,
-		SecondaryModerationClient secondaryClient,
-		ExecutorService executor,
-		Duration primaryTimeout,
-		Duration secondaryTimeout,
-		FilterRelease release
-	) {
+			ModerationPipelineService primaryPipeline,
+			SecondaryModerationClient secondaryClient,
+			ExecutorService executor,
+			Duration primaryTimeout,
+			Duration secondaryTimeout,
+			FilterRelease release) {
 		this.primaryPipeline = primaryPipeline;
 		this.secondaryClient = secondaryClient;
 		this.executor = executor;
@@ -55,7 +58,7 @@ public class NicknameSyncModerationGate {
 
 	public NicknameModerationOutcome evaluate(String nickname, ModerationLanguage language) {
 		Future<ModerationPipelineResult> primaryFuture = executor.submit(() -> primaryPipeline.execute(
-			ModerationPipelineRequest.ephemeral(FilterTargetType.NICKNAME, language, nickname, release)));
+				ModerationPipelineRequest.ephemeral(FilterTargetType.NICKNAME, language, nickname, release)));
 
 		ModerationPipelineResult primaryResult;
 		try {
@@ -63,11 +66,18 @@ public class NicknameSyncModerationGate {
 		} catch (TimeoutException e) {
 			primaryFuture.cancel(true);
 			return evaluateWithSecondary(nickname, language);
+		} catch (ExecutionException e) {
+			// 오류 코드가 아니라 예외 타입으로 판별한다. 같은 REQUIRED_VALUE_MISSING을 쓰는 서버 측 오류가
+			// 입력 오류(400)로 바뀌지 않게 하기 위해서다.
+			if (e.getCause() instanceof EmptyNormalizedTextException) {
+				return NicknameModerationOutcome.rejected(Reason.INVALID_INPUT);
+			}
+			// 그 밖에 주 판정기가 던진 모든 예외(대개 FilteringException(MODERATION_PROVIDER_UNAVAILABLE))는
+			// "주 판정기 error"로 취급해 보조 판정기로 넘어간다.
+			return evaluateWithSecondary(nickname, language);
 		} catch (Exception e) {
-			// ExecutionException(주 판정기가 던진 모든 예외, 대개
-			// FilteringException(MODERATION_PROVIDER_UNAVAILABLE))과
-			// InterruptedException을 모두 "주 판정기 error"로 취급해 보조
-			// 판정기로 넘어간다 — 어떤 예외도 여기서 ALLOW/BLOCK으로 바뀌지 않는다.
+			// InterruptedException도 "주 판정기 error"로 취급한다 — 어떤 예외도 여기서 ALLOW/BLOCK으로
+			// 바뀌지 않는다.
 			if (e instanceof InterruptedException) {
 				Thread.currentThread().interrupt();
 			}

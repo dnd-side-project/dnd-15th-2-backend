@@ -3,7 +3,7 @@ package com.dnd.qello.filtering.moderation;
 // 닉네임 동기 게이트(NicknameSyncModerationGate)의 최종 출력(GitHub #106).
 // ALLOWED만 서비스 진입을 허용하고 그 밖의 모든 경우는 REJECTED다 — 판정
 // 불가(UNAVAILABLE)를 ALLOWED로 바꾸는 경로가 없다(INV-GEN-002, INV-NICK-001,
-// INV-NICK-005). reason은 원인(BLOCK/판정 불가)을 구분할 수 있게 관측 목적으로
+// INV-NICK-005). reason은 원인(BLOCK/판정 불가/입력 오류)을 구분할 수 있게 관측 목적으로
 // 남긴다(INV-GEN-006).
 //
 // 게이트는 이 결과를 예외 없이 반환한다 — 호출자가 명확한 실패 결과로 서비스
@@ -29,7 +29,10 @@ public sealed interface NicknameModerationOutcome {
 		// 주 판정기 timeout/error 후 호출된 보조 판정기가 명시적 BLOCK을 반환함
 		BLOCKED_BY_SECONDARY,
 		// 주·보조 판정기가 모두 timeout/error여서 fail-closed로 거부함(판정 불가)
-		UNAVAILABLE
+		UNAVAILABLE,
+		// 정규화하면 빈 문자열이 되어 판정할 대상이 없음(#318). 공급자 장애가 아니므로 보조 판정기가
+		// 관여하지 않았다
+		INVALID_INPUT
 	}
 
 	static NicknameModerationOutcome allowed() {
