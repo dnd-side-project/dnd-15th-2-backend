@@ -3,6 +3,8 @@
  * Source scenario: TEST-PLAN-GH-125-ANSWER-SUBMISSION-PUBLICATION-API-UNIT-010 through UNIT-014
  * (UNIT-010 stable idempotency key/single execution-requested event is already covered by
  * AnswerModerationJobIntakeServiceTest emitsHistoryAndExecutionRequestedEvent, created for #107)
+ * Source scenario: TEST-PLAN-GH-137-DIRECTION-POST-MODERATION-UNIT-011 through UNIT-015 (added 2026-10-07T22:11:06+09:00;
+ * UNIT-013 is the GH-125 scenarios above running through the real AnswerModerationVerdictApplier)
  */
 package com.dnd.qello.filtering.moderation;
 
@@ -22,6 +24,7 @@ import com.dnd.qello.answer.domain.AnswerModerationStatus;
 import com.dnd.qello.answer.domain.AnswerStatus;
 import com.dnd.qello.answer.error.AnswerErrorCode;
 import com.dnd.qello.answer.error.AnswerException;
+import com.dnd.qello.answer.service.AnswerModerationVerdictApplier;
 import com.dnd.qello.answer.service.AnswerNotificationService;
 import com.dnd.qello.filtering.domain.FilterTargetType;
 import com.dnd.qello.filtering.domain.FilterVerdict;
@@ -32,9 +35,11 @@ import com.dnd.qello.notification.repository.OutboxEventRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -46,9 +51,11 @@ class AnswerModerationVerdictWorkerTest {
 	private static final ObjectMapper MAPPER = new ObjectMapper();
 	private static final long ANSWER_ID = 42L;
 	private static final long FILTER_JOB_ID = 900L;
+	private static final long POST_ID = 77L;
 
 	private final OutboxEventRepository outboxEventRepository = mock(OutboxEventRepository.class);
 	private final AnswerNotificationService answerNotificationService = mock(AnswerNotificationService.class);
+	private final ModerationVerdictApplier directionPostApplier = directionPostApplier();
 
 	@Test
 	@DisplayName("UNIT-011: ALLOW verdict는 publish만 호출하고 reject 경로를 실행하지 않는다")
@@ -163,6 +170,80 @@ class AnswerModerationVerdictWorkerTest {
 		verify(answerNotificationService, never()).reject(anyLong(), any());
 	}
 
+	@Test
+	@DisplayName("TEST-PLAN-GH-137-DIRECTION-POST-MODERATION-UNIT-011: 질문글 VERDICT_READY는 질문글 적용기에만 전달되고 답변 공개 경로는 호출되지 않는다")
+	void dispatchesDirectionPostVerdictToItsApplier() {
+		OutboxEvent event = claimedEvent(7L, OutboxEventType.MODERATION_VERDICT_READY,
+				new AnswerModerationEventPayloads.VerdictReady(
+						FILTER_JOB_ID, FilterTargetType.DIRECTION_POST, POST_ID, 0L, FilterVerdict.ALLOW));
+		when(outboxEventRepository.claimDue(any(), eq(10), eq("worker-1"), eq(NOW), eq(NOW.plusSeconds(30))))
+				.thenReturn(List.of(event));
+		when(outboxEventRepository.complete(eq(7L), eq("worker-1"), eq(event.leaseGeneration()), any()))
+				.thenReturn(true);
+
+		AnswerModerationVerdictWorker.BatchResult result = worker().processBatch(command());
+
+		assertThat(result.outcomes()).containsExactly(AnswerModerationVerdictWorker.Outcome.RESOLVED);
+		verify(directionPostApplier).applyVerdict(POST_ID, FilterVerdict.ALLOW, NOW);
+		verify(answerNotificationService, never()).publish(anyLong(), any());
+		verify(answerNotificationService, never()).reject(anyLong(), any());
+	}
+
+	@Test
+	@DisplayName("TEST-PLAN-GH-137-DIRECTION-POST-MODERATION-UNIT-012: 질문글 DEADLINE_ELAPSED는 질문글 적용기의 deadline 처리로 전달되고 claim이 완료된다")
+	void dispatchesDirectionPostDeadlineToItsApplier() {
+		OutboxEvent event = claimedEvent(8L, OutboxEventType.MODERATION_DEADLINE_ELAPSED,
+				new AnswerModerationEventPayloads.DeadlineElapsed(FILTER_JOB_ID, FilterTargetType.DIRECTION_POST,
+						POST_ID, 0L));
+		when(outboxEventRepository.claimDue(any(), eq(10), eq("worker-1"), eq(NOW), eq(NOW.plusSeconds(30))))
+				.thenReturn(List.of(event));
+		when(outboxEventRepository.complete(eq(8L), eq("worker-1"), eq(event.leaseGeneration()), any()))
+				.thenReturn(true);
+
+		AnswerModerationVerdictWorker.BatchResult result = worker().processBatch(command());
+
+		assertThat(result.outcomes()).containsExactly(AnswerModerationVerdictWorker.Outcome.RESOLVED);
+		verify(directionPostApplier).applyDeadlineElapsed(POST_ID, NOW);
+		verify(directionPostApplier, never()).applyVerdict(anyLong(), any(), any());
+		verify(outboxEventRepository).complete(eq(8L), eq("worker-1"), eq(event.leaseGeneration()), any());
+	}
+
+	@Test
+	@DisplayName("TEST-PLAN-GH-137-DIRECTION-POST-MODERATION-UNIT-014: 적용기가 실패한 질문글 이벤트는 FAILED로 claim을 남기고 같은 batch의 답변 이벤트는 처리된다")
+	void isolatesApplierFailurePerEvent() {
+		OutboxEvent failing = claimedEvent(9L, OutboxEventType.MODERATION_VERDICT_READY,
+				new AnswerModerationEventPayloads.VerdictReady(
+						FILTER_JOB_ID, FilterTargetType.DIRECTION_POST, POST_ID, 0L, FilterVerdict.ALLOW));
+		OutboxEvent answer = claimedVerdictEvent(FilterVerdict.ALLOW, 10L);
+		when(outboxEventRepository.claimDue(any(), eq(10), eq("worker-1"), eq(NOW), eq(NOW.plusSeconds(30))))
+				.thenReturn(List.of(failing, answer));
+		when(outboxEventRepository.complete(eq(10L), eq("worker-1"), eq(answer.leaseGeneration()), any()))
+				.thenReturn(true);
+		doThrow(new IllegalStateException("db unavailable"))
+				.when(directionPostApplier).applyVerdict(POST_ID, FilterVerdict.ALLOW, NOW);
+		when(answerNotificationService.publish(ANSWER_ID, NOW))
+				.thenReturn(safetyChecking().markSafetyPassed().publish(NOW));
+
+		AnswerModerationVerdictWorker.BatchResult result = worker().processBatch(command());
+
+		assertThat(result.outcomes()).containsExactly(AnswerModerationVerdictWorker.Outcome.FAILED,
+				AnswerModerationVerdictWorker.Outcome.RESOLVED);
+		verify(outboxEventRepository, never()).complete(eq(9L), any(), anyLong(), any());
+		verify(answerNotificationService).publish(ANSWER_ID, NOW);
+	}
+
+	@Test
+	@DisplayName("TEST-PLAN-GH-137-DIRECTION-POST-MODERATION-UNIT-015: 같은 대상 종류의 적용기가 둘이면 worker 생성 시점에 실패한다")
+	void rejectsDuplicateAppliersForSameTargetType() {
+		ModerationVerdictApplier duplicate = directionPostApplier();
+
+		assertThatThrownBy(() -> new AnswerModerationVerdictWorker(outboxEventRepository,
+				List.of(directionPostApplier, duplicate), MAPPER, mock(PlatformTransactionManager.class),
+				Clock.fixed(NOW, ZoneOffset.UTC)))
+				.isInstanceOf(IllegalStateException.class)
+				.hasMessageContaining("DIRECTION_POST");
+	}
+
 	private AnswerModerationVerdictWorker.BatchCommand command() {
 		return new AnswerModerationVerdictWorker.BatchCommand(10, "worker-1", NOW, NOW.plusSeconds(30));
 	}
@@ -173,6 +254,13 @@ class AnswerModerationVerdictWorkerTest {
 		String json = AnswerModerationEventPayloads.toJson(MAPPER, payload);
 		return withId(eventId, OutboxEvent.pending(OutboxAggregateType.FILTER_JOB, FILTER_JOB_ID,
 				OutboxEventType.MODERATION_VERDICT_READY, "filter-job:" + FILTER_JOB_ID + ":VERDICT_READY", json, NOW)
+				.claimed("worker-1", NOW, NOW.plusSeconds(30)));
+	}
+
+	private static OutboxEvent claimedEvent(long eventId, OutboxEventType eventType, Object payload) {
+		return withId(eventId, OutboxEvent.pending(OutboxAggregateType.FILTER_JOB, FILTER_JOB_ID, eventType,
+				"filter-job:" + FILTER_JOB_ID + ":" + eventType, AnswerModerationEventPayloads.toJson(MAPPER, payload),
+				NOW)
 				.claimed("worker-1", NOW, NOW.plusSeconds(30)));
 	}
 
@@ -206,7 +294,14 @@ class AnswerModerationVerdictWorkerTest {
 	private AnswerModerationVerdictWorker worker() {
 		PlatformTransactionManager transactionManager = mock(PlatformTransactionManager.class);
 		when(transactionManager.getTransaction(any())).thenReturn(mock(TransactionStatus.class));
-		return new AnswerModerationVerdictWorker(outboxEventRepository, answerNotificationService, MAPPER,
+		return new AnswerModerationVerdictWorker(outboxEventRepository,
+				List.of(new AnswerModerationVerdictApplier(answerNotificationService), directionPostApplier), MAPPER,
 				transactionManager, Clock.fixed(NOW, ZoneOffset.UTC));
+	}
+
+	private static ModerationVerdictApplier directionPostApplier() {
+		ModerationVerdictApplier applier = mock(ModerationVerdictApplier.class);
+		when(applier.targetType()).thenReturn(FilterTargetType.DIRECTION_POST);
+		return applier;
 	}
 }
