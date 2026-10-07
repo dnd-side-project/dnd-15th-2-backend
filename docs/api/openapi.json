@@ -1137,7 +1137,8 @@
             "description" : "이의제기 대상 유형입니다.",
             "enum" : [
               "ANSWER",
-              "NICKNAME"
+              "NICKNAME",
+              "DIRECTION_POST"
             ],
             "type" : "string"
           },
@@ -1559,7 +1560,8 @@
             "description" : "이의제기를 접수할 대상 유형입니다. 현재 ANSWER만 지원합니다.",
             "enum" : [
               "ANSWER",
-              "NICKNAME"
+              "NICKNAME",
+              "DIRECTION_POST"
             ],
             "type" : "string"
           }
@@ -6390,6 +6392,16 @@
               }
             },
             "description" : "서버 내부 오류가 발생했습니다."
+          },
+          "503" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "본문 안전 검사를 접수할 수 없어 질문글을 보내지 않았습니다. (FLT-DOM-006)"
           }
         },
         "security" : [
