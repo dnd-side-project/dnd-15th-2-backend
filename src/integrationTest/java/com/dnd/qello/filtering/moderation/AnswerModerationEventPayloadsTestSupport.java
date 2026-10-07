@@ -2,6 +2,7 @@
  * Created at: 2026-08-17T19:00:00+09:00
  * Source scenario: TEST-PLAN-GH-125-ANSWER-SUBMISSION-PUBLICATION-API-INT-010 through INT-014,
  * INT-017, INT-018, INT-021
+ * Source scenario: TEST-PLAN-GH-137-DIRECTION-POST-MODERATION-INT-007 through INT-010 (targetType overloads, added 2026-10-07T22:14:59+09:00)
  */
 package com.dnd.qello.filtering.moderation;
 
@@ -22,14 +23,24 @@ public final class AnswerModerationEventPayloadsTestSupport {
 
 	public static String verdictReadyJson(ObjectMapper objectMapper, long filterJobId, long answerId,
 			FilterVerdict verdict) {
+		return verdictReadyJson(objectMapper, filterJobId, FilterTargetType.ANSWER, answerId, verdict);
+	}
+
+	public static String verdictReadyJson(ObjectMapper objectMapper, long filterJobId, FilterTargetType targetType,
+			long targetId, FilterVerdict verdict) {
 		AnswerModerationEventPayloads.VerdictReady payload = new AnswerModerationEventPayloads.VerdictReady(
-				filterJobId, FilterTargetType.ANSWER, answerId, 0L, verdict);
+				filterJobId, targetType, targetId, 0L, verdict);
 		return AnswerModerationEventPayloads.toJson(objectMapper, payload);
 	}
 
 	public static String deadlineElapsedJson(ObjectMapper objectMapper, long filterJobId, long answerId) {
+		return deadlineElapsedJson(objectMapper, filterJobId, FilterTargetType.ANSWER, answerId);
+	}
+
+	public static String deadlineElapsedJson(ObjectMapper objectMapper, long filterJobId, FilterTargetType targetType,
+			long targetId) {
 		AnswerModerationEventPayloads.DeadlineElapsed payload = new AnswerModerationEventPayloads.DeadlineElapsed(
-				filterJobId, FilterTargetType.ANSWER, answerId, 0L);
+				filterJobId, targetType, targetId, 0L);
 		return AnswerModerationEventPayloads.toJson(objectMapper, payload);
 	}
 }
