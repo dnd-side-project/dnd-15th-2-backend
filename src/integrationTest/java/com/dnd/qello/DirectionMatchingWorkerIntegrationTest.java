@@ -2,6 +2,7 @@
  * Created at: 2026-08-13T17:45:00+09:00
  * Source scenario: TEST-PLAN-GH-120-DIRECTION-MATCHING-WORKER-INT-001 through INT-009, INT-013, INT-015
  * Source scenario: TEST-PLAN-GH-122-DIRECTION-PREVIEW-SUBMISSION-API-INT-014
+ * Source scenario: TEST-PLAN-GH-137-DIRECTION-POST-MODERATION (release fixture and DIRECTION_POST outbox filter, added 2026-10-07T22:14:59+09:00)
  */
 package com.dnd.qello;
 
@@ -29,6 +30,7 @@ import com.dnd.qello.direction.repository.ActiveUserPresenceRepository;
 import com.dnd.qello.direction.repository.DirectionSchemeRepository;
 import com.dnd.qello.direction.repository.RecipientReceiveStateRepository;
 import com.dnd.qello.direction.service.DirectionPostService;
+import com.dnd.qello.filtering.service.FilterReleaseRegistryService;
 import com.dnd.qello.notification.domain.OutboxEvent;
 import com.dnd.qello.notification.domain.OutboxEventType;
 import com.dnd.qello.notification.domain.OutboxStatus;
@@ -45,6 +47,8 @@ class DirectionMatchingWorkerIntegrationTest extends PostgisContainerIntegration
 	private static final String OTHER_REGION = "TEST-DIRECTION-MATCHING-WORKER-OTHER";
 	private static final Instant NOW = Instant.parse("2026-08-13T08:30:00Z");
 
+	@Autowired
+	private FilterReleaseRegistryService releaseRegistryService;
 	@Autowired
 	private JdbcTemplate jdbc;
 	@Autowired
@@ -86,6 +90,8 @@ class DirectionMatchingWorkerIntegrationTest extends PostgisContainerIntegration
 		jdbc.update(
 				"INSERT INTO region_code (code, parent_code, display_name, level) VALUES (?, 'KR', 'Matching Worker Other', 'REGION')",
 				OTHER_REGION);
+		// #137: 본문 있는 질문글 제출은 승격된 release가 없으면 moderation job 접수에서 거절된다.
+		AnswerModerationReleaseTestFixture.promotedRelease(releaseRegistryService, 1L);
 	}
 
 	@Test
@@ -144,7 +150,9 @@ class DirectionMatchingWorkerIntegrationTest extends PostgisContainerIntegration
 		assertThat(jdbc.queryForObject("SELECT count(*) FROM post_recipient WHERE post_id = ?", Long.class, postId))
 				.isZero();
 		assertThat(jdbc.queryForObject("SELECT count(*) FROM recipient_receive_state", Long.class)).isZero();
-		assertThat(jdbc.queryForObject("SELECT status FROM outbox_event WHERE aggregate_id = ?", String.class, postId))
+		assertThat(jdbc.queryForObject(
+				"SELECT status FROM outbox_event WHERE aggregate_type = 'DIRECTION_POST' AND aggregate_id = ?",
+				String.class, postId))
 				.isEqualTo(OutboxStatus.FAILED.name());
 	}
 
@@ -353,7 +361,9 @@ class DirectionMatchingWorkerIntegrationTest extends PostgisContainerIntegration
 
 		assertThat(result.outcomes()).containsExactly(DirectionMatchingWorker.Outcome.RETRYABLE);
 		assertThat(jdbc.queryForObject("SELECT count(*) FROM post_recipient", Long.class)).isZero();
-		assertThat(jdbc.queryForObject("SELECT status FROM outbox_event WHERE aggregate_id = ?", String.class, postId))
+		assertThat(jdbc.queryForObject(
+				"SELECT status FROM outbox_event WHERE aggregate_type = 'DIRECTION_POST' AND aggregate_id = ?",
+				String.class, postId))
 				.isEqualTo(OutboxStatus.FAILED.name());
 	}
 
@@ -368,7 +378,9 @@ class DirectionMatchingWorkerIntegrationTest extends PostgisContainerIntegration
 
 		assertThat(result.outcomes()).containsExactly(DirectionMatchingWorker.Outcome.PROCESSED);
 		assertThat(jdbc.queryForObject("SELECT count(*) FROM post_recipient", Long.class)).isZero();
-		assertThat(jdbc.queryForObject("SELECT status FROM outbox_event WHERE aggregate_id = ?", String.class, postId))
+		assertThat(jdbc.queryForObject(
+				"SELECT status FROM outbox_event WHERE aggregate_type = 'DIRECTION_POST' AND aggregate_id = ?",
+				String.class, postId))
 				.isEqualTo(OutboxStatus.PROCESSED.name());
 	}
 
@@ -433,7 +445,9 @@ class DirectionMatchingWorkerIntegrationTest extends PostgisContainerIntegration
 		assertThat(jdbc.queryForObject("SELECT count(*) FROM recipient_receive_state", Long.class)).isZero();
 		assertThat(jdbc.queryForObject("SELECT count(*) FROM outbox_event WHERE aggregate_type = 'POST_RECIPIENT'",
 				Long.class)).isZero();
-		assertThat(jdbc.queryForObject("SELECT status FROM outbox_event WHERE aggregate_id = ?", String.class, postId))
+		assertThat(jdbc.queryForObject(
+				"SELECT status FROM outbox_event WHERE aggregate_type = 'DIRECTION_POST' AND aggregate_id = ?",
+				String.class, postId))
 				.isEqualTo(OutboxStatus.FAILED.name());
 	}
 
@@ -453,7 +467,9 @@ class DirectionMatchingWorkerIntegrationTest extends PostgisContainerIntegration
 		assertThat(jdbc.queryForObject("SELECT status FROM direction_post WHERE id = ?", String.class, goodPostId))
 				.isEqualTo("ACTIVE");
 		assertThat(
-				jdbc.queryForObject("SELECT status FROM outbox_event WHERE aggregate_id = ?", String.class, badPostId))
+				jdbc.queryForObject(
+						"SELECT status FROM outbox_event WHERE aggregate_type = 'DIRECTION_POST' AND aggregate_id = ?",
+						String.class, badPostId))
 				.isEqualTo(OutboxStatus.DEAD.name());
 	}
 

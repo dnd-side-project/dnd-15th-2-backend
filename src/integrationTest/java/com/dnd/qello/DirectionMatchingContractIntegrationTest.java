@@ -2,6 +2,7 @@
  * Created at: 2026-08-11T20:14:20+09:00
  * Source scenario: TEST-PLAN-GH-115-DIRECTION-MATCHING-CONTRACT-INT-002 through INT-004,
  * TEST-PLAN-GH-118-DIRECTION-POST-SUBMISSION-INT-001 through INT-005
+ * Source scenario: TEST-PLAN-GH-137-DIRECTION-POST-MODERATION (release fixture only, added 2026-10-07T22:14:59+09:00)
  */
 package com.dnd.qello;
 
@@ -38,6 +39,7 @@ import com.dnd.qello.direction.repository.ActiveUserPresenceRepository;
 import com.dnd.qello.direction.repository.DirectionPostRepository;
 import com.dnd.qello.direction.repository.DirectionSchemeRepository;
 import com.dnd.qello.direction.service.DirectionPostService;
+import com.dnd.qello.filtering.service.FilterReleaseRegistryService;
 import com.dnd.qello.notification.domain.OutboxAggregateType;
 import com.dnd.qello.notification.domain.OutboxEvent;
 import com.dnd.qello.notification.domain.OutboxEventType;
@@ -53,6 +55,8 @@ class DirectionMatchingContractIntegrationTest extends PostgisContainerIntegrati
 	private static final String REGION = "TEST-DIRECTION-MATCHING-115";
 	private static final Instant NOW = Instant.parse("2026-08-11T11:00:00Z");
 
+	@Autowired
+	private FilterReleaseRegistryService releaseRegistryService;
 	@Autowired
 	private JdbcTemplate jdbc;
 	@Autowired
@@ -96,6 +100,8 @@ class DirectionMatchingContractIntegrationTest extends PostgisContainerIntegrati
 		presenceRepository.save(ActiveUserPresence.create(senderId, BigDecimal.valueOf(37.5),
 				BigDecimal.valueOf(127.0), null, REGION, BigDecimal.ONE, true,
 				NOW.minusSeconds(10), NOW.plusSeconds(3600)));
+		// #137: 본문 있는 질문글 제출은 승격된 release가 없으면 moderation job 접수에서 거절된다.
+		AnswerModerationReleaseTestFixture.promotedRelease(releaseRegistryService, 1L);
 	}
 
 	@Test

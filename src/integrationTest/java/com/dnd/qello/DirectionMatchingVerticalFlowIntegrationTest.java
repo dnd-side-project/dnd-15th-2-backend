@@ -1,6 +1,7 @@
 /**
  * Created at: 2026-08-18T15:40:00+09:00
  * Source scenario: TEST-PLAN-DIRECTION-MATCHING-VERTICAL-FLOW-INT-001 through INT-005
+ * Source scenario: TEST-PLAN-GH-137-DIRECTION-POST-MODERATION (release fixture and filter_job_status_history cleanup, added 2026-10-07T22:14:59+09:00)
  */
 package com.dnd.qello;
 
@@ -129,6 +130,8 @@ class DirectionMatchingVerticalFlowIntegrationTest extends PostgisContainerInteg
 				"DELETE FROM media_attachment WHERE answer_id IN (SELECT id FROM answer WHERE coarse_region_code = ?)",
 				REGION);
 		jdbc.update("DELETE FROM answer WHERE coarse_region_code = ?", REGION);
+		// #137: 질문글 제출도 job 상태 이력을 남기므로 FK 순서대로 이력을 먼저 지운다.
+		jdbc.update("DELETE FROM filter_job_status_history");
 		jdbc.update("DELETE FROM filter_job");
 		jdbc.update("DELETE FROM post_recipient");
 		jdbc.update("DELETE FROM post_audience");
@@ -143,6 +146,8 @@ class DirectionMatchingVerticalFlowIntegrationTest extends PostgisContainerInteg
 		jdbc.update(
 				"INSERT INTO region_code (code, parent_code, display_name, level) VALUES (?, 'KR', 'Direction Flow 127', 'REGION')",
 				REGION);
+		// #137: 본문 있는 질문글 제출은 승격된 release가 없으면 moderation job 접수에서 거절된다.
+		AnswerModerationReleaseTestFixture.promotedRelease(releaseRegistryService, 1L);
 	}
 
 	@Test

@@ -4,6 +4,7 @@ package com.dnd.qello;
  * Created at: 2026-08-10T20:05:00+09:00
  * Source scenario: TEST-PLAN-GH-95-DISTANCE-BAND-PER-RECIPIENT-INT-001,
  * TEST-PLAN-GH-118-DIRECTION-POST-SUBMISSION-INT-001
+ * Source scenario: TEST-PLAN-GH-137-DIRECTION-POST-MODERATION (release fixture only, added 2026-10-07T22:14:59+09:00)
  */
 
 import java.math.BigDecimal;
@@ -26,6 +27,7 @@ import com.dnd.qello.direction.domain.DirectionSegment;
 import com.dnd.qello.direction.repository.ActiveUserPresenceRepository;
 import com.dnd.qello.direction.repository.DirectionSchemeRepository;
 import com.dnd.qello.direction.service.DirectionPostService;
+import com.dnd.qello.filtering.service.FilterReleaseRegistryService;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -37,6 +39,8 @@ class DirectionPostDistanceBandIntegrationTest extends PostgisContainerIntegrati
 	private static final String REGION = "TEST-DISTANCE-BAND-95";
 	private static final Instant AT = Instant.parse("2026-08-10T11:00:00Z");
 
+	@Autowired
+	private FilterReleaseRegistryService releaseRegistryService;
 	@Autowired
 	private JdbcTemplate jdbc;
 
@@ -66,6 +70,8 @@ class DirectionPostDistanceBandIntegrationTest extends PostgisContainerIntegrati
 		jdbc.update(
 				"INSERT INTO region_code (code, parent_code, display_name, level) VALUES (?, 'KR', 'Distance Band Test Region', 'REGION')",
 				REGION);
+		// #137: 본문 있는 질문글 제출은 승격된 release가 없으면 moderation job 접수에서 거절된다.
+		AnswerModerationReleaseTestFixture.promotedRelease(releaseRegistryService, 1L);
 	}
 
 	@Test

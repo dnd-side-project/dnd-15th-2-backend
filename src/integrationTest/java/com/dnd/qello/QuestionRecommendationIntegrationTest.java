@@ -1,6 +1,7 @@
 /**
  * Created at: 2026-10-02T16:41:59+09:00
  * Source scenario: TEST-PLAN-GH-301-QUESTION-RECOMMENDATION-LISTING-INT-001, INT-002
+ * Source scenario: TEST-PLAN-GH-137-DIRECTION-POST-MODERATION (release fixture and filter_job_status_history cleanup, added 2026-10-07T22:14:59+09:00)
  */
 package com.dnd.qello;
 
@@ -27,6 +28,7 @@ import com.dnd.qello.direction.error.DirectionErrorCode;
 import com.dnd.qello.direction.error.DirectionException;
 import com.dnd.qello.direction.service.DirectionPostApplicationService;
 import com.dnd.qello.direction.service.DirectionPresenceService;
+import com.dnd.qello.filtering.service.FilterReleaseRegistryService;
 import com.dnd.qello.question.domain.ApprovedQuestion;
 import com.dnd.qello.question.service.QuestionRecommendationService;
 
@@ -42,6 +44,8 @@ class QuestionRecommendationIntegrationTest extends PostgisContainerIntegrationT
 	private static final Instant NOW = Instant.parse("2026-10-02T07:00:00Z");
 
 	@Autowired
+	private FilterReleaseRegistryService releaseRegistryService;
+	@Autowired
 	private QuestionRecommendationService recommendationService;
 	@Autowired
 	private DirectionPostApplicationService postApplicationService;
@@ -56,6 +60,8 @@ class QuestionRecommendationIntegrationTest extends PostgisContainerIntegrationT
 	@BeforeEach
 	void reset() {
 		jdbc.update("DELETE FROM outbox_event");
+		// #137: 질문글 제출도 job 상태 이력을 남기므로 FK 순서대로 이력을 먼저 지운다.
+		jdbc.update("DELETE FROM filter_job_status_history");
 		jdbc.update("DELETE FROM filter_job");
 		jdbc.update("DELETE FROM post_recipient");
 		jdbc.update("DELETE FROM post_audience");
@@ -73,6 +79,8 @@ class QuestionRecommendationIntegrationTest extends PostgisContainerIntegrationT
 		userId = account("recommendation-user");
 		long approverId = account("recommendation-approver");
 		fixture = seedQuestionPool(approverId);
+		// #137: 본문 있는 질문글 제출은 승격된 release가 없으면 moderation job 접수에서 거절된다.
+		AnswerModerationReleaseTestFixture.promotedRelease(releaseRegistryService, 1L);
 	}
 
 	@Test

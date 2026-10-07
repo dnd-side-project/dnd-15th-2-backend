@@ -2,6 +2,7 @@
  * Created at: 2026-09-05T02:07:05+09:00
  * Source scenario: TEST-PLAN-GH-214-POSTGIS-E3-EVIDENCE-PERF-003 through PERF-005
  * Extended scenario: TEST-PLAN-GH-214-POSTGIS-E3-EVIDENCE-PERF-006 through PERF-009
+ * Source scenario: TEST-PLAN-GH-137-DIRECTION-POST-MODERATION (release fixture only, added 2026-10-07T22:14:59+09:00)
  *
  * GH-214 E3 실험의 결정적 cardinality sweep이다. #163이 고정한 합성 분포·이중
  * 반경 측정 방식을 10K:1K, 50K:5K, 100K:10K 세 규모로 확장해 계획기의 접근 경로가
@@ -73,6 +74,7 @@ import com.dnd.qello.direction.repository.jdbc.sql.ActiveUserPresenceSql;
 import com.dnd.qello.direction.service.DirectionPostApplicationService;
 import com.dnd.qello.direction.service.DirectionPostPolicy;
 import com.dnd.qello.direction.service.DirectionPresenceService;
+import com.dnd.qello.filtering.service.FilterReleaseRegistryService;
 import com.dnd.qello.notification.domain.OutboxRetryPolicy;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -255,6 +257,8 @@ class DirectionMatchingE3PerformanceIntegrationTest extends PostgisContainerInte
 	private static final String RESTORE_RECEIVE_STATE_SQL = SEED_RECEIVE_STATE_SQL + "  AND ua.id IN (:userIds)\n";
 
 	@Autowired
+	private FilterReleaseRegistryService releaseRegistryService;
+	@Autowired
 	private JdbcTemplate jdbc;
 	@Autowired
 	private NamedParameterJdbcTemplate namedJdbc;
@@ -286,6 +290,8 @@ class DirectionMatchingE3PerformanceIntegrationTest extends PostgisContainerInte
 	void prepareObservation() {
 		clock.setInstant(NOW);
 		probe = new DirectionMatchingPerformanceProbe(jdbc, namedJdbc, objectMapper);
+		// #137: 본문 있는 질문글 제출은 승격된 release가 없으면 moderation job 접수에서 거절된다.
+		AnswerModerationReleaseTestFixture.promotedRelease(releaseRegistryService, 1L);
 	}
 
 	@AfterEach

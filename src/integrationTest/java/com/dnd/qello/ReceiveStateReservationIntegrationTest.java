@@ -3,6 +3,7 @@ package com.dnd.qello;
 /**
  * Created at: 2026-08-10T15:15:11+09:00
  * Source scenario: TEST-PLAN-GH-94-RECEIVE-STATE-INIT-RACE-INT-001 through INT-012
+ * Source scenario: TEST-PLAN-GH-137-DIRECTION-POST-MODERATION (release fixture only, added 2026-10-07T22:14:59+09:00)
  */
 
 import java.math.BigDecimal;
@@ -37,6 +38,7 @@ import com.dnd.qello.direction.repository.ActiveUserPresenceRepository;
 import com.dnd.qello.direction.repository.DirectionSchemeRepository;
 import com.dnd.qello.direction.repository.RecipientReceiveStateRepository;
 import com.dnd.qello.direction.service.DirectionPostService;
+import com.dnd.qello.filtering.service.FilterReleaseRegistryService;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -59,6 +61,8 @@ class ReceiveStateReservationIntegrationTest extends PostgisContainerIntegration
 	private static final Instant AT = Instant.parse("2026-08-10T12:00:00Z");
 	private static final int CAPACITY = 5;
 
+	@Autowired
+	private FilterReleaseRegistryService releaseRegistryService;
 	@Autowired
 	private JdbcTemplate jdbc;
 
@@ -94,6 +98,8 @@ class ReceiveStateReservationIntegrationTest extends PostgisContainerIntegration
 		jdbc.update(
 				"INSERT INTO region_code (code, parent_code, display_name, level) VALUES (?, 'KR', 'Receive State Test Region', 'REGION')",
 				REGION);
+		// #137: 본문 있는 질문글 제출은 승격된 release가 없으면 moderation job 접수에서 거절된다.
+		AnswerModerationReleaseTestFixture.promotedRelease(releaseRegistryService, 1L);
 	}
 
 	// ---------------------------------------------------------------------

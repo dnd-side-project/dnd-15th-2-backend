@@ -1,6 +1,7 @@
 /**
  * Created at: 2026-08-18T16:10:00+09:00
  * Source scenario: TEST-PLAN-DIRECTION-MATCHING-VERTICAL-FLOW-INT-006 through INT-008
+ * Source scenario: TEST-PLAN-GH-137-DIRECTION-POST-MODERATION (release fixture only, added 2026-10-07T22:14:59+09:00)
  */
 package com.dnd.qello;
 
@@ -24,6 +25,7 @@ import org.springframework.test.context.ActiveProfiles;
 import com.dnd.qello.direction.matching.DirectionMatchingWorker;
 import com.dnd.qello.direction.service.DirectionPostApplicationService;
 import com.dnd.qello.direction.service.DirectionPresenceService;
+import com.dnd.qello.filtering.service.FilterReleaseRegistryService;
 import com.dnd.qello.notification.domain.OutboxEventType;
 import com.dnd.qello.notification.domain.OutboxRetryPolicy;
 import com.dnd.qello.notification.domain.PushDevice;
@@ -52,6 +54,8 @@ class DirectionMatchingVerticalFlowRecoveryIntegrationTest extends PostgisContai
 	private static final double SENDER_LAT = 37.5000;
 	private static final double SENDER_LON = 127.0000;
 
+	@Autowired
+	private FilterReleaseRegistryService releaseRegistryService;
 	@Autowired
 	private JdbcTemplate jdbc;
 	@Autowired
@@ -90,6 +94,8 @@ class DirectionMatchingVerticalFlowRecoveryIntegrationTest extends PostgisContai
 		jdbc.update(
 				"INSERT INTO region_code (code, parent_code, display_name, level) VALUES (?, 'KR', 'Direction Flow 127 Recovery', 'REGION')",
 				REGION);
+		// #137: 본문 있는 질문글 제출은 승격된 release가 없으면 moderation job 접수에서 거절된다.
+		AnswerModerationReleaseTestFixture.promotedRelease(releaseRegistryService, 1L);
 	}
 
 	@Test

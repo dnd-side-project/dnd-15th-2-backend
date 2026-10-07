@@ -1,6 +1,7 @@
 /**
  * Created at: 2026-08-10T15:30:00+09:00
  * Source scenario: TEST-PLAN-GH-93-RELEASE-RECEIVE-SLOTS-INT-001 through INT-015
+ * Source scenario: TEST-PLAN-GH-137-DIRECTION-POST-MODERATION (release fixture only, added 2026-10-07T22:14:59+09:00)
  */
 package com.dnd.qello;
 
@@ -35,6 +36,7 @@ import com.dnd.qello.direction.repository.DirectionSchemeRepository;
 import com.dnd.qello.direction.service.DirectionPostService;
 import com.dnd.qello.direction.service.PostRecipientService;
 import com.dnd.qello.direction.service.ReceiveSlotReleaseService;
+import com.dnd.qello.filtering.service.FilterReleaseRegistryService;
 import com.dnd.qello.safety.service.SafetyService;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -57,6 +59,8 @@ class ReceiveSlotReleaseIntegrationTest extends PostgisContainerIntegrationTestS
 	private static final Instant BASELINE = NOW.minusSeconds(3600);
 	private static final long DEFAULT_DISTANCE_M = 5_000L;
 
+	@Autowired
+	private FilterReleaseRegistryService releaseRegistryService;
 	@Autowired
 	private JdbcTemplate jdbc;
 	@Autowired
@@ -100,6 +104,8 @@ class ReceiveSlotReleaseIntegrationTest extends PostgisContainerIntegrationTestS
 		blockedSenderId = account("relslot-blocked-sender");
 		outsiderId = account("relslot-outsider-sender");
 		recipientId = account("relslot-recipient");
+		// #137: 본문 있는 질문글 제출은 승격된 release가 없으면 moderation job 접수에서 거절된다.
+		AnswerModerationReleaseTestFixture.promotedRelease(releaseRegistryService, 1L);
 	}
 
 	@Test

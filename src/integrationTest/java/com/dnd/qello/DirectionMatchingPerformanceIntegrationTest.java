@@ -1,6 +1,7 @@
 /**
  * Created at: 2026-08-18T16:40:00+09:00
  * Source scenario: TEST-PLAN-DIRECTION-MATCHING-VERTICAL-FLOW-PERF-001 through PERF-003
+ * Source scenario: TEST-PLAN-GH-137-DIRECTION-POST-MODERATION (release fixture only, added 2026-10-07T22:14:59+09:00)
  */
 package com.dnd.qello;
 
@@ -32,6 +33,7 @@ import com.dnd.qello.direction.matching.DirectionMatchingWorker;
 import com.dnd.qello.direction.repository.jdbc.sql.ActiveUserPresenceSql;
 import com.dnd.qello.direction.service.DirectionPostApplicationService;
 import com.dnd.qello.direction.service.DirectionPresenceService;
+import com.dnd.qello.filtering.service.FilterReleaseRegistryService;
 import com.dnd.qello.notification.domain.OutboxRetryPolicy;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -65,6 +67,8 @@ class DirectionMatchingPerformanceIntegrationTest extends PostgisContainerIntegr
 	private static final int SYNTHETIC_PRESENCE_COUNT = 10_000;
 
 	@Autowired
+	private FilterReleaseRegistryService releaseRegistryService;
+	@Autowired
 	private JdbcTemplate jdbc;
 	@Autowired
 	private NamedParameterJdbcTemplate namedJdbc;
@@ -82,6 +86,8 @@ class DirectionMatchingPerformanceIntegrationTest extends PostgisContainerIntegr
 	@BeforeEach
 	void resetClock() {
 		clock.setInstant(NOW);
+		// #137: 본문 있는 질문글 제출은 승격된 release가 없으면 moderation job 접수에서 거절된다.
+		AnswerModerationReleaseTestFixture.promotedRelease(releaseRegistryService, 1L);
 	}
 
 	@BeforeAll
