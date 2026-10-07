@@ -12,8 +12,8 @@ import io.swagger.v3.oas.annotations.media.Schema;
 
 /** 정확 위치와 내부 사용자 식별자를 제외한 수신함 목록 공개 모델이다. */
 public record InboxListingResponse(
-		@Schema(description = "받은 질문 카드 목록") List<Card> cards,
-		@Schema(description = "방향 구간별 집계. directionSegmentKey와 무관하게 category 전체 기준입니다") List<Chip> chips) {
+		@Schema(description = "만료 전 미답변·답변 완료 질문 카드 전체 목록. status로 구분하며 매칭 시각·항목 ID 내림차순입니다") List<Card> cards,
+		@Schema(description = "방향 구간별 미답변 항목 집계. directionSegmentKey와 무관하게 전체 미답변 기준입니다") List<Chip> chips) {
 	public InboxListingResponse {
 		cards = List.copyOf(cards);
 		chips = List.copyOf(chips);

@@ -2,7 +2,8 @@
  * Created at: 2026-08-16T15:02:00+09:00
  * Source scenario: TEST-PLAN-GH-124-INBOX-READ-SKIP-API-UNIT-010,
  * UNIT-012, TEST-PLAN-GH-300-FEED-MEDIA-VIEW-URL-UNIT-004 (added 2026-10-02T17:02:54+09:00),
- * TEST-PLAN-GH-300-FEED-MEDIA-VIEW-URL-UNIT-008 (added 2026-10-02T17:33:30+09:00)
+ * TEST-PLAN-GH-300-FEED-MEDIA-VIEW-URL-UNIT-008 (added 2026-10-02T17:33:30+09:00),
+ * TEST-PLAN-GH-323-INBOX-UNIT-001 through UNIT-002 (added 2026-10-07T19:48:05+09:00)
  */
 package com.dnd.qello.feed.web;
 
@@ -64,27 +65,29 @@ class InboxApiMockMvcTest {
 	}
 
 	@Test
-	@DisplayName("목록은 기본 UNANSWERED와 선택 방향 필터를 인증 subject로 위임하고 privacy-safe ApiResponse를 반환한다")
+	@DisplayName("category 없는 목록은 ALL과 선택 방향을 위임하고 AVAILABLE·ANSWERED 상태를 그대로 반환한다")
 	void listDelegatesFiltersAndReturnsPrivacySafeApiResponse() throws Exception {
-		when(applicationService.list(RECIPIENT_ID, InboxCategory.UNANSWERED, "N"))
-			.thenReturn(new InboxListing(List.of(card()), List.of(new DirectionChip("N", "북", 0, 1))));
+		when(applicationService.list(RECIPIENT_ID, InboxCategory.ALL, "N"))
+			.thenReturn(new InboxListing(List.of(card(PostRecipientStatus.AVAILABLE), card(PostRecipientStatus.ANSWERED)), List.of(new DirectionChip("N", "북", 0, 1))));
 
 		mockMvc.perform(get("/api/v1/direction/inbox").param("directionSegmentKey", "N"))
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.data.cards[0].postRecipientId").value(POST_RECIPIENT_ID))
+			.andExpect(jsonPath("$.data.cards[0].status").value("AVAILABLE"))
+			.andExpect(jsonPath("$.data.cards[1].status").value("ANSWERED"))
 			.andExpect(jsonPath("$.data.chips[0].segmentKey").value("N"))
 			.andExpect(jsonPath("$.data.cards[0].recipientId").doesNotExist())
 			.andExpect(jsonPath("$.data.cards[0].senderId").doesNotExist())
 			.andExpect(jsonPath("$.data.cards[0].latitude").doesNotExist())
 			.andExpect(jsonPath("$.data.cards[0].longitude").doesNotExist());
 
-		verify(applicationService).list(RECIPIENT_ID, InboxCategory.UNANSWERED, "N");
+		verify(applicationService).list(RECIPIENT_ID, InboxCategory.ALL, "N");
 	}
 
 	@Test
 	@DisplayName("목록 카드의 첨부 이미지는 media의 mediaId·url·expiresAt으로 나가고 mediaIds와 storage key는 나가지 않는다")
 	void listExposesMediaViewUrlsWithoutStorageKey() throws Exception {
-		when(applicationService.list(RECIPIENT_ID, InboxCategory.UNANSWERED, null))
+		when(applicationService.list(RECIPIENT_ID, InboxCategory.ALL, null))
 			.thenReturn(new InboxListing(List.of(card()), List.of()));
 
 		mockMvc.perform(get("/api/v1/direction/inbox"))
@@ -94,6 +97,18 @@ class InboxApiMockMvcTest {
 			.andExpect(jsonPath("$.data.cards[0].media[0].expiresAt").value("2026-08-16T06:05:00Z"))
 			.andExpect(jsonPath("$.data.cards[0].media[0].storageKey").doesNotExist())
 			.andExpect(jsonPath("$.data.cards[0].mediaIds").doesNotExist());
+	}
+
+	@Test
+	@DisplayName("category 파라미터는 바인딩하지 않고 방향을 생략하면 ALL 전체 목록을 조회한다")
+	void ignoresCategoryParameterAndListsAllDirections() throws Exception {
+		when(applicationService.list(RECIPIENT_ID, InboxCategory.ALL, null))
+			.thenReturn(new InboxListing(List.of(card(PostRecipientStatus.ANSWERED)), List.of()));
+
+		mockMvc.perform(get("/api/v1/direction/inbox").param("category", "not-a-category"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.data.cards[0].status").value("ANSWERED"));
+		verify(applicationService).list(RECIPIENT_ID, InboxCategory.ALL, null);
 	}
 
 	@Test
@@ -219,7 +234,11 @@ class InboxApiMockMvcTest {
 	}
 
 	private static InboxCard card() {
-		return new InboxCard(POST_RECIPIENT_ID, 71L, PostRecipientStatus.OPENED, "질문", "본문", List.of(mediaView()),
+		return card(PostRecipientStatus.OPENED);
+	}
+
+	private static InboxCard card(PostRecipientStatus status) {
+		return new InboxCard(POST_RECIPIENT_ID, 71L, status, "질문", "본문", List.of(mediaView()),
 				"KR-11", BigDecimal.valueOf(90), null, "NEAR", NOW.minusSeconds(60), NOW.plusSeconds(3600), 0, false, 0,
 				0);
 	}

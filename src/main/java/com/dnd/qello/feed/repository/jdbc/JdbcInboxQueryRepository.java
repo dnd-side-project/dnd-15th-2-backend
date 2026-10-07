@@ -93,6 +93,7 @@ public class JdbcInboxQueryRepository implements InboxQueryRepository {
 		return switch (category) {
 			case UNANSWERED -> "pr.status IN " + UNANSWERED_STATUSES;
 			case ANSWERED -> "pr.status = 'ANSWERED'";
+			case ALL -> "pr.status IN ('AVAILABLE','DISCOVERED','OPENED','SKIP_PENDING','ANSWERED')";
 		};
 	}
 
