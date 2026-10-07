@@ -1,45 +1,86 @@
-# GitHub Issue #325 Task Contract
+# GitHub Issue #332 Task Contract
 
-> Generated at: `2026-10-07T23:02:27+09:00`
+> Generated at: `2026-10-08T02:12:32+09:00`
 >
 > 이 파일은 현재 작업 브랜치의 계약이다. 저장소 전역 정책은 `AGENTS.md`를
 > 따른다.
 
 ## Work gate
 
-- Title: `업로드 이미지의 EXIF 위치정보 제거`
-- GitHub Issue: `#325`
-- Branch: `feat/gh-325-exif-strip-on-confirm`
+- Title: `알림함 전체 지우기와 30일 보존 기간 숨김`
+- GitHub Issue: `#332`
+- Task ID: `GH-332-NOTIFICATION-CLEAR`
+- Branch: `feat/gh-332-notification-clear-retention`
 - Base branch: `main`
+- Source: 2026-10-08 현재 세션 사용자가 승인한 채팅 설계를 Issue로 생성하고 Project 141에 연결
+- Test plan: `docs/test-plans/gh-332-TEST-PLAN-GH-332-NOTIFICATION-CLEAR.md`
+- Test report: `docs/reports/tests/gh-332-TEST-REPORT-GH-332-NOTIFICATION-CLEAR.md`
+- Design ID: 해당 없음
+- Implementation gate: 테스트 계획 사람 승인 완료; 승인된 범위의 구현·테스트 작성·실행 허용
+- Approval evidence: 2026-10-08 현재 세션 사용자 메시지 “어 승인해” (기록 시각: `2026-10-08T02:48:27+09:00`)
+- Execution status: `PASS` — 승인 범위 구현, sync 후 필수 검사, 독립 검증 지적 사항 반영 완료. 사람의 GitHub PR 승인을 대체하지 않는다.
 
 ## Objective
 
-- TASK-ID: GH-325-EXIF-STRIP
-- 업로드 이미지가 EXIF GPS를 담은 채 다른 사용자에게 서빙된다. 질문글, 답변, 프로필이 모두 같은 confirm 경로를 쓴다.
-- D8 결정(A안, 2026-10-07)에 따라 confirm에서 API 서버가 EXIF를 지운다.
-- 테스트 계획(`TEST-PLAN-GH-325-EXIF-STRIP`)을 사람이 승인하기 전에는 구현을 시작하지 않는다.
+- 사용자가 알림함을 한 번에 비우고, 생성 후 30일이 지난 알림은 목록과 배지에서 자동으로 빠지게 한다.
 
 ## Scope
 
-| 항목 | 내용 |
-| --- | --- |
-| EXIF 제거 모듈 | JPEG·PNG 무손실 제거, 허용 목록 방식. Orientation과 ICC 프로파일만 남긴다. S3·Spring에 의존하지 않는다 |
-| confirm | 원본 읽기 → 제거 → serving key에 저장 → READY와 `exif_stripped = true`. 실패하면 REJECTED |
-| key 분리 | upload key와 serving key를 나누고, 조회 URL은 serving key로만 발급한다 |
-| 저장소 포트 | `ObjectStoragePort`에 크기 상한이 있는 전체 읽기와 쓰기를 추가한다 |
-| 도메인 | `MediaAsset`에 `exifStripped`를 추가하고, READY면 true라는 불변식을 건다 |
+- `DELETE /api/v1/notifications` 추가, 응답 `{ dismissedCount, dismissedAt }`.
+- 서버 시각 이전에 생성된 본인 `UNREAD`·`READ` 알림을 UPDATE 한 번으로 `DISMISSED`로 전이. `read_at`은 바꾸지 않는다.
+- `Notification.markRead`가 `DISMISSED`를 `READ`로 바꾸지 않게 하고, 서비스는 `UNREAD`일 때만 update를 호출한다.
+- `qello.notification.inbox.retention`(기본 `P30D`) 설정 추가.
+- 목록, `COUNT_UNREAD`, `EXISTS_UNSEEN`에 `created_at > :retentionFloor` 조건 추가. 하한은 서비스가 `clock.instant() - retention`으로 계산한다.
+- 생성 OpenAPI 갱신.
 
-정해진 세부 사항(2026-10-07 사람 승인):
+## Design and allowed files
 
-- `byte_size`, `checksum`은 원본 값을 유지한다.
-- 기존 READY 이미지는 별도로 처리하지 않는다(출시 전 테스트 데이터로 본다).
-- 원본 이전 버전 180일 보존은 이번에 바꾸지 않는다.
+전체 지우기는 기존 `DISMISSED` 상태와 부분 인덱스를 그대로 사용하고 스키마를 바꾸지 않는다.
+보존 기간은 조회 시 필터만 적용하며 행을 삭제하지 않는다. `/target`과 `findCard`는 ID 조회이므로 필터를 적용하지 않는다.
+
+Production:
+- `src/main/java/com/dnd/qello/notification/web/NotificationApiSpec.java`
+- `src/main/java/com/dnd/qello/notification/web/NotificationController.java`
+- `src/main/java/com/dnd/qello/notification/web/response/NotificationDismissResponse.java` (신규)
+- `src/main/java/com/dnd/qello/notification/view/NotificationDismissal.java` (신규)
+- `src/main/java/com/dnd/qello/notification/service/NotificationInboxService.java`
+- `src/main/java/com/dnd/qello/notification/domain/Notification.java`
+- `src/main/java/com/dnd/qello/notification/config/NotificationInboxProperties.java` (신규)
+- `src/main/java/com/dnd/qello/notification/repository/NotificationRepository.java`
+- `src/main/java/com/dnd/qello/notification/repository/jdbc/JdbcNotificationRepository.java`
+- `src/main/java/com/dnd/qello/notification/repository/jdbc/sql/NotificationSql.java`
+- `src/main/java/com/dnd/qello/notification/repository/NotificationInboxQueryRepository.java`
+- `src/main/java/com/dnd/qello/notification/repository/jdbc/JdbcNotificationInboxQueryRepository.java`
+- `src/main/java/com/dnd/qello/notification/repository/jdbc/sql/NotificationInboxQuerySql.java`
+- `src/main/resources/application.yml`
+- `config/java-conventions/baseline.json` (JAVA-CONV-0007·0014 항목 삭제만 허용)
+
+Tests (신규):
+- `src/test/java/com/dnd/qello/notification/NotificationDismissTest.java`
+- `src/test/java/com/dnd/qello/notification/config/NotificationInboxPropertiesTest.java`
+- `src/integrationTest/java/com/dnd/qello/NotificationInboxDismissRetentionIntegrationTest.java`
+- `src/integrationTest/java/com/dnd/qello/NotificationInboxDismissConcurrencyIntegrationTest.java`
+
+Tests (수정):
+- `src/test/java/com/dnd/qello/notification/service/NotificationInboxServiceTest.java`
+- `src/test/java/com/dnd/qello/notification/web/NotificationApiMockMvcTest.java`
+- `src/test/java/com/dnd/qello/notification/web/NotificationWebContractTest.java`
+- `src/integrationTest/java/com/dnd/qello/NotificationInboxQueryIntegrationTest.java` (시그니처만)
+- `src/integrationTest/java/com/dnd/qello/NotificationInboxCommandIntegrationTest.java` (시그니처만)
+- `src/integrationTest/java/com/dnd/qello/NotificationFanOutExpansionIntegrationTest.java` (시그니처만)
+
+Documentation:
+- `TASK.md`
+- `docs/test-plans/gh-332-TEST-PLAN-GH-332-NOTIFICATION-CLEAR.md`
+- `docs/reports/tests/gh-332-TEST-REPORT-GH-332-NOTIFICATION-CLEAR.md`
+- `docs/api/openapi.json` (생성 테스트만 사용; 직접 편집 금지)
 
 ## Explicit exclusions
 
-- Lambda 전환(B안), 이미지 moderation, 썸네일·리사이즈
-- 원본 이전 버전 삭제와 lifecycle 변경(인프라 변경, 별도 Issue)
-- API 요청·응답 스키마 변경
+- 알림 단건 지우기, 행 물리 삭제, 스위프 워커, 사용자별 보존 기간 설정.
+- `/notifications/{id}/target` 진입 판정 변경, 푸시 발송·fan-out 변경.
+- DB 스키마·마이그레이션 변경.
+- 전역 formatter 또는 범위 밖 코드 정리.
 - 인프라 apply, 배포, 프로덕션 변경은 별도 승인 없이는 실행하지 않는다.
 - Secret, 계정 식별자, 토큰, `.env` 값은 기록하지 않는다.
 
@@ -47,32 +88,54 @@
 
 | Area | Owner | Required review |
 | --- | --- | --- |
-| 테스트 계획 | Test orchestrator | 사람의 계획 승인 |
-| production 구현(`src/main/**/answer/**`, `src/main/**/account/**`, `src/main/**/feed/**`) | Feature executor | 승인된 계획 범위 안의 변경인지 독립 검토 |
-| 단위 테스트(`src/test/**`) | Test executor | 실제 변경과 실행 결과의 독립 검토 |
-| 통합 테스트(`src/integrationTest/**`) | Test executor | 실제 변경과 실행 결과의 독립 검토 |
+| 요구사항·Issue·TASK·테스트 계획 | 현재 부모 오케스트레이터 | 사람의 테스트 계획 승인 (완료) |
+| 위 production/test/생성 OpenAPI·테스트 보고서 | notification-executor (계획 승인 후 호출) | 독립 검증 |
+| 실제 diff·필수 검사·범위 확인 | notification-verifier (구현 후 호출) | 사람의 최종 리뷰 |
+
+구현자는 다른 변경을 되돌리지 않으며 허용 파일만 수정한다.
 
 ## Existing user-owned changes
 
-- 새 worktree를 `origin/main`(`1a3b1254`)에서 만들었다. 작업 시작 시 `git status --short`는 `TASK.md`만 수정 상태로 표시했다(`h task-init` 결과).
+- 작업 시작 시 메인 작업 디렉터리의 `git status --short`는 비어 있었다.
+- 브랜치는 `./harness start`로 최신 `origin/main`(`0be1e925`)에서 분기했다.
+- 2026-10-08 사용자 승인에 따라 미커밋 변경을 고유 태그 stash로 보관하고 `./harness sync`로 `3387fcf0`(#331)에 맞춘 뒤 SHA로 되돌렸다. 충돌은 `TASK.md` 하나였고 이 브랜치 계약으로 해결했다. `baseline.json`은 0007·0014·0018 삭제가 합쳐졌다. 임시 stash 항목은 삭제했다.
+- `.worktrees/gh-323-inbox-category`의 #323 worktree는 건드리지 않는다.
 
 ## Validation
 
+테스트 계획 승인 이후 Java 21 및 Testcontainers용 Docker 환경에서 실행한다.
+
 ```bash
+./gradlew test
+./gradlew integrationTest
 ./harness check
 ./harness pr-ready --project-tests
-./gradlew test --tests "com.dnd.qello.answer.*"
-./gradlew integrationTest --tests "*ExifStripIntegrationTest" --tests "*MediaAssetStorageIntegrationTest" --tests "*MediaAttachmentIntegrationTest" --tests "*FeedMediaViewUrlIntegrationTest" --tests "*ProfileImageIntegrationTest"
+npm run hooks:validate
 git diff --check
 ```
 
+OpenAPI는 `OpenApiSpecificationIntegrationTest`로 생성한다.
+실행하지 못한 검증은 BLOCKED로 보고하며 성공으로 간주하지 않는다.
+
 ## Completion criteria
 
-- [x] 테스트 계획을 작성했고 사람이 승인했다(2026-10-07T23:13:07+09:00, H1·H2·H3 권장안).
-- [x] 테스트 계획 Revision 1(계획 밖 테스트 파일 3개 수정, 독립 검토 반영, UNIT-023~027 추가)을 사람이 확인했다(2026-10-08T00:23:58+09:00).
-- [x] READY 이미지에 위치정보가 없고 `exif_stripped = true`다(UNIT-016, INT-001·002·004·008).
-- [x] READY 뒤 같은 presigned URL로 다시 올려도 조회 이미지는 바뀌지 않는다(INT-003).
-- [x] 처리에 실패한 이미지는 REJECTED다. 저장소 장애는 503과 UPLOADING 유지다(UNIT-017·018, INT-005).
-- [x] Orientation이 유지된다(UNIT-001·007, INT-001).
-- [ ] 로그에 storage key와 좌표가 나오지 않는다. 서비스 경로는 확인했다(INT-007). 저장소 장애가 HTTP 응답으로 바뀔 때 `GlobalExceptionHandler`가 남기는 SDK 예외 원인 로그는 확인하지 못했다(보고서 6절).
-- [ ] 필수 검증을 실행했다. `./harness check`, `./gradlew check`(단위 1,264건·통합 796건), `npm run hooks:validate`, `git diff --check`는 통과했다. `./harness pr-ready`는 `origin/main`이 앞서가 sync 게이트에서 멈췄고, sync에는 커밋이 필요하다.
+- Issue #332의 완료 조건을 충족한다.
+- 전체 지우기는 본인·요청 시각 이전·`UNREAD`/`READ`만 전이하고 멱등하다.
+- 전체 지우기 직후 목록·`unreadCount`·`hasUnseen`이 비어 있다.
+- `DISMISSED` 알림의 읽음 요청은 상태를 바꾸지 않는다.
+- 30일 하한이 목록·`countUnread`·`existsUnseen`에 같은 기준으로 적용된다.
+- 기존 알림 경로 계약과 생성 OpenAPI의 다른 경로가 바뀌지 않는다.
+- 승인된 테스트와 필수 검사에 실패·차단 항목이 없다.
+
+## Decisions, risks and rollback
+
+- CONFIRMED (2026-10-08): 사용자가 이번 PR에서 수정하는 legacy target의 기존 위반을 해결하기로 결정했다. `JdbcNotificationRepository`의 wildcard import(JAVA-CONV-0007)를 명시 import로 바꾸고, `Notification` 생성자 검증을 private 메서드로 분리해 복잡도 위반(JAVA-CONV-0014)을 해소한 뒤 두 baseline 항목을 삭제한다. 동작 변경은 없다.
+- CONFIRMED (2026-10-08): `origin/main`의 #329 baseline 불일치(JAVA-CONV-0018, `DirectionPostService`)는 별도 Issue(#333)로 분리했다. 이후 #331(`3387fcf0`)이 같은 수정을 먼저 반영해 사용자 결정으로 #333을 not planned로 닫았다. 이 브랜치는 커밋 후 `./harness sync`로 `3387fcf0` 이후 main을 반영한다.
+
+- CONFIRMED: 2026-10-08 사용자가 보존 기간 서버 고정 30일·조회 시 숨김을 선택했다.
+- CONFIRMED: 2026-10-08 사용자가 전체 지우기 범위를 서버 요청 시각 이전 전부로 선택했다.
+- CONFIRMED: 2026-10-08 사용자가 두 기능을 Issue 하나로 묶고 Sprint Week 10, Priority P1, Status In Progress로 지정했다.
+- 확인한 사실: `JdbcNotificationRepository.update`의 `status = 'UNREAD'` 조건 때문에 현재도 `DISMISSED` 행은 읽음 요청으로 바뀌지 않는다. 도메인 변경은 모델 일관성 목적이다.
+- 위험: 30일이 지난 알림이 기존 응답에서 빠지므로 프론트가 오래된 알림을 기대하는 화면이 있으면 영향을 받는다.
+- 위험: 요청 시각 이전 `created_at`을 가진 미커밋 fan-out 삽입은 전체 지우기 후에도 남는다. 새 알림으로 보이는 허용 동작으로 기록한다.
+- 복구: 변경 commit revert. `DISMISSED` 행은 목록에서 계속 제외되며 DB 복구 작업은 없다.
