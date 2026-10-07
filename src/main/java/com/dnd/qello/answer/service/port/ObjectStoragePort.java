@@ -11,8 +11,9 @@ public interface ObjectStoragePort {
 	/**
 	 * 객체를 읽을 수 있는 만료 있는 URL을 발급한다.
 	 *
-	 * <p>발급은 객체 존재를 확인하지 않는다. 없는 키로도 URL은 정상 발급되고 그 URL이 404를
-	 * 가리킨다. 존재를 보장해야 하는 호출자는 {@link #headObject(String)}를 따로 쓴다.
+	 * <p>
+	 * 발급은 객체 존재를 확인하지 않는다. 없는 키로도 URL은 정상 발급되고 그 URL이 404를 가리킨다. 존재를 보장해야 하는 호출자는
+	 * {@link #headObject(String)}를 따로 쓴다.
 	 */
 	PresignedView issueGetUrl(String storageKey, Duration ttl);
 
@@ -20,8 +21,11 @@ public interface ObjectStoragePort {
 	Optional<StoredObjectMetadata> headObject(String storageKey);
 
 	/**
-	 * 객체 앞부분을 읽는다. 객체가 없으면 empty를 반환하고, 외부 저장소 장애는
-	 * {@code STORAGE_UNAVAILABLE}으로 변환한다.
+	 * 객체 앞부분을 최대 {@code maxBytes}만큼 읽는다. 객체가 그보다 작으면 객체 전체를 돌려준다. 객체가 없으면 empty를
+	 * 반환하고, 외부 저장소 장애는 {@code STORAGE_UNAVAILABLE}으로 변환한다.
 	 */
 	Optional<byte[]> readObjectPrefix(String storageKey, int maxBytes);
+
+	/** 객체를 쓴다. 같은 key가 있으면 덮어쓴다. 외부 저장소 장애는 {@code STORAGE_UNAVAILABLE}으로 변환한다. */
+	void putObject(String storageKey, String contentType, byte[] body);
 }

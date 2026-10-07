@@ -5,9 +5,6 @@
  */
 package com.dnd.qello.account.service;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-
 import java.net.URI;
 import java.net.URL;
 import java.time.Duration;
@@ -38,6 +35,9 @@ import com.dnd.qello.answer.service.port.PresignedUpload;
 import com.dnd.qello.answer.service.port.PresignedView;
 import com.dnd.qello.answer.service.port.StoredObjectMetadata;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
 class ProfileServiceTest {
 
 	private static final long OWNER_ID = 1L;
@@ -47,7 +47,7 @@ class ProfileServiceTest {
 	private static final Duration VIEW_TTL = Duration.ofMinutes(5);
 
 	private final MediaStorageProperties properties = new MediaStorageProperties(
-		"test-bucket", ImageMimeType.supportedMimeTypes(), 1_000L, Duration.ofMinutes(10), VIEW_TTL, DEFAULT_KEY);
+			"test-bucket", ImageMimeType.supportedMimeTypes(), 1_000L, Duration.ofMinutes(10), VIEW_TTL, DEFAULT_KEY);
 	private final FakeAccountRepository accounts = new FakeAccountRepository();
 	private final FakeMediaAssetRepository assets = new FakeMediaAssetRepository();
 	private final RecordingObjectStoragePort storage = new RecordingObjectStoragePort();
@@ -61,8 +61,8 @@ class ProfileServiceTest {
 		assets.store(readyAsset(10L, OTHER_ID));
 
 		assertThatThrownBy(() -> service.changeProfileImage(OWNER_ID, 10L))
-			.isInstanceOf(AnswerException.class)
-			.hasFieldOrPropertyWithValue("errorCode", AnswerErrorCode.MEDIA_NOT_FOUND);
+				.isInstanceOf(AnswerException.class)
+				.hasFieldOrPropertyWithValue("errorCode", AnswerErrorCode.MEDIA_NOT_FOUND);
 		assertThat(accounts.find(OWNER_ID).getProfileImageMediaId()).isNull();
 	}
 
@@ -73,8 +73,8 @@ class ProfileServiceTest {
 		assets.store(asset(10L, OWNER_ID, MediaAssetStatus.UPLOADING, null));
 
 		assertThatThrownBy(() -> service.changeProfileImage(OWNER_ID, 10L))
-			.isInstanceOf(AnswerException.class)
-			.hasFieldOrPropertyWithValue("errorCode", AnswerErrorCode.INVALID_MEDIA_STATUS);
+				.isInstanceOf(AnswerException.class)
+				.hasFieldOrPropertyWithValue("errorCode", AnswerErrorCode.INVALID_MEDIA_STATUS);
 	}
 
 	@Test
@@ -84,8 +84,8 @@ class ProfileServiceTest {
 		assets.store(asset(10L, OWNER_ID, MediaAssetStatus.REJECTED, null));
 
 		assertThatThrownBy(() -> service.changeProfileImage(OWNER_ID, 10L))
-			.isInstanceOf(AnswerException.class)
-			.hasFieldOrPropertyWithValue("errorCode", AnswerErrorCode.INVALID_MEDIA_STATUS);
+				.isInstanceOf(AnswerException.class)
+				.hasFieldOrPropertyWithValue("errorCode", AnswerErrorCode.INVALID_MEDIA_STATUS);
 	}
 
 	@Test
@@ -95,8 +95,8 @@ class ProfileServiceTest {
 		assets.store(asset(10L, OWNER_ID, MediaAssetStatus.DELETED, CREATED_AT));
 
 		assertThatThrownBy(() -> service.changeProfileImage(OWNER_ID, 10L))
-			.isInstanceOf(AnswerException.class)
-			.hasFieldOrPropertyWithValue("errorCode", AnswerErrorCode.INVALID_MEDIA_STATUS);
+				.isInstanceOf(AnswerException.class)
+				.hasFieldOrPropertyWithValue("errorCode", AnswerErrorCode.INVALID_MEDIA_STATUS);
 	}
 
 	@Test
@@ -105,8 +105,8 @@ class ProfileServiceTest {
 		accounts.store(activeUser(OWNER_ID));
 
 		assertThatThrownBy(() -> service.changeProfileImage(OWNER_ID, 999L))
-			.isInstanceOf(AnswerException.class)
-			.hasFieldOrPropertyWithValue("errorCode", AnswerErrorCode.MEDIA_NOT_FOUND);
+				.isInstanceOf(AnswerException.class)
+				.hasFieldOrPropertyWithValue("errorCode", AnswerErrorCode.MEDIA_NOT_FOUND);
 	}
 
 	@Test
@@ -188,23 +188,23 @@ class ProfileServiceTest {
 		storage.failing = true;
 
 		assertThatThrownBy(() -> service.getProfile(OWNER_ID))
-			.isInstanceOf(AnswerException.class)
-			.hasFieldOrPropertyWithValue("errorCode", AnswerErrorCode.STORAGE_UNAVAILABLE);
+				.isInstanceOf(AnswerException.class)
+				.hasFieldOrPropertyWithValue("errorCode", AnswerErrorCode.STORAGE_UNAVAILABLE);
 	}
 
 	private static Account activeUser(long id) {
 		return Account.restore(id, AccountRole.USER, AccountStatus.ACTIVE, "KR", "KR-TEST",
-			"ko-KR", "Asia/Seoul", "qello-user", null);
+				"ko-KR", "Asia/Seoul", "qello-user", null);
 	}
 
 	private static MediaAsset readyAsset(long id, long ownerId) {
 		return MediaAsset.restore(id, ownerId, MediaAssetStatus.READY, "media/" + ownerId + "/own-image",
-			"image/png", 100L, "checksum", CREATED_AT, null);
+				"image/png", 100L, "checksum", true, CREATED_AT, null);
 	}
 
 	private static MediaAsset asset(long id, long ownerId, MediaAssetStatus status, Instant deletedAt) {
 		return MediaAsset.restore(id, ownerId, status, "media/" + ownerId + "/own-image",
-			"image/png", 100L, "checksum", CREATED_AT, deletedAt);
+				"image/png", 100L, "checksum", status == MediaAssetStatus.READY, CREATED_AT, deletedAt);
 	}
 
 	private static final class FakeAccountRepository implements AccountRepository {
@@ -299,7 +299,7 @@ class ProfileServiceTest {
 		public PresignedView issueGetUrl(String storageKey, Duration ttl) {
 			if (failing) {
 				throw new AnswerException(
-					AnswerErrorCode.STORAGE_UNAVAILABLE, null, "조회 URL 발급에 실패했습니다");
+						AnswerErrorCode.STORAGE_UNAVAILABLE, null, "조회 URL 발급에 실패했습니다");
 			}
 			requestedKeys.add(storageKey);
 			requestedTtls.add(ttl);
@@ -313,6 +313,11 @@ class ProfileServiceTest {
 
 		@Override
 		public Optional<byte[]> readObjectPrefix(String storageKey, int maxBytes) {
+			throw new UnsupportedOperationException();
+		}
+
+		@Override
+		public void putObject(String storageKey, String contentType, byte[] body) {
 			throw new UnsupportedOperationException();
 		}
 

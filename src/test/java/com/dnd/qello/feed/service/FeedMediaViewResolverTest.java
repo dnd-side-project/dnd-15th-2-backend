@@ -104,6 +104,11 @@ class FeedMediaViewResolverTest {
 			throw new UnsupportedOperationException();
 		}
 
+		@Override
+		public void putObject(String storageKey, String contentType, byte[] body) {
+			throw new UnsupportedOperationException();
+		}
+
 		private static URL url(String storageKey) {
 			try {
 				return URI.create("https://example-test.invalid/" + storageKey + "?signed").toURL();

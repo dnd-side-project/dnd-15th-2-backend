@@ -4,9 +4,6 @@
  */
 package com.dnd.qello.answer;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
@@ -22,6 +19,7 @@ import com.dnd.qello.answer.domain.AnswerStatus;
 import com.dnd.qello.answer.domain.MediaAsset;
 import com.dnd.qello.answer.domain.MediaAssetStatus;
 import com.dnd.qello.answer.domain.MediaAttachment;
+import com.dnd.qello.answer.domain.MediaStorageKeys;
 import com.dnd.qello.answer.error.AnswerErrorCode;
 import com.dnd.qello.answer.error.AnswerException;
 import com.dnd.qello.answer.repository.AnswerRepository;
@@ -32,6 +30,9 @@ import com.dnd.qello.answer.service.MediaAttachmentService.AttachCommand;
 import com.dnd.qello.direction.domain.DirectionPost;
 import com.dnd.qello.direction.domain.DirectionPostStatus;
 import com.dnd.qello.direction.repository.DirectionPostRepository;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class MediaAttachmentServiceTest {
 
@@ -52,7 +53,7 @@ class MediaAttachmentServiceTest {
 		directionPostRepository = new InMemoryDirectionPostRepository();
 		answerRepository = new InMemoryAnswerRepository();
 		service = new MediaAttachmentService(
-			mediaAssetRepository, mediaAttachmentRepository, directionPostRepository, answerRepository);
+				mediaAssetRepository, mediaAttachmentRepository, directionPostRepository, answerRepository);
 	}
 
 	@Test
@@ -62,17 +63,17 @@ class MediaAttachmentServiceTest {
 		assertThat(postAttachment.postId()).isEqualTo(10L);
 
 		assertThatThrownBy(() -> new MediaAttachment(1L, OWNER, 10L, 20L, 0))
-			.isInstanceOf(AnswerException.class)
-			.hasFieldOrPropertyWithValue("errorCode", AnswerErrorCode.INVALID_MEDIA_TARGET);
+				.isInstanceOf(AnswerException.class)
+				.hasFieldOrPropertyWithValue("errorCode", AnswerErrorCode.INVALID_MEDIA_TARGET);
 		assertThatThrownBy(() -> new MediaAttachment(1L, OWNER, null, null, 0))
-			.isInstanceOf(AnswerException.class)
-			.hasFieldOrPropertyWithValue("errorCode", AnswerErrorCode.INVALID_MEDIA_TARGET);
+				.isInstanceOf(AnswerException.class)
+				.hasFieldOrPropertyWithValue("errorCode", AnswerErrorCode.INVALID_MEDIA_TARGET);
 		assertThatThrownBy(() -> new MediaAttachment(0L, OWNER, 10L, null, 0))
-			.isInstanceOf(AnswerException.class)
-			.hasFieldOrPropertyWithValue("errorCode", AnswerErrorCode.INVALID_ID);
+				.isInstanceOf(AnswerException.class)
+				.hasFieldOrPropertyWithValue("errorCode", AnswerErrorCode.INVALID_ID);
 		assertThatThrownBy(() -> new AttachCommand(OWNER, 1L, null, null, 0))
-			.isInstanceOf(AnswerException.class)
-			.hasFieldOrPropertyWithValue("errorCode", AnswerErrorCode.INVALID_MEDIA_TARGET);
+				.isInstanceOf(AnswerException.class)
+				.hasFieldOrPropertyWithValue("errorCode", AnswerErrorCode.INVALID_MEDIA_TARGET);
 	}
 
 	@Test
@@ -82,20 +83,20 @@ class MediaAttachmentServiceTest {
 		directionPostRepository.put(post(OWNER, DirectionPostStatus.ACTIVE, null));
 
 		assertThatThrownBy(() -> service.attach(new AttachCommand(STRANGER, ready.getId(), OWNER_POST_ID, null, 0)))
-			.isInstanceOf(AnswerException.class)
-			.hasFieldOrPropertyWithValue("errorCode", AnswerErrorCode.MEDIA_NOT_FOUND);
+				.isInstanceOf(AnswerException.class)
+				.hasFieldOrPropertyWithValue("errorCode", AnswerErrorCode.MEDIA_NOT_FOUND);
 	}
 
 	@Test
 	@DisplayName("READY 상태가 아닌 미디어는 attach할 수 없다")
 	void attachRejectsNonReadyMedia() {
 		MediaAsset uploading = mediaAssetRepository.save(
-			MediaAsset.upload(OWNER, "key", "image/jpeg", 10L, "checksum", NOW));
+				MediaAsset.upload(OWNER, "key", "image/jpeg", 10L, "checksum", NOW));
 		directionPostRepository.put(post(OWNER, DirectionPostStatus.ACTIVE, null));
 
 		assertThatThrownBy(() -> service.attach(new AttachCommand(OWNER, uploading.getId(), OWNER_POST_ID, null, 0)))
-			.isInstanceOf(AnswerException.class)
-			.hasFieldOrPropertyWithValue("errorCode", AnswerErrorCode.INVALID_MEDIA_STATUS);
+				.isInstanceOf(AnswerException.class)
+				.hasFieldOrPropertyWithValue("errorCode", AnswerErrorCode.INVALID_MEDIA_STATUS);
 	}
 
 	@Test
@@ -105,8 +106,8 @@ class MediaAttachmentServiceTest {
 		directionPostRepository.put(post(STRANGER, DirectionPostStatus.ACTIVE, null));
 
 		assertThatThrownBy(() -> service.attach(new AttachCommand(OWNER, ready.getId(), OWNER_POST_ID, null, 0)))
-			.isInstanceOf(AnswerException.class)
-			.hasFieldOrPropertyWithValue("errorCode", AnswerErrorCode.MEDIA_OWNER_MISMATCH);
+				.isInstanceOf(AnswerException.class)
+				.hasFieldOrPropertyWithValue("errorCode", AnswerErrorCode.MEDIA_OWNER_MISMATCH);
 	}
 
 	@Test
@@ -129,8 +130,8 @@ class MediaAttachmentServiceTest {
 		service.attach(new AttachCommand(OWNER, ready.getId(), OWNER_POST_ID, null, 0));
 
 		assertThatThrownBy(() -> service.attach(new AttachCommand(OWNER, ready.getId(), OWNER_POST_ID, null, 0)))
-			.isInstanceOf(AnswerException.class)
-			.hasFieldOrPropertyWithValue("errorCode", AnswerErrorCode.INVALID_MEDIA_STATUS);
+				.isInstanceOf(AnswerException.class)
+				.hasFieldOrPropertyWithValue("errorCode", AnswerErrorCode.INVALID_MEDIA_STATUS);
 	}
 
 	@Test
@@ -141,8 +142,8 @@ class MediaAttachmentServiceTest {
 		service.attach(new AttachCommand(OWNER, ready.getId(), OWNER_POST_ID, null, 0));
 
 		assertThatThrownBy(() -> service.detach(ready.getId(), OWNER))
-			.isInstanceOf(AnswerException.class)
-			.hasFieldOrPropertyWithValue("errorCode", AnswerErrorCode.MEDIA_CONTENT_REQUIRED);
+				.isInstanceOf(AnswerException.class)
+				.hasFieldOrPropertyWithValue("errorCode", AnswerErrorCode.MEDIA_CONTENT_REQUIRED);
 	}
 
 	@Test
@@ -174,8 +175,8 @@ class MediaAttachmentServiceTest {
 
 	private MediaAsset readyMedia(long ownerId) {
 		MediaAsset uploading = mediaAssetRepository.save(
-			MediaAsset.upload(ownerId, "media/" + ownerId + "/key", "image/jpeg", 10L, "checksum", NOW));
-		MediaAsset ready = uploading.ready();
+				MediaAsset.upload(ownerId, "media/" + ownerId + "/key", "image/jpeg", 10L, "checksum", NOW));
+		MediaAsset ready = uploading.ready(MediaStorageKeys.servingKeyOf(uploading.getStorageKey()));
 		mediaAssetRepository.save(ready);
 		return ready;
 	}
@@ -183,12 +184,12 @@ class MediaAttachmentServiceTest {
 	private DirectionPost post(long senderId, DirectionPostStatus status, String bodyText) {
 		if (status == DirectionPostStatus.ACTIVE) {
 			return DirectionPost.restore(OWNER_POST_ID, senderId, 1L, status, "key-" + senderId, bodyText, "TEST",
-				com.dnd.qello.direction.domain.DirectionPostModerationStatus.PASSED, NOW, NOW,
-				NOW.plusSeconds(3600), null, null);
+					com.dnd.qello.direction.domain.DirectionPostModerationStatus.PASSED, NOW, NOW,
+					NOW.plusSeconds(3600), null, null);
 		}
 		return DirectionPost.restore(OWNER_POST_ID, senderId, 1L, status, "key-" + senderId, bodyText, "TEST",
-			com.dnd.qello.direction.domain.DirectionPostModerationStatus.PENDING, NOW, null,
-			NOW.plusSeconds(3600), null, null);
+				com.dnd.qello.direction.domain.DirectionPostModerationStatus.PENDING, NOW, null,
+				NOW.plusSeconds(3600), null, null);
 	}
 
 	private static final class InMemoryMediaAssetRepository implements MediaAssetRepository {
@@ -199,13 +200,17 @@ class MediaAttachmentServiceTest {
 		public MediaAsset save(MediaAsset asset) {
 			long id = asset.getId() != null ? asset.getId() : nextId++;
 			MediaAsset persisted = MediaAsset.restore(id, asset.getOwnerId(), asset.getStatus(), asset.getStorageKey(),
-				asset.getMimeType(), asset.getByteSize(), asset.getChecksum(), asset.getCreatedAt(), asset.getDeletedAt());
+					asset.getMimeType(), asset.getByteSize(), asset.getChecksum(), asset.isExifStripped(),
+					asset.getCreatedAt(),
+					asset.getDeletedAt());
 			store.put(id, persisted);
 			return persisted;
 		}
 
 		@Override
-		public Optional<MediaAsset> findById(long id) { return Optional.ofNullable(store.get(id)); }
+		public Optional<MediaAsset> findById(long id) {
+			return Optional.ofNullable(store.get(id));
+		}
 
 		@Override
 		public Optional<MediaAsset> findByIdAndOwnerId(long id, long ownerId) {
@@ -228,7 +233,9 @@ class MediaAttachmentServiceTest {
 		}
 
 		@Override
-		public Optional<MediaAttachment> findByMediaId(long mediaId) { return Optional.ofNullable(store.get(mediaId)); }
+		public Optional<MediaAttachment> findByMediaId(long mediaId) {
+			return Optional.ofNullable(store.get(mediaId));
+		}
 
 		@Override
 		public Optional<MediaAttachment> findByMediaIdAndOwnerId(long mediaId, long ownerId) {
@@ -238,23 +245,25 @@ class MediaAttachmentServiceTest {
 		@Override
 		public List<Long> findMediaIdsByPostId(long postId) {
 			return store.values().stream()
-				.filter(attachment -> attachment.postId() != null && attachment.postId() == postId)
-				.sorted(java.util.Comparator.comparingInt(MediaAttachment::displayOrder))
-				.map(MediaAttachment::mediaId)
-				.toList();
+					.filter(attachment -> attachment.postId() != null && attachment.postId() == postId)
+					.sorted(java.util.Comparator.comparingInt(MediaAttachment::displayOrder))
+					.map(MediaAttachment::mediaId)
+					.toList();
 		}
 
 		@Override
 		public List<Long> findMediaIdsByAnswerId(long answerId) {
 			return store.values().stream()
-				.filter(attachment -> attachment.answerId() != null && attachment.answerId() == answerId)
-				.sorted(java.util.Comparator.comparingInt(MediaAttachment::displayOrder))
-				.map(MediaAttachment::mediaId)
-				.toList();
+					.filter(attachment -> attachment.answerId() != null && attachment.answerId() == answerId)
+					.sorted(java.util.Comparator.comparingInt(MediaAttachment::displayOrder))
+					.map(MediaAttachment::mediaId)
+					.toList();
 		}
 
 		@Override
-		public void deleteByMediaId(long mediaId) { store.remove(mediaId); }
+		public void deleteByMediaId(long mediaId) {
+			store.remove(mediaId);
+		}
 
 		@Override
 		public boolean existsOtherReadyMediaForPost(long postId, long excludingMediaId) {
@@ -270,13 +279,19 @@ class MediaAttachmentServiceTest {
 	private static final class InMemoryDirectionPostRepository implements DirectionPostRepository {
 		private final Map<Long, DirectionPost> store = new HashMap<>();
 
-		void put(DirectionPost post) { store.put(post.getId(), post); }
+		void put(DirectionPost post) {
+			store.put(post.getId(), post);
+		}
 
 		@Override
-		public DirectionPost save(DirectionPost post) { throw new UnsupportedOperationException("not used"); }
+		public DirectionPost save(DirectionPost post) {
+			throw new UnsupportedOperationException("not used");
+		}
 
 		@Override
-		public Optional<DirectionPost> findById(long id) { return Optional.ofNullable(store.get(id)); }
+		public Optional<DirectionPost> findById(long id) {
+			return Optional.ofNullable(store.get(id));
+		}
 
 		@Override
 		public Optional<DirectionPost> findBySenderAndIdempotencyKey(long senderId, String idempotencyKey) {
@@ -298,10 +313,14 @@ class MediaAttachmentServiceTest {
 		private final Map<Long, Answer> store = new HashMap<>();
 
 		@Override
-		public Answer save(Answer answer) { throw new UnsupportedOperationException("not used"); }
+		public Answer save(Answer answer) {
+			throw new UnsupportedOperationException("not used");
+		}
 
 		@Override
-		public Optional<Answer> findById(long id) { return Optional.ofNullable(store.get(id)); }
+		public Optional<Answer> findById(long id) {
+			return Optional.ofNullable(store.get(id));
+		}
 
 		@Override
 		public Optional<Answer> findByAuthorAndIdempotencyKey(long authorId, String idempotencyKey) {

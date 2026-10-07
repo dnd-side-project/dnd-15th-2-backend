@@ -4,9 +4,6 @@
  */
 package com.dnd.qello;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -23,12 +20,16 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 import com.dnd.qello.answer.domain.MediaAsset;
 import com.dnd.qello.answer.domain.MediaAttachment;
+import com.dnd.qello.answer.domain.MediaStorageKeys;
 import com.dnd.qello.answer.error.AnswerErrorCode;
 import com.dnd.qello.answer.error.AnswerException;
 import com.dnd.qello.answer.repository.MediaAssetRepository;
 import com.dnd.qello.answer.repository.MediaAttachmentRepository;
 import com.dnd.qello.answer.service.MediaAttachmentService;
 import com.dnd.qello.answer.service.MediaAttachmentService.AttachCommand;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @SpringBootTest
 @ActiveProfiles("test")
@@ -65,8 +66,11 @@ class MediaAttachmentIntegrationTest extends PostgisContainerIntegrationTestSupp
 		jdbc.update("DELETE FROM approved_question");
 		jdbc.update("DELETE FROM user_account WHERE coarse_region_code = ?", REGION);
 		jdbc.update("DELETE FROM region_code WHERE code = ?", REGION);
-		jdbc.update("INSERT INTO region_code (code, parent_code, display_name, level) VALUES ('KR', NULL, 'Korea', 'COUNTRY') ON CONFLICT (code, level) DO NOTHING");
-		jdbc.update("INSERT INTO region_code (code, parent_code, display_name, level) VALUES (?, 'KR', 'Media Attach Test', 'REGION')", REGION);
+		jdbc.update(
+				"INSERT INTO region_code (code, parent_code, display_name, level) VALUES ('KR', NULL, 'Korea', 'COUNTRY') ON CONFLICT (code, level) DO NOTHING");
+		jdbc.update(
+				"INSERT INTO region_code (code, parent_code, display_name, level) VALUES (?, 'KR', 'Media Attach Test', 'REGION')",
+				REGION);
 
 		ownerId = account("attach-owner");
 		strangerId = account("attach-stranger");
@@ -77,46 +81,49 @@ class MediaAttachmentIntegrationTest extends PostgisContainerIntegrationTestSupp
 
 	private long account(String nickname) {
 		return jdbc.queryForObject("""
-			INSERT INTO user_account (role, country_code, status, coarse_region_code, locale, timezone, nickname)
-			VALUES ('USER', 'KR', 'ACTIVE', ?, 'ko-KR', 'Asia/Seoul', ?)
-			RETURNING id
-			""", Long.class, REGION, nickname);
+				INSERT INTO user_account (role, country_code, status, coarse_region_code, locale, timezone, nickname)
+				VALUES ('USER', 'KR', 'ACTIVE', ?, 'ko-KR', 'Asia/Seoul', ?)
+				RETURNING id
+				""", Long.class, REGION, nickname);
 	}
 
 	private long activePost(long senderId, String bodyText) {
 		long questionId = jdbc.queryForObject("""
-			INSERT INTO approved_question
-				(source_type, status, question_text, answer_format, active_from, approved_at, approved_by)
-			VALUES ('OPERATOR', 'ACTIVE', '오늘 뭐 하고 있나요?', 'TEXT', ?, ?, ?)
-			RETURNING id
-			""", Long.class, Timestamp.from(NOW.minusSeconds(60)), Timestamp.from(NOW), senderId);
+				INSERT INTO approved_question
+					(source_type, status, question_text, answer_format, active_from, approved_at, approved_by)
+				VALUES ('OPERATOR', 'ACTIVE', '오늘 뭐 하고 있나요?', 'TEXT', ?, ?, ?)
+				RETURNING id
+				""", Long.class, Timestamp.from(NOW.minusSeconds(60)), Timestamp.from(NOW), senderId);
 		return jdbc.queryForObject("""
-			INSERT INTO direction_post
-				(sender_id, approved_question_id, status, idempotency_key, body_text,
-				 coarse_region_code, moderation_status, submitted_at, published_at, expires_at)
-			VALUES (?, ?, 'ACTIVE', ?, ?, ?, 'PASSED', ?, ?, ?)
-			RETURNING id
-			""", Long.class, senderId, questionId, "attach-post-" + senderId + "-" + System.nanoTime(), bodyText,
-			REGION, Timestamp.from(NOW), Timestamp.from(NOW), Timestamp.from(NOW.plus(1, ChronoUnit.HOURS)));
+				INSERT INTO direction_post
+					(sender_id, approved_question_id, status, idempotency_key, body_text,
+					 coarse_region_code, moderation_status, submitted_at, published_at, expires_at)
+				VALUES (?, ?, 'ACTIVE', ?, ?, ?, 'PASSED', ?, ?, ?)
+				RETURNING id
+				""", Long.class, senderId, questionId, "attach-post-" + senderId + "-" + System.nanoTime(), bodyText,
+				REGION, Timestamp.from(NOW), Timestamp.from(NOW), Timestamp.from(NOW.plus(1, ChronoUnit.HOURS)));
 	}
 
 	private long readyMedia(long forOwnerId) {
 		MediaAsset uploading = mediaAssetRepository.save(
-			MediaAsset.upload(forOwnerId, "media/" + forOwnerId + "/" + System.nanoTime(), "image/jpeg", 10L, "checksum", NOW));
-		return mediaAssetRepository.save(uploading.ready()).getId();
+				MediaAsset.upload(forOwnerId, "media/" + forOwnerId + "/" + System.nanoTime(), "image/jpeg", 10L,
+						"checksum", NOW));
+		return mediaAssetRepository.save(uploading.ready(MediaStorageKeys.servingKeyOf(uploading.getStorageKey())))
+				.getId();
 	}
 
 	/**
-	 * 본문 없는 ACTIVE post에 READY 미디어 1건을 붙여 만든다. post 생성과 media 첨부를 한
-	 * transaction으로 묶지 않으면, 각 raw JDBC 호출이 개별 autocommit되어 post insert
-	 * 시점에 media가 아직 없는 상태로 deferred trigger가 즉시(그 자신의 commit에서) 실패한다.
+	 * 본문 없는 ACTIVE post에 READY 미디어 1건을 붙여 만든다. post 생성과 media 첨부를 한 transaction으로
+	 * 묶지 않으면, 각 raw JDBC 호출이 개별 autocommit되어 post insert 시점에 media가 아직 없는 상태로
+	 * deferred trigger가 즉시(그 자신의 commit에서) 실패한다.
 	 */
 	private long[] postWithSoleReadyMedia() {
 		long[] ids = new long[2];
 		transactionTemplate.executeWithoutResult(status -> {
 			ids[0] = activePost(ownerId, null);
-			MediaAsset ready = MediaAsset.upload(ownerId, "media/" + ownerId + "/" + System.nanoTime(),
-				"image/jpeg", 10L, "checksum", NOW).ready();
+			MediaAsset uploading = MediaAsset.upload(ownerId, "media/" + ownerId + "/" + System.nanoTime(),
+					"image/jpeg", 10L, "checksum", NOW);
+			MediaAsset ready = uploading.ready(MediaStorageKeys.servingKeyOf(uploading.getStorageKey()));
 			MediaAsset saved = mediaAssetRepository.save(ready);
 			ids[1] = saved.getId();
 			mediaAttachmentRepository.save(new MediaAttachment(saved.getId(), ownerId, ids[0], null, 0));
@@ -133,9 +140,9 @@ class MediaAttachmentIntegrationTest extends PostgisContainerIntegrationTestSupp
 
 		long strangerMediaId = readyMedia(strangerId);
 		assertThatThrownBy(() -> mediaAttachmentService.attach(
-			new AttachCommand(ownerId, strangerMediaId, postId, null, 1)))
-			.isInstanceOf(AnswerException.class)
-			.hasFieldOrPropertyWithValue("errorCode", AnswerErrorCode.MEDIA_NOT_FOUND);
+				new AttachCommand(ownerId, strangerMediaId, postId, null, 1)))
+				.isInstanceOf(AnswerException.class)
+				.hasFieldOrPropertyWithValue("errorCode", AnswerErrorCode.MEDIA_NOT_FOUND);
 		assertThat(mediaAttachmentRepository.findByMediaId(strangerMediaId)).isEmpty();
 	}
 
@@ -145,8 +152,8 @@ class MediaAttachmentIntegrationTest extends PostgisContainerIntegrationTestSupp
 		long strangerMediaId = readyMedia(strangerId);
 
 		assertThatThrownBy(() -> mediaAttachmentRepository.save(
-			new MediaAttachment(strangerMediaId, ownerId, postId, null, 0)))
-			.isInstanceOf(DataIntegrityViolationException.class);
+				new MediaAttachment(strangerMediaId, ownerId, postId, null, 0)))
+				.isInstanceOf(DataIntegrityViolationException.class);
 	}
 
 	@Test
@@ -155,8 +162,8 @@ class MediaAttachmentIntegrationTest extends PostgisContainerIntegrationTestSupp
 		long mediaId = postWithSoleReadyMedia()[1];
 
 		assertThatThrownBy(() -> transactionTemplate.executeWithoutResult(
-			status -> mediaAttachmentRepository.deleteByMediaId(mediaId)))
-			.isInstanceOf(DataIntegrityViolationException.class);
+				status -> mediaAttachmentRepository.deleteByMediaId(mediaId)))
+				.isInstanceOf(DataIntegrityViolationException.class);
 	}
 
 	@Test
@@ -165,8 +172,8 @@ class MediaAttachmentIntegrationTest extends PostgisContainerIntegrationTestSupp
 		long mediaId = postWithSoleReadyMedia()[1];
 
 		assertThatThrownBy(() -> mediaAttachmentService.detach(mediaId, ownerId))
-			.isInstanceOf(AnswerException.class)
-			.hasFieldOrPropertyWithValue("errorCode", AnswerErrorCode.MEDIA_CONTENT_REQUIRED);
+				.isInstanceOf(AnswerException.class)
+				.hasFieldOrPropertyWithValue("errorCode", AnswerErrorCode.MEDIA_CONTENT_REQUIRED);
 		assertThat(mediaAttachmentRepository.findByMediaId(mediaId)).isPresent();
 	}
 }
