@@ -27,6 +27,8 @@
   `DeviceRegistrationService`의 빈 닉네임 판단
 - 순서: 정규화·길이 검증을 중복 검사·moderation보다 먼저 한다. 빈 값·50자 초과는 외부 호출 없이 400
 - 문서: 요청 스키마 설명(`ChangeNicknameRequest`, `DeviceRegistrationRequest`), `docs/api/openapi.json`
+- PR·이슈 작성 지침: `harness-pr`·`harness-issue`의 문체 규칙과 SKILL(`.agents/skills`, `.claude/skills` 양쪽)에
+  작성 원칙(AI 말투·키워드 제거, 한 일·할 일과 근거 명시, 군더더기 제거, 가시성, 선택적 다이어그램)을 추가한다
 
 ## Explicit exclusions
 
@@ -46,6 +48,7 @@
 | `Account` 닉네임 정규화·`NicknameRegistrationService`·`DeviceRegistrationService` | 실행 에이전트 | 사용자 PR 리뷰 |
 | 요청 스키마 설명·`docs/api/openapi.json` | 실행 에이전트 | 사용자 PR 리뷰 |
 | 테스트 수정·추가 | 실행 에이전트 | `/harness-test-plan` 승인 후 작성 |
+| PR·이슈 작성 지침(`.agents/skills/harness-{pr,issue}`, `.claude/skills/harness-{pr,issue}`) | 실행 에이전트 | 사용자 PR 리뷰 |
 
 ## Existing user-owned changes
 
@@ -72,3 +75,5 @@ git diff --check
   `B`가 worktree에서 진행하고(#318), 둘 다 `origin/main`에서 분기해 먼저 머지된 쪽에 맞춰 rebase한다.
 - 2026-10-07 사용자 결정: D1 정규화는 새로 입력받는 값에만 적용하고 `restore`는 저장값을 그대로 둔다. D2 이모지 사이
   ZWJ만 남기고 ZWNJ와 그 밖의 ZWJ는 지운다. D3(정규화 거절도 시도 한도 1회로 센다)는 실행 에이전트에 위임됐다.
+- 2026-10-07 사용자 결정: PR·이슈 작성 지침 6가지를 별도 PR 없이 이 브랜치(PR #319)에 함께 커밋한다. `.claude/skills`의
+  문체 규칙·SKILL 수정은 이 지시를 명시적 승인으로 본다. 권한·금지 명령·승인 게이트는 바꾸지 않는다.
