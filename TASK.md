@@ -1,43 +1,42 @@
-# GitHub Issue #317 Task Contract
+# GitHub Issue #318 Task Contract
 
-> Generated at: `2026-10-07T10:39:58+09:00`
+> Generated at: `2026-10-07T10:48:31+09:00`
 >
 > 이 파일은 현재 작업 브랜치의 계약이다. 저장소 전역 정책은 `AGENTS.md`를
 > 따른다.
 
 ## Work gate
 
-- Title: `닉네임 저장·중복 검사에 보이지 않는 문자 정규화 적용`
-- GitHub Issue: `#317`
-- Branch: `fix/gh-317-nickname-invisible-chars`
+- Title: `정규화 후 빈 닉네임을 게이트가 공급자 장애로 처리하지 않도록 수정`
+- GitHub Issue: `#318`
+- Branch: `fix/gh-318-nickname-empty-input-400`
 - Base branch: `main`
 
 ## Objective
 
-닉네임은 앞뒤 `trim()`만 하고 저장해 zero-width 문자(U+200B 등)와 전각 공백(U+3000)이 남는다. moderation은 정규화한
-값으로 판정하지만 저장과 중복 검사는 원래 값을 써서, `바람`과 똑같아 보이는 닉네임이 중복 검사와
-`uq_user_account_nickname_ci`를 통과한다. 저장·중복 검사·moderation 입력이 같은 정규화 값 하나를 쓰게 한다.
+production moderation 게이트(`qello.filtering.production.enabled=true`)가 켜지면 정규화 결과가 빈 문자열인 닉네임에
+400 대신 `ACC-INFRA-001`(503)이 나간다. 해당 입력은 U+200B·U+FEFF와 변경 경로의 U+3000이다.
+`UnicodeTextNormalizer`가 던진 입력 오류를 `NicknameSyncModerationGate`가 주 판정기 장애로 처리해, 항상 실패하는
+보조 판정기로 넘어가기 때문이다. 입력 오류는 400으로 구분하고, 판정할 수 없을 때 거부하는 fail-closed 동작은 유지한다.
 
 ## Scope
 
-- 닉네임 정규화 규칙: NFC → 제어·서식 문자(Cc·Cf: zero-width, BOM, 방향 제어) 제거(이모지 사이 ZWJ는 남김) → 유니코드
-  공백을 공백 1칸으로 축소 → 앞뒤 제거. 정규화 후 빈 값은 `REQUIRED_VALUE_MISSING`, 50자 초과는 `TEXT_TOO_LONG`(둘 다 400)
-- 정규화는 새로 입력받는 값에만 적용한다. `restore`는 저장된 값을 그대로 복원한다
-- 적용 위치: `Account` 닉네임 검증(저장값), `NicknameRegistrationService.ensureAvailable`의 중복 검사·moderation 입력,
-  `DeviceRegistrationService`의 빈 닉네임 판단
-- 순서: 정규화·길이 검증을 중복 검사·moderation보다 먼저 한다. 빈 값·50자 초과는 외부 호출 없이 400
-- 문서: 요청 스키마 설명(`ChangeNicknameRequest`, `DeviceRegistrationRequest`), `docs/api/openapi.json`
-- PR·이슈 작성 지침: `harness-pr`·`harness-issue`의 문체 규칙과 SKILL(`.agents/skills`, `.claude/skills` 양쪽)에
-  작성 원칙(AI 말투·키워드 제거, 한 일·할 일과 근거 명시, 군더더기 제거, 가시성, 선택적 다이어그램)을 추가한다
+- `UnicodeTextNormalizer`: 정규화 후 빈 입력이면 `FilteringException`의 하위 전용 예외를 던진다. 오류 코드
+  (`REQUIRED_VALUE_MISSING`)는 바꾸지 않는다. null 입력과 지원하지 않는 `normalizationRef`는 지금처럼 처리한다.
+- `ModerationPipelineRequest`: null이 아닌 blank 원문을 같은 전용 예외로 거절한다. null은 지금처럼 처리한다(D4).
+- `NicknameSyncModerationGate`: 주 판정기 `ExecutionException`의 원인이 그 전용 예외일 때만 `Reason.INVALID_INPUT`을
+  반환하고, 보조 판정기는 호출하지 않는다. 그 밖의 예외는 지금처럼 보조 판정기로 넘어간다.
+- `NicknameModerationOutcome.Reason`: `INVALID_INPUT` 추가
+- `NicknameRegistrationService.rejectionFor`: `INVALID_INPUT`을 `AccountErrorCode.REQUIRED_VALUE_MISSING`
+  (`ACC-VAL-002`, 400, field `nickname`)으로 매핑한다. 새 오류 코드는 만들지 않는다.
 
 ## Explicit exclusions
 
-- NFKC로 저장(한글 호환 자모 ㄱ U+3131이 ᄀ U+1100으로 바뀌어 표시가 깨진다). 전각 영문(ＡＢＣ와 ABC)은 중복으로 보지 않는다
-- 기존 행 정규화 마이그레이션
-- 한글 채움 문자(U+3164)처럼 Lo로 분류되는 투명 문자 차단
-- moderation 게이트의 예외 분류 수정(정규화 후 빈 닉네임 503). #318(브랜치 `fix/gh-318-nickname-empty-input-400`)에서
-  다룬다. #318은 `NicknameRegistrationService.rejectionFor`만 건드리고 `ensureAvailable` 본문은 #317이 맡는다.
-  PR 선행 관계에 #318을 적고, 먼저 머지된 쪽에 맞춰 rebase한다
+- 답변 moderation 경로(`AnswerModerationExecutionWorker`)의 같은 예외 처리
+- 보조 판정기 실제 구현(#298)
+- #317(닉네임 저장·중복 검사 정규화)의 범위: `ensureAvailable` 본문, `Account`, `DeviceRegistrationService`는 수정하지 않는다
+- 오류 코드 값만으로 입력 오류를 판별하는 방식. 파이프라인의 다른 지점에서 서버 버그로 같은 코드가 나와도 400이 되지 않게 한다
+- ApiSpec·`docs/error-codes.md` 변경. 400 설명과 `ACC-VAL-002`가 이미 이 경우를 포함한다
 - 인프라 apply, 배포, 프로덕션 변경은 별도 승인 없이는 실행하지 않는다.
 - Secret, 계정 식별자, 토큰, `.env` 값은 기록하지 않는다.
 
@@ -45,14 +44,13 @@
 
 | Area | Owner | Required review |
 | --- | --- | --- |
-| `Account` 닉네임 정규화·`NicknameRegistrationService`·`DeviceRegistrationService` | 실행 에이전트 | 사용자 PR 리뷰 |
-| 요청 스키마 설명·`docs/api/openapi.json` | 실행 에이전트 | 사용자 PR 리뷰 |
+| 정규화기·게이트·`Reason`·`rejectionFor` | 실행 에이전트 | 사용자 PR 리뷰 |
 | 테스트 수정·추가 | 실행 에이전트 | `/harness-test-plan` 승인 후 작성 |
-| PR·이슈 작성 지침(`.agents/skills/harness-{pr,issue}`, `.claude/skills/harness-{pr,issue}`) | 실행 에이전트 | 사용자 PR 리뷰 |
 
 ## Existing user-owned changes
 
-- 작업 시작 시 `git status --short`는 깨끗했다. 최신 `origin/main`(`aae33fa`)에서 분기했다.
+- 작업 시작 시 `git status --short`는 깨끗했다. 최신 `origin/main`(`aae33fa`)에서 별도 worktree
+  (`.worktrees/gh-318-nickname-empty-input-400`)로 분기했다. 메인 작업 디렉터리는 #317 세션이 쓴다.
 
 ## Validation
 
@@ -64,16 +62,29 @@ git diff --check
 
 ## Completion criteria
 
-- `바람\u200B`, `바\u200B람`, `\u3000바람`이 `바람`으로 저장되고, `바람`이 있으면 409 `ACC-APP-002`
-- 정규화 후 빈 값·50자 초과는 moderation 호출 없이 400
-- 응답 닉네임이 정규화한 값이다
+- 게이트가 켜진 상태에서 U+200B 닉네임으로 변경하거나 등록하면 400(`ACC-VAL-002`)이 나오고, 보조 판정기는 호출되지 않는다.
+- 공급자 timeout/error, 예상하지 못한 예외, 지원하지 않는 `normalizationRef`는 계속 503이다.
+  기존 `NicknameSyncModerationGateTest`의 `IllegalStateException` → 보조 판정기 전환 테스트는 그대로 둔다.
 - `./harness check`와 `./harness pr-ready --project-tests`가 통과한다.
 
 ## Decisions
 
-- 2026-10-07 사용자 결정: 이슈 초안 A(정규화 규칙·적용 위치·제외 범위) 승인. 계획 B(게이트 예외 분류)는 별도 세션
-  `B`가 worktree에서 진행하고(#318), 둘 다 `origin/main`에서 분기해 먼저 머지된 쪽에 맞춰 rebase한다.
-- 2026-10-07 사용자 결정: D1 정규화는 새로 입력받는 값에만 적용하고 `restore`는 저장값을 그대로 둔다. D2 이모지 사이
-  ZWJ만 남기고 ZWNJ와 그 밖의 ZWJ는 지운다. D3(정규화 거절도 시도 한도 1회로 센다)는 실행 에이전트에 위임됐다.
-- 2026-10-07 사용자 결정: PR·이슈 작성 지침 6가지를 별도 PR 없이 이 브랜치(PR #319)에 함께 커밋한다. `.claude/skills`의
-  문체 규칙·SKILL 수정은 이 지시를 명시적 승인으로 본다. 권한·금지 명령·승인 게이트는 바꾸지 않는다.
+- 2026-10-07 사용자 결정: 이슈 초안 B(전용 예외·`Reason.INVALID_INPUT`·`ACC-VAL-002` 매핑) 승인. 이 세션이
+  worktree에서 진행하고, #317과 둘 다 `origin/main`에서 분기해 먼저 머지된 쪽에 맞춰 나머지가 rebase한다.
+- 2026-10-07 사용자 결정: 테스트 계획 `TEST-PLAN-GH-318-NICKNAME-EMPTY-INPUT-400` 승인. D1 production gate를 켠
+  `@SpringBootTest` 대신 실제 정규화기·파이프라인·게이트·checker·서비스 조합 단위 테스트로 검증한다. D2 등록 경로는
+  `ensureAvailable`에서 검증한다. D3 정규화기의 null 입력은 전용 예외로 만들지 않는다(503 유지).
+- 2026-10-07 사용자 결정(구현 중 추가, D4): U+3000처럼 `isBlank()`가 true인 원문은 정규화기보다 먼저
+  `ModerationPipelineRequest` 생성자에서 일반 `FilteringException`으로 거절되어 여전히 503이었다. 이 생성자도
+  null이 아닌 blank 원문을 `EmptyNormalizedTextException`으로 거절하도록 범위에 추가한다.
+
+## Environment notes
+
+- 2026-10-07 PR #320 생성 후 #319(#317) 머지로 충돌이 나서 `origin/main`(`1775ce3`)으로 rebase했다. 충돌은 `TASK.md`에서만
+  났고 #318 계약을 유지했다. `NicknameRegistrationService`는 #319의 `ensureAvailable`과 이 브랜치의 `rejectionFor`가
+  자동 병합됐다.
+- #319 이후 서비스가 moderation 전에 `Account.normalizeNickname`으로 닉네임을 정규화해 빈 값을 400으로 거절한다. 그래서
+  닉네임 경로에서 U+200B·U+FEFF·U+3000은 게이트에 닿지 않는다. 이 브랜치의 게이트·요청 생성자 분류는 그 앞단 검사가
+  바뀌거나 다른 호출자가 생길 때 입력 오류가 503이 되지 않게 하는 방어선이다.
+- linked worktree에서는 훅이 실행하는 `ChangedJavaTypesTest`가 훅 환경의 `GIT_DIR`을 물려받아 저장소를 손상시킨다.
+  Java가 포함된 커밋과 push는 같은 검사를 훅 밖에서 실행한 뒤 `--no-verify`로 한다(사용자 승인, 보고서 5절).

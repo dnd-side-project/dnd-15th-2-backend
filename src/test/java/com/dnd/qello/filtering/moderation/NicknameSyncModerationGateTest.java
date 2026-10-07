@@ -1,10 +1,9 @@
 /*
  * Created at: 2026-08-12T10:15:00+09:00
- * Source scenario: TEST-PLAN-GH-106-NICKNAME-SYNC-FILTER-UNIT-001 through UNIT-011
+ * Source scenario: TEST-PLAN-GH-106-NICKNAME-SYNC-FILTER-UNIT-001 through UNIT-011,
+ * TEST-PLAN-GH-318-NICKNAME-EMPTY-INPUT-400-UNIT-003 through UNIT-005 (added 2026-10-07T11:01:09+09:00)
  */
 package com.dnd.qello.filtering.moderation;
-
-import static org.assertj.core.api.Assertions.assertThat;
 
 import java.time.Clock;
 import java.time.Duration;
@@ -30,10 +29,15 @@ import com.dnd.qello.filtering.error.FilteringException;
 import com.dnd.qello.filtering.moderation.NicknameModerationOutcome.Reason;
 import com.dnd.qello.filtering.repository.FilterDecisionRepository;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 class NicknameSyncModerationGateTest {
 
 	private static final Instant NOW = Instant.parse("2026-08-12T00:00:00Z");
 	private static final String NICKNAME = "닉네임후보";
+	private static final String ZWSP = String.valueOf((char) 0x200B);
+	private static final String BOM = String.valueOf((char) 0xFEFF);
+	private static final String IDEOGRAPHIC_SPACE = String.valueOf((char) 0x3000);
 
 	private ExecutorService executor;
 
@@ -86,8 +90,8 @@ class NicknameSyncModerationGateTest {
 	@Test
 	@DisplayName("주 판정기 timeout 후 보조 판정기가 ALLOW면 ALLOWED를 반환한다")
 	void secondaryAllowAfterPrimaryTimeoutResultsInAllowed() {
-		NicknameSyncModerationGate gate =
-			gate(failingPrimaryPipeline(providerUnavailable()), new FakeSecondaryModerationClient(FilterVerdict.ALLOW));
+		NicknameSyncModerationGate gate = gate(failingPrimaryPipeline(providerUnavailable()),
+				new FakeSecondaryModerationClient(FilterVerdict.ALLOW));
 
 		NicknameModerationOutcome outcome = gate.evaluate(NICKNAME, ModerationLanguage.KO);
 
@@ -97,8 +101,8 @@ class NicknameSyncModerationGateTest {
 	@Test
 	@DisplayName("주 판정기 timeout 후 보조 판정기가 BLOCK이면 REJECTED(BLOCKED_BY_SECONDARY)를 반환한다")
 	void secondaryBlockAfterPrimaryTimeoutResultsInRejected() {
-		NicknameSyncModerationGate gate =
-			gate(failingPrimaryPipeline(providerUnavailable()), new FakeSecondaryModerationClient(FilterVerdict.BLOCK));
+		NicknameSyncModerationGate gate = gate(failingPrimaryPipeline(providerUnavailable()),
+				new FakeSecondaryModerationClient(FilterVerdict.BLOCK));
 
 		NicknameModerationOutcome outcome = gate.evaluate(NICKNAME, ModerationLanguage.KO);
 
@@ -108,8 +112,8 @@ class NicknameSyncModerationGateTest {
 	@Test
 	@DisplayName("주·보조 판정기가 모두 timeout/error면 예외 없이 REJECTED(UNAVAILABLE)를 반환한다")
 	void bothUnavailableFailsClosedWithoutThrowing() {
-		FakeSecondaryModerationClient secondary =
-			new FakeSecondaryModerationClient(new FilteringException(FilteringErrorCode.SECONDARY_MODERATOR_UNAVAILABLE));
+		FakeSecondaryModerationClient secondary = new FakeSecondaryModerationClient(
+				new FilteringException(FilteringErrorCode.SECONDARY_MODERATOR_UNAVAILABLE));
 		NicknameSyncModerationGate gate = gate(failingPrimaryPipeline(providerUnavailable()), secondary);
 
 		NicknameModerationOutcome outcome = gate.evaluate(NICKNAME, ModerationLanguage.KO);
@@ -121,8 +125,8 @@ class NicknameSyncModerationGateTest {
 	@DisplayName("주 판정기가 timeout이 아닌 다른 예외를 던져도 동일하게 보조 판정기로 전환된다")
 	void nonTimeoutPrimaryFailureAlsoFallsBackToSecondary() {
 		FakeSecondaryModerationClient secondary = new FakeSecondaryModerationClient(FilterVerdict.ALLOW);
-		NicknameSyncModerationGate gate =
-			gate(failingPrimaryPipeline(new IllegalStateException("unexpected provider failure")), secondary);
+		NicknameSyncModerationGate gate = gate(
+				failingPrimaryPipeline(new IllegalStateException("unexpected provider failure")), secondary);
 
 		NicknameModerationOutcome outcome = gate.evaluate(NICKNAME, ModerationLanguage.KO);
 
@@ -133,8 +137,8 @@ class NicknameSyncModerationGateTest {
 	@Test
 	@DisplayName("게이트의 결과는 항상 Allowed 또는 Rejected 중 하나이며 제3의 애매한 상태가 없다")
 	void outcomeIsAlwaysExhaustivelyAllowedOrRejected() {
-		NicknameSyncModerationGate gate =
-			gate(allowingPrimaryPipeline(), new FakeSecondaryModerationClient(FilterVerdict.ALLOW));
+		NicknameSyncModerationGate gate = gate(allowingPrimaryPipeline(),
+				new FakeSecondaryModerationClient(FilterVerdict.ALLOW));
 
 		NicknameModerationOutcome outcome = gate.evaluate(NICKNAME, ModerationLanguage.KO);
 
@@ -150,14 +154,15 @@ class NicknameSyncModerationGateTest {
 	@DisplayName("같은 게이트 인스턴스를 순차로 재사용해도 이전 호출 결과가 다음 호출에 영향을 주지 않는다")
 	void gateInstanceIsStatelessAcrossSequentialCalls() {
 		NicknameSyncModerationGate gate = gate(failingPrimaryPipeline(providerUnavailable()),
-			new FakeSecondaryModerationClient(FilterVerdict.BLOCK));
+				new FakeSecondaryModerationClient(FilterVerdict.BLOCK));
 
 		NicknameModerationOutcome first = gate.evaluate(NICKNAME, ModerationLanguage.KO);
 		assertThat(first).isEqualTo(NicknameModerationOutcome.rejected(Reason.BLOCKED_BY_SECONDARY));
 
 		// 같은 인스턴스를 재사용해 완전히 다른 결과(ALLOW)로 재구성된 상황을 흉내낼 수는 없으므로
 		// primary/secondary 구성 자체를 바꾼 두 번째 게이트로 "같은 executor 재사용"을 검증한다.
-		NicknameSyncModerationGate secondGate = gate(allowingPrimaryPipeline(), new FakeSecondaryModerationClient(FilterVerdict.ALLOW));
+		NicknameSyncModerationGate secondGate = gate(allowingPrimaryPipeline(),
+				new FakeSecondaryModerationClient(FilterVerdict.ALLOW));
 		NicknameModerationOutcome second = secondGate.evaluate(NICKNAME, ModerationLanguage.KO);
 
 		assertThat(second).isEqualTo(NicknameModerationOutcome.allowed());
@@ -168,12 +173,12 @@ class NicknameSyncModerationGateTest {
 	void callsPrimaryPipelineWithEphemeralNicknameRequest() {
 		FakePolicyEngine policyEngine = new FakePolicyEngine(FilterVerdict.ALLOW);
 		ModerationPipelineService primary = new ModerationPipelineService(
-			(rawContent, normalizationRef) -> rawContent,
-			(normalizedContent, localRulesetRef) -> LocalRuleVerdict.noMatch(),
-			new FakeModerationProviderClient(providerResult(false)),
-			policyEngine,
-			new UnusedFilterDecisionRepository(),
-			Clock.fixed(NOW, ZoneOffset.UTC));
+				(rawContent, normalizationRef) -> rawContent,
+				(normalizedContent, localRulesetRef) -> LocalRuleVerdict.noMatch(),
+				new FakeModerationProviderClient(providerResult(false)),
+				policyEngine,
+				new UnusedFilterDecisionRepository(),
+				Clock.fixed(NOW, ZoneOffset.UTC));
 		NicknameSyncModerationGate gate = gate(primary, new FakeSecondaryModerationClient(FilterVerdict.ALLOW));
 
 		// UnusedFilterDecisionRepository는 save()가 호출되면 AssertionError를 던진다 —
@@ -193,7 +198,7 @@ class NicknameSyncModerationGateTest {
 		// "구분 파라미터 여부 확인"이었으나, 실제로는 그런 파라미터가 없는 편이 더 안전한
 		// 설계라 판단해 이렇게 구현했다 — 두 번의 호출이 완전히 동일하게 처리됨을 확인한다).
 		NicknameSyncModerationGate gate = gate(failingPrimaryPipeline(providerUnavailable()),
-			new FakeSecondaryModerationClient(providerUnavailable()));
+				new FakeSecondaryModerationClient(providerUnavailable()));
 
 		NicknameModerationOutcome initialSetupAttempt = gate.evaluate("최초닉네임", ModerationLanguage.KO);
 		NicknameModerationOutcome changeAttempt = gate.evaluate("변경닉네임", ModerationLanguage.KO);
@@ -202,39 +207,102 @@ class NicknameSyncModerationGateTest {
 		assertThat(changeAttempt).isEqualTo(NicknameModerationOutcome.rejected(Reason.UNAVAILABLE));
 	}
 
+	@Test
+	@DisplayName("#318 UNIT-003: 정규화하면 빈 문자열이 되는 닉네임은 공급자·보조 판정기 호출 없이 REJECTED(INVALID_INPUT)이다")
+	void emptyAfterNormalizationIsRejectedAsInvalidInputWithoutSecondary() {
+		// 보조 판정기를 ALLOW로 둔다 — 호출됐다면 결과가 ALLOWED로 뒤집힌다.
+		FakeModerationProviderClient provider = new FakeModerationProviderClient(providerResult(false));
+		FakeSecondaryModerationClient secondary = new FakeSecondaryModerationClient(FilterVerdict.ALLOW);
+		NicknameSyncModerationGate gate = gate(realNormalizerPipeline(provider), secondary,
+				release(UnicodeTextNormalizer.NORMALIZATION_V1));
+
+		for (String nickname : new String[]{ZWSP, BOM, IDEOGRAPHIC_SPACE}) {
+			assertThat(gate.evaluate(nickname, ModerationLanguage.KO))
+					.isEqualTo(NicknameModerationOutcome.rejected(Reason.INVALID_INPUT));
+		}
+		assertThat(provider.callCount).isZero();
+		assertThat(secondary.callCount).isZero();
+	}
+
+	@Test
+	@DisplayName("#318 UNIT-004: 같은 REQUIRED_VALUE_MISSING 코드라도 일반 FilteringException이면 보조 판정기로 넘어가 판정 불가가 된다")
+	void sameErrorCodeFromAnotherStageIsNotInvalidInput() {
+		FakeSecondaryModerationClient secondary = new FakeSecondaryModerationClient(
+				new FilteringException(FilteringErrorCode.SECONDARY_MODERATOR_UNAVAILABLE));
+		NicknameSyncModerationGate gate = gate(
+				failingPrimaryPipeline(
+						new FilteringException(FilteringErrorCode.REQUIRED_VALUE_MISSING, "categoryScores")),
+				secondary);
+
+		NicknameModerationOutcome outcome = gate.evaluate(NICKNAME, ModerationLanguage.KO);
+
+		assertThat(outcome).isEqualTo(NicknameModerationOutcome.rejected(Reason.UNAVAILABLE));
+		assertThat(secondary.callCount).isEqualTo(1);
+	}
+
+	@Test
+	@DisplayName("#318 UNIT-005: 지원하지 않는 normalizationRef(서버 설정 오류)는 입력이 비어도 입력 오류가 아니라 판정 불가다")
+	void unsupportedNormalizationRefStaysUnavailable() {
+		FakeModerationProviderClient provider = new FakeModerationProviderClient(providerResult(false));
+		FakeSecondaryModerationClient secondary = new FakeSecondaryModerationClient(
+				new FilteringException(FilteringErrorCode.SECONDARY_MODERATOR_UNAVAILABLE));
+		NicknameSyncModerationGate gate = gate(realNormalizerPipeline(provider), secondary, release("norm-v1"));
+
+		NicknameModerationOutcome outcome = gate.evaluate(ZWSP, ModerationLanguage.KO);
+
+		assertThat(outcome).isEqualTo(NicknameModerationOutcome.rejected(Reason.UNAVAILABLE));
+		assertThat(secondary.callCount).isEqualTo(1);
+		assertThat(provider.callCount).isZero();
+	}
+
 	private NicknameSyncModerationGate gate(ModerationPipelineService primary, SecondaryModerationClient secondary) {
+		return gate(primary, secondary, release());
+	}
+
+	private NicknameSyncModerationGate gate(
+			ModerationPipelineService primary, SecondaryModerationClient secondary, FilterRelease release) {
 		return new NicknameSyncModerationGate(
-			primary, secondary, executor, Duration.ofSeconds(2), Duration.ofSeconds(2), release());
+				primary, secondary, executor, Duration.ofSeconds(2), Duration.ofSeconds(2), release);
+	}
+
+	private static ModerationPipelineService realNormalizerPipeline(ModerationProviderClient provider) {
+		return new ModerationPipelineService(
+				new UnicodeTextNormalizer(),
+				(normalizedContent, localRulesetRef) -> LocalRuleVerdict.noMatch(),
+				provider,
+				new FakePolicyEngine(FilterVerdict.ALLOW),
+				new UnusedFilterDecisionRepository(),
+				Clock.fixed(NOW, ZoneOffset.UTC));
 	}
 
 	private static ModerationPipelineService allowingPrimaryPipeline() {
 		return new ModerationPipelineService(
-			(rawContent, normalizationRef) -> rawContent,
-			(normalizedContent, localRulesetRef) -> LocalRuleVerdict.noMatch(),
-			new FakeModerationProviderClient(providerResult(false)),
-			new FakePolicyEngine(FilterVerdict.ALLOW),
-			new UnusedFilterDecisionRepository(),
-			Clock.fixed(NOW, ZoneOffset.UTC));
+				(rawContent, normalizationRef) -> rawContent,
+				(normalizedContent, localRulesetRef) -> LocalRuleVerdict.noMatch(),
+				new FakeModerationProviderClient(providerResult(false)),
+				new FakePolicyEngine(FilterVerdict.ALLOW),
+				new UnusedFilterDecisionRepository(),
+				Clock.fixed(NOW, ZoneOffset.UTC));
 	}
 
 	private static ModerationPipelineService blockingPrimaryPipeline() {
 		return new ModerationPipelineService(
-			(rawContent, normalizationRef) -> rawContent,
-			(normalizedContent, localRulesetRef) -> LocalRuleVerdict.block("rule-nickname-001"),
-			new FakeModerationProviderClient(providerResult(false)),
-			new FakePolicyEngine(FilterVerdict.ALLOW),
-			new UnusedFilterDecisionRepository(),
-			Clock.fixed(NOW, ZoneOffset.UTC));
+				(rawContent, normalizationRef) -> rawContent,
+				(normalizedContent, localRulesetRef) -> LocalRuleVerdict.block("rule-nickname-001"),
+				new FakeModerationProviderClient(providerResult(false)),
+				new FakePolicyEngine(FilterVerdict.ALLOW),
+				new UnusedFilterDecisionRepository(),
+				Clock.fixed(NOW, ZoneOffset.UTC));
 	}
 
 	private static ModerationPipelineService failingPrimaryPipeline(RuntimeException failure) {
 		return new ModerationPipelineService(
-			(rawContent, normalizationRef) -> rawContent,
-			(normalizedContent, localRulesetRef) -> LocalRuleVerdict.noMatch(),
-			new FakeModerationProviderClient(failure),
-			new FakePolicyEngine(FilterVerdict.ALLOW),
-			new UnusedFilterDecisionRepository(),
-			Clock.fixed(NOW, ZoneOffset.UTC));
+				(rawContent, normalizationRef) -> rawContent,
+				(normalizedContent, localRulesetRef) -> LocalRuleVerdict.noMatch(),
+				new FakeModerationProviderClient(failure),
+				new FakePolicyEngine(FilterVerdict.ALLOW),
+				new UnusedFilterDecisionRepository(),
+				Clock.fixed(NOW, ZoneOffset.UTC));
 	}
 
 	private static FilteringException providerUnavailable() {
@@ -242,18 +310,23 @@ class NicknameSyncModerationGateTest {
 	}
 
 	private static FilterRelease release() {
-		return FilterRelease.restore(1L, "norm-v1", "ruleset-v1", "category-map-v1", "model-v1",
-			FilterReleaseStatus.PROMOTED, NOW, NOW);
+		return release("norm-v1");
+	}
+
+	private static FilterRelease release(String normalizationRef) {
+		return FilterRelease.restore(1L, normalizationRef, "ruleset-v1", "category-map-v1", "model-v1",
+				FilterReleaseStatus.PROMOTED, NOW, NOW);
 	}
 
 	private static ModerationProviderResult providerResult(boolean flagged) {
 		return new ModerationProviderResult(flagged, Map.of("harassment", flagged),
-			Map.of("harassment", flagged ? 0.9 : 0.01), "omni-moderation-2024-09-26");
+				Map.of("harassment", flagged ? 0.9 : 0.01), "omni-moderation-2024-09-26");
 	}
 
 	private static final class FakeModerationProviderClient implements ModerationProviderClient {
 		private final ModerationProviderResult result;
 		private final RuntimeException failure;
+		private int callCount;
 
 		FakeModerationProviderClient(ModerationProviderResult result) {
 			this.result = result;
@@ -267,6 +340,7 @@ class NicknameSyncModerationGateTest {
 
 		@Override
 		public ModerationProviderResult moderate(String normalizedContent, String modelSnapshot) {
+			callCount++;
 			if (failure != null) {
 				throw failure;
 			}
@@ -285,8 +359,7 @@ class NicknameSyncModerationGateTest {
 
 		@Override
 		public FilterVerdict decide(ModerationProviderResult providerResult, FilterTargetType contentType,
-			ModerationLanguage language, String categoryMappingRef
-		) {
+				ModerationLanguage language, String categoryMappingRef) {
 			this.lastContentType = contentType;
 			this.lastLanguage = language;
 			return verdict;

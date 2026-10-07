@@ -1,6 +1,7 @@
 /*
  * Created at: 2026-10-01T15:31:17+09:00
- * Source scenario: TEST-PLAN-GH-287-MODERATION-PLACEHOLDER-UNIT-001 through UNIT-007
+ * Source scenario: TEST-PLAN-GH-287-MODERATION-PLACEHOLDER-UNIT-001 through UNIT-007,
+ * TEST-PLAN-GH-318-NICKNAME-EMPTY-INPUT-400-UNIT-001 through UNIT-002 (added 2026-10-07T11:01:09+09:00)
  */
 package com.dnd.qello.filtering.moderation;
 
@@ -9,6 +10,7 @@ import java.text.Normalizer;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import com.dnd.qello.filtering.error.EmptyNormalizedTextException;
 import com.dnd.qello.filtering.error.FilteringErrorCode;
 import com.dnd.qello.filtering.error.FilteringException;
 
@@ -96,5 +98,35 @@ class UnicodeTextNormalizerTest {
 		String once = normalizer.normalize(" Ａ" + ZWSP + "b  한글 ", REF);
 
 		assertThat(normalizer.normalize(once, REF)).isEqualTo(once);
+	}
+
+	@Test
+	@DisplayName("#318 UNIT-001: 정규화 후 빈 입력은 입력 오류 전용 예외이고 오류 코드·field는 그대로이며 메시지에 원문이 없다")
+	void throwsDedicatedExceptionWhenNormalizedContentIsEmpty() {
+		for (String raw : new String[]{"", "   ", ZWSP, BOM, IDEOGRAPHIC_SPACE, ZWSP + ZWNJ + ZWJ}) {
+			assertThatThrownBy(() -> normalizer.normalize(raw, REF))
+					.isInstanceOf(EmptyNormalizedTextException.class)
+					.isInstanceOf(FilteringException.class)
+					.hasFieldOrPropertyWithValue("errorCode", FilteringErrorCode.REQUIRED_VALUE_MISSING)
+					.hasFieldOrPropertyWithValue("field", "rawContent")
+					.hasMessage(FilteringErrorCode.REQUIRED_VALUE_MISSING.message());
+		}
+	}
+
+	@Test
+	@DisplayName("#318 UNIT-002: null 입력과 지원하지 않는 normalizationRef는 입력 오류 전용 예외가 아니다")
+	void nullContentAndUnsupportedRefAreNotInputErrors() {
+		assertThatThrownBy(() -> normalizer.normalize(null, REF))
+				.isInstanceOf(FilteringException.class)
+				.isNotInstanceOf(EmptyNormalizedTextException.class)
+				.hasFieldOrPropertyWithValue("errorCode", FilteringErrorCode.REQUIRED_VALUE_MISSING);
+
+		// 내용이 비게 될 입력이라도 ref 오류(서버 설정 문제)가 먼저 판정된다.
+		for (String ref : new String[]{null, "norm-v1"}) {
+			assertThatThrownBy(() -> normalizer.normalize(ZWSP, ref))
+					.isInstanceOf(FilteringException.class)
+					.isNotInstanceOf(EmptyNormalizedTextException.class)
+					.hasFieldOrPropertyWithValue("errorCode", FilteringErrorCode.INVALID_TEXT);
+		}
 	}
 }

@@ -2,7 +2,8 @@
  * Created at: 2026-08-11T21:20:00+09:00
  * Source scenario: TEST-PLAN-GH-105-MODERATION-PIPELINE-UNIT-001 through UNIT-010,
  * TEST-PLAN-GH-105-MODERATION-PIPELINE-UNIT-013,
- * TEST-PLAN-GH-287-MODERATION-PLACEHOLDER-UNIT-016 (added 2026-10-01T17:40:00+09:00)
+ * TEST-PLAN-GH-287-MODERATION-PLACEHOLDER-UNIT-016 (added 2026-10-01T17:40:00+09:00),
+ * TEST-PLAN-GH-318-NICKNAME-EMPTY-INPUT-400-UNIT-010 (added 2026-10-07T11:01:09+09:00)
  * (UNIT-011, UNIT-012은 OpenAI 응답 매퍼와 함께 openai 패키지에서 구현한다)
  */
 package com.dnd.qello.filtering.moderation;
@@ -27,6 +28,7 @@ import com.dnd.qello.filtering.domain.FilterRelease;
 import com.dnd.qello.filtering.domain.FilterReleaseStatus;
 import com.dnd.qello.filtering.domain.FilterTargetType;
 import com.dnd.qello.filtering.domain.FilterVerdict;
+import com.dnd.qello.filtering.error.EmptyNormalizedTextException;
 import com.dnd.qello.filtering.error.FilteringErrorCode;
 import com.dnd.qello.filtering.error.FilteringException;
 import com.dnd.qello.filtering.repository.FilterDecisionRepository;
@@ -250,6 +252,23 @@ class ModerationPipelineServiceTest {
 
 		assertThat(providerClient.callCount).isEqualTo(1);
 		assertThat(providerClient.lastNormalizedContent).isEqualTo("안녕하세요");
+	}
+
+	@Test
+	@DisplayName("#318 UNIT-010: 공백만 있는 요청 원문은 입력 오류 전용 예외이고 null 원문은 전용 예외가 아니다")
+	void blankRawContentIsInputErrorButNullIsNot() {
+		String ideographicSpace = String.valueOf((char) 0x3000);
+		for (String blank : new String[]{"", "   ", ideographicSpace, " \t\n" + ideographicSpace}) {
+			assertThatThrownBy(() -> realComponentsRequest(blank))
+					.isInstanceOf(EmptyNormalizedTextException.class)
+					.hasFieldOrPropertyWithValue("errorCode", FilteringErrorCode.REQUIRED_VALUE_MISSING)
+					.hasFieldOrPropertyWithValue("field", "rawContent");
+		}
+
+		assertThatThrownBy(() -> realComponentsRequest(null))
+				.isInstanceOf(FilteringException.class)
+				.isNotInstanceOf(EmptyNormalizedTextException.class)
+				.hasFieldOrPropertyWithValue("errorCode", FilteringErrorCode.REQUIRED_VALUE_MISSING);
 	}
 
 	private static LocalRuleEngine testRuleEngine() {

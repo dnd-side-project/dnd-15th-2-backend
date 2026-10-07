@@ -4,6 +4,7 @@ import java.text.Normalizer;
 import java.util.Set;
 import java.util.regex.Pattern;
 
+import com.dnd.qello.filtering.error.EmptyNormalizedTextException;
 import com.dnd.qello.filtering.error.FilteringErrorCode;
 import com.dnd.qello.filtering.error.FilteringException;
 
@@ -14,6 +15,8 @@ import com.dnd.qello.filtering.error.FilteringException;
 //
 // 판정할 수 없는 입력은 빈 문자열로 통과시키지 않는다. null·정규화 후 빈 문자열과 지원하지
 // 않는 ref는 예외로 끝낸다 — 공급자 호출 이전 단계에서 ALLOW로 새는 경로를 만들지 않는다.
+// 정규화 후 빈 문자열만 입력 오류 전용 타입(EmptyNormalizedTextException)으로 던진다. null과 ref 오류는
+// 호출자·설정 문제라서 입력 오류와 섞지 않는다(#318).
 // 예외 메시지에는 입력 원문을 담지 않는다.
 public class UnicodeTextNormalizer implements TextNormalizer {
 
@@ -37,7 +40,7 @@ public class UnicodeTextNormalizer implements TextNormalizer {
 		String visible = HIDDEN_CHARACTERS.matcher(compatibility).replaceAll("");
 		String normalized = WHITESPACE_RUN.matcher(visible).replaceAll(" ").strip();
 		if (normalized.isEmpty()) {
-			throw new FilteringException(FilteringErrorCode.REQUIRED_VALUE_MISSING, "rawContent");
+			throw new EmptyNormalizedTextException("rawContent");
 		}
 		return normalized;
 	}

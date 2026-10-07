@@ -123,6 +123,9 @@ public class NicknameRegistrationService {
 					AccountErrorCode.NICKNAME_REJECTED_BY_MODERATION, "nickname", "닉네임이 정책을 위반했습니다");
 			case UNAVAILABLE -> new AccountException(
 					AccountErrorCode.NICKNAME_MODERATION_UNAVAILABLE, "nickname", "닉네임 검증 서비스를 사용할 수 없습니다");
+			// 공백이나 보이지 않는 문자만 있는 닉네임(#318). Account가 공백 닉네임을 거절할 때와 같은 코드·사유로 응답한다.
+			case INVALID_INPUT -> new AccountException(
+					AccountErrorCode.REQUIRED_VALUE_MISSING, "nickname", "nickname은 공백일 수 없습니다");
 		};
 	}
 
