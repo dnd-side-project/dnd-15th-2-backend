@@ -6,15 +6,7 @@
  */
 package com.dnd.qello.filtering.moderation;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
-
+import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -39,7 +31,14 @@ import com.dnd.qello.notification.domain.OutboxEventType;
 import com.dnd.qello.notification.repository.OutboxEventRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-import java.math.BigDecimal;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 class AnswerModerationVerdictWorkerTest {
 
@@ -56,9 +55,11 @@ class AnswerModerationVerdictWorkerTest {
 	void appliesAllowVerdictByPublishingOnly() {
 		OutboxEvent event = claimedVerdictEvent(FilterVerdict.ALLOW, 1L);
 		when(outboxEventRepository.claimDue(any(), eq(10), eq("worker-1"), eq(NOW), eq(NOW.plusSeconds(30))))
-			.thenReturn(List.of(event));
-		when(outboxEventRepository.complete(eq(1L), eq("worker-1"), eq(event.leaseGeneration()), any())).thenReturn(true);
-		when(answerNotificationService.publish(ANSWER_ID, NOW)).thenReturn(safetyChecking().markSafetyPassed().publish(NOW));
+				.thenReturn(List.of(event));
+		when(outboxEventRepository.complete(eq(1L), eq("worker-1"), eq(event.leaseGeneration()), any()))
+				.thenReturn(true);
+		when(answerNotificationService.publish(ANSWER_ID, NOW))
+				.thenReturn(safetyChecking().markSafetyPassed().publish(NOW));
 		AnswerModerationVerdictWorker worker = worker();
 
 		AnswerModerationVerdictWorker.BatchResult result = worker.processBatch(command());
@@ -73,8 +74,9 @@ class AnswerModerationVerdictWorkerTest {
 	void appliesBlockVerdictByRejectingOnly() {
 		OutboxEvent event = claimedVerdictEvent(FilterVerdict.BLOCK, 2L);
 		when(outboxEventRepository.claimDue(any(), eq(10), eq("worker-1"), eq(NOW), eq(NOW.plusSeconds(30))))
-			.thenReturn(List.of(event));
-		when(outboxEventRepository.complete(eq(2L), eq("worker-1"), eq(event.leaseGeneration()), any())).thenReturn(true);
+				.thenReturn(List.of(event));
+		when(outboxEventRepository.complete(eq(2L), eq("worker-1"), eq(event.leaseGeneration()), any()))
+				.thenReturn(true);
 		when(answerNotificationService.reject(ANSWER_ID, NOW)).thenReturn(safetyChecking().rejectSafety());
 		AnswerModerationVerdictWorker worker = worker();
 
@@ -90,9 +92,9 @@ class AnswerModerationVerdictWorkerTest {
 	void treatsDeadlineElapsedAsFailClosedAndStillAppliesLateAllow() {
 		OutboxEvent deadlineEvent = claimedDeadlineEvent(3L);
 		when(outboxEventRepository.claimDue(any(), eq(10), eq("worker-1"), eq(NOW), eq(NOW.plusSeconds(30))))
-			.thenReturn(List.of(deadlineEvent));
+				.thenReturn(List.of(deadlineEvent));
 		when(outboxEventRepository.complete(eq(3L), eq("worker-1"), eq(deadlineEvent.leaseGeneration()), any()))
-			.thenReturn(true);
+				.thenReturn(true);
 		AnswerModerationVerdictWorker worker = worker();
 
 		AnswerModerationVerdictWorker.BatchResult first = worker.processBatch(command());
@@ -103,9 +105,11 @@ class AnswerModerationVerdictWorkerTest {
 
 		OutboxEvent lateAllow = claimedVerdictEvent(FilterVerdict.ALLOW, 4L);
 		when(outboxEventRepository.claimDue(any(), eq(10), eq("worker-1"), eq(NOW), eq(NOW.plusSeconds(30))))
-			.thenReturn(List.of(lateAllow));
-		when(outboxEventRepository.complete(eq(4L), eq("worker-1"), eq(lateAllow.leaseGeneration()), any())).thenReturn(true);
-		when(answerNotificationService.publish(ANSWER_ID, NOW)).thenReturn(safetyChecking().markSafetyPassed().publish(NOW));
+				.thenReturn(List.of(lateAllow));
+		when(outboxEventRepository.complete(eq(4L), eq("worker-1"), eq(lateAllow.leaseGeneration()), any()))
+				.thenReturn(true);
+		when(answerNotificationService.publish(ANSWER_ID, NOW))
+				.thenReturn(safetyChecking().markSafetyPassed().publish(NOW));
 
 		AnswerModerationVerdictWorker.BatchResult second = worker.processBatch(command());
 
@@ -118,8 +122,9 @@ class AnswerModerationVerdictWorkerTest {
 	void delegatesTerminalIdempotencyToNotificationService() {
 		OutboxEvent event = claimedVerdictEvent(FilterVerdict.ALLOW, 5L);
 		when(outboxEventRepository.claimDue(any(), eq(10), eq("worker-1"), eq(NOW), eq(NOW.plusSeconds(30))))
-			.thenReturn(List.of(event));
-		when(outboxEventRepository.complete(eq(5L), eq("worker-1"), eq(event.leaseGeneration()), any())).thenReturn(true);
+				.thenReturn(List.of(event));
+		when(outboxEventRepository.complete(eq(5L), eq("worker-1"), eq(event.leaseGeneration()), any()))
+				.thenReturn(true);
 		Answer alreadyPublished = safetyChecking().markSafetyPassed().publish(NOW.minusSeconds(60));
 		when(answerNotificationService.publish(ANSWER_ID, NOW)).thenReturn(alreadyPublished);
 		AnswerModerationVerdictWorker worker = worker();
@@ -140,13 +145,15 @@ class AnswerModerationVerdictWorkerTest {
 	@DisplayName("ANSWER가 아닌 target의 VERDICT_READY는 answer 처리 없이 스킵 완료한다")
 	void skipsVerdictForNonAnswerTarget() {
 		AnswerModerationEventPayloads.VerdictReady payload = new AnswerModerationEventPayloads.VerdictReady(
-			FILTER_JOB_ID, FilterTargetType.NICKNAME, 1L, 0L, FilterVerdict.ALLOW);
+				FILTER_JOB_ID, FilterTargetType.NICKNAME, 1L, 0L, FilterVerdict.ALLOW);
 		OutboxEvent event = withId(6L, OutboxEvent.pending(OutboxAggregateType.FILTER_JOB, FILTER_JOB_ID,
-			OutboxEventType.MODERATION_VERDICT_READY, "filter-job:" + FILTER_JOB_ID + ":VERDICT_READY",
-			AnswerModerationEventPayloads.toJson(MAPPER, payload), NOW).claimed("worker-1", NOW, NOW.plusSeconds(30)));
+				OutboxEventType.MODERATION_VERDICT_READY, "filter-job:" + FILTER_JOB_ID + ":VERDICT_READY",
+				AnswerModerationEventPayloads.toJson(MAPPER, payload), NOW)
+				.claimed("worker-1", NOW, NOW.plusSeconds(30)));
 		when(outboxEventRepository.claimDue(any(), eq(10), eq("worker-1"), eq(NOW), eq(NOW.plusSeconds(30))))
-			.thenReturn(List.of(event));
-		when(outboxEventRepository.complete(eq(6L), eq("worker-1"), eq(event.leaseGeneration()), any())).thenReturn(true);
+				.thenReturn(List.of(event));
+		when(outboxEventRepository.complete(eq(6L), eq("worker-1"), eq(event.leaseGeneration()), any()))
+				.thenReturn(true);
 		AnswerModerationVerdictWorker worker = worker();
 
 		AnswerModerationVerdictWorker.BatchResult result = worker.processBatch(command());
@@ -162,35 +169,37 @@ class AnswerModerationVerdictWorkerTest {
 
 	private OutboxEvent claimedVerdictEvent(FilterVerdict verdict, long eventId) {
 		AnswerModerationEventPayloads.VerdictReady payload = new AnswerModerationEventPayloads.VerdictReady(
-			FILTER_JOB_ID, FilterTargetType.ANSWER, ANSWER_ID, 0L, verdict);
+				FILTER_JOB_ID, FilterTargetType.ANSWER, ANSWER_ID, 0L, verdict);
 		String json = AnswerModerationEventPayloads.toJson(MAPPER, payload);
 		return withId(eventId, OutboxEvent.pending(OutboxAggregateType.FILTER_JOB, FILTER_JOB_ID,
-			OutboxEventType.MODERATION_VERDICT_READY, "filter-job:" + FILTER_JOB_ID + ":VERDICT_READY", json, NOW)
-			.claimed("worker-1", NOW, NOW.plusSeconds(30)));
+				OutboxEventType.MODERATION_VERDICT_READY, "filter-job:" + FILTER_JOB_ID + ":VERDICT_READY", json, NOW)
+				.claimed("worker-1", NOW, NOW.plusSeconds(30)));
 	}
 
 	private OutboxEvent claimedDeadlineEvent(long eventId) {
 		AnswerModerationEventPayloads.DeadlineElapsed payload = new AnswerModerationEventPayloads.DeadlineElapsed(
-			FILTER_JOB_ID, FilterTargetType.ANSWER, ANSWER_ID, 0L);
+				FILTER_JOB_ID, FilterTargetType.ANSWER, ANSWER_ID, 0L);
 		String json = AnswerModerationEventPayloads.toJson(MAPPER, payload);
 		return withId(eventId, OutboxEvent.pending(OutboxAggregateType.FILTER_JOB, FILTER_JOB_ID,
-			OutboxEventType.MODERATION_DEADLINE_ELAPSED, "filter-job:" + FILTER_JOB_ID + ":DEADLINE_ELAPSED", json, NOW)
-			.claimed("worker-1", NOW, NOW.plusSeconds(30)));
+				OutboxEventType.MODERATION_DEADLINE_ELAPSED, "filter-job:" + FILTER_JOB_ID + ":DEADLINE_ELAPSED", json,
+				NOW)
+				.claimed("worker-1", NOW, NOW.plusSeconds(30)));
 	}
 
 	private static OutboxEvent withId(long id, OutboxEvent event) {
 		return new OutboxEvent(id, event.aggregateType(), event.aggregateId(), event.eventType(), event.dedupKey(),
-			event.payload(), event.status(), event.attemptCount(), event.nextAttemptAt(), event.createdAt(),
-			event.processedAt(), event.matchRound(), event.leaseOwner(), event.leaseExpiresAt(),
-			event.leaseGeneration());
+				event.payload(), event.status(), event.attemptCount(), event.nextAttemptAt(), event.createdAt(),
+				event.processedAt(), event.matchRound(), event.leaseOwner(), event.leaseExpiresAt(),
+				event.leaseGeneration());
 	}
 
 	private static Answer safetyChecking() {
 		Answer submitted = Answer.submit(7L, 11L, "key", "본문", "TEST", BigDecimal.valueOf(90), "NEAR", NOW, 5000L);
 		Answer withId = Answer.restore(ANSWER_ID, submitted.getPostRecipientId(), submitted.getAuthorId(),
-			AnswerStatus.SUBMITTED, submitted.getIdempotencyKey(), submitted.getBodyText(),
-			submitted.getCoarseRegionCode(), submitted.getBearingFromSenderDegrees(), submitted.getDistanceBand(),
-			AnswerModerationStatus.PENDING, submitted.getSubmittedAt(), null, null, submitted.getDistanceM(), null, 0);
+				AnswerStatus.SUBMITTED, submitted.getIdempotencyKey(), submitted.getBodyText(),
+				submitted.getCoarseRegionCode(), submitted.getBearingFromSenderDegrees(), submitted.getDistanceBand(),
+				AnswerModerationStatus.PENDING, submitted.getSubmittedAt(), null, null, submitted.getDistanceM(), null,
+				0);
 		return withId.startSafetyCheck();
 	}
 
@@ -198,6 +207,6 @@ class AnswerModerationVerdictWorkerTest {
 		PlatformTransactionManager transactionManager = mock(PlatformTransactionManager.class);
 		when(transactionManager.getTransaction(any())).thenReturn(mock(TransactionStatus.class));
 		return new AnswerModerationVerdictWorker(outboxEventRepository, answerNotificationService, MAPPER,
-			transactionManager, Clock.fixed(NOW, ZoneOffset.UTC));
+				transactionManager, Clock.fixed(NOW, ZoneOffset.UTC));
 	}
 }

@@ -4,20 +4,6 @@
  */
 package com.dnd.qello.direction;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyDouble;
-import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.doThrow;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
-
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
@@ -35,6 +21,9 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.TransactionStatus;
 
+import com.dnd.qello.answer.error.AnswerErrorCode;
+import com.dnd.qello.answer.error.AnswerException;
+import com.dnd.qello.answer.service.MediaAttachmentService;
 import com.dnd.qello.direction.domain.ActiveUserPresence;
 import com.dnd.qello.direction.domain.DirectionPost;
 import com.dnd.qello.direction.domain.DirectionPostModerationStatus;
@@ -51,10 +40,7 @@ import com.dnd.qello.direction.repository.ActiveUserPresenceRepository;
 import com.dnd.qello.direction.repository.DirectionPostRepository;
 import com.dnd.qello.direction.repository.DirectionSchemeRepository;
 import com.dnd.qello.direction.repository.PostAudienceRepository;
-import com.dnd.qello.answer.service.MediaAttachmentService;
 import com.dnd.qello.direction.service.DirectionPostService;
-import com.dnd.qello.answer.error.AnswerErrorCode;
-import com.dnd.qello.answer.error.AnswerException;
 import com.dnd.qello.notification.domain.OutboxEvent;
 import com.dnd.qello.notification.repository.OutboxEventRepository;
 import com.dnd.qello.question.domain.AnswerFormat;
@@ -62,6 +48,20 @@ import com.dnd.qello.question.domain.ApprovedQuestion;
 import com.dnd.qello.question.domain.ApprovedQuestionSourceType;
 import com.dnd.qello.question.domain.ApprovedQuestionStatus;
 import com.dnd.qello.question.repository.ApprovedQuestionRepository;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyDouble;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class DirectionPostSubmissionServiceTest {
@@ -102,42 +102,46 @@ class DirectionPostSubmissionServiceTest {
 	@BeforeEach
 	void setUp() {
 		TransactionStatus transactionStatus = mock(TransactionStatus.class);
-		org.mockito.Mockito.lenient().when(transactionManager.getTransaction(any(TransactionDefinition.class))).thenReturn(transactionStatus);
+		org.mockito.Mockito.lenient().when(transactionManager.getTransaction(any(TransactionDefinition.class)))
+				.thenReturn(transactionStatus);
 		org.mockito.Mockito.lenient().doNothing().when(transactionManager).commit(transactionStatus);
 		org.mockito.Mockito.lenient().doNothing().when(transactionManager).rollback(transactionStatus);
 
 		scheme = DirectionScheme.restore(SCHEME_ID, "OCTANT", 1, DirectionSchemeType.EQUAL_SEGMENTS,
-			8, BigDecimal.ZERO, DirectionSchemeStatus.ACTIVE);
+				8, BigDecimal.ZERO, DirectionSchemeStatus.ACTIVE);
 		segments = IntStream.range(0, 8)
-			.mapToObj(index -> DirectionSegment.create(SCHEME_ID, "S" + index, "segment-" + index,
-				BigDecimal.valueOf(index * 45L + 22.5), BigDecimal.valueOf(45), index))
-			.toList();
+				.mapToObj(index -> DirectionSegment.create(SCHEME_ID, "S" + index, "segment-" + index,
+						BigDecimal.valueOf(index * 45L + 22.5), BigDecimal.valueOf(45), index))
+				.toList();
 		sender = ActiveUserPresence.create(SENDER_ID, BigDecimal.valueOf(37.5), BigDecimal.valueOf(127.0),
-			null, "TEST-REGION", BigDecimal.ONE, true, AT.minusSeconds(60), AT.plusSeconds(3600));
+				null, "TEST-REGION", BigDecimal.ONE, true, AT.minusSeconds(60), AT.plusSeconds(3600));
 		question = ApprovedQuestion.restore(QUESTION_ID, null, ApprovedQuestionSourceType.OPERATOR,
-			ApprovedQuestionStatus.ACTIVE, "질문", AnswerFormat.TEXT, AT.minusSeconds(60),
-			AT.plusSeconds(3600), AT.minusSeconds(60), SENDER_ID, AT.minusSeconds(60));
+				ApprovedQuestionStatus.ACTIVE, "질문", AnswerFormat.TEXT, AT.minusSeconds(60),
+				AT.plusSeconds(3600), AT.minusSeconds(60), SENDER_ID, AT.minusSeconds(60));
 		DirectionRequestFingerprint fingerprint = DirectionRequestFingerprint.create(QUESTION_ID, SCHEME_ID,
-			"S0", 0, 500, "본문");
+				"S0", 0, 500, "본문");
 		savedPost = DirectionPost.restore(101L, SENDER_ID, QUESTION_ID, fingerprint,
-			DirectionPostStatus.MATCHING, "submission-key", "본문", "TEST-REGION",
-			DirectionPostModerationStatus.PENDING, AT, null, AT.plusSeconds(3600), null, null);
+				DirectionPostStatus.MATCHING, "submission-key", "본문", "TEST-REGION",
+				DirectionPostModerationStatus.PENDING, AT, null, AT.plusSeconds(3600), null, null);
 		audience = PostAudience.create(101L, SCHEME_ID, "S0", BigDecimal.valueOf(22.5),
-			BigDecimal.valueOf(45), 0, 500, BigDecimal.valueOf(37.5), BigDecimal.valueOf(127.0),
-			null, AT);
+				BigDecimal.valueOf(45), 0, 500, BigDecimal.valueOf(37.5), BigDecimal.valueOf(127.0),
+				null, AT);
 		matchingEvent = OutboxEvent.matchingPending(101L, 1,
-			"direction-match:101:1:RECIPIENT_MATCH_REQUESTED",
-			"{\"postId\":101,\"matchRound\":1,\"eventType\":\"RECIPIENT_MATCH_REQUESTED\"}", AT);
+				"direction-match:101:1:RECIPIENT_MATCH_REQUESTED",
+				"{\"postId\":101,\"matchRound\":1,\"eventType\":\"RECIPIENT_MATCH_REQUESTED\"}", AT);
 
 		org.mockito.Mockito.lenient().when(schemeRepository.findById(SCHEME_ID)).thenReturn(Optional.of(scheme));
 		org.mockito.Mockito.lenient().when(schemeRepository.findSegments(SCHEME_ID)).thenReturn(segments);
 		org.mockito.Mockito.lenient().when(presenceRepository.findByUserId(SENDER_ID)).thenReturn(Optional.of(sender));
-		org.mockito.Mockito.lenient().when(approvedQuestionRepository.findAssignableAt(AT)).thenReturn(List.of(question));
+		org.mockito.Mockito.lenient().when(approvedQuestionRepository.findAssignableAt(AT))
+				.thenReturn(List.of(question));
 		org.mockito.Mockito.lenient().when(postRepository.save(any(DirectionPost.class))).thenReturn(savedPost);
 		org.mockito.Mockito.lenient().when(audienceRepository.save(any(PostAudience.class))).thenReturn(audience);
 		org.mockito.Mockito.lenient().when(audienceRepository.findByPostId(101L)).thenReturn(Optional.of(audience));
-		org.mockito.Mockito.lenient().when(outboxEventRepository.findByDedupKey(anyString())).thenReturn(Optional.empty());
-		org.mockito.Mockito.lenient().when(outboxEventRepository.save(any(OutboxEvent.class))).thenReturn(matchingEvent);
+		org.mockito.Mockito.lenient().when(outboxEventRepository.findByDedupKey(anyString()))
+				.thenReturn(Optional.empty());
+		org.mockito.Mockito.lenient().when(outboxEventRepository.save(any(OutboxEvent.class)))
+				.thenReturn(matchingEvent);
 	}
 
 	@Test
@@ -153,7 +157,7 @@ class DirectionPostSubmissionServiceTest {
 		verify(outboxEventRepository, times(1)).save(any(OutboxEvent.class));
 		verify(presenceRepository, times(1)).findByUserId(SENDER_ID);
 		verify(presenceRepository, never()).findCandidates(anyLong(), anyDouble(), anyDouble(),
-			anyLong(), anyLong(), anyDouble(), anyDouble(), any(Instant.class), anyString());
+				anyLong(), anyLong(), anyDouble(), anyDouble(), any(Instant.class), anyString());
 	}
 
 	@Test
@@ -215,8 +219,8 @@ class DirectionPostSubmissionServiceTest {
 	@DisplayName("이미지 단독 제출은 post transaction 안에서 READY 미디어 첨부를 수행한다")
 	void mediaOnlySubmissionAttachesWithinSubmission() {
 		DirectionPostService.SendCommand command = new DirectionPostService.SendCommand(SENDER_ID, QUESTION_ID,
-			SCHEME_ID, "S0", 0, 500, "TEST-REGION", "media-key", null, List.of(77L), AT,
-			AT.plusSeconds(3600));
+				SCHEME_ID, "S0", 0, 500, "TEST-REGION", "media-key", null, List.of(77L), AT,
+				AT.plusSeconds(3600));
 
 		DirectionPostService.SendResult result = service.send(command);
 
@@ -228,14 +232,14 @@ class DirectionPostSubmissionServiceTest {
 	@DisplayName("미디어 첨부가 실패하면 질문글 transaction을 rollback하고 commit하지 않는다")
 	void mediaAttachmentFailureRollsBackSubmission() {
 		DirectionPostService.SendCommand command = new DirectionPostService.SendCommand(SENDER_ID, QUESTION_ID,
-			SCHEME_ID, "S0", 0, 500, "TEST-REGION", "media-rollback-key", null, List.of(77L), AT,
-			AT.plusSeconds(3600));
+				SCHEME_ID, "S0", 0, 500, "TEST-REGION", "media-rollback-key", null, List.of(77L), AT,
+				AT.plusSeconds(3600));
 		doThrow(new AnswerException(AnswerErrorCode.INVALID_MEDIA_STATUS, "mediaId", "미디어를 첨부할 수 없습니다"))
-			.when(mediaAttachmentService).attach(any(MediaAttachmentService.AttachCommand.class));
+				.when(mediaAttachmentService).attach(any(MediaAttachmentService.AttachCommand.class));
 
 		assertThatThrownBy(() -> service.send(command))
-			.isInstanceOf(AnswerException.class)
-			.hasFieldOrPropertyWithValue("errorCode", AnswerErrorCode.INVALID_MEDIA_STATUS);
+				.isInstanceOf(AnswerException.class)
+				.hasFieldOrPropertyWithValue("errorCode", AnswerErrorCode.INVALID_MEDIA_STATUS);
 		verify(transactionManager).rollback(any(TransactionStatus.class));
 		verify(transactionManager, never()).commit(any(TransactionStatus.class));
 	}
@@ -244,23 +248,23 @@ class DirectionPostSubmissionServiceTest {
 	@DisplayName("본문과 미디어가 모두 없는 제출은 write 전에 거부한다")
 	void emptyContentIsRejected() {
 		assertThatThrownBy(() -> new DirectionPostService.SendCommand(SENDER_ID, QUESTION_ID, SCHEME_ID, "S0",
-			0, 500, "TEST-REGION", "empty-key", null, List.of(), AT, AT.plusSeconds(3600)))
-			.isInstanceOf(DirectionException.class)
-			.hasFieldOrPropertyWithValue("errorCode", DirectionErrorCode.REQUIRED_VALUE_MISSING);
+				0, 500, "TEST-REGION", "empty-key", null, List.of(), AT, AT.plusSeconds(3600)))
+				.isInstanceOf(DirectionException.class)
+				.hasFieldOrPropertyWithValue("errorCode", DirectionErrorCode.REQUIRED_VALUE_MISSING);
 	}
 
 	@Test
 	@DisplayName("nullable fingerprint 재생은 DB에 저장된 미디어 ID를 복원해 동일 요청만 허용한다")
 	void restoresLegacyFingerprintFromPersistedMediaIds() {
 		DirectionPost legacyPost = DirectionPost.restore(101L, SENDER_ID, QUESTION_ID, null,
-			DirectionPostStatus.MATCHING, "legacy-key", "본문", "TEST-REGION",
-			DirectionPostModerationStatus.PENDING, AT, null, AT.plusSeconds(3600), null, null);
+				DirectionPostStatus.MATCHING, "legacy-key", "본문", "TEST-REGION",
+				DirectionPostModerationStatus.PENDING, AT, null, AT.plusSeconds(3600), null, null);
 		when(postRepository.findBySenderAndIdempotencyKey(SENDER_ID, "legacy-key"))
-			.thenReturn(Optional.of(legacyPost));
+				.thenReturn(Optional.of(legacyPost));
 		when(mediaAttachmentService.findMediaIdsByPostId(101L)).thenReturn(List.of(77L));
 
 		DirectionPostService.SendResult result = service.replayIfExists(SENDER_ID, "legacy-key", QUESTION_ID,
-			SCHEME_ID, "S0", "본문", List.of(77L)).orElseThrow();
+				SCHEME_ID, "S0", "본문", List.of(77L)).orElseThrow();
 
 		assertThat(result.post()).isEqualTo(legacyPost);
 		verify(mediaAttachmentService).findMediaIdsByPostId(101L);
@@ -271,21 +275,22 @@ class DirectionPostSubmissionServiceTest {
 	@DisplayName("nullable fingerprint 재생에서 다른 미디어 ID를 사용하면 멱등키 재사용으로 거절한다")
 	void rejectsLegacyReplayWithDifferentPersistedMediaIds() {
 		DirectionPost legacyPost = DirectionPost.restore(101L, SENDER_ID, QUESTION_ID, null,
-			DirectionPostStatus.MATCHING, "legacy-key", "본문", "TEST-REGION",
-			DirectionPostModerationStatus.PENDING, AT, null, AT.plusSeconds(3600), null, null);
+				DirectionPostStatus.MATCHING, "legacy-key", "본문", "TEST-REGION",
+				DirectionPostModerationStatus.PENDING, AT, null, AT.plusSeconds(3600), null, null);
 		when(postRepository.findBySenderAndIdempotencyKey(SENDER_ID, "legacy-key"))
-			.thenReturn(Optional.of(legacyPost));
+				.thenReturn(Optional.of(legacyPost));
 		when(mediaAttachmentService.findMediaIdsByPostId(101L)).thenReturn(List.of(88L));
 
 		assertThatThrownBy(() -> service.replayIfExists(SENDER_ID, "legacy-key", QUESTION_ID,
-			SCHEME_ID, "S0", "본문", List.of(77L)))
-			.isInstanceOf(DirectionException.class)
-			.hasFieldOrPropertyWithValue("errorCode", DirectionErrorCode.IDEMPOTENCY_KEY_REUSED);
-		verify(postRepository, never()).updateRequestFingerprintIfNull(anyLong(), any(DirectionRequestFingerprint.class));
+				SCHEME_ID, "S0", "본문", List.of(77L)))
+				.isInstanceOf(DirectionException.class)
+				.hasFieldOrPropertyWithValue("errorCode", DirectionErrorCode.IDEMPOTENCY_KEY_REUSED);
+		verify(postRepository, never()).updateRequestFingerprintIfNull(anyLong(),
+				any(DirectionRequestFingerprint.class));
 	}
 
 	private DirectionPostService.SendCommand command(String idempotencyKey, String body) {
 		return new DirectionPostService.SendCommand(SENDER_ID, QUESTION_ID, SCHEME_ID, "S0", 0, 500,
-			"TEST-REGION", idempotencyKey, body, AT, AT.plusSeconds(3600));
+				"TEST-REGION", idempotencyKey, body, AT, AT.plusSeconds(3600));
 	}
 }

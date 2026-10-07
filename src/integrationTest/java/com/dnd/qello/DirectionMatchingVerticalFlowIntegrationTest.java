@@ -4,8 +4,6 @@
  */
 package com.dnd.qello;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 import java.math.BigDecimal;
 import java.sql.Timestamp;
 import java.time.Clock;
@@ -29,22 +27,22 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
 
-import com.dnd.qello.filtering.domain.OperatorReason;
 import com.dnd.qello.answer.domain.Answer;
 import com.dnd.qello.answer.domain.AnswerStatus;
 import com.dnd.qello.answer.service.AnswerSubmissionApplicationService;
 import com.dnd.qello.direction.domain.PostRecipientStatus;
+import com.dnd.qello.direction.matching.DirectionMatchingWorker;
 import com.dnd.qello.direction.service.DirectionPostApplicationService;
 import com.dnd.qello.direction.service.DirectionPresenceService;
-import com.dnd.qello.direction.matching.DirectionMatchingWorker;
 import com.dnd.qello.direction.sweep.RecipientExpirationSweepWorker;
-import com.dnd.qello.direction.sweep.SweepBatchResult;
 import com.dnd.qello.direction.sweep.SkipConfirmationSweepWorker;
+import com.dnd.qello.direction.sweep.SweepBatchResult;
 import com.dnd.qello.feed.service.InboxApplicationService;
 import com.dnd.qello.feed.view.InboxCategory;
 import com.dnd.qello.feed.view.InboxDetail;
 import com.dnd.qello.feed.view.InboxListing;
 import com.dnd.qello.filtering.domain.FilterVerdict;
+import com.dnd.qello.filtering.domain.OperatorReason;
 import com.dnd.qello.filtering.moderation.AnswerModerationEventPayloadsTestSupport;
 import com.dnd.qello.filtering.moderation.AnswerModerationVerdictWorker;
 import com.dnd.qello.filtering.service.FilterReleaseRegistryService;
@@ -60,16 +58,21 @@ import com.dnd.qello.notification.repository.NotificationRepository;
 import com.dnd.qello.notification.repository.OutboxEventRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 /**
- * GH-127 Gap A. presence 갱신부터 만료·넘김확정·답변공개까지, 각 단계가 실제로 만든
- * 행만 다음 단계 입력으로 사용해 관통한다. 콘텐츠 검열 게이트(direction_post 방향
- * 검열, answer moderation verdict)만 필터링 수직(#105~#112)이 소유하는 별도 시스템이므로
- * 예외로 취급한다 — direction_post는 fixture UPDATE로, answer는 기존 GH-125 통합 테스트가
- * 확립한 실제 {@link AnswerModerationVerdictWorker} 호출 패턴으로 통과시킨다.
+ * GH-127 Gap A. presence 갱신부터 만료·넘김확정·답변공개까지, 각 단계가 실제로 만든 행만 다음 단계 입력으로 사용해
+ * 관통한다. 콘텐츠 검열 게이트(direction_post 방향 검열, answer moderation verdict)만 필터링
+ * 수직(#105~#112)이 소유하는 별도 시스템이므로 예외로 취급한다 — direction_post는 fixture UPDATE로,
+ * answer는 기존 GH-125 통합 테스트가 확립한 실제 {@link AnswerModerationVerdictWorker} 호출
+ * 패턴으로 통과시킨다.
  *
- * <p>단계 내부 동시성·outbox 임대·PostGIS 쿼리 계약 자체는 이 클래스의 범위가 아니다.
- * {@code DirectionMatchingWorkerIntegrationTest}, {@code OutboxLeaseIntegrationTest},
- * {@code DirectionPostgisPersistenceIntegrationTest}가 소유한다.</p>
+ * <p>
+ * 단계 내부 동시성·outbox 임대·PostGIS 쿼리 계약 자체는 이 클래스의 범위가 아니다.
+ * {@code DirectionMatchingWorkerIntegrationTest},
+ * {@code OutboxLeaseIntegrationTest},
+ * {@code DirectionPostgisPersistenceIntegrationTest}가 소유한다.
+ * </p>
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -122,7 +125,9 @@ class DirectionMatchingVerticalFlowIntegrationTest extends PostgisContainerInteg
 		jdbc.update("DELETE FROM notification");
 		jdbc.update("DELETE FROM outbox_event");
 		jdbc.update("DELETE FROM user_block");
-		jdbc.update("DELETE FROM media_attachment WHERE answer_id IN (SELECT id FROM answer WHERE coarse_region_code = ?)", REGION);
+		jdbc.update(
+				"DELETE FROM media_attachment WHERE answer_id IN (SELECT id FROM answer WHERE coarse_region_code = ?)",
+				REGION);
 		jdbc.update("DELETE FROM answer WHERE coarse_region_code = ?", REGION);
 		jdbc.update("DELETE FROM filter_job");
 		jdbc.update("DELETE FROM post_recipient");
@@ -133,8 +138,11 @@ class DirectionMatchingVerticalFlowIntegrationTest extends PostgisContainerInteg
 		jdbc.update("DELETE FROM approved_question");
 		jdbc.update("DELETE FROM user_account WHERE coarse_region_code = ?", REGION);
 		jdbc.update("DELETE FROM region_code WHERE code = ?", REGION);
-		jdbc.update("INSERT INTO region_code (code, parent_code, display_name, level) VALUES ('KR', NULL, 'Korea', 'COUNTRY') ON CONFLICT (code, level) DO NOTHING");
-		jdbc.update("INSERT INTO region_code (code, parent_code, display_name, level) VALUES (?, 'KR', 'Direction Flow 127', 'REGION')", REGION);
+		jdbc.update(
+				"INSERT INTO region_code (code, parent_code, display_name, level) VALUES ('KR', NULL, 'Korea', 'COUNTRY') ON CONFLICT (code, level) DO NOTHING");
+		jdbc.update(
+				"INSERT INTO region_code (code, parent_code, display_name, level) VALUES (?, 'KR', 'Direction Flow 127', 'REGION')",
+				REGION);
 	}
 
 	@Test
@@ -143,17 +151,18 @@ class DirectionMatchingVerticalFlowIntegrationTest extends PostgisContainerInteg
 		Chain chain = runChainToFannedOut("int001");
 
 		assertThat(jdbc.queryForObject("SELECT status FROM direction_post WHERE id = ?", String.class, chain.postId()))
-			.isEqualTo("ACTIVE");
+				.isEqualTo("ACTIVE");
 		assertThat(jdbc.queryForObject("SELECT count(*) FROM post_recipient WHERE post_id = ? AND status = 'AVAILABLE'",
-			Long.class, chain.postId())).isEqualTo(3L);
+				Long.class, chain.postId())).isEqualTo(3L);
 		assertThat(jdbc.queryForObject(
-			"SELECT count(*) FROM outbox_event WHERE aggregate_type = 'POST_RECIPIENT' AND event_type = 'RECIPIENTS_CONFIRMED' AND status = 'PROCESSED'",
-			Long.class)).isEqualTo(3L);
+				"SELECT count(*) FROM outbox_event WHERE aggregate_type = 'POST_RECIPIENT' AND event_type = 'RECIPIENTS_CONFIRMED' AND status = 'PROCESSED'",
+				Long.class)).isEqualTo(3L);
 		assertThat(jdbc.queryForObject("SELECT count(*) FROM notification", Long.class)).isEqualTo(3L);
 		for (long candidateId : chain.candidateIds()) {
 			assertThat(jdbc.queryForObject(
-				"SELECT active_unhandled_count FROM recipient_receive_state WHERE user_id = ?", Integer.class, candidateId))
-				.isEqualTo(1);
+					"SELECT active_unhandled_count FROM recipient_receive_state WHERE user_id = ?", Integer.class,
+					candidateId))
+					.isEqualTo(1);
 		}
 	}
 
@@ -175,26 +184,31 @@ class DirectionMatchingVerticalFlowIntegrationTest extends PostgisContainerInteg
 		assertThat(detail.card().postRecipientId()).isEqualTo(postRecipientId);
 
 		promotedRelease(chain.senderId());
-		Answer submitted = answerApplicationService.submit(recipientId, "int002-answer", postRecipientId, "실제 체인을 통과한 답변", List.of());
+		Answer submitted = answerApplicationService.submit(recipientId, "int002-answer", postRecipientId,
+				"실제 체인을 통과한 답변", List.of());
 		assertThat(submitted.getStatus()).isEqualTo(AnswerStatus.SUBMITTED);
 		assertThat(jdbc.queryForObject(
-			"SELECT active_unhandled_count FROM recipient_receive_state WHERE user_id = ?", Integer.class, recipientId))
-			.isEqualTo(1);
+				"SELECT active_unhandled_count FROM recipient_receive_state WHERE user_id = ?", Integer.class,
+				recipientId))
+				.isEqualTo(1);
 
 		long filterJobId = jdbc.queryForObject(
-			"SELECT id FROM filter_job WHERE target_type = 'ANSWER' AND target_id = ?", Long.class, submitted.getId());
+				"SELECT id FROM filter_job WHERE target_type = 'ANSWER' AND target_id = ?", Long.class,
+				submitted.getId());
 		seedVerdictReady(filterJobId, submitted.getId(), FilterVerdict.ALLOW, "int002");
 		AnswerModerationVerdictWorker.BatchResult verdictResult = verdictWorker.processBatch(
-			new AnswerModerationVerdictWorker.BatchCommand(10, "int002-verdict-worker", NOW.plusSeconds(120), NOW.plusSeconds(180)));
+				new AnswerModerationVerdictWorker.BatchCommand(10, "int002-verdict-worker", NOW.plusSeconds(120),
+						NOW.plusSeconds(180)));
 
 		assertThat(verdictResult.outcomes()).containsExactly(AnswerModerationVerdictWorker.Outcome.RESOLVED);
 		assertThat(jdbc.queryForObject("SELECT status FROM answer WHERE id = ?", String.class, submitted.getId()))
-			.isEqualTo("PUBLISHED");
+				.isEqualTo("PUBLISHED");
 		assertThat(jdbc.queryForObject("SELECT status FROM post_recipient WHERE id = ?", String.class, postRecipientId))
-			.isEqualTo(PostRecipientStatus.ANSWERED.name());
+				.isEqualTo(PostRecipientStatus.ANSWERED.name());
 		assertThat(jdbc.queryForObject(
-			"SELECT active_unhandled_count FROM recipient_receive_state WHERE user_id = ?", Integer.class, recipientId))
-			.isEqualTo(0);
+				"SELECT active_unhandled_count FROM recipient_receive_state WHERE user_id = ?", Integer.class,
+				recipientId))
+				.isEqualTo(0);
 	}
 
 	@Test
@@ -208,24 +222,26 @@ class DirectionMatchingVerticalFlowIntegrationTest extends PostgisContainerInteg
 		inboxApplicationService.detail(recipientId, postRecipientId);
 		inboxApplicationService.skip(recipientId, postRecipientId);
 		assertThat(jdbc.queryForObject("SELECT status FROM post_recipient WHERE id = ?", String.class, postRecipientId))
-			.isEqualTo(PostRecipientStatus.SKIP_PENDING.name());
+				.isEqualTo(PostRecipientStatus.SKIP_PENDING.name());
 
 		Instant afterGrace = NOW.plusSeconds(130);
 		SweepBatchResult first = skipSweepWorker.processBatch(
-			new SkipConfirmationSweepWorker.BatchCommand(10, afterGrace));
+				new SkipConfirmationSweepWorker.BatchCommand(10, afterGrace));
 		assertThat(first.released()).isEqualTo(1);
 		assertThat(jdbc.queryForObject("SELECT status FROM post_recipient WHERE id = ?", String.class, postRecipientId))
-			.isEqualTo(PostRecipientStatus.SKIPPED.name());
+				.isEqualTo(PostRecipientStatus.SKIPPED.name());
 		assertThat(jdbc.queryForObject(
-			"SELECT active_unhandled_count FROM recipient_receive_state WHERE user_id = ?", Integer.class, recipientId))
-			.isEqualTo(0);
+				"SELECT active_unhandled_count FROM recipient_receive_state WHERE user_id = ?", Integer.class,
+				recipientId))
+				.isEqualTo(0);
 
 		SweepBatchResult replay = skipSweepWorker.processBatch(
-			new SkipConfirmationSweepWorker.BatchCommand(10, afterGrace.plusSeconds(60)));
+				new SkipConfirmationSweepWorker.BatchCommand(10, afterGrace.plusSeconds(60)));
 		assertThat(replay.released()).isZero();
 		assertThat(jdbc.queryForObject(
-			"SELECT active_unhandled_count FROM recipient_receive_state WHERE user_id = ?", Integer.class, recipientId))
-			.isEqualTo(0);
+				"SELECT active_unhandled_count FROM recipient_receive_state WHERE user_id = ?", Integer.class,
+				recipientId))
+				.isEqualTo(0);
 	}
 
 	@Test
@@ -235,20 +251,21 @@ class DirectionMatchingVerticalFlowIntegrationTest extends PostgisContainerInteg
 		long recipientId = chain.candidateIds().get(2);
 		long postRecipientId = chain.postRecipientIdFor(jdbc, chain.postId(), recipientId);
 		Instant postExpiresAt = jdbc.queryForObject(
-			"SELECT expires_at FROM direction_post WHERE id = ?", Timestamp.class, chain.postId()).toInstant();
+				"SELECT expires_at FROM direction_post WHERE id = ?", Timestamp.class, chain.postId()).toInstant();
 
 		SweepBatchResult result = expirationSweepWorker.processBatch(
-			new RecipientExpirationSweepWorker.BatchCommand(10, postExpiresAt.plusSeconds(1)));
+				new RecipientExpirationSweepWorker.BatchCommand(10, postExpiresAt.plusSeconds(1)));
 
 		// 이 체인의 세 후보 모두 아직 미응답이므로 batch는 셋 다 만료시킨다. 이 시나리오가
 		// 단언하는 "정확히 한 번"은 batch 결과 건수가 아니라 recipientId 한 명의 카운터가
 		// 1에서 0으로 딱 한 번만 감소한다는 것이다.
 		assertThat(result.released()).isEqualTo(3);
 		assertThat(jdbc.queryForObject("SELECT status FROM post_recipient WHERE id = ?", String.class, postRecipientId))
-			.isEqualTo(PostRecipientStatus.EXPIRED.name());
+				.isEqualTo(PostRecipientStatus.EXPIRED.name());
 		assertThat(jdbc.queryForObject(
-			"SELECT active_unhandled_count FROM recipient_receive_state WHERE user_id = ?", Integer.class, recipientId))
-			.isEqualTo(0);
+				"SELECT active_unhandled_count FROM recipient_receive_state WHERE user_id = ?", Integer.class,
+				recipientId))
+				.isEqualTo(0);
 	}
 
 	@Test
@@ -257,8 +274,8 @@ class DirectionMatchingVerticalFlowIntegrationTest extends PostgisContainerInteg
 		Chain chain = runChainToFannedOut("int005");
 
 		List<String> outboxPayloads = jdbc.queryForList(
-			"SELECT payload FROM outbox_event WHERE aggregate_type IN ('DIRECTION_POST', 'POST_RECIPIENT')",
-			String.class);
+				"SELECT payload FROM outbox_event WHERE aggregate_type IN ('DIRECTION_POST', 'POST_RECIPIENT')",
+				String.class);
 		assertThat(outboxPayloads).isNotEmpty();
 		for (String payload : outboxPayloads) {
 			assertThat(payload).doesNotContain(String.valueOf(SENDER_LAT)).doesNotContain(String.valueOf(SENDER_LON));
@@ -270,10 +287,10 @@ class DirectionMatchingVerticalFlowIntegrationTest extends PostgisContainerInteg
 		long notificationCount = jdbc.queryForObject("SELECT count(*) FROM notification", Long.class);
 		assertThat(notificationCount).isEqualTo(3L);
 		List<String> notificationColumns = jdbc.queryForList(
-			"SELECT string_agg(column_name, ',') FROM information_schema.columns WHERE table_name = 'notification'",
-			String.class);
+				"SELECT string_agg(column_name, ',') FROM information_schema.columns WHERE table_name = 'notification'",
+				String.class);
 		assertThat(notificationColumns.getFirst().toLowerCase())
-			.doesNotContain("latitude").doesNotContain("longitude").doesNotContain("position");
+				.doesNotContain("latitude").doesNotContain("longitude").doesNotContain("position");
 	}
 
 	// -- chain construction -------------------------------------------------
@@ -282,9 +299,9 @@ class DirectionMatchingVerticalFlowIntegrationTest extends PostgisContainerInteg
 		long senderId = account(keyPrefix + "-sender");
 		long questionId = activeQuestion(senderId);
 		List<Long> candidateIds = List.of(
-			account(keyPrefix + "-candidate-0"),
-			account(keyPrefix + "-candidate-1"),
-			account(keyPrefix + "-candidate-2"));
+				account(keyPrefix + "-candidate-0"),
+				account(keyPrefix + "-candidate-1"),
+				account(keyPrefix + "-candidate-2"));
 
 		updatePresence(senderId, SENDER_LAT, SENDER_LON);
 		for (int index = 0; index < candidateIds.size(); index++) {
@@ -294,12 +311,12 @@ class DirectionMatchingVerticalFlowIntegrationTest extends PostgisContainerInteg
 		var preview = postApplicationService.preview(senderId);
 		assertThat(preview.schemeCode()).isEqualTo("OCTANT");
 		var northSegment = preview.segments().stream().filter(segment -> segment.segmentKey().equals("N")).findFirst()
-			.orElseThrow();
+				.orElseThrow();
 		assertThat(northSegment.count()).isEqualTo(3L);
 
 		long schemeId = octantSchemeId();
 		var submitResult = postApplicationService.submit(senderId, keyPrefix + "-submit",
-			new DirectionPostApplicationService.SubmitCommand(questionId, schemeId, "N", "실제 체인 관통 본문", List.of()));
+				new DirectionPostApplicationService.SubmitCommand(questionId, schemeId, "N", "실제 체인 관통 본문", List.of()));
 		long postId = submitResult.post().getId();
 
 		// 콘텐츠 검열 게이트 seam: 방향 검열은 필터링 수직(#105~#112) 소유이며 이 계획의
@@ -308,8 +325,8 @@ class DirectionMatchingVerticalFlowIntegrationTest extends PostgisContainerInteg
 		jdbc.update("UPDATE direction_post SET moderation_status = 'PASSED' WHERE id = ?", postId);
 
 		DirectionMatchingWorker.BatchResult matchResult = matchingWorker.processBatch(
-			new DirectionMatchingWorker.BatchCommand(10, keyPrefix + "-matching-worker", NOW.plusSeconds(30),
-				NOW.plusSeconds(90), RETRY_POLICY));
+				new DirectionMatchingWorker.BatchCommand(10, keyPrefix + "-matching-worker", NOW.plusSeconds(30),
+						NOW.plusSeconds(90), RETRY_POLICY));
 		assertThat(matchResult.outcomes()).containsExactly(DirectionMatchingWorker.Outcome.PROCESSED);
 
 		for (long candidateId : candidateIds) {
@@ -317,9 +334,11 @@ class DirectionMatchingVerticalFlowIntegrationTest extends PostgisContainerInteg
 		}
 
 		RecipientNotificationFanOutWorker.BatchResult fanOutResult = fanOutWorker.processBatch(
-			new RecipientNotificationFanOutWorker.BatchCommand(10, keyPrefix + "-fanout-worker", NOW.plusSeconds(31),
-				NOW.plusSeconds(91), RETRY_POLICY));
-		assertThat(fanOutResult.outcomes()).allMatch(outcome -> outcome == RecipientNotificationFanOutWorker.Outcome.PROCESSED);
+				new RecipientNotificationFanOutWorker.BatchCommand(10, keyPrefix + "-fanout-worker",
+						NOW.plusSeconds(31),
+						NOW.plusSeconds(91), RETRY_POLICY));
+		assertThat(fanOutResult.outcomes())
+				.allMatch(outcome -> outcome == RecipientNotificationFanOutWorker.Outcome.PROCESSED);
 
 		return new Chain(senderId, postId, candidateIds);
 	}
@@ -330,36 +349,40 @@ class DirectionMatchingVerticalFlowIntegrationTest extends PostgisContainerInteg
 
 	private void updatePresence(long userId, double latitude, double longitude) {
 		presenceService.update(userId, new DirectionPresenceService.UpdateCommand(
-			BigDecimal.valueOf(latitude), BigDecimal.valueOf(longitude), BigDecimal.ONE, true, NOW));
+				BigDecimal.valueOf(latitude), BigDecimal.valueOf(longitude), BigDecimal.ONE, true, NOW));
 	}
 
 	private long octantSchemeId() {
-		return jdbc.queryForObject("SELECT id FROM direction_scheme WHERE code = 'OCTANT' AND status = 'ACTIVE'", Long.class);
+		return jdbc.queryForObject("SELECT id FROM direction_scheme WHERE code = 'OCTANT' AND status = 'ACTIVE'",
+				Long.class);
 	}
 
 	private long account(String nickname) {
 		return jdbc.queryForObject("""
-			INSERT INTO user_account (role, country_code, status, coarse_region_code, locale, timezone, nickname)
-			VALUES ('USER', 'KR', 'ACTIVE', ?, 'ko-KR', 'Asia/Seoul', ?) RETURNING id
-			""", Long.class, REGION, nickname);
+				INSERT INTO user_account (role, country_code, status, coarse_region_code, locale, timezone, nickname)
+				VALUES ('USER', 'KR', 'ACTIVE', ?, 'ko-KR', 'Asia/Seoul', ?) RETURNING id
+				""", Long.class, REGION, nickname);
 	}
 
 	private long activeQuestion(long approverId) {
-		return jdbc.queryForObject("""
-			INSERT INTO approved_question (source_type, status, question_text, answer_format, active_from, active_until, approved_at, approved_by)
-			VALUES ('OPERATOR', 'ACTIVE', 'flow-127 question', 'TEXT', ?, ?, ?, ?) RETURNING id
-			""", Long.class, Timestamp.from(NOW.minusSeconds(120)), Timestamp.from(NOW.plusSeconds(7200)),
-			Timestamp.from(NOW.minusSeconds(120)), approverId);
+		return jdbc.queryForObject(
+				"""
+						INSERT INTO approved_question (source_type, status, question_text, answer_format, active_from, active_until, approved_at, approved_by)
+						VALUES ('OPERATOR', 'ACTIVE', 'flow-127 question', 'TEXT', ?, ?, ?, ?) RETURNING id
+						""",
+				Long.class, Timestamp.from(NOW.minusSeconds(120)), Timestamp.from(NOW.plusSeconds(7200)),
+				Timestamp.from(NOW.minusSeconds(120)), approverId);
 	}
 
 	private void device(long userId, String fingerprint) {
 		notificationRepository.saveDevice(new PushDevice(null, userId, PushPlatform.ANDROID,
-			new byte[] {1, 2, 3, 4}, fingerprint, PushDeviceStatus.ACTIVE, NOW, null));
+				new byte[]{1, 2, 3, 4}, fingerprint, PushDeviceStatus.ACTIVE, NOW, null));
 	}
 
 	private void promotedRelease(long operatorUserId) {
-		var candidate = releaseRegistryService.createCandidate("flow127-norm", "flow127-ruleset", "flow127-category-map",
-			"flow127-model-snapshot");
+		var candidate = releaseRegistryService.createCandidate("flow127-norm", "flow127-ruleset",
+				"flow127-category-map",
+				"flow127-model-snapshot");
 		releaseRegistryService.markOfflineEvaluated(candidate.id(), 1L, new OperatorReason("TEST", "테스트 근거"));
 		releaseRegistryService.designateShadow(candidate.id(), 1L, new OperatorReason("TEST", "테스트 근거"));
 		releaseRegistryService.designateCanary(candidate.id(), 1L, new OperatorReason("TEST", "테스트 근거"));
@@ -368,15 +391,16 @@ class DirectionMatchingVerticalFlowIntegrationTest extends PostgisContainerInteg
 
 	private void seedVerdictReady(long filterJobId, long answerId, FilterVerdict verdict, String dedupSuffix) {
 		OutboxEvent event = OutboxEvent.pending(OutboxAggregateType.FILTER_JOB, filterJobId,
-			OutboxEventType.MODERATION_VERDICT_READY, "flow127-filter-job:" + filterJobId + ":" + dedupSuffix,
-			AnswerModerationEventPayloadsTestSupport.verdictReadyJson(objectMapper, filterJobId, answerId, verdict), NOW);
+				OutboxEventType.MODERATION_VERDICT_READY, "flow127-filter-job:" + filterJobId + ":" + dedupSuffix,
+				AnswerModerationEventPayloadsTestSupport.verdictReadyJson(objectMapper, filterJobId, answerId, verdict),
+				NOW);
 		outboxEventRepository.save(event);
 	}
 
 	private record Chain(long senderId, long postId, List<Long> candidateIds) {
 		long postRecipientIdFor(JdbcTemplate jdbc, long postId, long recipientId) {
 			return jdbc.queryForObject("SELECT id FROM post_recipient WHERE post_id = ? AND recipient_id = ?",
-				Long.class, postId, recipientId);
+					Long.class, postId, recipientId);
 		}
 	}
 }

@@ -5,8 +5,6 @@
  */
 package com.dnd.qello;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 import java.math.BigDecimal;
 import java.sql.Timestamp;
 import java.time.Instant;
@@ -29,6 +27,8 @@ import com.dnd.qello.direction.domain.DirectionSegment;
 import com.dnd.qello.direction.repository.ActiveUserPresenceRepository;
 import com.dnd.qello.direction.repository.DirectionSchemeRepository;
 import com.dnd.qello.direction.service.DirectionPostService;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 @SpringBootTest
 @ActiveProfiles("test")
@@ -63,8 +63,11 @@ class DirectionRecipientSelectionIntegrationTest extends PostgisContainerIntegra
 		jdbc.update("DELETE FROM approved_question");
 		jdbc.update("DELETE FROM user_account WHERE coarse_region_code = ?", REGION);
 		jdbc.update("DELETE FROM region_code WHERE code = ?", REGION);
-		jdbc.update("INSERT INTO region_code (code, parent_code, display_name, level) VALUES ('KR', NULL, 'Korea', 'COUNTRY') ON CONFLICT (code, level) DO NOTHING");
-		jdbc.update("INSERT INTO region_code (code, parent_code, display_name, level) VALUES (?, 'KR', 'Recipient Selection Test Region', 'REGION')", REGION);
+		jdbc.update(
+				"INSERT INTO region_code (code, parent_code, display_name, level) VALUES ('KR', NULL, 'Korea', 'COUNTRY') ON CONFLICT (code, level) DO NOTHING");
+		jdbc.update(
+				"INSERT INTO region_code (code, parent_code, display_name, level) VALUES (?, 'KR', 'Recipient Selection Test Region', 'REGION')",
+				REGION);
 	}
 
 	@Test
@@ -84,16 +87,18 @@ class DirectionRecipientSelectionIntegrationTest extends PostgisContainerIntegra
 		presence(releasedBlockId, 37.5013, 127.0001);
 		presence(blockedAccountId, 37.5014, 127.0001);
 		presence(deletedAccountId, 37.5015, 127.0001);
-		jdbc.update("INSERT INTO user_block (blocker_id, blocked_id, created_at) VALUES (?, ?, ?)", senderId, blockedBySenderId, Timestamp.from(AT));
-		jdbc.update("INSERT INTO user_block (blocker_id, blocked_id, created_at) VALUES (?, ?, ?)", blockedSenderId, senderId, Timestamp.from(AT));
+		jdbc.update("INSERT INTO user_block (blocker_id, blocked_id, created_at) VALUES (?, ?, ?)", senderId,
+				blockedBySenderId, Timestamp.from(AT));
+		jdbc.update("INSERT INTO user_block (blocker_id, blocked_id, created_at) VALUES (?, ?, ?)", blockedSenderId,
+				senderId, Timestamp.from(AT));
 		jdbc.update("INSERT INTO user_block (blocker_id, blocked_id, created_at, released_at) VALUES (?, ?, ?, ?)",
-			senderId, releasedBlockId, Timestamp.from(AT.minusSeconds(20)), Timestamp.from(AT.minusSeconds(10)));
+				senderId, releasedBlockId, Timestamp.from(AT.minusSeconds(20)), Timestamp.from(AT.minusSeconds(10)));
 
 		List<DirectionCandidate> candidates = presenceRepository.findCandidates(senderId, 37.5000, 127.0000,
-			0, 2_000, 0, 360, AT, REGION);
+				0, 2_000, 0, 360, AT, REGION);
 
 		assertThat(candidates).extracting(DirectionCandidate::userId)
-			.containsExactly(normalId, releasedBlockId);
+				.containsExactly(normalId, releasedBlockId);
 	}
 
 	@Test
@@ -110,10 +115,10 @@ class DirectionRecipientSelectionIntegrationTest extends PostgisContainerIntegra
 		receiveState(recentHistoryId, 1, AT.minusSeconds(60));
 
 		List<DirectionCandidate> candidates = presenceRepository.findCandidates(senderId, 37.5000, 127.0000,
-			0, 2_000, 0, 360, AT, REGION);
+				0, 2_000, 0, 360, AT, REGION);
 
 		assertThat(candidates).extracting(DirectionCandidate::userId)
-			.containsExactly(noHistoryId, oldHistoryId, recentHistoryId);
+				.containsExactly(noHistoryId, oldHistoryId, recentHistoryId);
 	}
 
 	@Test
@@ -124,19 +129,22 @@ class DirectionRecipientSelectionIntegrationTest extends PostgisContainerIntegra
 		long schemeId = eightSegmentScheme();
 		presence(senderId, 37.5000, 127.0000);
 		List<Long> candidateIds = IntStream.range(0, 12)
-			.mapToObj(index -> account("limit-candidate-" + index, "ACTIVE"))
-			.toList();
+				.mapToObj(index -> account("limit-candidate-" + index, "ACTIVE"))
+				.toList();
 		IntStream.range(0, 12).forEach(index -> presence(candidateIds.get(index), 37.5010 + index * 0.0001, 127.0000));
-		candidateIds.forEach((id) -> receiveState(id, candidateIds.indexOf(id), AT.minusSeconds(candidateIds.indexOf(id) + 1L)));
+		candidateIds.forEach(
+				(id) -> receiveState(id, candidateIds.indexOf(id), AT.minusSeconds(candidateIds.indexOf(id) + 1L)));
 
 		var result = postService.send(new DirectionPostService.SendCommand(senderId, questionId, schemeId, "S0",
-			0, 5_000, REGION, "gh97-limit-10", "본문", AT, AT.plusSeconds(3600)));
+				0, 5_000, REGION, "gh97-limit-10", "본문", AT, AT.plusSeconds(3600)));
 
 		assertThat(result.recipients()).isEmpty();
-		assertThat(jdbc.queryForObject("SELECT count(*) FROM post_recipient WHERE post_id = ?", Integer.class, result.post().getId()))
-			.isZero();
-		assertThat(jdbc.queryForObject("SELECT sum(active_unhandled_count) FROM recipient_receive_state WHERE user_id IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-			Integer.class, candidateIds.toArray())).isZero();
+		assertThat(jdbc.queryForObject("SELECT count(*) FROM post_recipient WHERE post_id = ?", Integer.class,
+				result.post().getId()))
+				.isZero();
+		assertThat(jdbc.queryForObject(
+				"SELECT sum(active_unhandled_count) FROM recipient_receive_state WHERE user_id IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+				Integer.class, candidateIds.toArray())).isZero();
 	}
 
 	@Test
@@ -147,66 +155,75 @@ class DirectionRecipientSelectionIntegrationTest extends PostgisContainerIntegra
 		long schemeId = eightSegmentScheme();
 		presence(senderId, 37.5000, 127.0000);
 		List<Long> candidateIds = IntStream.range(0, 12)
-			.mapToObj(index -> account("full-slot-candidate-" + index, "ACTIVE"))
-			.toList();
+				.mapToObj(index -> account("full-slot-candidate-" + index, "ACTIVE"))
+				.toList();
 		IntStream.range(0, 12).forEach(index -> presence(candidateIds.get(index), 37.5010 + index * 0.0001, 127.0000));
 		candidateIds.forEach((id) -> receiveState(id, 0, null));
 		IntStream.range(0, 3).forEach(index -> jdbc.update(
-			"UPDATE recipient_receive_state SET active_unhandled_count = 5 WHERE user_id = ?", candidateIds.get(index)));
+				"UPDATE recipient_receive_state SET active_unhandled_count = 5 WHERE user_id = ?",
+				candidateIds.get(index)));
 
 		var result = postService.send(new DirectionPostService.SendCommand(senderId, questionId, schemeId, "S0",
-			0, 5_000, REGION, "gh97-full-slot-10", "본문", AT, AT.plusSeconds(3600)));
+				0, 5_000, REGION, "gh97-full-slot-10", "본문", AT, AT.plusSeconds(3600)));
 
 		assertThat(result.recipients()).isEmpty();
-		assertThat(jdbc.queryForObject("SELECT count(*) FROM post_recipient WHERE post_id = ?", Integer.class, result.post().getId()))
-			.isZero();
-		assertThat(jdbc.queryForObject("SELECT count(*) FROM recipient_receive_state WHERE user_id IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-			Integer.class, candidateIds.toArray())).isEqualTo(12);
+		assertThat(jdbc.queryForObject("SELECT count(*) FROM post_recipient WHERE post_id = ?", Integer.class,
+				result.post().getId()))
+				.isZero();
+		assertThat(jdbc.queryForObject(
+				"SELECT count(*) FROM recipient_receive_state WHERE user_id IN (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+				Integer.class, candidateIds.toArray())).isEqualTo(12);
 	}
 
 	private long account(String nickname, String status) {
 		if ("DELETED".equals(status)) {
-			return jdbc.queryForObject("""
-				INSERT INTO user_account (role, country_code, status, coarse_region_code, locale, timezone, nickname, deleted_at)
-				VALUES ('USER', 'KR', ?, ?, 'ko-KR', 'Asia/Seoul', ?, ?)
-				RETURNING id
-				""", Long.class, status, REGION, nickname, Timestamp.from(AT));
+			return jdbc.queryForObject(
+					"""
+							INSERT INTO user_account (role, country_code, status, coarse_region_code, locale, timezone, nickname, deleted_at)
+							VALUES ('USER', 'KR', ?, ?, 'ko-KR', 'Asia/Seoul', ?, ?)
+							RETURNING id
+							""",
+					Long.class, status, REGION, nickname, Timestamp.from(AT));
 		}
 		return jdbc.queryForObject("""
-			INSERT INTO user_account (role, country_code, status, coarse_region_code, locale, timezone, nickname)
-			VALUES ('USER', 'KR', ?, ?, 'ko-KR', 'Asia/Seoul', ?)
-			RETURNING id
-			""", Long.class, status, REGION, nickname);
+				INSERT INTO user_account (role, country_code, status, coarse_region_code, locale, timezone, nickname)
+				VALUES ('USER', 'KR', ?, ?, 'ko-KR', 'Asia/Seoul', ?)
+				RETURNING id
+				""", Long.class, status, REGION, nickname);
 	}
 
 	private void presence(long userId, double latitude, double longitude) {
-		presenceRepository.save(ActiveUserPresence.create(userId, BigDecimal.valueOf(latitude), BigDecimal.valueOf(longitude),
-			null, REGION, BigDecimal.ONE, true, AT.minusSeconds(10), AT.plusSeconds(3600)));
+		presenceRepository
+				.save(ActiveUserPresence.create(userId, BigDecimal.valueOf(latitude), BigDecimal.valueOf(longitude),
+						null, REGION, BigDecimal.ONE, true, AT.minusSeconds(10), AT.plusSeconds(3600)));
 	}
 
 	private void receiveState(long userId, int recentCount, Instant lastReceivedAt) {
-		jdbc.update("""
-			INSERT INTO recipient_receive_state
-				(user_id, active_unhandled_count, recent_received_count, recent_window_started_at, last_received_at, updated_at)
-			VALUES (?, 0, ?, ?, ?, ?)
-			""", userId, recentCount, Timestamp.from(AT.minusSeconds(3600)),
-			lastReceivedAt == null ? null : Timestamp.from(lastReceivedAt), Timestamp.from(AT));
+		jdbc.update(
+				"""
+						INSERT INTO recipient_receive_state
+							(user_id, active_unhandled_count, recent_received_count, recent_window_started_at, last_received_at, updated_at)
+						VALUES (?, 0, ?, ?, ?, ?)
+						""",
+				userId, recentCount, Timestamp.from(AT.minusSeconds(3600)),
+				lastReceivedAt == null ? null : Timestamp.from(lastReceivedAt), Timestamp.from(AT));
 	}
 
 	private long activeQuestion(long approverId) {
 		return jdbc.queryForObject("""
-			INSERT INTO approved_question
-			(source_type, status, question_text, answer_format, active_from, active_until, approved_at, approved_by)
-			VALUES ('OPERATOR', 'ACTIVE', '방향 질문', 'TEXT', ?, ?, ?, ?)
-			RETURNING id
-			""", Long.class, Timestamp.from(AT.minusSeconds(1)), Timestamp.from(AT.plusSeconds(7200)),
-			Timestamp.from(AT.minusSeconds(1)), approverId);
+				INSERT INTO approved_question
+				(source_type, status, question_text, answer_format, active_from, active_until, approved_at, approved_by)
+				VALUES ('OPERATOR', 'ACTIVE', '방향 질문', 'TEXT', ?, ?, ?, ?)
+				RETURNING id
+				""", Long.class, Timestamp.from(AT.minusSeconds(1)), Timestamp.from(AT.plusSeconds(7200)),
+				Timestamp.from(AT.minusSeconds(1)), approverId);
 	}
 
 	private long eightSegmentScheme() {
 		DirectionScheme scheme = schemeRepository.save(DirectionScheme.createEqual("TEST-97", 1, 8, BigDecimal.ZERO));
-		IntStream.range(0, 8).forEach(index -> schemeRepository.saveSegment(DirectionSegment.create(scheme.getId(), "S" + index,
-			"segment-" + index, BigDecimal.valueOf(index * 45L + 22.5), BigDecimal.valueOf(45), index)));
+		IntStream.range(0, 8)
+				.forEach(index -> schemeRepository.saveSegment(DirectionSegment.create(scheme.getId(), "S" + index,
+						"segment-" + index, BigDecimal.valueOf(index * 45L + 22.5), BigDecimal.valueOf(45), index)));
 		return scheme.getId();
 	}
 }
