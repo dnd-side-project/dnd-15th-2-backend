@@ -1,7 +1,8 @@
 /*
  * Created at: 2026-08-19T03:00:00+09:00
  * Source scenario: TEST-PLAN-GH-168-NICKNAME-DUPLICATE-MODERATION-UNIT-008 through UNIT-012,
- * TEST-PLAN-GH-315-AUTH-NICKNAME-RATE-LIMIT-UNIT-009 through UNIT-013
+ * TEST-PLAN-GH-315-AUTH-NICKNAME-RATE-LIMIT-UNIT-009 through UNIT-013,
+ * TEST-PLAN-GH-317-NICKNAME-INVISIBLE-CHARS-UNIT-007, UNIT-008
  */
 package com.dnd.qello.account.service;
 
@@ -42,6 +43,8 @@ class NicknameRegistrationServiceTest {
 	private static final Instant NOW = Instant.parse("2026-10-06T05:00:00Z");
 	private static final Duration COOLDOWN = Duration.ofDays(30);
 	private static final int GENEROUS_ATTEMPTS = 100;
+	private static final String ZWSP = Character.toString(0x200B);
+	private static final String IDEOGRAPHIC_SPACE = Character.toString(0x3000);
 
 	private final FakeTransactionManager transactionManager = new FakeTransactionManager();
 
@@ -288,6 +291,57 @@ class NicknameRegistrationServiceTest {
 		assertThat(moderationChecker.callCount).isEqualTo(3);
 	}
 
+	@Test
+	@DisplayName("#317 UNIT-007: 중복 검사 입력·moderation 입력·저장값이 모두 보이지 않는 문자와 공백을 정규화한 같은 값이다")
+	void usesOneNormalizedNicknameForDuplicateCheckModerationAndPersist() {
+		FakeAccountRepository accountRepository = new FakeAccountRepository(false);
+		accountRepository.store(1L, sampleAccount());
+		FakeNicknameModerationChecker moderationChecker = new FakeNicknameModerationChecker(
+				NicknameModerationOutcome.allowed());
+		NicknameRegistrationService service = service(accountRepository, moderationChecker);
+
+		Account updated = service.changeNickname(1L, IDEOGRAPHIC_SPACE + "바" + ZWSP + "람 ");
+
+		assertThat(accountRepository.lastCheckedNickname).isEqualTo("바람");
+		assertThat(moderationChecker.lastNickname).isEqualTo("바람");
+		assertThat(updated.getNickname()).isEqualTo("바람");
+		assertThat(accountRepository.updateProfileCallCount).isEqualTo(1);
+	}
+
+	@Test
+	@DisplayName("#317 UNIT-008: 정규화하면 비는 닉네임은 REQUIRED_VALUE_MISSING이고 중복 검사·moderation·저장을 하지 않는다")
+	void rejectsNicknameThatBecomesEmptyBeforeDuplicateCheckAndModeration() {
+		FakeAccountRepository accountRepository = new FakeAccountRepository(false);
+		accountRepository.store(1L, sampleAccount());
+		FakeNicknameModerationChecker moderationChecker = new FakeNicknameModerationChecker(
+				NicknameModerationOutcome.allowed());
+		NicknameRegistrationService service = service(accountRepository, moderationChecker);
+
+		assertThatThrownBy(() -> service.changeNickname(1L, ZWSP))
+				.isInstanceOf(AccountException.class)
+				.hasFieldOrPropertyWithValue("errorCode", AccountErrorCode.REQUIRED_VALUE_MISSING);
+		assertThat(accountRepository.lastCheckedNickname).isNull();
+		assertThat(moderationChecker.callCount).isZero();
+		assertThat(accountRepository.updateProfileCallCount).isZero();
+	}
+
+	@Test
+	@DisplayName("#317 UNIT-008: 50자를 넘는 닉네임은 TEXT_TOO_LONG이고 중복 검사·moderation·저장을 하지 않는다")
+	void rejectsTooLongNicknameBeforeDuplicateCheckAndModeration() {
+		FakeAccountRepository accountRepository = new FakeAccountRepository(false);
+		accountRepository.store(1L, sampleAccount());
+		FakeNicknameModerationChecker moderationChecker = new FakeNicknameModerationChecker(
+				NicknameModerationOutcome.allowed());
+		NicknameRegistrationService service = service(accountRepository, moderationChecker);
+
+		assertThatThrownBy(() -> service.changeNickname(1L, "가".repeat(51)))
+				.isInstanceOf(AccountException.class)
+				.hasFieldOrPropertyWithValue("errorCode", AccountErrorCode.TEXT_TOO_LONG);
+		assertThat(accountRepository.lastCheckedNickname).isNull();
+		assertThat(moderationChecker.callCount).isZero();
+		assertThat(accountRepository.updateProfileCallCount).isZero();
+	}
+
 	private NicknameRegistrationService service(AccountRepository accountRepository,
 			NicknameModerationChecker checker) {
 		return service(accountRepository, checker, GENEROUS_ATTEMPTS);
@@ -376,6 +430,7 @@ class NicknameRegistrationServiceTest {
 	private static final class FakeNicknameModerationChecker implements NicknameModerationChecker {
 		private final NicknameModerationOutcome outcome;
 		private int callCount;
+		private String lastNickname;
 		private ModerationLanguage lastLanguage;
 
 		private FakeNicknameModerationChecker(NicknameModerationOutcome outcome) {
@@ -385,6 +440,7 @@ class NicknameRegistrationServiceTest {
 		@Override
 		public NicknameModerationOutcome check(String nickname, ModerationLanguage language) {
 			callCount++;
+			lastNickname = nickname;
 			lastLanguage = language;
 			return outcome;
 		}
