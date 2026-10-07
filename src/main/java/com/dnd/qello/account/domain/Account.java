@@ -1,5 +1,6 @@
 package com.dnd.qello.account.domain;
 
+import java.text.Normalizer;
 import java.time.DateTimeException;
 import java.time.Duration;
 import java.time.Instant;
@@ -17,6 +18,10 @@ public final class Account {
 	private static final int LOCALE_MAX_LENGTH = 35;
 	private static final int TIMEZONE_MAX_LENGTH = 64;
 	private static final int NICKNAME_MAX_LENGTH = 50;
+	// Cc(제어)·Cf(서식: zero-width·BOM·방향 제어). 공백류와 ZWJ는 여기서 지우지 않고 뒤 단계에서 다룬다.
+	private static final Pattern NICKNAME_HIDDEN_CHARACTERS = Pattern.compile("[\\p{Cc}\\p{Cf}&&[^\\s\\u200D]]");
+	private static final Pattern NICKNAME_WHITESPACE_RUN = Pattern.compile("(?U)\\s+");
+	private static final int ZERO_WIDTH_JOINER = 0x200D;
 
 	private final Long id;
 	private final AccountRole role;
@@ -78,7 +83,7 @@ public final class Account {
 				coarseRegionCode,
 				locale,
 				timezone,
-				nickname,
+				normalizeNewNickname(nickname),
 				null,
 				null,
 				null);
@@ -104,7 +109,7 @@ public final class Account {
 				coarseRegionCode,
 				locale,
 				timezone,
-				nickname,
+				normalizeNewNickname(nickname),
 				null,
 				null,
 				null);
@@ -116,6 +121,10 @@ public final class Account {
 	 * <p>
 	 * 프로필 이미지는 이 시그니처에 없다. 인자로 추가하면 기존 호출자가 값을 빠뜨렸을 때 프로필이 조용히 사라지므로, 복원한 뒤
 	 * {@link #withProfileImage(long)}로 합성한다.
+	 *
+	 * <p>
+	 * 닉네임은 {@link #normalizeNickname(String)}을 거치지 않고 저장된 값 그대로 복원한다. 이전 규칙으로 저장된
+	 * 행(보이지 않는 문자만 있는 닉네임 등)도 읽을 수 있어야 하기 때문이다(#317).
 	 */
 	public static Account restore(
 			Long id,
@@ -158,7 +167,7 @@ public final class Account {
 				coarseRegionCode,
 				locale,
 				timezone,
-				nickname,
+				normalizeNewNickname(nickname),
 				profileImageMediaId,
 				nicknameChangedAt,
 				deletedAt);
@@ -185,8 +194,27 @@ public final class Account {
 	public Account changeNickname(String newNickname, Instant changedAt) {
 		requireValue(changedAt, "nicknameChangedAt");
 		return new Account(
-				id, role, status, countryCode, coarseRegionCode, locale, timezone, newNickname,
+				id, role, status, countryCode, coarseRegionCode, locale, timezone, normalizeNewNickname(newNickname),
 				profileImageMediaId, changedAt, deletedAt);
+	}
+
+	/**
+	 * 새로 입력받은 닉네임을 정규화하고 검증한다. 저장·중복 검사·moderation이 이 값 하나를 함께 쓴다(#317).
+	 *
+	 * <p>
+	 * NFC로 조합한 뒤 제어·서식 문자(zero-width, BOM, 방향 제어 등)를 지우고, 유니코드 공백(전각 공백 포함)을 한 칸으로
+	 * 줄이고 앞뒤를 제거한다. 이모지 결합에 쓰인 ZWJ만 남긴다. moderation 정규화와 달리 NFKC는 적용하지 않는다 — 한글 호환
+	 * 자모(ㄱ)가 첫소리 자모(ᄀ)로 바뀌어 표시가 깨진다. 결과가 비면 REQUIRED_VALUE_MISSING, 50자를 넘으면
+	 * TEXT_TOO_LONG을 던진다.
+	 */
+	public static String normalizeNickname(String nickname) {
+		if (nickname == null) {
+			throw new AccountException(
+					AccountErrorCode.REQUIRED_VALUE_MISSING, "nickname", "nickname은 공백일 수 없습니다");
+		}
+		String composed = Normalizer.normalize(nickname, Normalizer.Form.NFC);
+		String visible = removeStrayJoiners(NICKNAME_HIDDEN_CHARACTERS.matcher(composed).replaceAll(""));
+		return validateNickname(NICKNAME_WHITESPACE_RUN.matcher(visible).replaceAll(" ").strip());
 	}
 
 	/**
@@ -368,6 +396,49 @@ public final class Account {
 		return validated;
 	}
 
+	private static String normalizeNewNickname(String nickname) {
+		return nickname == null ? null : normalizeNickname(nickname);
+	}
+
+	// 가족 이모지처럼 여러 이모지를 잇는 ZWJ 결합의 U+200D만 남긴다(#317 D2). 판정 기준은 UAX #29 GB11과 같다.
+	// 앞쪽은 결합 부호·변형 선택자·피부색 수식자를 건너뛴 Extended_Pictographic, 바로 뒤는
+	// Extended_Pictographic이다.
+	private static String removeStrayJoiners(String value) {
+		if (value.indexOf(ZERO_WIDTH_JOINER) < 0) {
+			return value;
+		}
+		int[] codePoints = value.codePoints().toArray();
+		StringBuilder kept = new StringBuilder(value.length());
+		for (int index = 0; index < codePoints.length; index++) {
+			int codePoint = codePoints[index];
+			boolean nextIsEmoji = index + 1 < codePoints.length
+					&& Character.isExtendedPictographic(codePoints[index + 1]);
+			if (codePoint != ZERO_WIDTH_JOINER || nextIsEmoji && endsWithEmoji(kept)) {
+				kept.appendCodePoint(codePoint);
+			}
+		}
+		return kept.toString();
+	}
+
+	private static boolean endsWithEmoji(CharSequence value) {
+		int index = value.length();
+		while (index > 0) {
+			int codePoint = Character.codePointBefore(value, index);
+			if (!isEmojiExtender(codePoint)) {
+				return Character.isExtendedPictographic(codePoint);
+			}
+			index -= Character.charCount(codePoint);
+		}
+		return false;
+	}
+
+	private static boolean isEmojiExtender(int codePoint) {
+		int type = Character.getType(codePoint);
+		return type == Character.NON_SPACING_MARK
+				|| type == Character.ENCLOSING_MARK
+				|| Character.isEmojiModifier(codePoint);
+	}
+
 	private static String validateNickname(String nickname) {
 		if (nickname == null) {
 			return null;
@@ -375,6 +446,7 @@ public final class Account {
 		// 앞뒤 공백만 다른 닉네임이 대소문자 무시 유일성 검사와 uq_user_account_nickname_ci
 		// 인덱스(둘 다 lower()만 적용하고 trim은 하지 않는다)를 우회해 시각적으로 동일한
 		// 닉네임이 공존하지 않도록, 저장되는 값 자체를 여기서 정규화한다(#168).
+		// 새 입력은 normalizeNickname()을 먼저 거친다. restore로 읽은 값은 이 trim과 길이 검사만 받는다(#317).
 		String trimmed = nickname.trim();
 		if (trimmed.isBlank()) {
 			throw new AccountException(
