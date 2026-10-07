@@ -77,3 +77,14 @@ git diff --check
 - 2026-10-07 사용자 결정(구현 중 추가, D4): U+3000처럼 `isBlank()`가 true인 원문은 정규화기보다 먼저
   `ModerationPipelineRequest` 생성자에서 일반 `FilteringException`으로 거절되어 여전히 503이었다. 이 생성자도
   null이 아닌 blank 원문을 `EmptyNormalizedTextException`으로 거절하도록 범위에 추가한다.
+
+## Environment notes
+
+- 2026-10-07 PR #320 생성 후 #319(#317) 머지로 충돌이 나서 `origin/main`(`1775ce3`)으로 rebase했다. 충돌은 `TASK.md`에서만
+  났고 #318 계약을 유지했다. `NicknameRegistrationService`는 #319의 `ensureAvailable`과 이 브랜치의 `rejectionFor`가
+  자동 병합됐다.
+- #319 이후 서비스가 moderation 전에 `Account.normalizeNickname`으로 닉네임을 정규화해 빈 값을 400으로 거절한다. 그래서
+  닉네임 경로에서 U+200B·U+FEFF·U+3000은 게이트에 닿지 않는다. 이 브랜치의 게이트·요청 생성자 분류는 그 앞단 검사가
+  바뀌거나 다른 호출자가 생길 때 입력 오류가 503이 되지 않게 하는 방어선이다.
+- linked worktree에서는 훅이 실행하는 `ChangedJavaTypesTest`가 훅 환경의 `GIT_DIR`을 물려받아 저장소를 손상시킨다.
+  Java가 포함된 커밋과 push는 같은 검사를 훅 밖에서 실행한 뒤 `--no-verify`로 한다(사용자 승인, 보고서 5절).

@@ -3,7 +3,8 @@
 > Created at: `2026-10-07T11:33:43+09:00`
 > GitHub Issue: `#318`
 > Branch: `fix/gh-318-nickname-empty-input-400`
-> Commit: 검증은 커밋 전 작업 트리(base `origin/main` `aae33fa`)에서 실행했다. 그 내용이 `4a1c1ef`·`e9fb75b`·`31ca449`에 그대로 커밋됐다
+> Updated at: `2026-10-07T16:13:41+09:00` (#319 머지 후 `origin/main` `1775ce3`으로 rebase하고 재검증)
+> Commit: 최초 검증은 base `aae33fa`의 커밋 전 작업 트리, 재검증은 rebase 후 작업 트리(base `1775ce3`)에서 실행했다
 
 ## 1. Executive summary
 
@@ -45,6 +46,7 @@
 | `./gradlew compileJava javaConventionCheck` | 최초 FAIL → `spotlessApply` 후 PASS | — | — | 5절 |
 | `./harness pr-ready --project-tests` | PASS | `./harness check` 전체와 Gradle `check`. `test`·`integrationTest`는 직전 `test-run`과 입력이 같아 UP-TO-DATE로 결과를 재사용했다 | 22s, 주석 수정 후 재실행 11s | "Local PR readiness checks passed." 주석 수정 후 `compileJava`는 재실행됐지만 테스트 태스크는 UP-TO-DATE였다(바이트코드 동일) |
 | `npm run hooks:validate`, `git diff --check` | PASS | — | — | "Husky validation passed." |
+| #319 rebase 후(base `1775ce3`) `./harness pr-ready --project-tests` | PASS | 단위 1,224(skipped 2), 통합 788, 실패 0. 테스트 태스크를 실제로 다시 실행했다 | 17m 9s | "Local PR readiness checks passed." |
 
 ## 4. Scenario results
 
@@ -58,7 +60,7 @@
 | UNIT-006 | PASS | 기존 게이트·동시성·정규화기·파이프라인·답변 moderation 테스트 | 기존 테스트 메서드는 수정하지 않았다. `IllegalStateException` → 보조 판정기 전환 테스트 유지 |
 | UNIT-007 | PASS | `NicknameInvalidInputRejectionTest.invalidInputMapsToRequiredValueMissing` | 변경·등록 진입점 모두 `ACC-VAL-002`, `updateProfile` 미호출 |
 | UNIT-008 | PASS | `NicknameInvalidInputRejectionTest.everyRejectionReasonMapsToAnErrorCode` | 기대 매핑의 키가 `Reason.values()`와 같은지도 확인한다 |
-| UNIT-009 | PASS | `NicknameInvalidInputRejectionTest.productionGateCompositionRejectsInvisibleOnlyNicknameAsBadRequest` | D4 적용 전에는 U+3000에서 보조 판정기가 1회 호출되어 실패했다(5절) |
+| UNIT-009 | PASS | `NicknameInvalidInputRejectionTest.productionGateCompositionRejectsInvisibleOnlyNicknameAsBadRequest` | D4 적용 전에는 U+3000에서 보조 판정기가 1회 호출되어 실패했다(5절). #319 rebase 후에는 서비스의 정규화 검사가 게이트 전에 거절해 통과한다. 게이트 경로는 UNIT-003이 확인한다 |
 | UNIT-010 | PASS | `ModerationPipelineServiceTest.blankRawContentIsInputErrorButNullIsNot` | 구현 중 추가(D4) |
 | INT-001 | PASS | 기존 통합 테스트 전체 | 784건 |
 
@@ -131,6 +133,10 @@
 - 운영 관측: 입력 오류가 더는 `ACC-INFRA-001`로 집계되지 않는다. 503 경보에서 입력 오류 잡음이 빠진다.
 
 ## 7. Regression and residual risk
+
+- #319 이후 닉네임 경로에서는 서비스가 moderation 전에 `Account.normalizeNickname`으로 빈 값을 400으로 거절한다.
+  U+200B·U+FEFF·U+3000·NBSP는 모두 그 단계에서 끝나 게이트에 닿지 않는다. 그래서 이 브랜치의 사용자 응답 변화는 현재
+  닉네임 경로에서 관찰되지 않는다. 게이트와 요청 생성자의 분류는 앞단 검사가 바뀌거나 다른 호출자가 생길 때의 방어선이다.
 
 - 답변 moderation 경로의 같은 예외 처리(`AnswerModerationExecutionWorker`)는 Issue 제외 범위다. 이번 변경으로 동작은 바뀌지 않았다.
 - #317과 `NicknameRegistrationService`를 함께 수정한다. 이 브랜치는 `rejectionFor`만, #317은 `ensureAvailable` 본문을 고치므로
