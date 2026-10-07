@@ -41,6 +41,13 @@ GC_PAUSE_RE = re.compile(
     r"\((?P<cap>\d+)(?P<cu>[KMG])\) (?P<ms>[\d.]+)ms"
 )
 UNIT_MB = {"K": 1 / 1024, "M": 1.0, "G": 1024.0}
+# Parameterized display names can embed object identities such as
+# Foo$$Lambda/0x00007f02dc79cd80@4c6ed3b3, which change with every JVM.
+IDENTITY_RE = re.compile(r"(?:/0x[0-9a-f]+)?@[0-9a-f]{4,16}\b")
+
+
+def normalize_name(name: str) -> str:
+    return IDENTITY_RE.sub("@<id>", name)
 
 
 def parse_duration(text: str) -> float:
@@ -87,7 +94,7 @@ def read_junit(artifact: Path, task: str) -> dict:
         for key in counts:
             counts[key] += int(suite.get(key, 0))
         for case in suite.iter("testcase"):
-            names.add(f"{case.get('classname')}#{case.get('name')}")
+            names.add(normalize_name(f"{case.get('classname')}#{case.get('name')}"))
         out = suite.findtext("system-out") or ""
         for match in CACHE_RE.finditer(out):
             size, miss = int(match["size"]), int(match["miss"])
@@ -284,6 +291,11 @@ def self_test() -> list[str]:
         errors.append("exact p for complete separation")
     if abs(mann_whitney_less([4, 5, 6], [1, 2, 3]) - 1.0) > 1e-12:
         errors.append("exact p for the opposite direction")
+    if (normalize_name("T#[1] input=T$$Lambda/0x00007f02dc79cd80@4c6ed3b3")
+            != normalize_name("T#[1] input=T$$Lambda/0x00007f111079cfd0@bc36510")):
+        errors.append("object identities in test names must be ignored")
+    if normalize_name("T#[1] id=1234, name=cafe") != "T#[1] id=1234, name=cafe":
+        errors.append("plain words must not be treated as identities")
     if mann_whitney_less([1, 1, 1], [1, 1, 1]) != 1.0:
         errors.append("ties must not show a difference")
     estimate, low, high = shift_interval([10.0] * 10, [20.0] * 10)
