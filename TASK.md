@@ -1,51 +1,45 @@
-# GitHub Issue #137 Task Contract
+# GitHub Issue #325 Task Contract
 
-> Generated at: `2026-10-07T21:56:09+09:00`
+> Generated at: `2026-10-07T23:02:27+09:00`
 >
 > 이 파일은 현재 작업 브랜치의 계약이다. 저장소 전역 정책은 `AGENTS.md`를
 > 따른다.
 
 ## Work gate
 
-- Title: `필터링 시스템 — 방향 질문글 비동기 moderation 연결 (F12)`
-- GitHub Issue: `#137`
-- Branch: `feat/gh-137-direction-post-moderation`
+- Title: `업로드 이미지의 EXIF 위치정보 제거`
+- GitHub Issue: `#325`
+- Branch: `feat/gh-325-exif-strip-on-confirm`
 - Base branch: `main`
 
 ## Objective
 
-질문글은 `moderation_status = PENDING`으로 만들어지지만 PASSED로 바꾸는 코드가 없다. `DirectionMatchingWorker`는
-PENDING을 재시도 대상으로 보고 만료될 때까지 재시도만 하므로 질문글이 아무에게도 전달되지 않는다. 판정 대상 종류
-(`FilterTargetType`)도 `ANSWER`와 `NICKNAME`뿐이다. 질문글을 공통 moderation 비동기 파이프라인에 연결해 PASSED
-질문글만 매칭되게 하고, 늦거나 중복된 판정 결과가 상태를 되돌리지 않게 한다.
+- TASK-ID: GH-325-EXIF-STRIP
+- 업로드 이미지가 EXIF GPS를 담은 채 다른 사용자에게 서빙된다. 질문글, 답변, 프로필이 모두 같은 confirm 경로를 쓴다.
+- D8 결정(A안, 2026-10-07)에 따라 confirm에서 API 서버가 EXIF를 지운다.
+- 테스트 계획(`TEST-PLAN-GH-325-EXIF-STRIP`)을 사람이 승인하기 전에는 구현을 시작하지 않는다.
 
 ## Scope
 
-- `FilterTargetType.DIRECTION_POST` 추가. Flyway V32로 `filter_job`·`manual_review_case`의 `target_type` CHECK 제약에
-  `DIRECTION_POST`를 추가한다.
-- `DirectionPostService.send`:
-  - 본문이 있는 질문글(`글`, `미디어+글`)은 질문글 저장과 같은 트랜잭션에서 `AnswerModerationIntake`로 job을 접수한다.
-  - 미디어 단독 질문글은 job 없이 `moderation_status = PASSED`로 만든다. 첨부 asset의 READY 여부는 기존 첨부 정책이
-    확인한다.
-- 질문글 판정 반영:
-  - `MODERATION_VERDICT_READY` ALLOW → PASSED, BLOCK → REJECTED
-  - `MODERATION_DEADLINE_ELAPSED` → REVIEW_HELD
-  - PENDING 또는 REVIEW_HELD일 때만 바꾸는 조건부 갱신으로 처리한다. PASSED·REJECTED 질문글과 만료된 질문글
-    (`status`가 MATCHING이 아니거나 `expires_at`이 지난 질문글)은 늦거나 중복된 이벤트로 바뀌지 않는다.
-    DEADLINE_ELAPSED는 PENDING에서만 REVIEW_HELD로 바꾼다.
-- `DirectionPostApiSpec` 제출 응답에 503(`FLT-DOM-006`)을 문서화하고 `docs/api/openapi.json`을 재생성한다(D3).
-- 판정 이벤트 분배: 지금은 `AnswerModerationVerdictWorker`가 두 이벤트를 모두 claim하고 `ANSWER`가 아니면 상태를 바꾸지
-  않고 완료 처리한다. filtering 모듈에 대상 종류별 판정 적용기 인터페이스를 두고, 답변 모듈과 질문글 모듈이 각각
-  구현해 `targetType`에 따라 분배한다. 답변 판정 반영 동작은 바꾸지 않는다.
+| 항목 | 내용 |
+| --- | --- |
+| EXIF 제거 모듈 | JPEG·PNG 무손실 제거, 허용 목록 방식. Orientation과 ICC 프로파일만 남긴다. S3·Spring에 의존하지 않는다 |
+| confirm | 원본 읽기 → 제거 → serving key에 저장 → READY와 `exif_stripped = true`. 실패하면 REJECTED |
+| key 분리 | upload key와 serving key를 나누고, 조회 URL은 serving key로만 발급한다 |
+| 저장소 포트 | `ObjectStoragePort`에 크기 상한이 있는 전체 읽기와 쓰기를 추가한다 |
+| 도메인 | `MediaAsset`에 `exifStripped`를 추가하고, READY면 true라는 불변식을 건다 |
+
+정해진 세부 사항(2026-10-07 사람 승인):
+
+- `byte_size`, `checksum`은 원본 값을 유지한다.
+- 기존 READY 이미지는 별도로 처리하지 않는다(출시 전 테스트 데이터로 본다).
+- 원본 이전 버전 180일 보존은 이번에 바꾸지 않는다.
 
 ## Explicit exclusions
 
-- 질문글 이의제기(`appeal_case` 제약, `AppealCaseService`)
-- 이미지·영상 자체 안전 검사, EXIF, OCR
-- #120 매칭 워커의 후보 재계산·슬롯 예약·수신자 확정 로직. `DirectionMatchingWorker`의 moderation gate는 그대로 둔다
-- 이미 PENDING으로 저장된 질문글 backfill. 만료 처리로 정리된다
-- BLOCK 시 질문글 `status` 변경. `moderation_status`만 REJECTED로 바꾼다(D1)
-- provider별 threshold 정책 조정, 외부 push 발송
+- Lambda 전환(B안), 이미지 moderation, 썸네일·리사이즈
+- 원본 이전 버전 삭제와 lifecycle 변경(인프라 변경, 별도 Issue)
+- API 요청·응답 스키마 변경
 - 인프라 apply, 배포, 프로덕션 변경은 별도 승인 없이는 실행하지 않는다.
 - Secret, 계정 식별자, 토큰, `.env` 값은 기록하지 않는다.
 
@@ -53,40 +47,32 @@ PENDING을 재시도 대상으로 보고 만료될 때까지 재시도만 하므
 
 | Area | Owner | Required review |
 | --- | --- | --- |
-| `FilterTargetType`·V32 마이그레이션·판정 분배·질문글 판정 적용·`send` job 접수 | 실행 에이전트 | 사용자 PR 리뷰 |
-| 테스트 수정·추가 | 실행 에이전트 | `/harness-test-plan` 승인 후 작성 |
+| 테스트 계획 | Test orchestrator | 사람의 계획 승인 |
+| production 구현(`src/main/**/answer/**`, `src/main/**/account/**`, `src/main/**/feed/**`) | Feature executor | 승인된 계획 범위 안의 변경인지 독립 검토 |
+| 단위 테스트(`src/test/**`) | Test executor | 실제 변경과 실행 결과의 독립 검토 |
+| 통합 테스트(`src/integrationTest/**`) | Test executor | 실제 변경과 실행 결과의 독립 검토 |
 
 ## Existing user-owned changes
 
-- 작업 시작 시 `git status --short`는 깨끗했다. 최신 `origin/main`(`1a3b125`)에서 메인 작업 디렉터리로 분기했다.
+- 새 worktree를 `origin/main`(`1a3b1254`)에서 만들었다. 작업 시작 시 `git status --short`는 `TASK.md`만 수정 상태로 표시했다(`h task-init` 결과).
 
 ## Validation
 
 ```bash
 ./harness check
 ./harness pr-ready --project-tests
+./gradlew test --tests "com.dnd.qello.answer.*"
+./gradlew integrationTest --tests "*ExifStripIntegrationTest" --tests "*MediaAssetStorageIntegrationTest" --tests "*MediaAttachmentIntegrationTest" --tests "*FeedMediaViewUrlIntegrationTest" --tests "*ProfileImageIntegrationTest"
 git diff --check
 ```
 
 ## Completion criteria
 
-- 질문글 저장 API는 moderation provider 응답을 기다리지 않고 완료된다.
-- `PENDING`, `REVIEW_HELD`, `REJECTED` 질문글은 매칭 워커가 수신자·슬롯을 만들지 못한다.
-- ALLOW 판정을 받은 질문글은 PASSED가 되고 다음 매칭 시도에서 수신자가 확정된다.
-- 중복 판정 이벤트, 판정 후 도착한 DEADLINE_ELAPSED, 확정 후 도착한 반대 판정이 상태를 되돌리지 않는다.
-- 늦은 ALLOW가 만료된 질문글을 다시 매칭 가능하게 만들지 않는다.
-- `글`, `미디어+글`, `미디어` 질문글이 매칭 대상에 포함되고, `미디어` 단독 질문글은 job 없이 처리되는 정책이 테스트로
-  고정된다.
-- 답변 판정 반영 기존 테스트가 그대로 통과한다.
-- `./harness check`와 `./harness pr-ready --project-tests`가 통과한다.
-
-## Decisions
-
-- 2026-10-07 사용자 결정: 새 이슈를 만들지 않고 #137에서 바로 작업한다. Project Priority를 P1에서 P0으로 바꿨다.
-- 2026-10-07 사용자 결정(D1): BLOCK 판정은 `moderation_status`만 REJECTED로 바꾼다. 질문글 `status`는 MATCHING으로
-  남고, 매칭 워커가 REJECTED를 보고 매칭 없이 이벤트를 완료하며, 만료 처리가 EXPIRED로 닫는다.
-- 2026-10-07 사용자 결정(D2): 판정 이벤트는 filtering 모듈의 대상 종류별 적용기 인터페이스로 분배한다.
-- 2026-10-07 사용자 결정: 테스트 계획 `TEST-PLAN-GH-137-DIRECTION-POST-MODERATION` 승인. 기존 Direction 통합 테스트 8개에는
-  release fixture 호출만 추가한다. 매칭 이벤트 재시도 운영값(R8)은 범위 밖이며 보고서에 남긴다.
-- 2026-10-07 사용자 결정(D3, 구현 중 추가): 승격된 release가 없으면 질문글 제출이 503(`FLT-DOM-006`)이 된다.
-  `DirectionPostApiSpec` 제출 응답에 503을 추가하고 `docs/api/openapi.json`을 재생성한다.
+- [x] 테스트 계획을 작성했고 사람이 승인했다(2026-10-07T23:13:07+09:00, H1·H2·H3 권장안).
+- [x] 테스트 계획 Revision 1(계획 밖 테스트 파일 3개 수정, 독립 검토 반영, UNIT-023~027 추가)을 사람이 확인했다(2026-10-08T00:23:58+09:00).
+- [x] READY 이미지에 위치정보가 없고 `exif_stripped = true`다(UNIT-016, INT-001·002·004·008).
+- [x] READY 뒤 같은 presigned URL로 다시 올려도 조회 이미지는 바뀌지 않는다(INT-003).
+- [x] 처리에 실패한 이미지는 REJECTED다. 저장소 장애는 503과 UPLOADING 유지다(UNIT-017·018, INT-005).
+- [x] Orientation이 유지된다(UNIT-001·007, INT-001).
+- [ ] 로그에 storage key와 좌표가 나오지 않는다. 서비스 경로는 확인했다(INT-007). 저장소 장애가 HTTP 응답으로 바뀔 때 `GlobalExceptionHandler`가 남기는 SDK 예외 원인 로그는 확인하지 못했다(보고서 6절).
+- [ ] 필수 검증을 실행했다. `./harness check`, `./gradlew check`(단위 1,264건·통합 796건), `npm run hooks:validate`, `git diff --check`는 통과했다. `./harness pr-ready`는 `origin/main`이 앞서가 sync 게이트에서 멈췄고, sync에는 커밋이 필요하다.

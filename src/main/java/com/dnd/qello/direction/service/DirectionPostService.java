@@ -395,26 +395,52 @@ public class DirectionPostService {
 					coarseRegionCode, idempotencyKey, bodyText, List.of(), submittedAt, expiresAt);
 		}
 
+		// 검사 순서가 곧 오류 우선순위다. 여러 값이 동시에 틀렸을 때 어떤 오류가 나가는지를 바꾸지 않도록 순서를 유지한다.
 		public SendCommand {
+			requireValidIds(senderId, approvedQuestionId, schemeId);
+			requireValidDistanceRange(minDistanceMeters, maxDistanceMeters);
+			requireSubmissionKeys(segmentKey, coarseRegionCode, idempotencyKey);
+			bodyText = normalizeBodyText(bodyText);
+			mediaIds = validatedMediaIds(mediaIds);
+			requireContent(bodyText, mediaIds);
+			requireTimeOrder(submittedAt, expiresAt);
+		}
+
+		private static String normalizeBodyText(String value) {
+			return DirectionRequestFingerprint.normalizeBodyText(value);
+		}
+
+		private static void requireValidIds(Long senderId, Long approvedQuestionId, Long schemeId) {
 			if (senderId == null || senderId <= 0 || approvedQuestionId == null || approvedQuestionId <= 0
 					|| schemeId == null || schemeId <= 0) {
 				throw new DirectionException(DirectionErrorCode.INVALID_ID, null, "ID가 유효하지 않습니다");
 			}
+		}
+
+		private static void requireValidDistanceRange(long minDistanceMeters, long maxDistanceMeters) {
 			if (minDistanceMeters < 0 || maxDistanceMeters <= minDistanceMeters) {
 				throw new DirectionException(
 						DirectionErrorCode.INVALID_DISTANCE_RANGE, "maxDistanceMeters", "거리 범위가 유효하지 않습니다");
 			}
+		}
+
+		private static void requireSubmissionKeys(String segmentKey, String coarseRegionCode, String idempotencyKey) {
 			if (segmentKey == null || segmentKey.isBlank() || coarseRegionCode == null || coarseRegionCode.isBlank()
 					|| idempotencyKey == null || idempotencyKey.isBlank()) {
 				throw new DirectionException(
 						DirectionErrorCode.REQUIRED_VALUE_MISSING, null, "필수 command 값이 없습니다");
 			}
-			bodyText = normalizeBodyText(bodyText);
+		}
+
+		private static List<Long> validatedMediaIds(List<Long> mediaIds) {
 			if (mediaIds == null || mediaIds.size() > 1 || mediaIds.stream().anyMatch(id -> id == null || id <= 0)) {
 				throw new DirectionException(DirectionErrorCode.INVALID_VALUE_RANGE, "mediaIds",
 						"미디어 수 또는 ID가 유효하지 않습니다");
 			}
-			mediaIds = List.copyOf(mediaIds);
+			return List.copyOf(mediaIds);
+		}
+
+		private static void requireContent(String bodyText, List<Long> mediaIds) {
 			if ((bodyText == null || bodyText.isBlank()) && mediaIds.isEmpty()) {
 				throw new DirectionException(DirectionErrorCode.REQUIRED_VALUE_MISSING, "content", "본문 또는 미디어가 필요합니다");
 			}
@@ -423,16 +449,15 @@ public class DirectionPostService {
 				throw new DirectionException(DirectionErrorCode.INVALID_VALUE_RANGE, "bodyText",
 						"본문은 300자를 초과할 수 없습니다");
 			}
+		}
+
+		private static void requireTimeOrder(Instant submittedAt, Instant expiresAt) {
 			requireValue(submittedAt, "submittedAt");
 			requireValue(expiresAt, "expiresAt");
 			if (!expiresAt.isAfter(submittedAt)) {
 				throw new DirectionException(
 						DirectionErrorCode.INVALID_TIME_ORDER, "expiresAt", "expiresAt은 submittedAt보다 늦어야 합니다");
 			}
-		}
-
-		private static String normalizeBodyText(String value) {
-			return DirectionRequestFingerprint.normalizeBodyText(value);
 		}
 	}
 

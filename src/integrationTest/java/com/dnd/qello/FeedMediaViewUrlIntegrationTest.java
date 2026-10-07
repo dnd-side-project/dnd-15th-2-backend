@@ -1,7 +1,8 @@
 /**
  * Created at: 2026-10-02T17:05:33+09:00
  * Source scenario: TEST-PLAN-GH-300-FEED-MEDIA-VIEW-URL-INT-001 through INT-007,
- * INT-009, INT-010 (added 2026-10-02T17:33:49+09:00)
+ * INT-009, INT-010 (added 2026-10-02T17:33:49+09:00),
+ * TEST-PLAN-GH-325-EXIF-STRIP-INT-008 (added 2026-10-07T23:26:00+09:00)
  */
 package com.dnd.qello;
 
@@ -9,6 +10,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse.BodyHandlers;
+import java.nio.ByteOrder;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -26,17 +28,24 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 
 import com.dnd.qello.answer.config.MediaStorageProperties;
+import com.dnd.qello.answer.domain.MediaAsset;
+import com.dnd.qello.answer.domain.MediaAssetStatus;
+import com.dnd.qello.answer.service.MediaUploadService;
+import com.dnd.qello.answer.service.MediaUploadService.IssueUploadUrlCommand;
+import com.dnd.qello.answer.service.MediaUploadService.UploadUrl;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.entry;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 
 @SpringBootTest
@@ -62,6 +71,8 @@ class FeedMediaViewUrlIntegrationTest extends LocalStackContainerIntegrationTest
 	private MediaStorageProperties properties;
 	@Autowired
 	private Feed170MutableClock clock;
+	@Autowired
+	private MediaUploadService mediaUploadService;
 
 	private Feed170IntegrationFixtures fixtures;
 	private long senderId;
@@ -191,6 +202,38 @@ class FeedMediaViewUrlIntegrationTest extends LocalStackContainerIntegrationTest
 		markDeleted(media.mediaId());
 		assertThat(sentPostDetailCard().path("media").isArray()).isTrue();
 		assertThat(sentPostDetailCard().path("media")).isEmpty();
+	}
+
+	@Test
+	@DisplayName("INT-008(GH-325) confirm으로 READY가 된 GPS 사진을 첨부하면 보낸 질문 목록 URL로 받은 파일에 GPS가 없다")
+	void confirmedPhotoIsServedWithoutGps() throws Exception {
+		byte[] original = ExifTestImages.jpeg().exif(ExifTestImages.phoneTiff(ByteOrder.BIG_ENDIAN, 6)).build();
+		UploadUrl issued = mediaUploadService.issueUploadUrl(
+				new IssueUploadUrlCommand(senderId, senderId, "image/jpeg", original.length, "checksum", NOW));
+		try (S3Client client = testS3Client()) {
+			client.putObject(PutObjectRequest.builder().bucket(TEST_BUCKET).key(issued.asset().getStorageKey())
+					.contentType("image/jpeg").build(), RequestBody.fromBytes(original));
+		}
+		MediaAsset confirmed = mediaUploadService.confirm(issued.asset().getId(), senderId);
+		jdbc.update("INSERT INTO media_attachment (media_id, owner_id, post_id, display_order) VALUES (?, ?, ?, 0)",
+				confirmed.getId(), senderId, postId);
+
+		String url = sentPostCard().path("media").get(0).path("url").asText();
+		var response = HTTP_CLIENT.send(HttpRequest.newBuilder(URI.create(url)).GET().build(),
+				BodyHandlers.ofByteArray());
+
+		assertThat(confirmed.getStatus()).isEqualTo(MediaAssetStatus.READY);
+		assertThat(response.statusCode()).isEqualTo(200);
+		try (S3Client client = testS3Client()) {
+			assertThat(response.body()).isEqualTo(client.getObjectAsBytes(GetObjectRequest.builder()
+					.bucket(TEST_BUCKET).key(confirmed.getStorageKey()).build()).asByteArray());
+		}
+		var exif = ExifTestImages.headerSegments(response.body()).stream()
+				.filter(segment -> segment.marker() == ExifTestImages.APP1 && segment.hasId("Exif\0\0")).toList();
+		assertThat(exif).hasSize(1);
+		assertThat(ExifTestImages.ifd0(ExifTestImages.tiffOf(exif.get(0))).tags())
+				.containsExactly(entry(ExifTestImages.TAG_ORIENTATION, 6));
+		assertThat(ExifTestImages.contains(response.body(), "TestMake")).isFalse();
 	}
 
 	private void assertMediaContract(JsonNode card, Attached media) {
