@@ -17,6 +17,11 @@ on:
         description: 비교 ref. 기준 ref와 같게 두면 같은 커밋의 실행 사이 흩어짐만 잰다
         required: true
         type: string
+  # 임시(GH-330 PR 검증 전용, 머지 전에 삭제): workflow_dispatch는 파일이 default 브랜치에 있어야 실행된다.
+  # push로 돌면 입력이 비어 두 쪽 모두 push된 커밋을 재므로 같은 커밋 20회 흩어짐 측정이 된다.
+  push:
+    branches:
+      - ci/gh-330-test-measurement
 
 permissions:
   contents: read
