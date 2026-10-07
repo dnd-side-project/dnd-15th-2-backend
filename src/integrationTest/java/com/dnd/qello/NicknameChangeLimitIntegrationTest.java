@@ -1,6 +1,7 @@
 /**
  * Created at: 2026-10-06T14:26:52+09:00
- * Source scenario: TEST-PLAN-GH-315-AUTH-NICKNAME-RATE-LIMIT-INT-006 through INT-010
+ * Source scenario: TEST-PLAN-GH-315-AUTH-NICKNAME-RATE-LIMIT-INT-006 through INT-010,
+ * TEST-PLAN-GH-317-NICKNAME-INVISIBLE-CHARS-INT-003
  */
 package com.dnd.qello;
 
@@ -58,6 +59,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -79,6 +81,8 @@ class NicknameChangeLimitIntegrationTest extends PostgisContainerIntegrationTest
 
 	private static final String COUNTRY_CODE = "KR";
 	private static final Duration COOLDOWN = Duration.ofDays(30);
+	// 보이지 않는 문자는 리터럴이나 유니코드 이스케이프 대신 코드 포인트 상수로 만든다(#317).
+	private static final String ZWSP = Character.toString(0x200B);
 
 	@Autowired
 	private MockMvc mockMvc;
@@ -169,6 +173,20 @@ class NicknameChangeLimitIntegrationTest extends PostgisContainerIntegrationTest
 			.andExpect(jsonPath("$.errorDetail.code").value("ACC-APP-003"));
 
 		verify(moderationChecker, times(2)).check(anyString(), any());
+		assertThat(nicknameChangedAt(user.userId())).isNull();
+	}
+
+	@Test
+	@DisplayName("#317 INT-003: 정규화하면 비는 닉네임은 HTTP 400 ACC-VAL-002이고 moderation을 부르지 않으며 닉네임이 그대로다")
+	void rejectsNicknameThatBecomesEmptyOverHttp() throws Exception {
+		Registered user = register(null);
+
+		mockMvc.perform(changeNickname(user, ZWSP))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.errorDetail.code").value("ACC-VAL-002"));
+
+		verify(moderationChecker, never()).check(anyString(), any());
+		assertThat(nickname(user.userId())).isNull();
 		assertThat(nicknameChangedAt(user.userId())).isNull();
 	}
 

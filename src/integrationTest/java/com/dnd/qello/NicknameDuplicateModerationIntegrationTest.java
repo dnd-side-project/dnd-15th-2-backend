@@ -1,6 +1,7 @@
 /**
  * Created at: 2026-08-19T04:00:00+09:00
- * Source scenario: TEST-PLAN-GH-168-NICKNAME-DUPLICATE-MODERATION-INT-001 through INT-007
+ * Source scenario: TEST-PLAN-GH-168-NICKNAME-DUPLICATE-MODERATION-INT-001 through INT-007,
+ * TEST-PLAN-GH-317-NICKNAME-INVISIBLE-CHARS-INT-001, INT-002, INT-004
  */
 package com.dnd.qello;
 
@@ -48,6 +49,9 @@ import static org.mockito.Mockito.when;
 class NicknameDuplicateModerationIntegrationTest extends PostgisContainerIntegrationTestSupport {
 
 	private static final String REGION_CODE = "TEST-NICKNAME-COUNTRY";
+	// 보이지 않는 문자는 리터럴이나 유니코드 이스케이프 대신 코드 포인트 상수로 만든다(#317).
+	private static final String ZWSP = Character.toString(0x200B);
+	private static final String IDEOGRAPHIC_SPACE = Character.toString(0x3000);
 
 	@Autowired
 	private DeviceRegistrationService registrationService;
@@ -178,6 +182,65 @@ class NicknameDuplicateModerationIntegrationTest extends PostgisContainerIntegra
 				.hasFieldOrPropertyWithValue("errorCode", AccountErrorCode.NICKNAME_MODERATION_UNAVAILABLE);
 
 		assertThat(rawNickname(account.userId())).isEqualTo("원래닉네임3");
+	}
+
+	@Test
+	@DisplayName("#317 INT-001: 보이지 않는 문자나 전각 공백만 다른 닉네임은 등록·변경 모두 DUPLICATED_NICKNAME이고 행과 기존 닉네임이 그대로다")
+	void rejectsNicknamesThatDifferOnlyByInvisibleCharacters() {
+		var owner = registrationService.register(
+				"install-317-a", DevicePlatform.IOS, "KR", "ko-KR", "Asia/Seoul", "바람");
+		var other = registrationService.register(
+				"install-317-b", DevicePlatform.IOS, "KR", "ko-KR", "Asia/Seoul", "다른닉네임");
+
+		org.assertj.core.api.Assertions.assertThatThrownBy(() -> registrationService.register(
+				"install-317-c", DevicePlatform.IOS, "KR", "ko-KR", "Asia/Seoul", "바람" + ZWSP))
+				.isInstanceOf(AccountException.class)
+				.hasFieldOrPropertyWithValue("errorCode", AccountErrorCode.DUPLICATED_NICKNAME);
+		org.assertj.core.api.Assertions.assertThatThrownBy(
+				() -> nicknameRegistrationService.changeNickname(other.userId(), IDEOGRAPHIC_SPACE + "바람"))
+				.isInstanceOf(AccountException.class)
+				.hasFieldOrPropertyWithValue("errorCode", AccountErrorCode.DUPLICATED_NICKNAME);
+
+		Integer accountCount = jdbcTemplate.queryForObject("SELECT count(*) FROM user_account", Integer.class);
+		assertThat(accountCount).isEqualTo(2);
+		assertThat(rawNickname(owner.userId())).isEqualTo("바람");
+		assertThat(rawNickname(other.userId())).isEqualTo("다른닉네임");
+	}
+
+	@Test
+	@DisplayName("#317 INT-002: 정규화한 값으로 저장된 닉네임은 같은 값의 등록과 직접 insert를 모두 막는다")
+	void storesNormalizedNicknameThatTheUniqueIndexProtects() {
+		var account = registrationService.register(
+				"install-317-d", DevicePlatform.IOS, "KR", "ko-KR", "Asia/Seoul", "원래닉네임5");
+
+		Account updated = nicknameRegistrationService.changeNickname(
+				account.userId(), IDEOGRAPHIC_SPACE + "여름" + ZWSP + "바람 ");
+
+		assertThat(updated.getNickname()).isEqualTo("여름바람");
+		assertThat(rawNickname(account.userId())).isEqualTo("여름바람");
+		org.assertj.core.api.Assertions.assertThatThrownBy(() -> registrationService.register(
+				"install-317-e", DevicePlatform.IOS, "KR", "ko-KR", "Asia/Seoul", "여름바람"))
+				.isInstanceOf(AccountException.class)
+				.hasFieldOrPropertyWithValue("errorCode", AccountErrorCode.DUPLICATED_NICKNAME);
+		org.assertj.core.api.Assertions.assertThatThrownBy(() -> insertAccount("여름바람"))
+				.isInstanceOf(DataIntegrityViolationException.class)
+				.hasStackTraceContaining("uq_user_account_nickname_ci");
+	}
+
+	@Test
+	@DisplayName("#317 INT-004: 이전 규칙으로 저장된 보이지 않는 문자 닉네임 행도 예외 없이 저장값 그대로 읽힌다")
+	void restoresLegacyNicknameRowsWithoutNormalizing() {
+		insertAccount("바람" + ZWSP);
+		insertAccount(ZWSP);
+
+		assertThat(accountRepository.findById(accountIdByNickname("바람" + ZWSP)).orElseThrow().getNickname())
+				.isEqualTo("바람" + ZWSP);
+		assertThat(accountRepository.findById(accountIdByNickname(ZWSP)).orElseThrow().getNickname())
+				.isEqualTo(ZWSP);
+	}
+
+	private long accountIdByNickname(String nickname) {
+		return jdbcTemplate.queryForObject("SELECT id FROM user_account WHERE nickname = ?", Long.class, nickname);
 	}
 
 	private void insertAccount(String nickname) {
