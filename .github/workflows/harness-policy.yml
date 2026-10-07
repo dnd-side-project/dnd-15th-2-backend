@@ -66,7 +66,22 @@ jobs:
         run: chmod +x gradlew
 
       - name: Run project tests
-        run: ./gradlew check
+        run: ./gradlew check --profile
+
+      # CI 시간 측정 기록(GH-330): 클래스별 시간과 컨텍스트 캐시 통계(JUnit XML), heap(가비지 컬렉션 로그),
+      # task 시간(profile 리포트). 실패한 run의 기록도 원인 분석에 쓰므로 취소된 경우만 빼고 올린다.
+      - name: Upload test measurement records
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-measurement-attempt-${{ github.run_attempt }}
+          path: |
+            build/test-results/test/*.xml
+            build/test-results/integrationTest/*.xml
+            build/gc/
+            build/reports/profile/
+          if-no-files-found: warn
+          retention-days: 30
 
   java-conventions:
     runs-on: ubuntu-latest
