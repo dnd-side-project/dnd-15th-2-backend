@@ -29,7 +29,7 @@ import com.dnd.qello.filtering.moderation.NicknameModerationOutcome;
 // docs/test-plans/gh-168-...md §7 참고). 그래서 changeNickname()은 클래스 기본 트랜잭션에
 // 합류하지 않고, 저장만 TransactionTemplate으로 짧게 연다.
 //
-// 변경 순서는 시도 한도 → 계정 조회·변경 주기 → 중복 → moderation → 저장이다(#315). 거절할
+// 변경 순서는 시도 한도 → 계정 조회·변경 주기 → 정규화 검증(#317) → 중복 → moderation → 저장이다(#315). 거절할
 // 요청에 moderation 비용을 쓰지 않도록 한도와 주기를 먼저 본다. 주기는 저장 트랜잭션 안에서 한 번
 // 더 확인한다. moderation을 기다리는 사이 같은 사용자의 다른 변경이 먼저 저장될 수 있다.
 //
@@ -62,13 +62,14 @@ public class NicknameRegistrationService {
 	}
 
 	/**
-	 * 닉네임 하나를 새로 쓸 수 있는지 확인한다. 대소문자 무시 중복(자기 자신 포함)이거나 moderation이 거부하면 예외를 던진다.
-	 * 통과하면 아무 값도 반환하지 않는다 — 이 메서드는 검사만 하고 저장하지 않는다.
+	 * 닉네임 하나를 새로 쓸 수 있는지 확인한다. 정규화한 값이 비거나 길이를 넘으면, 대소문자 무시 중복(자기 자신 포함)이거나
+	 * moderation이 거부하면 예외를 던진다. 통과하면 아무 값도 반환하지 않는다 — 이 메서드는 검사만 하고 저장하지 않는다.
 	 */
 	public void ensureAvailable(String nickname, String locale) {
-		// Account.validateNickname이 저장 시점에 trim하는 것과 같은 기준으로 검사해야
-		// 앞뒤 공백만 다른 닉네임이 중복 검사를 우회하지 않는다(#168).
-		String normalized = nickname == null ? null : nickname.trim();
+		// 저장 시점과 같은 Account.normalizeNickname 값으로 검사해야 앞뒤 공백이나 보이지 않는 문자만 다른
+		// 닉네임이 중복 검사를 우회하지 않는다(#168, #317). 빈 값·길이 초과는 여기서 끝나 DB 조회와
+		// moderation 호출을 하지 않는다.
+		String normalized = Account.normalizeNickname(nickname);
 		if (accountRepository.existsActiveNickname(normalized)) {
 			throw new AccountException(AccountErrorCode.DUPLICATED_NICKNAME, "nickname", "이미 사용 중인 닉네임입니다");
 		}

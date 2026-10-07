@@ -2,7 +2,8 @@
  * Created at: 2026-08-07T20:52:09+09:00
  * Source scenario: TEST-PLAN-GH-73-DEVICE-REGISTRATION-UNIT-001 through UNIT-004,
  * TEST-PLAN-GH-88-COUNTRY-ONBOARDING-UNIT-001 through UNIT-005,
- * TEST-PLAN-GH-312-COUNTRY-ONLY-REGISTRATION-UNIT-001 through UNIT-003
+ * TEST-PLAN-GH-312-COUNTRY-ONLY-REGISTRATION-UNIT-001 through UNIT-003,
+ * TEST-PLAN-GH-317-NICKNAME-INVISIBLE-CHARS-UNIT-009
  *
  * import 수가 많아 클래스 선언 위에 두면 정책 검사 범위(첫 30줄)를 벗어나므로 여기에 배치.
  */
@@ -55,6 +56,7 @@ class DeviceRegistrationServiceTest {
 
 	private static final Instant NOW = Instant.parse("2026-08-07T09:00:00Z");
 	private static final String SECRET = "test-only-access-token-signing-key-32-bytes-min";
+	private static final String ZWSP = Character.toString(0x200B);
 
 	private FakeAccountRepository accountRepository;
 	private FakeDeviceCredentialRepository credentialRepository;
@@ -121,6 +123,28 @@ class DeviceRegistrationServiceTest {
 				.isInstanceOf(com.dnd.qello.account.error.AccountException.class);
 		assertThat(accountRepository.accounts).isEmpty();
 		assertThat(credentialRepository.byId).isEmpty();
+	}
+
+	@Test
+	@DisplayName("#317 UNIT-009: 정규화하면 비는 닉네임은 REQUIRED_VALUE_MISSING이고 계정·자격증명을 만들지 않으며 moderation을 부르지 않는다")
+	void rejectsRegistrationWhenNicknameBecomesEmpty() {
+		assertThatThrownBy(() -> service.register(
+				"install-a", DevicePlatform.IOS, "KR", "ko-KR", "Asia/Seoul", ZWSP))
+				.isInstanceOf(com.dnd.qello.account.error.AccountException.class)
+				.hasFieldOrPropertyWithValue(
+						"errorCode", com.dnd.qello.account.error.AccountErrorCode.REQUIRED_VALUE_MISSING);
+		assertThat(accountRepository.accounts).isEmpty();
+		assertThat(credentialRepository.byId).isEmpty();
+		assertThat(moderationChecker.callCount).isZero();
+	}
+
+	@Test
+	@DisplayName("#317 UNIT-009: 보이지 않는 문자가 섞인 닉네임은 정규화한 값으로 저장한다")
+	void storesNormalizedNicknameOnRegistration() {
+		DeviceRegistrationResult result = service.register(
+				"install-a", DevicePlatform.IOS, "KR", "ko-KR", "Asia/Seoul", "바람" + ZWSP);
+
+		assertThat(accountRepository.accounts.get(result.userId()).getNickname()).isEqualTo("바람");
 	}
 
 	@Test
