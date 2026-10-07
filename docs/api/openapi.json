@@ -1746,14 +1746,14 @@
       "InboxListingResponse" : {
         "properties" : {
           "cards" : {
-            "description" : "받은 질문 카드 목록",
+            "description" : "만료 전 미답변·답변 완료 질문 카드 전체 목록. status로 구분하며 매칭 시각·항목 ID 내림차순입니다",
             "items" : {
               "$ref" : "#/components/schemas/InboxCard"
             },
             "type" : "array"
           },
           "chips" : {
-            "description" : "방향 구간별 집계. directionSegmentKey와 무관하게 category 전체 기준입니다",
+            "description" : "방향 구간별 미답변 항목 집계. directionSegmentKey와 무관하게 전체 미답변 기준입니다",
             "items" : {
               "$ref" : "#/components/schemas/DirectionChip"
             },
@@ -5570,25 +5570,11 @@
     },
     "/api/v1/direction/inbox" : {
       "get" : {
-        "description" : "사용자가 받은 방향 질문글들과 카테고리 방향 칩을 조회합니다.\n앱 로그인이 필요합니다. Authorization 헤더에 앱 액세스 토큰이 필요합니다.",
+        "description" : "만료 전 미답변·답변 완료 질문을 함께 조회하며 카드 status로 구분합니다. 페이지네이션 없이 매칭 시각·항목 ID 내림차순으로 전체 항목을 반환합니다. 방향 칩은 전체 미답변 항목만 집계합니다.\n앱 로그인이 필요합니다. Authorization 헤더에 앱 액세스 토큰이 필요합니다.",
         "operationId" : "list_2",
         "parameters" : [
           {
-            "description" : "조회할 카테고리. UNANSWERED는 아직 답변하지 않은 항목, ANSWERED는 답변을 마친 항목입니다",
-            "in" : "query",
-            "name" : "category",
-            "required" : false,
-            "schema" : {
-              "default" : "UNANSWERED",
-              "enum" : [
-                "UNANSWERED",
-                "ANSWERED"
-              ],
-              "type" : "string"
-            }
-          },
-          {
-            "description" : "특정 방향의 가장 최근 질문글을 보고 싶을 때 사용합니다 (N, NE, E, SE, S, SW, W, NW). 생략하면 전체 방향을 기준으로 조회합니다. chips 집계는 이 값과 무관하게 항상 카테고리 전체 기준입니다",
+            "description" : "특정 방향의 질문글을 조회할 때 사용합니다 (N, NE, E, SE, S, SW, W, NW). 생략하면 전체 방향을 조회합니다. chips는 이 값과 무관하게 전체 미답변 항목만 집계합니다",
             "in" : "query",
             "name" : "directionSegmentKey",
             "required" : false,

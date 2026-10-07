@@ -1,10 +1,9 @@
 /**
  * Created at: 2026-08-08T21:30:12+09:00
- * Source scenario: TEST-PLAN-GH-80-INBOX-DIRECTION-CHIPS-INT-001 through INT-010
+ * Source scenario: TEST-PLAN-GH-80-INBOX-DIRECTION-CHIPS-INT-001 through INT-010,
+ * TEST-PLAN-GH-323-INBOX-INT-003 through INT-004 (added 2026-10-07T19:48:57+09:00)
  */
 package com.dnd.qello;
-
-import static org.assertj.core.api.Assertions.assertThat;
 
 import java.sql.Timestamp;
 import java.time.Instant;
@@ -27,6 +26,8 @@ import com.dnd.qello.feed.view.DirectionChip;
 import com.dnd.qello.feed.view.InboxCard;
 import com.dnd.qello.feed.view.InboxCategory;
 import com.dnd.qello.feed.view.InboxListing;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 @SpringBootTest
 @ActiveProfiles("test")
@@ -60,38 +61,41 @@ class InboxDirectionChipIntegrationTest extends PostgisContainerIntegrationTestS
 		jdbc.update("DELETE FROM user_block");
 		jdbc.update("DELETE FROM user_account WHERE coarse_region_code = ?", REGION);
 		jdbc.update("DELETE FROM region_code WHERE code = ?", REGION);
-		jdbc.update("INSERT INTO region_code (code, parent_code, display_name, level) VALUES ('KR', NULL, 'Korea', 'COUNTRY') ON CONFLICT (code, level) DO NOTHING");
-		jdbc.update("INSERT INTO region_code (code, parent_code, display_name, level) VALUES (?, 'KR', 'Inbox Direction Chip', 'REGION')", REGION);
+		jdbc.update(
+				"INSERT INTO region_code (code, parent_code, display_name, level) VALUES ('KR', NULL, 'Korea', 'COUNTRY') ON CONFLICT (code, level) DO NOTHING");
+		jdbc.update(
+				"INSERT INTO region_code (code, parent_code, display_name, level) VALUES (?, 'KR', 'Inbox Direction Chip', 'REGION')",
+				REGION);
 
 		senderId = account("dc-sender");
 		recipientId = account("dc-recipient");
 		questionId = jdbc.queryForObject("""
-			INSERT INTO approved_question
-				(source_type, status, question_text, answer_format, active_from, approved_at, approved_by)
-			VALUES ('OPERATOR', 'ACTIVE', '오늘 뭐 하고 있나요?', 'TEXT', ?, ?, ?)
-			RETURNING id
-			""", Long.class, Timestamp.from(NOW.minusSeconds(60)), Timestamp.from(NOW), senderId);
+				INSERT INTO approved_question
+					(source_type, status, question_text, answer_format, active_from, approved_at, approved_by)
+				VALUES ('OPERATOR', 'ACTIVE', '오늘 뭐 하고 있나요?', 'TEXT', ?, ?, ?)
+				RETURNING id
+				""", Long.class, Timestamp.from(NOW.minusSeconds(60)), Timestamp.from(NOW), senderId);
 		postSeq = 0;
 	}
 
 	private long account(String nickname) {
 		return jdbc.queryForObject("""
-			INSERT INTO user_account (role, country_code, status, coarse_region_code, locale, timezone, nickname)
-			VALUES ('USER', 'KR', 'ACTIVE', ?, 'ko-KR', 'Asia/Seoul', ?)
-			RETURNING id
-			""", Long.class, REGION, nickname);
+				INSERT INTO user_account (role, country_code, status, coarse_region_code, locale, timezone, nickname)
+				VALUES ('USER', 'KR', 'ACTIVE', ?, 'ko-KR', 'Asia/Seoul', ?)
+				RETURNING id
+				""", Long.class, REGION, nickname);
 	}
 
 	private long post(long author, Instant expiresAt) {
 		String key = "p-" + author + "-" + (++postSeq);
 		return jdbc.queryForObject("""
-			INSERT INTO direction_post
-				(sender_id, approved_question_id, status, idempotency_key, body_text,
-				 coarse_region_code, moderation_status, submitted_at, published_at, expires_at)
-			VALUES (?, ?, 'ACTIVE', ?, '본문', ?, 'PASSED', ?, ?, ?)
-			RETURNING id
-			""", Long.class, author, questionId, key, REGION, Timestamp.from(NOW), Timestamp.from(NOW),
-			Timestamp.from(expiresAt));
+				INSERT INTO direction_post
+					(sender_id, approved_question_id, status, idempotency_key, body_text,
+					 coarse_region_code, moderation_status, submitted_at, published_at, expires_at)
+				VALUES (?, ?, 'ACTIVE', ?, '본문', ?, 'PASSED', ?, ?, ?)
+				RETURNING id
+				""", Long.class, author, questionId, key, REGION, Timestamp.from(NOW), Timestamp.from(NOW),
+				Timestamp.from(expiresAt));
 	}
 
 	private long post(Instant expiresAt) {
@@ -101,29 +105,65 @@ class InboxDirectionChipIntegrationTest extends PostgisContainerIntegrationTestS
 	/** 미답변(AVAILABLE) 수신 항목을 지정한 방위각으로 만든다. */
 	private long unansweredRecipient(long postId, double bearingDeg) {
 		return jdbc.queryForObject("""
-			INSERT INTO post_recipient
-				(post_id, recipient_id, status, distance_band, matched_bearing_deg, matched_region_code, matched_at,
-				 inbound_bearing_deg, distance_m)
-			VALUES (?, ?, 'AVAILABLE', 'NEAR', 45, ?, ?, ?, 5000)
-			RETURNING id
-			""", Long.class, postId, recipientId, REGION, Timestamp.from(NOW), bearingDeg);
+				INSERT INTO post_recipient
+					(post_id, recipient_id, status, distance_band, matched_bearing_deg, matched_region_code, matched_at,
+					 inbound_bearing_deg, distance_m)
+				VALUES (?, ?, 'AVAILABLE', 'NEAR', 45, ?, ?, ?, 5000)
+				RETURNING id
+				""", Long.class, postId, recipientId, REGION, Timestamp.from(NOW), bearingDeg);
 	}
 
 	/** 답변 완료(ANSWERED) 수신 항목을 지정한 방위각으로 만든다. 슬롯은 이미 해제된 상태다. */
 	private long answeredRecipient(long postId, double bearingDeg) {
 		return jdbc.queryForObject("""
-			INSERT INTO post_recipient
-				(post_id, recipient_id, status, distance_band, matched_bearing_deg, matched_region_code, matched_at,
-				 discovered_at, opened_at, capacity_released_at, inbound_bearing_deg, distance_m)
-			VALUES (?, ?, 'ANSWERED', 'NEAR', 45, ?, ?, ?, ?, ?, ?, 5000)
-			RETURNING id
-			""", Long.class, postId, recipientId, REGION, Timestamp.from(NOW), Timestamp.from(NOW), Timestamp.from(NOW),
-			Timestamp.from(NOW), bearingDeg);
+				INSERT INTO post_recipient
+					(post_id, recipient_id, status, distance_band, matched_bearing_deg, matched_region_code, matched_at,
+					 discovered_at, opened_at, capacity_released_at, inbound_bearing_deg, distance_m)
+				VALUES (?, ?, 'ANSWERED', 'NEAR', 45, ?, ?, ?, ?, ?, ?, 5000)
+				RETURNING id
+				""", Long.class, postId, recipientId, REGION, Timestamp.from(NOW), Timestamp.from(NOW),
+				Timestamp.from(NOW),
+				Timestamp.from(NOW), bearingDeg);
 	}
 
 	private DirectionChip chip(List<DirectionChip> chips, String segmentKey) {
 		return chips.stream().filter(candidate -> candidate.segmentKey().equals(segmentKey)).findFirst()
-			.orElseThrow(() -> new AssertionError("칩 없음: " + segmentKey));
+				.orElseThrow(() -> new AssertionError("칩 없음: " + segmentKey));
+	}
+
+	@Test
+	@DisplayName("ALL의 카드는 답변 완료를 포함하지만 칩은 방향과 무관하게 미답변만 집계한다")
+	void allChipsCountOnlyUnansweredAcrossAllDirections() {
+		long north = unansweredRecipient(post(NOW.plusSeconds(3600)), 0);
+		long east = unansweredRecipient(post(NOW.plusSeconds(3600)), 90);
+		long northAnswered = answeredRecipient(post(NOW.plusSeconds(3600)), 0);
+		long southAnswered = answeredRecipient(post(NOW.plusSeconds(3600)), 180);
+
+		InboxListing all = inboxQueryService.list(recipientId, InboxCategory.ALL, null, NOW);
+		assertThat(all.cards()).extracting(InboxCard::postRecipientId)
+				.containsExactly(southAnswered, northAnswered, east, north);
+		assertThat(all.chips()).extracting(DirectionChip::segmentKey).containsExactly("N", "E");
+		assertThat(all.chips()).extracting(DirectionChip::count).containsExactly(1L, 1L);
+		InboxListing filtered = inboxQueryService.list(recipientId, InboxCategory.ALL, "N", NOW);
+		assertThat(filtered.cards()).extracting(InboxCard::postRecipientId).containsExactly(northAnswered, north);
+		assertThat(filtered.chips()).isEqualTo(all.chips());
+		InboxListing blank = inboxQueryService.list(recipientId, InboxCategory.ALL, "  ", NOW);
+		assertThat(blank.cards()).isEqualTo(all.cards());
+		assertThat(blank.chips()).isEqualTo(all.chips());
+		InboxListing unknown = inboxQueryService.list(recipientId, InboxCategory.ALL, "UNKNOWN-KEY", NOW);
+		assertThat(unknown.cards()).isEmpty();
+		assertThat(unknown.chips()).isEqualTo(all.chips());
+	}
+
+	@Test
+	@DisplayName("ALL에서 답변 완료만 있으면 카드는 남고 미답변 칩은 빈 배열이다")
+	void allWithOnlyAnsweredHasNoChips() {
+		long answered = answeredRecipient(post(NOW.plusSeconds(3600)), 180);
+
+		InboxListing listing = inboxQueryService.list(recipientId, InboxCategory.ALL, null, NOW);
+
+		assertThat(listing.cards()).extracting(InboxCard::postRecipientId).containsExactly(answered);
+		assertThat(listing.chips()).isEmpty();
 	}
 
 	@Test
@@ -133,8 +173,8 @@ class InboxDirectionChipIntegrationTest extends PostgisContainerIntegrationTestS
 		unansweredRecipient(post(NOW.plus(1, ChronoUnit.HOURS)), 10.0);
 		unansweredRecipient(post(NOW.plus(1, ChronoUnit.HOURS)), 0.0);
 
-		List<DirectionChip> chips =
-			inboxQueryService.list(recipientId, InboxCategory.UNANSWERED, null, NOW.plusSeconds(1)).chips();
+		List<DirectionChip> chips = inboxQueryService
+				.list(recipientId, InboxCategory.UNANSWERED, null, NOW.plusSeconds(1)).chips();
 
 		assertThat(chips).hasSize(1);
 		assertThat(chip(chips, "N").count()).isEqualTo(3);
@@ -148,9 +188,9 @@ class InboxDirectionChipIntegrationTest extends PostgisContainerIntegrationTestS
 		record Boundary(double startDeg, String startSegment) {
 		}
 		List<Boundary> boundaries = List.of(
-			new Boundary(22.5, "NE"), new Boundary(67.5, "E"), new Boundary(112.5, "SE"),
-			new Boundary(157.5, "S"), new Boundary(202.5, "SW"), new Boundary(247.5, "W"),
-			new Boundary(292.5, "NW"), new Boundary(337.5, "N"));
+				new Boundary(22.5, "NE"), new Boundary(67.5, "E"), new Boundary(112.5, "SE"),
+				new Boundary(157.5, "S"), new Boundary(202.5, "SW"), new Boundary(247.5, "W"),
+				new Boundary(292.5, "NW"), new Boundary(337.5, "N"));
 		List<String> allSegmentKeys = boundaries.stream().map(Boundary::startSegment).toList();
 
 		List<Long> startPostIds = new ArrayList<>();
@@ -178,23 +218,23 @@ class InboxDirectionChipIntegrationTest extends PostgisContainerIntegrationTestS
 	@DisplayName("SQL이 파생한 구간과 DirectionSegment.contains의 판정이 대표 방위각 전체에서 일치한다")
 	void sqlDerivedSegmentMatchesDomainContainsAcrossSweep() {
 		long schemeId = jdbc.queryForObject(
-			"SELECT id FROM direction_scheme WHERE code = 'OCTANT' AND status = 'ACTIVE'", Long.class);
+				"SELECT id FROM direction_scheme WHERE code = 'OCTANT' AND status = 'ACTIVE'", Long.class);
 		List<DirectionSegment> segments = directionSchemeRepository.findSegments(schemeId);
 		List<String> allSegmentKeys = segments.stream().map(DirectionSegment::getSegmentKey).toList();
 
 		double[] sweep = {
-			0, 45, 90, 135, 180, 225, 270, 315,
-			22.5, 67.5, 112.5, 157.5, 202.5, 247.5, 292.5, 337.5,
-			22.499, 67.499, 112.499, 157.499, 202.499, 247.499, 292.499, 337.499,
-			350.0, 10.0, 5.0, 359.999
+				0, 45, 90, 135, 180, 225, 270, 315,
+				22.5, 67.5, 112.5, 157.5, 202.5, 247.5, 292.5, 337.5,
+				22.499, 67.499, 112.499, 157.499, 202.499, 247.499, 292.499, 337.499,
+				350.0, 10.0, 5.0, 359.999
 		};
 
 		for (double bearing : sweep) {
 			String expectedKey = segments.stream()
-				.filter(segment -> segment.contains(bearing))
-				.findFirst()
-				.orElseThrow(() -> new AssertionError("도메인 구간이 방위각을 커버하지 못함: " + bearing))
-				.getSegmentKey();
+					.filter(segment -> segment.contains(bearing))
+					.findFirst()
+					.orElseThrow(() -> new AssertionError("도메인 구간이 방위각을 커버하지 못함: " + bearing))
+					.getSegmentKey();
 
 			long postId = post(NOW.plus(1, ChronoUnit.HOURS));
 			unansweredRecipient(postId, bearing);
@@ -207,13 +247,13 @@ class InboxDirectionChipIntegrationTest extends PostgisContainerIntegrationTestS
 	private void assertBelongsToExactlyOneSegment(long postId, String expectedSegment, List<String> allSegmentKeys) {
 		for (String key : allSegmentKeys) {
 			boolean matches = inboxQueryService.list(recipientId, InboxCategory.UNANSWERED, key, NOW.plusSeconds(1))
-				.cards().stream().anyMatch(card -> card.postId() == postId);
+					.cards().stream().anyMatch(card -> card.postId() == postId);
 			if (key.equals(expectedSegment)) {
 				assertThat(matches).as("post %d는 %s 구간에 속해야 한다", postId, expectedSegment).isTrue();
 			} else {
 				assertThat(matches)
-					.as("post %d는 %s 구간에 속하지 않아야 한다(기대 구간: %s)", postId, key, expectedSegment)
-					.isFalse();
+						.as("post %d는 %s 구간에 속하지 않아야 한다(기대 구간: %s)", postId, key, expectedSegment)
+						.isFalse();
 			}
 		}
 	}
@@ -224,8 +264,8 @@ class InboxDirectionChipIntegrationTest extends PostgisContainerIntegrationTestS
 		unansweredRecipient(post(NOW.plus(1, ChronoUnit.HOURS)), 0.0);
 		unansweredRecipient(post(NOW.plus(1, ChronoUnit.HOURS)), 90.0);
 
-		List<DirectionChip> chips =
-			inboxQueryService.list(recipientId, InboxCategory.UNANSWERED, null, NOW.plusSeconds(1)).chips();
+		List<DirectionChip> chips = inboxQueryService
+				.list(recipientId, InboxCategory.UNANSWERED, null, NOW.plusSeconds(1)).chips();
 
 		assertThat(chips).extracting(DirectionChip::segmentKey).containsExactlyInAnyOrder("N", "E");
 	}
@@ -237,7 +277,8 @@ class InboxDirectionChipIntegrationTest extends PostgisContainerIntegrationTestS
 		unansweredRecipient(post(NOW.plus(1, ChronoUnit.HOURS)), 0.0);
 		answeredRecipient(post(NOW.plus(1, ChronoUnit.HOURS)), 180.0);
 
-		InboxListing unanswered = inboxQueryService.list(recipientId, InboxCategory.UNANSWERED, null, NOW.plusSeconds(1));
+		InboxListing unanswered = inboxQueryService.list(recipientId, InboxCategory.UNANSWERED, null,
+				NOW.plusSeconds(1));
 		InboxListing answered = inboxQueryService.list(recipientId, InboxCategory.ANSWERED, null, NOW.plusSeconds(1));
 
 		assertThat(unanswered.chips()).extracting(DirectionChip::segmentKey).containsExactly("N");
@@ -255,13 +296,14 @@ class InboxDirectionChipIntegrationTest extends PostgisContainerIntegrationTestS
 		unansweredRecipient(post(NOW.plus(1, ChronoUnit.HOURS)), 91.0);
 		unansweredRecipient(post(NOW.plus(1, ChronoUnit.HOURS)), 180.0);
 
-		InboxListing unfiltered = inboxQueryService.list(recipientId, InboxCategory.UNANSWERED, null, NOW.plusSeconds(1));
+		InboxListing unfiltered = inboxQueryService.list(recipientId, InboxCategory.UNANSWERED, null,
+				NOW.plusSeconds(1));
 		long chipCountSum = unfiltered.chips().stream().mapToLong(DirectionChip::count).sum();
 		assertThat(chipCountSum).isEqualTo(unfiltered.cards().size());
 
 		for (DirectionChip candidate : unfiltered.chips()) {
 			List<InboxCard> filtered = inboxQueryService
-				.list(recipientId, InboxCategory.UNANSWERED, candidate.segmentKey(), NOW.plusSeconds(1)).cards();
+					.list(recipientId, InboxCategory.UNANSWERED, candidate.segmentKey(), NOW.plusSeconds(1)).cards();
 			assertThat(filtered).as("칩 %s", candidate.segmentKey()).hasSize((int) candidate.count());
 		}
 	}
@@ -272,13 +314,15 @@ class InboxDirectionChipIntegrationTest extends PostgisContainerIntegrationTestS
 		unansweredRecipient(post(NOW.plus(1, ChronoUnit.HOURS)), 0.0);
 
 		long skippedPost = post(NOW.plus(1, ChronoUnit.HOURS));
-		jdbc.update("""
-			INSERT INTO post_recipient
-				(post_id, recipient_id, status, distance_band, matched_bearing_deg, matched_region_code, matched_at,
-				 discovered_at, skip_requested_at, skipped_at, capacity_released_at, inbound_bearing_deg, distance_m)
-			VALUES (?, ?, 'SKIPPED', 'NEAR', 45, ?, ?, ?, ?, ?, ?, ?, 5000)
-			""", skippedPost, recipientId, REGION, Timestamp.from(NOW), Timestamp.from(NOW), Timestamp.from(NOW),
-			Timestamp.from(NOW), Timestamp.from(NOW), 0.0);
+		jdbc.update(
+				"""
+						INSERT INTO post_recipient
+							(post_id, recipient_id, status, distance_band, matched_bearing_deg, matched_region_code, matched_at,
+							 discovered_at, skip_requested_at, skipped_at, capacity_released_at, inbound_bearing_deg, distance_m)
+						VALUES (?, ?, 'SKIPPED', 'NEAR', 45, ?, ?, ?, ?, ?, ?, ?, 5000)
+						""",
+				skippedPost, recipientId, REGION, Timestamp.from(NOW), Timestamp.from(NOW), Timestamp.from(NOW),
+				Timestamp.from(NOW), Timestamp.from(NOW), 0.0);
 
 		long expiringPost = post(NOW.plusSeconds(30));
 		unansweredRecipient(expiringPost, 0.0);
@@ -300,8 +344,8 @@ class InboxDirectionChipIntegrationTest extends PostgisContainerIntegrationTestS
 		unansweredRecipient(post(NOW.plus(1, ChronoUnit.HOURS)), 0.0);
 		unansweredRecipient(post(NOW.plus(1, ChronoUnit.HOURS)), 90.0);
 
-		InboxListing listing =
-			inboxQueryService.list(recipientId, InboxCategory.UNANSWERED, "UNKNOWN-KEY", NOW.plusSeconds(1));
+		InboxListing listing = inboxQueryService.list(recipientId, InboxCategory.UNANSWERED, "UNKNOWN-KEY",
+				NOW.plusSeconds(1));
 
 		assertThat(listing.cards()).isEmpty();
 		assertThat(listing.chips()).extracting(DirectionChip::segmentKey).containsExactlyInAnyOrder("N", "E");
@@ -326,7 +370,8 @@ class InboxDirectionChipIntegrationTest extends PostgisContainerIntegrationTestS
 
 		jdbc.update("UPDATE direction_scheme SET status = 'INACTIVE' WHERE code = 'OCTANT' AND status = 'ACTIVE'");
 		try {
-			InboxListing listing = inboxQueryService.list(recipientId, InboxCategory.UNANSWERED, null, NOW.plusSeconds(1));
+			InboxListing listing = inboxQueryService.list(recipientId, InboxCategory.UNANSWERED, null,
+					NOW.plusSeconds(1));
 
 			assertThat(listing.cards()).extracting(InboxCard::postId).containsExactly(postId);
 			assertThat(listing.chips()).isEmpty();
@@ -341,18 +386,20 @@ class InboxDirectionChipIntegrationTest extends PostgisContainerIntegrationTestS
 		unansweredRecipient(post(NOW.plus(1, ChronoUnit.HOURS)), 0.0);
 
 		long otherSchemeId = jdbc.queryForObject("""
-			INSERT INTO direction_scheme (code, version, type, segment_count, start_offset_deg, status)
-			VALUES ('TEST-OCTANT-DUPLICATE', 1, 'EQUAL_SEGMENTS', 8, 337.500, 'ACTIVE')
-			RETURNING id
-			""", Long.class);
-		jdbc.update("""
-			INSERT INTO direction_segment (scheme_id, segment_key, display_name, center_bearing_deg, angular_width_deg, sort_order)
-			VALUES (?, 'N', '북(중복)', 0.000, 45.000, 0)
-			""", otherSchemeId);
+				INSERT INTO direction_scheme (code, version, type, segment_count, start_offset_deg, status)
+				VALUES ('TEST-OCTANT-DUPLICATE', 1, 'EQUAL_SEGMENTS', 8, 337.500, 'ACTIVE')
+				RETURNING id
+				""", Long.class);
+		jdbc.update(
+				"""
+						INSERT INTO direction_segment (scheme_id, segment_key, display_name, center_bearing_deg, angular_width_deg, sort_order)
+						VALUES (?, 'N', '북(중복)', 0.000, 45.000, 0)
+						""",
+				otherSchemeId);
 
 		try {
-			List<DirectionChip> chips =
-				inboxQueryService.list(recipientId, InboxCategory.UNANSWERED, null, NOW.plusSeconds(1)).chips();
+			List<DirectionChip> chips = inboxQueryService
+					.list(recipientId, InboxCategory.UNANSWERED, null, NOW.plusSeconds(1)).chips();
 
 			assertThat(chip(chips, "N").count()).isEqualTo(1);
 		} finally {

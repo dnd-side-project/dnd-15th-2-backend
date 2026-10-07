@@ -28,32 +28,33 @@ public class InboxController implements InboxApiSpec {
 
 	@Override
 	public ResponseEntity<ApiResponse<InboxListingResponse>> list(
-		InboxCategory category, String directionSegmentKey, Authentication authentication) {
+			String directionSegmentKey, Authentication authentication) {
 		long recipientId = AuthenticatedUserId.require(authentication);
 		return ResponseEntity.ok(responseFactory.success(
-			InboxListingResponse.from(applicationService.list(recipientId, category, directionSegmentKey))));
+				InboxListingResponse
+						.from(applicationService.list(recipientId, InboxCategory.ALL, directionSegmentKey))));
 	}
 
 	@Override
 	public ResponseEntity<ApiResponse<InboxDetailResponse>> detail(
-		long postRecipientId, Authentication authentication) {
+			long postRecipientId, Authentication authentication) {
 		long recipientId = AuthenticatedUserId.require(authentication);
 		return ResponseEntity.ok(responseFactory.success(
-			InboxDetailResponse.from(applicationService.detail(recipientId, postRecipientId))));
+				InboxDetailResponse.from(applicationService.detail(recipientId, postRecipientId))));
 	}
 
 	@Override
 	public ResponseEntity<ApiResponse<InboxCommandResponse>> skip(
-		long postRecipientId, Authentication authentication) {
+			long postRecipientId, Authentication authentication) {
 		long recipientId = AuthenticatedUserId.require(authentication);
 		PostRecipient recipient = applicationService.skip(recipientId, postRecipientId);
 		return ResponseEntity.ok(responseFactory.success(
-			InboxCommandResponse.from(recipient, applicationService.revertibleUntil(recipient))));
+				InboxCommandResponse.from(recipient, applicationService.revertibleUntil(recipient))));
 	}
 
 	@Override
 	public ResponseEntity<ApiResponse<InboxCommandResponse>> revertSkip(
-		long postRecipientId, Authentication authentication) {
+			long postRecipientId, Authentication authentication) {
 		long recipientId = AuthenticatedUserId.require(authentication);
 		PostRecipient recipient = applicationService.revertSkip(recipientId, postRecipientId);
 		return ResponseEntity.ok(responseFactory.success(InboxCommandResponse.from(recipient, null)));

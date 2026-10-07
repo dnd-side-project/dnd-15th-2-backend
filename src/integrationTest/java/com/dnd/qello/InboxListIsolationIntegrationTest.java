@@ -1,6 +1,7 @@
 /**
  * Created at: 2026-09-02T19:28:00+09:00
- * Source scenario: TEST-PLAN-GH-212-INBOX-LIST-ISOLATION-INT-001 through INT-003
+ * Source scenario: TEST-PLAN-GH-212-INBOX-LIST-ISOLATION-INT-001 through INT-003,
+ * TEST-PLAN-GH-323-INBOX-INT-006 (added 2026-10-07T19:48:57+09:00)
  */
 package com.dnd.qello;
 
@@ -72,11 +73,15 @@ class InboxListIsolationIntegrationTest extends PostgisContainerIntegrationTestS
 	void chipCountIgnoresRowsCommittedAfterFindInbox() {
 		long existingPost = fixtures.post(senderId, "int001-existing", NOW.plusSeconds(3600), "ACTIVE", null);
 		long existingRecipient = fixtures.available(existingPost, recipientId, NOW.minusSeconds(10), 0);
+		long answeredPost = fixtures.post(senderId, "gh323-answered", NOW.plusSeconds(3600), "ACTIVE", null);
+		long answeredRecipient = fixtures.answered(answeredPost, recipientId, NOW.minusSeconds(5), 0,
+				NOW.minusSeconds(1));
 		commitNewItemAfterFindInbox(0);
 
-		InboxListing listing = inbox.list(recipientId, InboxCategory.UNANSWERED, null);
+		InboxListing listing = inbox.list(recipientId, InboxCategory.ALL, null);
 
-		assertThat(listing.cards()).extracting(InboxCard::postRecipientId).containsExactly(existingRecipient);
+		assertThat(listing.cards()).extracting(InboxCard::postRecipientId)
+				.containsExactly(answeredRecipient, existingRecipient);
 		assertThat(nChipCount(listing)).isEqualTo(1);
 	}
 
@@ -87,7 +92,7 @@ class InboxListIsolationIntegrationTest extends PostgisContainerIntegrationTestS
 		long northRecipient = fixtures.available(northPost, recipientId, NOW.minusSeconds(10), 0);
 		commitNewItemAfterFindInbox(180);
 
-		InboxListing listing = inbox.list(recipientId, InboxCategory.UNANSWERED, "N");
+		InboxListing listing = inbox.list(recipientId, InboxCategory.ALL, "N");
 
 		assertThat(listing.cards()).extracting(InboxCard::postRecipientId).containsExactly(northRecipient);
 		assertThat(listing.chips()).extracting(DirectionChip::segmentKey).containsExactly("N");
@@ -118,7 +123,7 @@ class InboxListIsolationIntegrationTest extends PostgisContainerIntegrationTestS
 				fixtures.available(postId, recipientId, NOW.minusSeconds(1), inboundBearing);
 			});
 			return cards;
-		}).when(queryRepository).findInbox(eq(recipientId), eq(InboxCategory.UNANSWERED), any(), any());
+		}).when(queryRepository).findInbox(eq(recipientId), eq(InboxCategory.ALL), any(), any());
 	}
 
 	private void commitInSeparateTransaction(Runnable work) {

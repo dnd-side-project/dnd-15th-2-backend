@@ -4,6 +4,7 @@
  * TEST-PLAN-GH-78-SCHEMA-REVISION-V7-INT-010,
  * TEST-PLAN-GH-79-ANSWER-VISIBILITY-RECIPIENTS-INT-005, INT-007, INT-008, INT-009,
  * TEST-PLAN-GH-96-INBOX-DETAIL-SCOPE-INT-006,
+ * TEST-PLAN-GH-323-INBOX-INT-001, INT-002, INT-005, INT-007 (added 2026-10-07T19:48:57+09:00),
  * TEST-PLAN-GH-300-FEED-MEDIA-VIEW-URL MIGRATE (mediaIds 단언을 media로 이전, added 2026-10-02T17:06:00+09:00)
  */
 package com.dnd.qello;
@@ -107,6 +108,7 @@ class InboxQueryIntegrationTest extends PostgisContainerIntegrationTestSupport {
 		// 강제한다. SKIPPED/EXPIRED/BLOCKED/ANSWERED는 자신의 종결 타임스탬프에 더해
 		// capacity_released_at도 채워야 하고, SKIPPED는 skip_requested_at도 함께 필요하다.
 		String[] columns = switch (status) {
+			case "DISCOVERED" -> new String[]{"discovered_at"};
 			case "SKIP_PENDING" -> new String[]{"discovered_at", "skip_requested_at"};
 			case "OPENED" -> new String[]{"discovered_at", "opened_at"};
 			case "ANSWERED" -> new String[]{"discovered_at", "opened_at", "capacity_released_at"};
@@ -162,6 +164,68 @@ class InboxQueryIntegrationTest extends PostgisContainerIntegrationTestSupport {
 	 */
 	private List<InboxCard> cards(InboxCategory category, Instant at) {
 		return inboxQueryService.list(recipientId, category, null, at).cards();
+	}
+
+	@Test
+	@DisplayName("ALL은 미답변 네 상태와 ANSWERED만 합치고 타인·종료 항목은 제외한다")
+	void allIncludesOnlyOwnedEligibleStatuses() {
+		for (String status : List.of("AVAILABLE", "DISCOVERED", "OPENED", "SKIP_PENDING", "ANSWERED",
+				"SKIPPED", "EXPIRED", "BLOCKED")) {
+			recipient(post(senderId, "all-" + status, NOW.plusSeconds(3600), "ACTIVE"), status, NOW);
+		}
+		long outsider = account("iq-all-outsider");
+		long otherPost = post(senderId, "all-other", NOW.plusSeconds(3600), "ACTIVE");
+		long otherRow = recipient(otherPost, "AVAILABLE", NOW);
+		jdbc.update("UPDATE post_recipient SET recipient_id = ? WHERE id = ?", outsider, otherRow);
+
+		assertThat(cards(InboxCategory.ALL, NOW)).extracting(card -> card.status().name())
+				.containsExactly("ANSWERED", "SKIP_PENDING", "OPENED", "DISCOVERED", "AVAILABLE");
+	}
+
+	@Test
+	@DisplayName("ALL의 미답변·답변 완료는 만료 직전까지만 남고 동일 시각부터 worker 없이 제외된다")
+	void allAppliesStrictExpiryBoundaryToBothCategories() {
+		recipient(post(senderId, "all-unanswered-expiry", NOW.plusSeconds(30), "ACTIVE"), "AVAILABLE", NOW);
+		recipient(post(senderId, "all-answered-expiry", NOW.plusSeconds(30), "ACTIVE"), "ANSWERED", NOW);
+
+		assertThat(cards(InboxCategory.ALL, NOW.plusSeconds(29))).hasSize(2);
+		assertThat(cards(InboxCategory.ALL, NOW.plusSeconds(30))).isEmpty();
+		assertThat(cards(InboxCategory.ALL, NOW.plusSeconds(31))).isEmpty();
+	}
+
+	@Test
+	@DisplayName("ALL은 다섯 개를 넘는 혼합 항목을 매칭 시각·동률 ID 내림차순으로 전부 반환한다")
+	void allReturnsUnboundedMixedCardsInStableOrder() {
+		long oldest = recipient(post(senderId, "all-oldest", NOW.plusSeconds(3600), "ACTIVE"),
+				"AVAILABLE", NOW.minusSeconds(20));
+		long tieLow = recipient(post(senderId, "all-tie-low", NOW.plusSeconds(3600), "ACTIVE"), "ANSWERED", NOW);
+		long tieHigh = recipient(post(senderId, "all-tie-high", NOW.plusSeconds(3600), "ACTIVE"), "AVAILABLE", NOW);
+		long newer = recipient(post(senderId, "all-newer", NOW.plusSeconds(3600), "ACTIVE"),
+				"ANSWERED", NOW.plusSeconds(1));
+		long newest = recipient(post(senderId, "all-newest", NOW.plusSeconds(3600), "ACTIVE"),
+				"ANSWERED", NOW.plusSeconds(2));
+		long middle = recipient(post(senderId, "all-middle", NOW.plusSeconds(3600), "ACTIVE"),
+				"AVAILABLE", NOW.minusSeconds(10));
+
+		assertThat(cards(InboxCategory.ALL, NOW.plusSeconds(3))).extracting(InboxCard::postRecipientId)
+				.containsExactly(newest, newer, tieHigh, tieLow, middle, oldest);
+	}
+
+	@Test
+	@DisplayName("ALL의 두 종류 항목 모두 차단·삭제·비공개 질문을 노출하지 않는다")
+	void allPreservesVisibilityForBothCategories() {
+		long blockedSender = account("iq-all-blocked-sender");
+		for (String status : List.of("AVAILABLE", "ANSWERED")) {
+			long deleted = post(senderId, "all-deleted-" + status, NOW.plusSeconds(3600), "ACTIVE");
+			recipient(deleted, status, NOW);
+			jdbc.update("UPDATE direction_post SET status = 'DELETED', deleted_at = ? WHERE id = ?",
+					Timestamp.from(NOW), deleted);
+			recipient(post(senderId, "all-private-" + status, NOW.plusSeconds(3600), "SUBMITTED"), status, NOW);
+			recipient(post(blockedSender, "all-blocked-" + status, NOW.plusSeconds(3600), "ACTIVE"), status, NOW);
+		}
+		jdbc.update("INSERT INTO user_block (blocker_id, blocked_id) VALUES (?, ?)", recipientId, blockedSender);
+
+		assertThat(cards(InboxCategory.ALL, NOW)).isEmpty();
 	}
 
 	@Test

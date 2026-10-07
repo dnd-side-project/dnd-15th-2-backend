@@ -12,7 +12,6 @@ import org.springframework.web.bind.annotation.RequestParam;
 import com.dnd.qello.common.openapi.OpenApiConfiguration;
 import com.dnd.qello.common.web.response.ApiErrorResponse;
 import com.dnd.qello.common.web.response.ApiResponse;
-import com.dnd.qello.feed.view.InboxCategory;
 import com.dnd.qello.feed.web.response.InboxCommandResponse;
 import com.dnd.qello.feed.web.response.InboxDetailResponse;
 import com.dnd.qello.feed.web.response.InboxListingResponse;
@@ -29,7 +28,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 @SecurityRequirement(name = OpenApiConfiguration.APP_ACCESS_TOKEN_SCHEME)
 public interface InboxApiSpec {
 
-	@Operation(summary = "수신함 목록 조회", description = "사용자가 받은 방향 질문글들과 카테고리 방향 칩을 조회합니다.\n앱 로그인이 필요합니다. Authorization 헤더에 앱 액세스 토큰이 필요합니다.")
+	@Operation(summary = "수신함 목록 조회", description = "만료 전 미답변·답변 완료 질문을 함께 조회하며 카드 status로 구분합니다. 페이지네이션 없이 매칭 시각·항목 ID 내림차순으로 전체 항목을 반환합니다. 방향 칩은 전체 미답변 항목만 집계합니다.\n앱 로그인이 필요합니다. Authorization 헤더에 앱 액세스 토큰이 필요합니다.")
 	@ApiResponses({
 			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "수신함 목록을 반환합니다."),
 			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "앱 액세스 토큰이 유효하지 않습니다.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
@@ -38,8 +37,7 @@ public interface InboxApiSpec {
 	})
 	@GetMapping("/inbox")
 	ResponseEntity<ApiResponse<InboxListingResponse>> list(
-			@Parameter(description = "조회할 카테고리. UNANSWERED는 아직 답변하지 않은 항목, ANSWERED는 답변을 마친 항목입니다") @RequestParam(defaultValue = "UNANSWERED") InboxCategory category,
-			@Parameter(description = "특정 방향의 가장 최근 질문글을 보고 싶을 때 사용합니다 (N, NE, E, SE, S, SW, W, NW). 생략하면 전체 방향을 기준으로 조회합니다. chips 집계는 이 값과 무관하게 항상 카테고리 전체 기준입니다") @RequestParam(required = false) String directionSegmentKey,
+			@Parameter(description = "특정 방향의 질문글을 조회할 때 사용합니다 (N, NE, E, SE, S, SW, W, NW). 생략하면 전체 방향을 조회합니다. chips는 이 값과 무관하게 전체 미답변 항목만 집계합니다") @RequestParam(required = false) String directionSegmentKey,
 			@Parameter(hidden = true) Authentication authentication);
 
 	@Operation(summary = "수신함 상세 조회", description = "질문을 상세 조회합니다.\n앱 로그인이 필요합니다. Authorization 헤더에 앱 액세스 토큰이 필요합니다.")
