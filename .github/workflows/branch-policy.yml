@@ -1,0 +1,57 @@
+name: Branch Policy
+
+# Harness Policy에서 분리한 push 검사다. push run에서 test를 건너뛰게 하면 skipped
+# check가 PR head 커밋에 남고 GitHub는 이를 Success로 보고하므로, push는 policy job만
+# 있는 이 workflow가 받는다. 열린 PR이 있으면 test와 java-conventions는 Harness Policy의
+# PR run이 merge 커밋으로 검사하고, PR이 없는 브랜치는 pre-push hook의 ./gradlew check에 맡긴다.
+# policy step은 Harness Policy의 policy job과 같게 유지한다(커밋 메시지 검사만 이쪽에 있다).
+on:
+  push:
+    branches-ignore:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  policy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Validate branch and commit
+        env:
+          VALIDATION_BRANCH: ${{ github.ref_name }}
+          VALIDATION_COMMIT: ${{ github.event.head_commit.message }}
+        run: >-
+          python scripts/validate-conventions.py
+          --branch "$VALIDATION_BRANCH"
+          --commit "$VALIDATION_COMMIT"
+
+      - name: Run convention self-tests
+        run: python scripts/validate-conventions.py --self-test
+
+      - name: Scan tracked files without exposing values
+        run: python scripts/preflight.py
+
+      - name: Validate JUnit 5 metadata
+        run: python scripts/validate-java-tests.py
+
+      - name: Validate workflow safety
+        run: python scripts/validate-workflows.py
+
+      - name: Validate label catalog and templates
+        run: python scripts/validate-labels.py
+
+      - name: Validate Husky contract
+        run: python scripts/validate-husky.py

@@ -1,15 +1,21 @@
 name: Harness Policy
 
+# push는 branch-policy.yml, PR 브랜치와 제목, 본문 검사는 pull-request-policy.yml이 맡는다.
+# 이 workflow가 push와 edited를 받으면 같은 커밋의 테스트를 다시 돌리게 된다. 받은 뒤
+# job을 건너뛰게 하면 skipped check가 같은 커밋에 남고 GitHub는 이를 Success로 보고한다.
 on:
   pull_request:
-    types: [opened, edited, synchronize, reopened]
-  push:
-    branches-ignore:
-      - main
+    types: [opened, synchronize, reopened]
   workflow_dispatch:
 
 permissions:
   contents: read
+
+# 같은 PR이나 브랜치에 새 run이 생기면 앞 run을 취소한다. github.ref는 PR이면
+# refs/pull/<번호>/merge, workflow_dispatch면 브랜치다.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   policy:
@@ -22,28 +28,6 @@ jobs:
         uses: actions/setup-python@v6
         with:
           python-version: "3.13"
-
-      - name: Validate branch and pull request
-        if: github.event_name == 'pull_request'
-        env:
-          VALIDATION_BRANCH: ${{ github.head_ref }}
-          VALIDATION_PR_TITLE: ${{ github.event.pull_request.title }}
-          VALIDATION_PR_BODY: ${{ github.event.pull_request.body }}
-        run: >-
-          python scripts/validate-conventions.py
-          --branch "$VALIDATION_BRANCH"
-          --pr-title "$VALIDATION_PR_TITLE"
-          --pr-body "$VALIDATION_PR_BODY"
-
-      - name: Validate branch and commit
-        if: github.event_name == 'push'
-        env:
-          VALIDATION_BRANCH: ${{ github.ref_name }}
-          VALIDATION_COMMIT: ${{ github.event.head_commit.message }}
-        run: >-
-          python scripts/validate-conventions.py
-          --branch "$VALIDATION_BRANCH"
-          --commit "$VALIDATION_COMMIT"
 
       - name: Run convention self-tests
         run: python scripts/validate-conventions.py --self-test
