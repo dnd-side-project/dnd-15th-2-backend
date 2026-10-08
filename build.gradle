@@ -247,6 +247,15 @@ tasks.register('integrationTest', Test) {
 		excludeTags 'performance'
 	}
 	shouldRunAfter tasks.named('test')
+
+	// CI 시간 측정 기록(GH-330). 컨텍스트 캐시 통계는 테스트 stdout이라 JUnit XML의 system-out에 남고,
+	// 가비지 컬렉션 로그는 fork마다 build/gc 아래 파일로 남는다. 둘 다 테스트 동작은 바꾸지 않는다.
+	systemProperty 'logging.level.org.springframework.test.context.cache', 'DEBUG'
+	def gcLogDir = layout.buildDirectory.dir('gc')
+	jvmArgs "-Xlog:gc*:file=${gcLogDir.get().asFile}/integrationTest-%p.log:time,uptime,level,tags"
+	doFirst {
+		gcLogDir.get().asFile.mkdirs()
+	}
 }
 
 tasks.register('performanceTest', Test) {

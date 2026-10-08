@@ -1,0 +1,83 @@
+name: CI Benchmark
+
+# 같은 커밋에서 두 설정의 테스트 시간을 비교하는 측정 전용 workflow다(GH-330).
+# 기준 ref와 비교 ref를 10회씩, job 20개로 동시에 돌려 runner 상태가 비슷한 시간대에 잰다.
+# 두 ref에 같은 커밋을 넣으면 실행 사이의 흩어짐만 잰다.
+# Harness Policy를 여러 번 실행하지 않는 이유: 같은 브랜치에서 연달아 실행하면 concurrency 때문에 앞 run이 취소된다.
+# 측정 기록(build.gradle의 컨텍스트 캐시 로그와 가비지 컬렉션 로그)은 GH-330 이후 커밋에만 있다.
+# 결과 비교: scripts/experiments/ci-benchmark-compare.py
+on:
+  workflow_dispatch:
+    inputs:
+      base_ref:
+        description: 기준 ref(브랜치, 태그 또는 커밋 SHA)
+        required: true
+        type: string
+      head_ref:
+        description: 비교 ref. 기준 ref와 같게 두면 같은 커밋의 실행 사이 흩어짐만 잰다
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  measure:
+    name: measure (${{ matrix.side }} ${{ matrix.attempt }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        side: [base, head]
+        attempt: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    steps:
+      - name: Checkout the measured ref
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ matrix.side == 'base' && inputs.base_ref || inputs.head_ref }}
+          fetch-depth: 0
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+
+      - name: Make Gradle wrapper executable
+        run: chmod +x gradlew
+
+      # Harness Policy test job과 같은 명령으로 잰다.
+      - name: Run project tests
+        run: ./gradlew check --profile
+
+      - name: Record the measured commit and runner
+        if: ${{ !cancelled() }}
+        env:
+          SIDE: ${{ matrix.side }}
+          ATTEMPT: ${{ matrix.attempt }}
+        run: |
+          mkdir -p build/benchmark
+          {
+            echo "side=$SIDE"
+            echo "attempt=$ATTEMPT"
+            echo "sha=$(git rev-parse HEAD)"
+            echo "runner_image=${ImageOS:-unknown} ${ImageVersion:-unknown}"
+            echo "cpus=$(nproc)"
+            echo "memory_mb=$(free -m | awk '/^Mem:/ {print $2}')"
+          } > build/benchmark/meta.txt
+
+      - name: Upload measurement records
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: benchmark-${{ matrix.side }}-${{ matrix.attempt }}
+          path: |
+            build/benchmark/
+            build/test-results/test/*.xml
+            build/test-results/integrationTest/*.xml
+            build/gc/
+            build/reports/profile/
+          if-no-files-found: warn
+          retention-days: 30
