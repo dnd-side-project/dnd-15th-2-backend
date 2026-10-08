@@ -1,0 +1,39 @@
+name: Pull Request Policy
+
+# Harness Policy에서 분리한 PR 브랜치, 제목, 본문 검사다. edited에서 Harness Policy의
+# test를 건너뛰게 하면 skipped check가 같은 커밋에 남고, GitHub는 skipped job을
+# Success로 보고해 앞서 실패한 test 결과를 가린다. 그래서 edited는 이 workflow만 받는다.
+# check는 head 커밋에 붙으므로 새 커밋이 올라올 때(synchronize)도 다시 검사한다.
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pull-request-metadata:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Validate branch and pull request
+        env:
+          VALIDATION_BRANCH: ${{ github.head_ref }}
+          VALIDATION_PR_TITLE: ${{ github.event.pull_request.title }}
+          VALIDATION_PR_BODY: ${{ github.event.pull_request.body }}
+        run: >-
+          python scripts/validate-conventions.py
+          --branch "$VALIDATION_BRANCH"
+          --pr-title "$VALIDATION_PR_TITLE"
+          --pr-body "$VALIDATION_PR_BODY"
