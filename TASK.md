@@ -67,7 +67,7 @@ Tests (수정):
 - `src/test/java/com/dnd/qello/notification/web/NotificationWebContractTest.java`
 - `src/integrationTest/java/com/dnd/qello/NotificationInboxQueryIntegrationTest.java` (시그니처만)
 - `src/integrationTest/java/com/dnd/qello/NotificationInboxCommandIntegrationTest.java` (시그니처만)
-- `src/integrationTest/java/com/dnd/qello/NotificationFanOutExpansionIntegrationTest.java` (시그니처만)
+- `src/integrationTest/java/com/dnd/qello/NotificationFanOutExpansionIntegrationTest.java` (시그니처 갱신과 `cleanupFixtures` 메서드 분리)
 
 Documentation:
 - `TASK.md`
@@ -128,6 +128,8 @@ OpenAPI는 `OpenApiSpecificationIntegrationTest`로 생성한다.
 - 승인된 테스트와 필수 검사에 실패·차단 항목이 없다.
 
 ## Decisions, risks and rollback
+
+- CONFIRMED (2026-10-08): 커밋 hook의 `checkstyleStagedJava`가 `NotificationFanOutExpansionIntegrationTest.cleanupFixtures`(기존 119줄, `QELLO-JAVA-SIZE-001`)를 거부했다. 사용자가 hook 우회 대신 실행 순서를 유지한 private 메서드 분리를 선택했다.
 
 - CONFIRMED (2026-10-08): 사용자가 이번 PR에서 수정하는 legacy target의 기존 위반을 해결하기로 결정했다. `JdbcNotificationRepository`의 wildcard import(JAVA-CONV-0007)를 명시 import로 바꾸고, `Notification` 생성자 검증을 private 메서드로 분리해 복잡도 위반(JAVA-CONV-0014)을 해소한 뒤 두 baseline 항목을 삭제한다. 동작 변경은 없다.
 - CONFIRMED (2026-10-08): `origin/main`의 #329 baseline 불일치(JAVA-CONV-0018, `DirectionPostService`)는 별도 Issue(#333)로 분리했다. 이후 #331(`3387fcf0`)이 같은 수정을 먼저 반영해 사용자 결정으로 #333을 not planned로 닫았다. 이 브랜치는 커밋 후 `./harness sync`로 `3387fcf0` 이후 main을 반영한다.
