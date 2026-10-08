@@ -5,8 +5,7 @@
  */
 package com.dnd.qello;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -31,11 +30,14 @@ import com.dnd.qello.notification.view.NotificationTargetDecision;
 import com.dnd.qello.notification.view.NotificationTargetKind;
 import com.dnd.qello.notification.view.NotificationTargetState;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 @SpringBootTest
 @ActiveProfiles("test")
 class NotificationInboxQueryIntegrationTest extends PostgisContainerIntegrationTestSupport {
 
 	private static final Instant NOW = Instant.parse("2026-08-20T06:00:00Z");
+	private static final Instant RETENTION_FLOOR = NOW.minus(Duration.ofDays(30));
 
 	@Autowired
 	private JdbcTemplate jdbc;
@@ -68,18 +70,18 @@ class NotificationInboxQueryIntegrationTest extends PostgisContainerIntegrationT
 			fixtures.directionPostNotification(recipientId, postId, NOW.plusSeconds(i));
 		}
 
-		NotificationListing page1 = queryRepository.list(recipientId, null, 2, NOW);
-		NotificationListing page2 = queryRepository.list(recipientId, page1.nextCursor(), 2, NOW);
-		NotificationListing page3 = queryRepository.list(recipientId, page2.nextCursor(), 2, NOW);
+		NotificationListing page1 = queryRepository.list(recipientId, null, 2, NOW, RETENTION_FLOOR);
+		NotificationListing page2 = queryRepository.list(recipientId, page1.nextCursor(), 2, NOW, RETENTION_FLOOR);
+		NotificationListing page3 = queryRepository.list(recipientId, page2.nextCursor(), 2, NOW, RETENTION_FLOOR);
 
 		assertThat(page1.items()).hasSize(2);
 		assertThat(page2.items()).hasSize(2);
 		assertThat(page3.items()).hasSize(1);
 		assertThat(page3.nextCursor()).isNull();
 		List<Long> allIds = List.of(
-			page1.items().get(0).notificationId(), page1.items().get(1).notificationId(),
-			page2.items().get(0).notificationId(), page2.items().get(1).notificationId(),
-			page3.items().get(0).notificationId());
+				page1.items().get(0).notificationId(), page1.items().get(1).notificationId(),
+				page2.items().get(0).notificationId(), page2.items().get(1).notificationId(),
+				page3.items().get(0).notificationId());
 		assertThat(allIds).doesNotHaveDuplicates().hasSize(5);
 	}
 
@@ -91,14 +93,14 @@ class NotificationInboxQueryIntegrationTest extends PostgisContainerIntegrationT
 			fixtures.directionPostNotification(recipientId, postId, NOW);
 		}
 
-		NotificationListing page1 = queryRepository.list(recipientId, null, 2, NOW);
-		NotificationListing page2 = queryRepository.list(recipientId, page1.nextCursor(), 2, NOW);
+		NotificationListing page1 = queryRepository.list(recipientId, null, 2, NOW, RETENTION_FLOOR);
+		NotificationListing page2 = queryRepository.list(recipientId, page1.nextCursor(), 2, NOW, RETENTION_FLOOR);
 
 		assertThat(page1.items()).hasSize(2);
 		assertThat(page2.items()).hasSize(2);
 		List<Long> ids = List.of(
-			page1.items().get(0).notificationId(), page1.items().get(1).notificationId(),
-			page2.items().get(0).notificationId(), page2.items().get(1).notificationId());
+				page1.items().get(0).notificationId(), page1.items().get(1).notificationId(),
+				page2.items().get(0).notificationId(), page2.items().get(1).notificationId());
 		assertThat(ids).doesNotHaveDuplicates().hasSize(4);
 	}
 
@@ -108,16 +110,16 @@ class NotificationInboxQueryIntegrationTest extends PostgisContainerIntegrationT
 		long postId = fixtures.activePost(senderId, "int003", NOW.plusSeconds(3600));
 		fixtures.directionPostNotification(recipientId, postId, NOW);
 		fixtures.withStatus(
-			fixtures.directionPostNotification(recipientId, postId, NOW.plusSeconds(1)),
-			NotificationStatus.READ, NOW.plusSeconds(2));
+				fixtures.directionPostNotification(recipientId, postId, NOW.plusSeconds(1)),
+				NotificationStatus.READ, NOW.plusSeconds(2));
 		fixtures.withStatus(
-			fixtures.directionPostNotification(recipientId, postId, NOW.plusSeconds(3)),
-			NotificationStatus.DISMISSED, NOW.plusSeconds(4));
+				fixtures.directionPostNotification(recipientId, postId, NOW.plusSeconds(3)),
+				NotificationStatus.DISMISSED, NOW.plusSeconds(4));
 		fixtures.withStatus(
-			fixtures.directionPostNotification(recipientId, postId, NOW.plusSeconds(5)),
-			NotificationStatus.REVOKED, null);
+				fixtures.directionPostNotification(recipientId, postId, NOW.plusSeconds(5)),
+				NotificationStatus.REVOKED, null);
 
-		NotificationListing listing = queryRepository.list(recipientId, null, 20, NOW);
+		NotificationListing listing = queryRepository.list(recipientId, null, 20, NOW, RETENTION_FLOOR);
 
 		assertThat(listing.items()).hasSize(2);
 	}
@@ -130,7 +132,7 @@ class NotificationInboxQueryIntegrationTest extends PostgisContainerIntegrationT
 		fixtures.directionPostNotification(outsiderId, postId, NOW);
 		fixtures.directionPostNotification(outsiderId, postId, NOW.plusSeconds(1));
 
-		NotificationListing listing = queryRepository.list(recipientId, null, 20, NOW);
+		NotificationListing listing = queryRepository.list(recipientId, null, 20, NOW, RETENTION_FLOOR);
 
 		assertThat(listing.items()).hasSize(1);
 	}
@@ -142,8 +144,8 @@ class NotificationInboxQueryIntegrationTest extends PostgisContainerIntegrationT
 		fixtures.directionPostNotification(recipientId, postId, NOW);
 		fixtures.directionPostNotification(recipientId, postId, NOW.plusSeconds(1));
 
-		NotificationListing full = queryRepository.list(recipientId, null, 2, NOW);
-		NotificationListing next = queryRepository.list(recipientId, full.nextCursor(), 2, NOW);
+		NotificationListing full = queryRepository.list(recipientId, null, 2, NOW, RETENTION_FLOOR);
+		NotificationListing next = queryRepository.list(recipientId, full.nextCursor(), 2, NOW, RETENTION_FLOOR);
 
 		assertThat(full.nextCursor()).isNotNull();
 		assertThat(next.items()).isEmpty();
@@ -158,7 +160,7 @@ class NotificationInboxQueryIntegrationTest extends PostgisContainerIntegrationT
 			fixtures.directionPostNotification(recipientId, postId, NOW.plusSeconds(i));
 		}
 
-		NotificationListing listing = queryRepository.list(recipientId, null, 50, NOW);
+		NotificationListing listing = queryRepository.list(recipientId, null, 50, NOW, RETENTION_FLOOR);
 
 		assertThat(listing.items()).hasSize(50);
 	}
@@ -169,7 +171,7 @@ class NotificationInboxQueryIntegrationTest extends PostgisContainerIntegrationT
 		long postId = fixtures.expiredPost(senderId, "int007", NOW.minusSeconds(60));
 		fixtures.directionPostNotification(recipientId, postId, NOW);
 
-		NotificationCard card = onlyItem(queryRepository.list(recipientId, null, 20, NOW));
+		NotificationCard card = onlyItem(queryRepository.list(recipientId, null, 20, NOW, RETENTION_FLOOR));
 
 		assertThat(card.targetState()).isEqualTo(NotificationTargetState.EXPIRED);
 		assertThat(card.expiresAt()).isNull();
@@ -181,7 +183,7 @@ class NotificationInboxQueryIntegrationTest extends PostgisContainerIntegrationT
 		long postId = fixtures.deletedPost(senderId, "int008");
 		fixtures.directionPostNotification(recipientId, postId, NOW);
 
-		NotificationCard card = onlyItem(queryRepository.list(recipientId, null, 20, NOW));
+		NotificationCard card = onlyItem(queryRepository.list(recipientId, null, 20, NOW, RETENTION_FLOOR));
 
 		assertThat(card.targetState()).isEqualTo(NotificationTargetState.GONE);
 	}
@@ -202,10 +204,10 @@ class NotificationInboxQueryIntegrationTest extends PostgisContainerIntegrationT
 		fixtures.answerNotification(recipientId, hiddenAnswerId, NOW);
 		fixtures.answerNotification(recipientId, unpublishedAnswerId, NOW.plusSeconds(1));
 
-		NotificationListing listing = queryRepository.list(recipientId, null, 20, NOW);
+		NotificationListing listing = queryRepository.list(recipientId, null, 20, NOW, RETENTION_FLOOR);
 
 		assertThat(listing.items()).extracting(NotificationCard::targetState)
-			.containsOnly(NotificationTargetState.HIDDEN);
+				.containsOnly(NotificationTargetState.HIDDEN);
 	}
 
 	@Test
@@ -225,7 +227,7 @@ class NotificationInboxQueryIntegrationTest extends PostgisContainerIntegrationT
 		fixtures.releasedBlock(recipientId, releasedSenderId);
 		fixtures.directionPostNotification(recipientId, releasedBlockPost, NOW.plusSeconds(2));
 
-		NotificationListing listing = queryRepository.list(recipientId, null, 20, NOW);
+		NotificationListing listing = queryRepository.list(recipientId, null, 20, NOW, RETENTION_FLOOR);
 
 		assertThat(cardFor(listing, forwardBlockPost).targetState()).isEqualTo(NotificationTargetState.BLOCKED);
 		assertThat(cardFor(listing, reverseBlockPost).targetState()).isEqualTo(NotificationTargetState.BLOCKED);
@@ -239,7 +241,7 @@ class NotificationInboxQueryIntegrationTest extends PostgisContainerIntegrationT
 		fixtures.activeBlock(recipientId, senderId);
 		fixtures.directionPostNotification(recipientId, postId, NOW);
 
-		NotificationCard card = onlyItem(queryRepository.list(recipientId, null, 20, NOW));
+		NotificationCard card = onlyItem(queryRepository.list(recipientId, null, 20, NOW, RETENTION_FLOOR));
 
 		assertThat(card.targetState()).isEqualTo(NotificationTargetState.GONE);
 	}
@@ -251,7 +253,7 @@ class NotificationInboxQueryIntegrationTest extends PostgisContainerIntegrationT
 		fixtures.activeBlock(recipientId, senderId);
 		fixtures.directionPostNotification(recipientId, postId, NOW);
 
-		NotificationCard card = onlyItem(queryRepository.list(recipientId, null, 20, NOW));
+		NotificationCard card = onlyItem(queryRepository.list(recipientId, null, 20, NOW, RETENTION_FLOOR));
 
 		assertThat(card.targetState()).isEqualTo(NotificationTargetState.BLOCKED);
 	}
@@ -262,9 +264,9 @@ class NotificationInboxQueryIntegrationTest extends PostgisContainerIntegrationT
 		long postId = fixtures.activePost(senderId, "int022", NOW.plusSeconds(1800));
 		Notification notification = fixtures.directionPostNotification(recipientId, postId, NOW);
 
-		NotificationCard atListingTime = onlyItem(queryRepository.list(recipientId, null, 20, NOW));
-		Optional<NotificationTargetDecision> laterDecision =
-			queryRepository.findTargetDecision(recipientId, notification.id(), NOW.plusSeconds(3600));
+		NotificationCard atListingTime = onlyItem(queryRepository.list(recipientId, null, 20, NOW, RETENTION_FLOOR));
+		Optional<NotificationTargetDecision> laterDecision = queryRepository.findTargetDecision(recipientId,
+				notification.id(), NOW.plusSeconds(3600));
 
 		assertThat(atListingTime.targetState()).isEqualTo(NotificationTargetState.AVAILABLE);
 		assertThat(laterDecision).isPresent();
@@ -282,10 +284,10 @@ class NotificationInboxQueryIntegrationTest extends PostgisContainerIntegrationT
 		long deletedPostId = fixtures.deletedPost(senderId, "int023-deleted");
 		Notification gone = fixtures.directionPostNotification(recipientId, deletedPostId, NOW.plusSeconds(1));
 
-		NotificationTargetDecision availableDecision =
-			queryRepository.findTargetDecision(recipientId, available.id(), NOW).orElseThrow();
-		NotificationTargetDecision goneDecision =
-			queryRepository.findTargetDecision(recipientId, gone.id(), NOW).orElseThrow();
+		NotificationTargetDecision availableDecision = queryRepository
+				.findTargetDecision(recipientId, available.id(), NOW).orElseThrow();
+		NotificationTargetDecision goneDecision = queryRepository.findTargetDecision(recipientId, gone.id(), NOW)
+				.orElseThrow();
 
 		assertThat(availableDecision.fallback()).isEqualTo(NotificationTargetDecision.Fallback.NONE);
 		assertThat(goneDecision.fallback()).isEqualTo(NotificationTargetDecision.Fallback.FEED_HOME);
@@ -300,10 +302,10 @@ class NotificationInboxQueryIntegrationTest extends PostgisContainerIntegrationT
 		}
 
 		List<String> plan = jdbc.queryForList("""
-			EXPLAIN SELECT id FROM notification
-			 WHERE recipient_id = ? AND status IN ('UNREAD', 'READ')
-			 ORDER BY created_at DESC, id DESC LIMIT 20
-			""", String.class, recipientId);
+				EXPLAIN SELECT id FROM notification
+				 WHERE recipient_id = ? AND status IN ('UNREAD', 'READ')
+				 ORDER BY created_at DESC, id DESC LIMIT 20
+				""", String.class, recipientId);
 
 		assertThat(String.join("\n", plan)).contains("notification_recipient_feed_idx");
 	}
@@ -317,12 +319,12 @@ class NotificationInboxQueryIntegrationTest extends PostgisContainerIntegrationT
 		fixtures.directionPostNotification(recipientId, postId, NOW);
 		fixtures.answerNotification(recipientId, answerId, NOW.plusSeconds(1));
 
-		NotificationListing listing = queryRepository.list(recipientId, null, 20, NOW);
+		NotificationListing listing = queryRepository.list(recipientId, null, 20, NOW, RETENTION_FLOOR);
 
 		for (var field : NotificationCard.class.getRecordComponents()) {
 			String name = field.getName().toLowerCase();
 			assertThat(name).doesNotContain("body").doesNotContain("nickname")
-				.doesNotContain("bearing").doesNotContain("distance").doesNotContain("region");
+					.doesNotContain("bearing").doesNotContain("distance").doesNotContain("region");
 		}
 		assertThat(listing.items()).isNotEmpty();
 	}
@@ -334,18 +336,18 @@ class NotificationInboxQueryIntegrationTest extends PostgisContainerIntegrationT
 		fixtures.directionPostNotification(recipientId, postId, NOW);
 		int offset = 1;
 		for (NotificationType type : List.of(
-			NotificationType.ANSWER_REACTED, NotificationType.REPORT_RESOLVED,
-			NotificationType.QUESTION_PROPOSAL_REVIEWED, NotificationType.QUESTION_RECOMMENDED,
-			NotificationType.ANSWER_RECEIVED)) {
+				NotificationType.ANSWER_REACTED, NotificationType.REPORT_RESOLVED,
+				NotificationType.QUESTION_PROPOSAL_REVIEWED, NotificationType.QUESTION_RECOMMENDED,
+				NotificationType.ANSWER_RECEIVED)) {
 			fixtures.targetlessNotification(recipientId, type, NOW.plusSeconds(offset++));
 		}
 
-		NotificationListing listing = queryRepository.list(recipientId, null, 20, NOW);
+		NotificationListing listing = queryRepository.list(recipientId, null, 20, NOW, RETENTION_FLOOR);
 
 		assertThat(listing.items()).hasSize(6);
 		assertThat(listing.items()).filteredOn(card -> card.type() != NotificationType.DIRECTION_POST_RECEIVED)
-			.extracting(NotificationCard::targetKind)
-			.containsOnly(NotificationTargetKind.NONE);
+				.extracting(NotificationCard::targetKind)
+				.containsOnly(NotificationTargetKind.NONE);
 	}
 
 	private static NotificationCard onlyItem(NotificationListing listing) {
@@ -355,8 +357,8 @@ class NotificationInboxQueryIntegrationTest extends PostgisContainerIntegrationT
 
 	private static NotificationCard cardFor(NotificationListing listing, long directionPostId) {
 		return listing.items().stream()
-			.filter(card -> directionPostId == card.targetId())
-			.findFirst()
-			.orElseThrow(() -> new AssertionError("no card for post " + directionPostId));
+				.filter(card -> directionPostId == card.targetId())
+				.findFirst()
+				.orElseThrow(() -> new AssertionError("no card for post " + directionPostId));
 	}
 }

@@ -115,6 +115,10 @@ qello:
       # 미디어 버킷 리전. endpoint-override가 비어 있으면 실제 AWS 엔드포인트를 쓴다.
       region: ap-northeast-2
   notification:
+    inbox:
+      # 알림함 목록·안 읽은 개수·알림 점에서 이 기간보다 오래된 알림을 숨긴다(#332).
+      # 행은 지우지 않고 조회에서만 제외하며, 알림에서 글로 넘어가는 판정(/target)에는 적용하지 않는다.
+      retention: P30D
     push:
       fcm:
         # D-2 secret-backed FCM wiring. 실제 값은 ECS runtime identity가 읽는 SSM SecureString으로만 주입한다.

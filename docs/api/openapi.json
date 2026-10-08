@@ -684,6 +684,25 @@
         },
         "type" : "object"
       },
+      "ApiResponseNotificationDismissResponse" : {
+        "properties" : {
+          "data" : {
+            "$ref" : "#/components/schemas/NotificationDismissResponse"
+          },
+          "status" : {
+            "enum" : [
+              "success",
+              "error"
+            ],
+            "type" : "string"
+          },
+          "timestamp" : {
+            "format" : "date-time",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
       "ApiResponseNotificationListingResponse" : {
         "properties" : {
           "data" : {
@@ -1998,6 +2017,21 @@
           "notificationId" : {
             "description" : "다음 쪽 조회에 쓸 알림 식별자. cursorNotificationId에 그대로 넣습니다",
             "format" : "int64",
+            "type" : "integer"
+          }
+        },
+        "type" : "object"
+      },
+      "NotificationDismissResponse" : {
+        "properties" : {
+          "dismissedAt" : {
+            "description" : "지우기 기준이 된 서버 시각. 이 시각 이후에 도착한 알림은 지워지지 않습니다",
+            "format" : "date-time",
+            "type" : "string"
+          },
+          "dismissedCount" : {
+            "description" : "이번 요청으로 지운 알림 수. 지울 알림이 없었으면 0입니다",
+            "format" : "int32",
             "type" : "integer"
           }
         },
@@ -7577,6 +7611,81 @@
       }
     },
     "/api/v1/notifications" : {
+      "delete" : {
+        "description" : "지금까지 받은 알림을 알림함에서 모두 지움\n앱 로그인 필요(Authorization 헤더에 앱 액세스 토큰이 필요)\n서버가 요청을 받은 시각(dismissedAt) 이전에 도착한 알림만 지우며, 그 뒤에 도착한 알림은 남음\n지울 알림이 없어도 성공이며 dismissedCount는 0",
+        "operationId" : "dismissAll",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiResponseNotificationDismissResponse"
+                }
+              }
+            },
+            "description" : "지운 알림 수와 기준 시각을 반환합니다."
+          },
+          "400" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "요청 값이 올바르지 않습니다."
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "앱 액세스 토큰이 유효하지 않습니다."
+          },
+          "403" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "현재 계정은 알림함을 사용할 수 없습니다."
+          },
+          "404" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "인증 사용자 계정을 찾을 수 없습니다."
+          },
+          "500" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "서버 내부 오류가 발생했습니다."
+          }
+        },
+        "security" : [
+          {
+            "appAccessToken" : [ ]
+          }
+        ],
+        "summary" : "알림함 전체 지우기",
+        "tags" : [
+          "알림함"
+        ]
+      },
       "get" : {
         "description" : "받은 알림을 최신순으로 조회\n앱 로그인 필요(Authorization 헤더에 앱 액세스 토큰이 필요)\ncursorCreatedAt과 cursorNotificationId는 둘 다 지정하거나 둘 다 생략해야 함",
         "operationId" : "list_1",

@@ -1,14 +1,9 @@
 /**
  * Created at: 2026-08-20T17:05:00+09:00
- * Source scenario: TEST-PLAN-GH-176-NOTIFICATION-INBOX-READ-UNIT-018
+ * Source scenario: TEST-PLAN-GH-176-NOTIFICATION-INBOX-READ-UNIT-018,
+ * TEST-PLAN-GH-332-NOTIFICATION-CLEAR-UNIT-007 (added 2026-10-08T02:53:18+09:00)
  */
 package com.dnd.qello.notification.web;
-
-import static org.mockito.Mockito.when;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -32,11 +27,22 @@ import com.dnd.qello.notification.service.NotificationInboxService;
 import com.dnd.qello.notification.service.NotificationPreferenceService;
 import com.dnd.qello.notification.service.PushDeviceService;
 import com.dnd.qello.notification.view.NotificationCard;
+import com.dnd.qello.notification.view.NotificationDismissal;
 import com.dnd.qello.notification.view.NotificationListing;
 import com.dnd.qello.notification.view.NotificationTargetDecision;
 import com.dnd.qello.notification.view.NotificationTargetKind;
 import com.dnd.qello.notification.view.NotificationTargetState;
 import com.dnd.qello.notification.view.UnreadSignal;
+
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @ExtendWith(MockitoExtension.class)
 class NotificationApiMockMvcTest {
@@ -56,26 +62,32 @@ class NotificationApiMockMvcTest {
 
 	@BeforeEach
 	void setUp() {
+		mockMvc = buildMockMvc(true);
+	}
+
+	private MockMvc buildMockMvc(boolean authenticated) {
 		Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
-		mockMvc = MockMvcTestSupport.standalone(
-			new NotificationController(inboxService, preferenceService, pushDeviceService, new ApiResponseFactory(clock)),
-			true, USER_ID, clock);
+		return MockMvcTestSupport.standalone(
+				new NotificationController(inboxService, preferenceService, pushDeviceService,
+						new ApiResponseFactory(clock)),
+				authenticated, USER_ID, clock);
 	}
 
 	@Test
 	@DisplayName("목록 조회는 200과 카드·nextCursor를 반환한다")
 	void listReturnsCardsAndNextCursor() throws Exception {
 		NotificationCard card = new NotificationCard(NOTIFICATION_ID, NotificationType.DIRECTION_POST_RECEIVED,
-			NOW, null, true, NotificationTargetKind.DIRECTION_POST, 771L, NotificationTargetState.AVAILABLE,
-			NOW.plusSeconds(3600));
+				NOW, null, true, NotificationTargetKind.DIRECTION_POST, 771L, NotificationTargetState.AVAILABLE,
+				NOW.plusSeconds(3600));
 		when(inboxService.list(USER_ID, null, null, 20))
-			.thenReturn(new NotificationListing(List.of(card), new NotificationListing.Cursor(NOW, NOTIFICATION_ID)));
+				.thenReturn(
+						new NotificationListing(List.of(card), new NotificationListing.Cursor(NOW, NOTIFICATION_ID)));
 
 		mockMvc.perform(get("/api/v1/notifications"))
-			.andExpect(status().isOk())
-			.andExpect(jsonPath("$.data.notifications[0].notificationId").value(NOTIFICATION_ID))
-			.andExpect(jsonPath("$.data.notifications[0].target.kind").value("DIRECTION_POST"))
-			.andExpect(jsonPath("$.data.nextCursor.notificationId").value(NOTIFICATION_ID));
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.data.notifications[0].notificationId").value(NOTIFICATION_ID))
+				.andExpect(jsonPath("$.data.notifications[0].target.kind").value("DIRECTION_POST"))
+				.andExpect(jsonPath("$.data.nextCursor.notificationId").value(NOTIFICATION_ID));
 	}
 
 	@Test
@@ -170,5 +182,37 @@ class NotificationApiMockMvcTest {
 			.andExpect(jsonPath("$.data.navigable").value(false))
 			.andExpect(jsonPath("$.data.reason").value("EXPIRED"))
 			.andExpect(jsonPath("$.data.fallback").value("INBOX"));
+	}
+
+	@Test
+	@DisplayName("UNIT-007 전체 지우기는 200과 dismissedCount·dismissedAt을 반환한다")
+	void dismissAllReturnsCountAndInstant() throws Exception {
+		when(inboxService.dismissAll(USER_ID)).thenReturn(new NotificationDismissal(3, NOW));
+
+		mockMvc.perform(delete("/api/v1/notifications"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.status").value("success"))
+			.andExpect(jsonPath("$.data.dismissedCount").value(3))
+			.andExpect(jsonPath("$.data.dismissedAt").value(NOW.toString()));
+	}
+
+	@Test
+	@DisplayName("UNIT-007 인증 정보가 없으면 전체 지우기는 401이고 service를 호출하지 않는다")
+	void dismissAllRequiresAuthentication() throws Exception {
+		buildMockMvc(false).perform(delete("/api/v1/notifications"))
+				.andExpect(status().isUnauthorized());
+
+		verify(inboxService, never()).dismissAll(anyLong());
+	}
+
+	@Test
+	@DisplayName("UNIT-007 자격 없는 계정의 전체 지우기는 NOT-APP-002로 403을 반환한다")
+	void dismissAllRejectsIneligibleAccountWith403() throws Exception {
+		when(inboxService.dismissAll(USER_ID))
+			.thenThrow(new NotificationException(NotificationErrorCode.ACCOUNT_NOT_ELIGIBLE));
+
+		mockMvc.perform(delete("/api/v1/notifications"))
+			.andExpect(status().isForbidden())
+			.andExpect(jsonPath("$.errorDetail.code").value("NOT-APP-002"));
 	}
 }
