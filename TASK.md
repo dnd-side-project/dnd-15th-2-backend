@@ -43,6 +43,9 @@
   `java-conventions`를 그대로 실행한다.
 - 대가: PR이 없는 브랜치 push는 pre-push hook의 `./gradlew check`와 `workflow_dispatch`로만 테스트한다.
   base 브랜치를 바꾸면 `edited`만 오므로 Harness Policy가 다시 돌지 않을 수 있다. 실제 동작은 확인해 PR에 기록한다.
+- PR 본문 문체 규칙 추가(사용자 결정, 2026-10-09): #322, #335 본문이 길고 커밋 해시, 브랜치 이름, 영어 용어가
+  섞여 읽기 어려웠다. 별도 Issue를 만들지 않고 이 PR에 넣는다. 수정 파일은 `harness-pr` 스킬의 `SKILL.md`와
+  `references/writing-style.md`이고, `.agents/skills`와 `.claude/skills` 두 사본에 같은 내용을 넣는다.
 
 ## Explicit exclusions
 
@@ -58,6 +61,7 @@
 | --- | --- | --- |
 | `edited` 분리 방식 결정 | 사용자 | 2026-10-07 결정(PR 검증 workflow 분리) |
 | `harness-policy.yml`, `branch-policy.yml`, `pull-request-policy.yml` 변경 | 실행 에이전트 | 사용자 PR 리뷰 |
+| PR 본문 문체 규칙(`.agents/skills`, `.claude/skills`의 `harness-pr`) | 사용자 | 2026-10-09 결정 |
 | `main-ruleset` 활성화 시 새 required check(`Pull Request Policy / pull-request-metadata`) 반영 | 사용자 | 이 PR 범위 밖 |
 
 ## Existing user-owned changes
@@ -86,3 +90,4 @@ git diff --check
 - base 브랜치를 바꿨을 때 테스트가 다시 도는지 기록한다.
 - `validate-workflows.py`, `./harness check`가 통과한다.
 - 시나리오별 run ID를 PR 본문에 기록한다.
+- 두 사본의 `harness-pr` 문체 규칙과 스킬에 같은 문장이 들어가고, 이 PR 본문이 새 점검 목록을 통과한다.
