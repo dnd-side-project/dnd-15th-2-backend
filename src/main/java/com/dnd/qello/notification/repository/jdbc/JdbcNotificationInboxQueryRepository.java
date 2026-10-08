@@ -26,23 +26,26 @@ public class JdbcNotificationInboxQueryRepository implements NotificationInboxQu
 	private final NamedParameterJdbcTemplate jdbc;
 
 	@Override
-	public NotificationListing list(long recipientId, NotificationListing.Cursor cursor, int limit, Instant at) {
+	public NotificationListing list(
+			long recipientId, NotificationListing.Cursor cursor, int limit, Instant at, Instant retentionFloor) {
 		String sql = NotificationInboxQuerySql.SELECT_ROW
-			+ "WHERE " + NotificationInboxQuerySql.LIST_STATUS_FILTER
-			+ (cursor != null ? " AND " + NotificationInboxQuerySql.LIST_CURSOR_FILTER : "")
-			+ "\n" + NotificationInboxQuerySql.LIST_ORDER_AND_LIMIT;
+				+ "WHERE " + NotificationInboxQuerySql.LIST_STATUS_FILTER
+				+ " AND " + NotificationInboxQuerySql.LIST_RETENTION_FILTER
+				+ (cursor != null ? " AND " + NotificationInboxQuerySql.LIST_CURSOR_FILTER : "")
+				+ "\n" + NotificationInboxQuerySql.LIST_ORDER_AND_LIMIT;
 		MapSqlParameterSource params = new MapSqlParameterSource()
-			.addValue("recipientId", recipientId)
-			.addValue("at", Timestamp.from(at))
-			.addValue("limit", limit);
+				.addValue("recipientId", recipientId)
+				.addValue("at", Timestamp.from(at))
+				.addValue("retentionFloor", Timestamp.from(retentionFloor))
+				.addValue("limit", limit);
 		if (cursor != null) {
 			params.addValue("cursorCreatedAt", Timestamp.from(cursor.createdAt()))
-				.addValue("cursorNotificationId", cursor.notificationId());
+					.addValue("cursorNotificationId", cursor.notificationId());
 		}
 		List<NotificationCard> items = jdbc.query(sql, params, (rs, rowNum) -> NotificationRowMappers.card(rs));
 		NotificationListing.Cursor nextCursor = items.size() == limit
-			? new NotificationListing.Cursor(items.getLast().createdAt(), items.getLast().notificationId())
-			: null;
+				? new NotificationListing.Cursor(items.getLast().createdAt(), items.getLast().notificationId())
+				: null;
 		return new NotificationListing(items, nextCursor);
 	}
 
@@ -57,12 +60,12 @@ public class JdbcNotificationInboxQueryRepository implements NotificationInboxQu
 	}
 
 	private <T> Optional<T> findOne(
-		long recipientId, long notificationId, Instant at, ResultSetMapper<T> mapper) {
+			long recipientId, long notificationId, Instant at, ResultSetMapper<T> mapper) {
 		String sql = NotificationInboxQuerySql.SELECT_ROW + "WHERE sub.notification_id = :notificationId\n";
 		MapSqlParameterSource params = new MapSqlParameterSource()
-			.addValue("recipientId", recipientId)
-			.addValue("at", Timestamp.from(at))
-			.addValue("notificationId", notificationId);
+				.addValue("recipientId", recipientId)
+				.addValue("at", Timestamp.from(at))
+				.addValue("notificationId", notificationId);
 		return jdbc.query(sql, params, rs -> rs.next() ? Optional.of(mapper.map(rs)) : Optional.empty());
 	}
 
@@ -72,19 +75,23 @@ public class JdbcNotificationInboxQueryRepository implements NotificationInboxQu
 	}
 
 	@Override
-	public long countUnread(long recipientId) {
+	public long countUnread(long recipientId, Instant retentionFloor) {
 		Long count = jdbc.queryForObject(NotificationInboxQuerySql.COUNT_UNREAD,
-			new MapSqlParameterSource("recipientId", recipientId), Long.class);
+				new MapSqlParameterSource()
+						.addValue("recipientId", recipientId)
+						.addValue("retentionFloor", Timestamp.from(retentionFloor)),
+				Long.class);
 		return count == null ? 0L : count;
 	}
 
 	@Override
-	public boolean existsUnseen(long recipientId, Instant seenAt) {
+	public boolean existsUnseen(long recipientId, Instant seenAt, Instant retentionFloor) {
 		Boolean exists = jdbc.queryForObject(NotificationInboxQuerySql.EXISTS_UNSEEN,
-			new MapSqlParameterSource()
-				.addValue("recipientId", recipientId)
-				.addValue("seenAt", seenAt == null ? null : Timestamp.from(seenAt)),
-			Boolean.class);
+				new MapSqlParameterSource()
+						.addValue("recipientId", recipientId)
+						.addValue("seenAt", seenAt == null ? null : Timestamp.from(seenAt))
+						.addValue("retentionFloor", Timestamp.from(retentionFloor)),
+				Boolean.class);
 		return Boolean.TRUE.equals(exists);
 	}
 }

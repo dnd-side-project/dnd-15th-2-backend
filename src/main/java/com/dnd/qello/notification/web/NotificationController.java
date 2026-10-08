@@ -18,6 +18,7 @@ import com.dnd.qello.notification.service.PushDeviceService;
 import com.dnd.qello.notification.web.request.PushDeviceRequest;
 import com.dnd.qello.notification.web.request.UpdateNotificationPreferencesRequest;
 import com.dnd.qello.notification.web.response.NotificationCardResponse;
+import com.dnd.qello.notification.web.response.NotificationDismissResponse;
 import com.dnd.qello.notification.web.response.NotificationListingResponse;
 import com.dnd.qello.notification.web.response.NotificationPreferenceResponse;
 import com.dnd.qello.notification.web.response.NotificationSeenResponse;
@@ -39,45 +40,53 @@ public class NotificationController implements NotificationApiSpec {
 
 	@Override
 	public ResponseEntity<ApiResponse<NotificationListingResponse>> list(
-		Instant cursorCreatedAt, Long cursorNotificationId, int limit, Authentication authentication) {
+			Instant cursorCreatedAt, Long cursorNotificationId, int limit, Authentication authentication) {
 		long recipientId = AuthenticatedUserId.require(authentication);
 		return ResponseEntity.ok(responseFactory.success(NotificationListingResponse.from(
-			inboxService.list(recipientId, cursorCreatedAt, cursorNotificationId, limit))));
+				inboxService.list(recipientId, cursorCreatedAt, cursorNotificationId, limit))));
+	}
+
+	@Override
+	public ResponseEntity<ApiResponse<NotificationDismissResponse>> dismissAll(Authentication authentication) {
+		long recipientId = AuthenticatedUserId.require(authentication);
+		return ResponseEntity.ok(responseFactory.success(
+				NotificationDismissResponse.from(inboxService.dismissAll(recipientId))));
 	}
 
 	@Override
 	public ResponseEntity<ApiResponse<UnreadSignalResponse>> unreadCount(Authentication authentication) {
 		long recipientId = AuthenticatedUserId.require(authentication);
 		return ResponseEntity.ok(responseFactory.success(
-			UnreadSignalResponse.from(inboxService.unreadSignal(recipientId))));
+				UnreadSignalResponse.from(inboxService.unreadSignal(recipientId))));
 	}
 
 	@Override
 	public ResponseEntity<ApiResponse<NotificationPreferenceResponse>> preferences(Authentication authentication) {
 		return ResponseEntity.ok(responseFactory.success(NotificationPreferenceResponse.from(
-			preferenceService.findMine(AuthenticatedUserId.require(authentication)))));
+				preferenceService.findMine(AuthenticatedUserId.require(authentication)))));
 	}
 
 	@Override
 	public ResponseEntity<ApiResponse<NotificationPreferenceResponse>> replacePreferences(
-		UpdateNotificationPreferencesRequest request, Authentication authentication) {
+			UpdateNotificationPreferencesRequest request, Authentication authentication) {
 		return ResponseEntity.ok(responseFactory.success(NotificationPreferenceResponse.from(
-			preferenceService.replaceMine(AuthenticatedUserId.require(authentication), requireRequest(request).toCommand()))));
+				preferenceService.replaceMine(AuthenticatedUserId.require(authentication),
+						requireRequest(request).toCommand()))));
 	}
 
 	@Override
 	public ResponseEntity<ApiResponse<Void>> registerDevice(PushDeviceRequest request, Authentication authentication) {
 		pushDeviceService.registerOrTransferDevice(
-			AuthenticatedUserId.require(authentication),
-			requirePushDeviceRequest(request).toCommand());
+				AuthenticatedUserId.require(authentication),
+				requirePushDeviceRequest(request).toCommand());
 		return ResponseEntity.noContent().build();
 	}
 
 	@Override
 	public ResponseEntity<ApiResponse<Void>> revokeDevice(PushDeviceRequest request, Authentication authentication) {
 		pushDeviceService.revokeOwnedDevice(
-			AuthenticatedUserId.require(authentication),
-			requirePushDeviceRequest(request).toCommand());
+				AuthenticatedUserId.require(authentication),
+				requirePushDeviceRequest(request).toCommand());
 		return ResponseEntity.noContent().build();
 	}
 
@@ -85,23 +94,23 @@ public class NotificationController implements NotificationApiSpec {
 	public ResponseEntity<ApiResponse<NotificationSeenResponse>> markSeen(Authentication authentication) {
 		long recipientId = AuthenticatedUserId.require(authentication);
 		return ResponseEntity.ok(responseFactory.success(
-			NotificationSeenResponse.from(inboxService.markSeen(recipientId))));
+				NotificationSeenResponse.from(inboxService.markSeen(recipientId))));
 	}
 
 	@Override
 	public ResponseEntity<ApiResponse<NotificationCardResponse>> markRead(
-		long notificationId, Authentication authentication) {
+			long notificationId, Authentication authentication) {
 		long recipientId = AuthenticatedUserId.require(authentication);
 		return ResponseEntity.ok(responseFactory.success(
-			NotificationCardResponse.from(inboxService.markRead(recipientId, notificationId))));
+				NotificationCardResponse.from(inboxService.markRead(recipientId, notificationId))));
 	}
 
 	@Override
 	public ResponseEntity<ApiResponse<NotificationTargetResponse>> target(
-		long notificationId, Authentication authentication) {
+			long notificationId, Authentication authentication) {
 		long recipientId = AuthenticatedUserId.require(authentication);
 		return ResponseEntity.ok(responseFactory.success(
-			NotificationTargetResponse.from(inboxService.target(recipientId, notificationId))));
+				NotificationTargetResponse.from(inboxService.target(recipientId, notificationId))));
 	}
 
 	private UpdateNotificationPreferencesRequest requireRequest(UpdateNotificationPreferencesRequest request) {

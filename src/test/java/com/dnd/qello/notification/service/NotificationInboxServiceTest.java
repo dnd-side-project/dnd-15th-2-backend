@@ -1,21 +1,13 @@
 /**
  * Created at: 2026-08-20T16:40:00+09:00
  * Source scenario: TEST-PLAN-GH-176-NOTIFICATION-INBOX-READ-UNIT-004 through
- * UNIT-013
+ * UNIT-013,
+ * TEST-PLAN-GH-332-NOTIFICATION-CLEAR-UNIT-002 through UNIT-005 (added 2026-10-08T02:53:18+09:00)
  */
 package com.dnd.qello.notification.service;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.doAnswer;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
-import static org.mockito.Mockito.when;
-
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
@@ -33,6 +25,7 @@ import com.dnd.qello.account.domain.Account;
 import com.dnd.qello.account.domain.AccountRole;
 import com.dnd.qello.account.domain.AccountStatus;
 import com.dnd.qello.account.service.AccountEligibilityGate;
+import com.dnd.qello.notification.config.NotificationInboxProperties;
 import com.dnd.qello.notification.domain.Notification;
 import com.dnd.qello.notification.domain.NotificationStatus;
 import com.dnd.qello.notification.domain.NotificationType;
@@ -42,30 +35,48 @@ import com.dnd.qello.notification.repository.NotificationInboxQueryRepository;
 import com.dnd.qello.notification.repository.NotificationRepository;
 import com.dnd.qello.notification.repository.NotificationSeenStateRepository;
 import com.dnd.qello.notification.view.NotificationCard;
+import com.dnd.qello.notification.view.NotificationDismissal;
 import com.dnd.qello.notification.view.NotificationListing;
 import com.dnd.qello.notification.view.NotificationTargetDecision;
 import com.dnd.qello.notification.view.NotificationTargetKind;
 import com.dnd.qello.notification.view.NotificationTargetState;
+import com.dnd.qello.notification.view.UnreadSignal;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class NotificationInboxServiceTest {
 
 	private static final Instant NOW = Instant.parse("2026-08-20T06:00:00Z");
+	private static final Duration RETENTION = Duration.ofDays(30);
+	private static final Instant RETENTION_FLOOR = NOW.minus(RETENTION);
 	private static final long RECIPIENT_ID = 11L;
 	private static final long NOTIFICATION_ID = 501L;
 
-	@Mock private AccountEligibilityGate accountEligibilityGate;
-	@Mock private NotificationInboxQueryRepository queryRepository;
-	@Mock private NotificationSeenStateRepository seenStateRepository;
-	@Mock private NotificationRepository notificationRepository;
+	@Mock
+	private AccountEligibilityGate accountEligibilityGate;
+	@Mock
+	private NotificationInboxQueryRepository queryRepository;
+	@Mock
+	private NotificationSeenStateRepository seenStateRepository;
+	@Mock
+	private NotificationRepository notificationRepository;
 
 	private NotificationInboxService service;
 
 	@BeforeEach
 	void setUp() {
 		service = new NotificationInboxService(
-			accountEligibilityGate, queryRepository, seenStateRepository, notificationRepository,
-			Clock.fixed(NOW, ZoneOffset.UTC));
+				accountEligibilityGate, queryRepository, seenStateRepository, notificationRepository,
+				new NotificationInboxProperties(RETENTION), Clock.fixed(NOW, ZoneOffset.UTC));
 	}
 
 	@Test
@@ -88,20 +99,20 @@ class NotificationInboxServiceTest {
 
 	private void assertRejectsWithAccountError(NotificationErrorCode expected) {
 		assertThatThrownBy(() -> service.list(RECIPIENT_ID, null, null, 20))
-			.isInstanceOf(NotificationException.class)
-			.hasFieldOrPropertyWithValue("errorCode", expected);
+				.isInstanceOf(NotificationException.class)
+				.hasFieldOrPropertyWithValue("errorCode", expected);
 		assertThatThrownBy(() -> service.unreadSignal(RECIPIENT_ID))
-			.isInstanceOf(NotificationException.class)
-			.hasFieldOrPropertyWithValue("errorCode", expected);
+				.isInstanceOf(NotificationException.class)
+				.hasFieldOrPropertyWithValue("errorCode", expected);
 		assertThatThrownBy(() -> service.markSeen(RECIPIENT_ID))
-			.isInstanceOf(NotificationException.class)
-			.hasFieldOrPropertyWithValue("errorCode", expected);
+				.isInstanceOf(NotificationException.class)
+				.hasFieldOrPropertyWithValue("errorCode", expected);
 		assertThatThrownBy(() -> service.markRead(RECIPIENT_ID, NOTIFICATION_ID))
-			.isInstanceOf(NotificationException.class)
-			.hasFieldOrPropertyWithValue("errorCode", expected);
+				.isInstanceOf(NotificationException.class)
+				.hasFieldOrPropertyWithValue("errorCode", expected);
 		assertThatThrownBy(() -> service.target(RECIPIENT_ID, NOTIFICATION_ID))
-			.isInstanceOf(NotificationException.class)
-			.hasFieldOrPropertyWithValue("errorCode", expected);
+				.isInstanceOf(NotificationException.class)
+				.hasFieldOrPropertyWithValue("errorCode", expected);
 	}
 
 	@Test
@@ -109,18 +120,19 @@ class NotificationInboxServiceTest {
 	void validatesLimitRange() {
 		stubEligibleAccount();
 		NotificationListing listing = new NotificationListing(List.of(), null);
-		when(queryRepository.list(eq(RECIPIENT_ID), eq((NotificationListing.Cursor)null), eq(50), eq(NOW)))
-			.thenReturn(listing);
+		when(queryRepository.list(eq(RECIPIENT_ID), eq((NotificationListing.Cursor) null), eq(50), eq(NOW),
+				eq(RETENTION_FLOOR)))
+				.thenReturn(listing);
 
 		assertThatThrownBy(() -> service.list(RECIPIENT_ID, null, null, 0))
-			.isInstanceOf(NotificationException.class)
-			.hasFieldOrPropertyWithValue("errorCode", NotificationErrorCode.INVALID_LIMIT);
+				.isInstanceOf(NotificationException.class)
+				.hasFieldOrPropertyWithValue("errorCode", NotificationErrorCode.INVALID_LIMIT);
 		assertThatThrownBy(() -> service.list(RECIPIENT_ID, null, null, -1))
-			.isInstanceOf(NotificationException.class)
-			.hasFieldOrPropertyWithValue("errorCode", NotificationErrorCode.INVALID_LIMIT);
+				.isInstanceOf(NotificationException.class)
+				.hasFieldOrPropertyWithValue("errorCode", NotificationErrorCode.INVALID_LIMIT);
 		assertThatThrownBy(() -> service.list(RECIPIENT_ID, null, null, 51))
-			.isInstanceOf(NotificationException.class)
-			.hasFieldOrPropertyWithValue("errorCode", NotificationErrorCode.INVALID_LIMIT);
+				.isInstanceOf(NotificationException.class)
+				.hasFieldOrPropertyWithValue("errorCode", NotificationErrorCode.INVALID_LIMIT);
 		assertThat(service.list(RECIPIENT_ID, null, null, 50)).isSameAs(listing);
 	}
 
@@ -128,34 +140,36 @@ class NotificationInboxServiceTest {
 	@DisplayName("UNIT-007 cursor 파라미터를 한쪽만 지정하면 NOT-VAL-007이고 둘 다 생략하거나 지정하면 통과한다")
 	void validatesCursorPairing() {
 		stubEligibleAccount();
-		when(queryRepository.list(eq(RECIPIENT_ID), any(), eq(20), eq(NOW)))
-			.thenReturn(new NotificationListing(List.of(), null));
+		when(queryRepository.list(eq(RECIPIENT_ID), any(), eq(20), eq(NOW), eq(RETENTION_FLOOR)))
+				.thenReturn(new NotificationListing(List.of(), null));
 
 		assertThatThrownBy(() -> service.list(RECIPIENT_ID, NOW, null, 20))
-			.isInstanceOf(NotificationException.class)
-			.hasFieldOrPropertyWithValue("errorCode", NotificationErrorCode.INVALID_CURSOR);
+				.isInstanceOf(NotificationException.class)
+				.hasFieldOrPropertyWithValue("errorCode", NotificationErrorCode.INVALID_CURSOR);
 		assertThatThrownBy(() -> service.list(RECIPIENT_ID, null, 5L, 20))
-			.isInstanceOf(NotificationException.class)
-			.hasFieldOrPropertyWithValue("errorCode", NotificationErrorCode.INVALID_CURSOR);
+				.isInstanceOf(NotificationException.class)
+				.hasFieldOrPropertyWithValue("errorCode", NotificationErrorCode.INVALID_CURSOR);
 
 		service.list(RECIPIENT_ID, null, null, 20);
 		service.list(RECIPIENT_ID, NOW, 5L, 20);
 
-		verify(queryRepository).list(RECIPIENT_ID, null, 20, NOW);
-		verify(queryRepository).list(RECIPIENT_ID, new NotificationListing.Cursor(NOW, 5L), 20, NOW);
+		verify(queryRepository).list(RECIPIENT_ID, null, 20, NOW, RETENTION_FLOOR);
+		verify(queryRepository).list(
+				RECIPIENT_ID, new NotificationListing.Cursor(NOW, 5L), 20, NOW, RETENTION_FLOOR);
 	}
 
 	@Test
 	@DisplayName("UNIT-009 목록과 seen 전진은 서버 Clock에서 한 번 읽은 같은 시각을 쓴다")
 	void usesSingleServerInstant() {
 		stubEligibleAccount();
-		when(queryRepository.list(RECIPIENT_ID, null, 20, NOW)).thenReturn(new NotificationListing(List.of(), null));
+		when(queryRepository.list(RECIPIENT_ID, null, 20, NOW, RETENTION_FLOOR))
+				.thenReturn(new NotificationListing(List.of(), null));
 		when(seenStateRepository.advance(RECIPIENT_ID, NOW)).thenReturn(NOW);
 
 		service.list(RECIPIENT_ID, null, null, 20);
 		Instant seenAt = service.markSeen(RECIPIENT_ID);
 
-		verify(queryRepository).list(RECIPIENT_ID, null, 20, NOW);
+		verify(queryRepository).list(RECIPIENT_ID, null, 20, NOW, RETENTION_FLOOR);
 		verify(seenStateRepository).advance(RECIPIENT_ID, NOW);
 		assertThat(seenAt).isEqualTo(NOW);
 	}
@@ -183,8 +197,8 @@ class NotificationInboxServiceTest {
 		when(notificationRepository.findById(NOTIFICATION_ID)).thenReturn(Optional.of(revoked));
 
 		assertThatThrownBy(() -> service.markRead(RECIPIENT_ID, NOTIFICATION_ID))
-			.isInstanceOf(NotificationException.class)
-			.hasFieldOrPropertyWithValue("errorCode", NotificationErrorCode.INVALID_NOTIFICATION_STATUS);
+				.isInstanceOf(NotificationException.class)
+				.hasFieldOrPropertyWithValue("errorCode", NotificationErrorCode.INVALID_NOTIFICATION_STATUS);
 		verify(notificationRepository, never()).update(any());
 	}
 
@@ -196,21 +210,22 @@ class NotificationInboxServiceTest {
 		when(queryRepository.findTargetDecision(RECIPIENT_ID, NOTIFICATION_ID, NOW)).thenReturn(Optional.empty());
 
 		assertThatThrownBy(() -> service.markRead(RECIPIENT_ID, NOTIFICATION_ID))
-			.isInstanceOf(NotificationException.class)
-			.hasFieldOrPropertyWithValue("errorCode", NotificationErrorCode.NOTIFICATION_NOT_FOUND);
+				.isInstanceOf(NotificationException.class)
+				.hasFieldOrPropertyWithValue("errorCode", NotificationErrorCode.NOTIFICATION_NOT_FOUND);
 		assertThatThrownBy(() -> service.target(RECIPIENT_ID, NOTIFICATION_ID))
-			.isInstanceOf(NotificationException.class)
-			.hasFieldOrPropertyWithValue("errorCode", NotificationErrorCode.NOTIFICATION_NOT_FOUND);
+				.isInstanceOf(NotificationException.class)
+				.hasFieldOrPropertyWithValue("errorCode", NotificationErrorCode.NOTIFICATION_NOT_FOUND);
 
 		Notification unowned = notification(NotificationStatus.UNREAD, null);
 		when(notificationRepository.findById(NOTIFICATION_ID)).thenReturn(Optional.of(
-			new Notification(unowned.id(), 999L, unowned.outboxEventId(), unowned.notificationType(),
-				unowned.dedupKey(), unowned.directionPostId(), unowned.answerId(), unowned.reportId(), unowned.status(),
-				unowned.createdAt(), unowned.readAt())));
+				new Notification(unowned.id(), 999L, unowned.outboxEventId(), unowned.notificationType(),
+						unowned.dedupKey(), unowned.directionPostId(), unowned.answerId(), unowned.reportId(),
+						unowned.status(),
+						unowned.createdAt(), unowned.readAt())));
 
 		assertThatThrownBy(() -> service.markRead(RECIPIENT_ID, NOTIFICATION_ID))
-			.isInstanceOf(NotificationException.class)
-			.hasFieldOrPropertyWithValue("errorCode", NotificationErrorCode.NOTIFICATION_NOT_FOUND);
+				.isInstanceOf(NotificationException.class)
+				.hasFieldOrPropertyWithValue("errorCode", NotificationErrorCode.NOTIFICATION_NOT_FOUND);
 	}
 
 	@Test
@@ -230,14 +245,88 @@ class NotificationInboxServiceTest {
 	void delegatesNextCursorFillingToRepository() {
 		stubEligibleAccount();
 		NotificationListing full = new NotificationListing(List.of(), new NotificationListing.Cursor(NOW, 9L));
-		when(queryRepository.list(RECIPIENT_ID, null, 20, NOW)).thenReturn(full);
+		when(queryRepository.list(RECIPIENT_ID, null, 20, NOW, RETENTION_FLOOR)).thenReturn(full);
 
 		assertThat(service.list(RECIPIENT_ID, null, null, 20)).isSameAs(full);
 	}
 
+	@Test
+	@DisplayName("UNIT-002 계정이 없으면 전체 지우기는 NOT-APP-001이고 repository는 호출되지 않는다")
+	void dismissAllRejectsUnknownAccount() {
+		stubGateToInvoke(1);
+
+		assertThatThrownBy(() -> service.dismissAll(RECIPIENT_ID))
+				.isInstanceOf(NotificationException.class)
+				.hasFieldOrPropertyWithValue("errorCode", NotificationErrorCode.ACCOUNT_NOT_FOUND);
+		verifyNoInteractions(queryRepository, seenStateRepository, notificationRepository);
+	}
+
+	@Test
+	@DisplayName("UNIT-002 자격 없는 계정은 전체 지우기도 NOT-APP-002이고 repository는 호출되지 않는다")
+	void dismissAllRejectsIneligibleAccount() {
+		stubGateToInvoke(2);
+
+		assertThatThrownBy(() -> service.dismissAll(RECIPIENT_ID))
+				.isInstanceOf(NotificationException.class)
+				.hasFieldOrPropertyWithValue("errorCode", NotificationErrorCode.ACCOUNT_NOT_ELIGIBLE);
+		verifyNoInteractions(queryRepository, seenStateRepository, notificationRepository);
+	}
+
+	@Test
+	@DisplayName("UNIT-003 전체 지우기는 서버 Clock 시각을 기준으로 넘기고 전이 건수와 그 시각을 반환한다")
+	void dismissAllUsesServerInstantAndReturnsCount() {
+		stubEligibleAccount();
+		when(notificationRepository.dismissAll(RECIPIENT_ID, NOW)).thenReturn(3);
+
+		NotificationDismissal result = service.dismissAll(RECIPIENT_ID);
+
+		verify(notificationRepository).dismissAll(RECIPIENT_ID, NOW);
+		assertThat(result.dismissedCount()).isEqualTo(3);
+		assertThat(result.dismissedAt()).isEqualTo(NOW);
+	}
+
+	@Test
+	@DisplayName("UNIT-004 목록과 미읽음 신호는 모두 서버 시각에서 보존 기간 30일을 뺀 같은 하한을 넘긴다")
+	void listAndUnreadSignalShareRetentionFloor() {
+		stubEligibleAccount();
+		Instant seenAt = NOW.minusSeconds(600);
+		when(queryRepository.list(RECIPIENT_ID, null, 20, NOW, RETENTION_FLOOR))
+				.thenReturn(new NotificationListing(List.of(), null));
+		when(seenStateRepository.findSeenAt(RECIPIENT_ID)).thenReturn(Optional.of(seenAt));
+		when(queryRepository.existsUnseen(RECIPIENT_ID, seenAt, RETENTION_FLOOR)).thenReturn(true);
+		when(queryRepository.countUnread(RECIPIENT_ID, RETENTION_FLOOR)).thenReturn(4L);
+
+		service.list(RECIPIENT_ID, null, null, 20);
+		UnreadSignal signal = service.unreadSignal(RECIPIENT_ID);
+
+		assertThat(RETENTION_FLOOR).isEqualTo(Instant.parse("2026-07-21T06:00:00Z"));
+		verify(queryRepository).list(RECIPIENT_ID, null, 20, NOW, RETENTION_FLOOR);
+		verify(queryRepository).existsUnseen(RECIPIENT_ID, seenAt, RETENTION_FLOOR);
+		verify(queryRepository).countUnread(RECIPIENT_ID, RETENTION_FLOOR);
+		assertThat(signal.hasUnseen()).isTrue();
+		assertThat(signal.unreadCount()).isEqualTo(4L);
+		assertThat(signal.seenAt()).isEqualTo(seenAt);
+	}
+
+	@Test
+	@DisplayName("UNIT-005 DISMISSED 알림을 읽음 처리하면 update를 호출하지 않고 조회한 카드를 반환한다")
+	void markReadSkipsUpdateForDismissedNotification() {
+		stubEligibleAccount();
+		Notification dismissed = notification(NotificationStatus.DISMISSED, null);
+		when(notificationRepository.findById(NOTIFICATION_ID)).thenReturn(Optional.of(dismissed));
+		NotificationCard card = card();
+		when(queryRepository.findCard(RECIPIENT_ID, NOTIFICATION_ID, NOW)).thenReturn(Optional.of(card));
+
+		NotificationCard result = service.markRead(RECIPIENT_ID, NOTIFICATION_ID);
+
+		assertThat(result).isSameAs(card);
+		verify(notificationRepository, never()).update(any());
+	}
+
 	private void stubEligibleAccount() {
 		Account account = Account.restore(
-			RECIPIENT_ID, AccountRole.USER, AccountStatus.ACTIVE, "KR", "KR-11", "ko-KR", "Asia/Seoul", "nick", null);
+				RECIPIENT_ID, AccountRole.USER, AccountStatus.ACTIVE, "KR", "KR-11", "ko-KR", "Asia/Seoul", "nick",
+				null);
 		when(accountEligibilityGate.requireActiveUser(eq(RECIPIENT_ID), any(), any())).thenReturn(account);
 	}
 
@@ -251,12 +340,12 @@ class NotificationInboxServiceTest {
 
 	private static Notification notification(NotificationStatus status, Instant readAt) {
 		return new Notification(NOTIFICATION_ID, RECIPIENT_ID, 1L, NotificationType.DIRECTION_POST_RECEIVED,
-			"gh176-unit-dedup", 771L, null, null, status, NOW.minusSeconds(120), readAt);
+				"gh176-unit-dedup", 771L, null, null, status, NOW.minusSeconds(120), readAt);
 	}
 
 	private static NotificationCard card() {
 		return new NotificationCard(NOTIFICATION_ID, NotificationType.DIRECTION_POST_RECEIVED,
-			NOW.minusSeconds(120), NOW, false, NotificationTargetKind.DIRECTION_POST, 771L,
-			NotificationTargetState.AVAILABLE, NOW.plusSeconds(3600));
+				NOW.minusSeconds(120), NOW, false, NotificationTargetKind.DIRECTION_POST, 771L,
+				NotificationTargetState.AVAILABLE, NOW.plusSeconds(3600));
 	}
 }

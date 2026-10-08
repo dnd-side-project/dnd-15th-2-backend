@@ -5,10 +5,8 @@
  */
 package com.dnd.qello;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-
 import java.sql.Timestamp;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
 
@@ -31,11 +29,15 @@ import com.dnd.qello.notification.repository.OutboxEventRepository;
 import com.dnd.qello.notification.service.NotificationInboxService;
 import com.dnd.qello.notification.view.NotificationCard;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
 @SpringBootTest
 @ActiveProfiles("test")
 class NotificationInboxCommandIntegrationTest extends PostgisContainerIntegrationTestSupport {
 
 	private static final Instant NOW = Instant.parse("2026-08-20T06:00:00Z");
+	private static final Instant RETENTION_FLOOR = NOW.minus(Duration.ofDays(30));
 
 	@Autowired
 	private JdbcTemplate jdbc;
@@ -74,8 +76,8 @@ class NotificationInboxCommandIntegrationTest extends PostgisContainerIntegratio
 		fixtures.directionPostNotification(recipientId, postId, NOW.plusSeconds(30)); // seenAt 이후
 		seenStateRepository.advance(recipientId, seenAt);
 
-		boolean hasUnseen = queryRepository.existsUnseen(recipientId, seenAt);
-		long unreadCount = queryRepository.countUnread(recipientId);
+		boolean hasUnseen = queryRepository.existsUnseen(recipientId, seenAt, RETENTION_FLOOR);
+		long unreadCount = queryRepository.countUnread(recipientId, RETENTION_FLOOR);
 
 		assertThat(hasUnseen).isTrue();
 		assertThat(unreadCount).isEqualTo(3);
@@ -88,7 +90,7 @@ class NotificationInboxCommandIntegrationTest extends PostgisContainerIntegratio
 		fixtures.directionPostNotification(recipientId, postId, NOW);
 
 		assertThat(seenStateRepository.findSeenAt(recipientId)).isEmpty();
-		assertThat(queryRepository.existsUnseen(recipientId, null)).isTrue();
+		assertThat(queryRepository.existsUnseen(recipientId, null, RETENTION_FLOOR)).isTrue();
 	}
 
 	@Test
@@ -97,13 +99,13 @@ class NotificationInboxCommandIntegrationTest extends PostgisContainerIntegratio
 		long postId = fixtures.activePost(senderId, "int015", NOW.plusSeconds(3600));
 		fixtures.directionPostNotification(recipientId, postId, NOW);
 		fixtures.withStatus(
-			fixtures.directionPostNotification(recipientId, postId, NOW.plusSeconds(1)),
-			NotificationStatus.DISMISSED, NOW.plusSeconds(2));
+				fixtures.directionPostNotification(recipientId, postId, NOW.plusSeconds(1)),
+				NotificationStatus.DISMISSED, NOW.plusSeconds(2));
 		fixtures.withStatus(
-			fixtures.directionPostNotification(recipientId, postId, NOW.plusSeconds(3)),
-			NotificationStatus.REVOKED, null);
+				fixtures.directionPostNotification(recipientId, postId, NOW.plusSeconds(3)),
+				NotificationStatus.REVOKED, null);
 
-		assertThat(queryRepository.countUnread(recipientId)).isEqualTo(1);
+		assertThat(queryRepository.countUnread(recipientId, RETENTION_FLOOR)).isEqualTo(1);
 	}
 
 	@Test
@@ -156,11 +158,11 @@ class NotificationInboxCommandIntegrationTest extends PostgisContainerIntegratio
 		fixtures.withStatus(created, NotificationStatus.REVOKED, null);
 
 		assertThatThrownBy(() -> inboxService.markRead(recipientId, created.id()))
-			.isInstanceOf(NotificationException.class)
-			.hasFieldOrPropertyWithValue("errorCode", NotificationErrorCode.INVALID_NOTIFICATION_STATUS);
+				.isInstanceOf(NotificationException.class)
+				.hasFieldOrPropertyWithValue("errorCode", NotificationErrorCode.INVALID_NOTIFICATION_STATUS);
 
 		String status = jdbc.queryForObject(
-			"SELECT status FROM notification WHERE id = ?", String.class, created.id());
+				"SELECT status FROM notification WHERE id = ?", String.class, created.id());
 		assertThat(status).isEqualTo("REVOKED");
 	}
 
@@ -171,20 +173,20 @@ class NotificationInboxCommandIntegrationTest extends PostgisContainerIntegratio
 		Notification owned = fixtures.directionPostNotification(recipientId, postId, NOW);
 
 		assertThatThrownBy(() -> inboxService.markRead(outsiderId, owned.id()))
-			.isInstanceOf(NotificationException.class)
-			.hasFieldOrPropertyWithValue("errorCode", NotificationErrorCode.NOTIFICATION_NOT_FOUND);
+				.isInstanceOf(NotificationException.class)
+				.hasFieldOrPropertyWithValue("errorCode", NotificationErrorCode.NOTIFICATION_NOT_FOUND);
 
 		String status = jdbc.queryForObject(
-			"SELECT status FROM notification WHERE id = ?", String.class, owned.id());
+				"SELECT status FROM notification WHERE id = ?", String.class, owned.id());
 		Timestamp readAt = jdbc.queryForObject(
-			"SELECT read_at FROM notification WHERE id = ?", Timestamp.class, owned.id());
+				"SELECT read_at FROM notification WHERE id = ?", Timestamp.class, owned.id());
 		assertThat(status).isEqualTo("UNREAD");
 		assertThat(readAt).isNull();
 	}
 
 	private Instant readAtOf(long notificationId) {
 		Timestamp readAt = jdbc.queryForObject(
-			"SELECT read_at FROM notification WHERE id = ?", Timestamp.class, notificationId);
+				"SELECT read_at FROM notification WHERE id = ?", Timestamp.class, notificationId);
 		return readAt == null ? null : readAt.toInstant();
 	}
 }

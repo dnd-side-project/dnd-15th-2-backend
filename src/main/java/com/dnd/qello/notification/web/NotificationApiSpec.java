@@ -7,6 +7,7 @@ import jakarta.validation.Valid;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -20,6 +21,7 @@ import com.dnd.qello.common.web.response.ApiResponse;
 import com.dnd.qello.notification.web.request.PushDeviceRequest;
 import com.dnd.qello.notification.web.request.UpdateNotificationPreferencesRequest;
 import com.dnd.qello.notification.web.response.NotificationCardResponse;
+import com.dnd.qello.notification.web.response.NotificationDismissResponse;
 import com.dnd.qello.notification.web.response.NotificationListingResponse;
 import com.dnd.qello.notification.web.response.NotificationPreferenceApiResponseSchema;
 import com.dnd.qello.notification.web.response.NotificationPreferenceResponse;
@@ -53,6 +55,20 @@ public interface NotificationApiSpec {
 			@Parameter(description = "다음 쪽 조회에 쓸 알림 도착 시각. 앞 응답 nextCursor.createdAt을 그대로 넣습니다. cursorNotificationId와 함께 지정해야 합니다") @RequestParam(required = false) Instant cursorCreatedAt,
 			@Parameter(description = "다음 쪽 조회에 쓸 알림 식별자. 앞 응답 nextCursor.notificationId를 그대로 넣습니다. cursorCreatedAt과 함께 지정해야 합니다") @RequestParam(required = false) Long cursorNotificationId,
 			@Parameter(description = "한 번에 받을 알림 수. 1 이상 50 이하이며 기본값은 20입니다") @RequestParam(defaultValue = "20") int limit,
+			@Parameter(hidden = true) Authentication authentication);
+
+	@Operation(summary = "알림함 전체 지우기", description = "지금까지 받은 알림을 알림함에서 모두 지움\n"
+			+ "앱 로그인 필요(Authorization 헤더에 앱 액세스 토큰이 필요)\n"
+			+ "서버가 요청을 받은 시각(dismissedAt) 이전에 도착한 알림만 지우며, 그 뒤에 도착한 알림은 남음\n"
+			+ "지울 알림이 없어도 성공이며 dismissedCount는 0")
+	@ApiResponses({
+			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "지운 알림 수와 기준 시각을 반환합니다."),
+			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "앱 액세스 토큰이 유효하지 않습니다.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
+			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "현재 계정은 알림함을 사용할 수 없습니다.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
+			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "인증 사용자 계정을 찾을 수 없습니다.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class)))
+	})
+	@DeleteMapping("/notifications")
+	ResponseEntity<ApiResponse<NotificationDismissResponse>> dismissAll(
 			@Parameter(hidden = true) Authentication authentication);
 
 	@Operation(summary = "알림 점과 안 읽은 알림 수 조회", description = "알림함에 새로운 알림이 왔음을 알리는 신호(hasUnseen)와 아직 읽지 않은 알림 개수 조회\n"
