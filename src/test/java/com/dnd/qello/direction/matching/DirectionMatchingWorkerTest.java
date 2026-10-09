@@ -2,17 +2,9 @@
  * Created at: 2026-08-13T17:35:00+09:00
  * Source scenario: TEST-PLAN-GH-120-DIRECTION-MATCHING-WORKER-UNIT-004 through UNIT-006
  * Source scenario: TEST-PLAN-GH-122-DIRECTION-PREVIEW-SUBMISSION-API-UNIT-011
+ * Source scenario: TEST-PLAN-GH-337-ACCOUNT-WITHDRAWAL-UNIT-018, UNIT-019 (added 2026-10-09T18:08:46+09:00)
  */
 package com.dnd.qello.direction.matching;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 
 import java.math.BigDecimal;
 import java.time.Clock;
@@ -26,11 +18,18 @@ import java.util.Set;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionStatus;
 
-import com.dnd.qello.direction.config.DirectionReceiveProperties;
+import com.dnd.qello.account.domain.Account;
+import com.dnd.qello.account.domain.AccountRole;
+import com.dnd.qello.account.domain.AccountStatus;
+import com.dnd.qello.account.repository.AccountRepository;
 import com.dnd.qello.direction.config.DirectionPostProperties;
+import com.dnd.qello.direction.config.DirectionReceiveProperties;
 import com.dnd.qello.direction.config.DirectionRecipientSelectionProperties;
 import com.dnd.qello.direction.domain.DirectionPost;
 import com.dnd.qello.direction.domain.DirectionPostModerationStatus;
@@ -45,23 +44,34 @@ import com.dnd.qello.direction.repository.PostRecipientRepository;
 import com.dnd.qello.direction.repository.RecipientReceiveStateRepository;
 import com.dnd.qello.feed.config.DistanceBandPolicy;
 import com.dnd.qello.feed.config.FeedDistanceProperties;
-import com.dnd.qello.notification.domain.OutboxEventType;
 import com.dnd.qello.notification.domain.OutboxEvent;
+import com.dnd.qello.notification.domain.OutboxEventType;
 import com.dnd.qello.notification.domain.OutboxRetryDecision;
 import com.dnd.qello.notification.domain.OutboxRetryPolicy;
 import com.dnd.qello.notification.repository.OutboxEventRepository;
-import org.springframework.transaction.TransactionStatus;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 
 class DirectionMatchingWorkerTest {
 
 	private static final Instant NOW = Instant.parse("2026-08-13T08:30:00Z");
+	private static final long SENDER_ID = 11L;
 
 	@Test
 	@DisplayName("batch worker는 RECIPIENT_MATCH_REQUESTED만 claim한다")
 	void claimsOnlyMatchingEvents() {
 		OutboxEventRepository outbox = mock(OutboxEventRepository.class);
 		when(outbox.claimDue(any(), any(Integer.class), any(String.class), any(Instant.class), any(Instant.class)))
-			.thenReturn(List.of());
+				.thenReturn(List.of());
 		DirectionMatchingWorker worker = worker(outbox);
 
 		worker.processBatch(command());
@@ -69,7 +79,7 @@ class DirectionMatchingWorkerTest {
 		ArgumentCaptor<Set<OutboxEventType>> types = ArgumentCaptor.forClass(Set.class);
 		verify(outbox).claimDue(types.capture(), eq(10), eq("matching-worker"), eq(NOW), eq(NOW.plusSeconds(30)));
 		org.assertj.core.api.Assertions.assertThat(types.getValue())
-			.containsExactly(OutboxEventType.RECIPIENT_MATCH_REQUESTED);
+				.containsExactly(OutboxEventType.RECIPIENT_MATCH_REQUESTED);
 	}
 
 	@Test
@@ -81,21 +91,21 @@ class DirectionMatchingWorkerTest {
 		ActiveUserPresenceRepository presence = mock(ActiveUserPresenceRepository.class);
 		OutboxEvent claimed = matchingEvent().claimed("matching-worker", NOW, NOW.plusSeconds(30));
 		when(outbox.claimDue(any(), any(Integer.class), any(String.class), any(Instant.class), any(Instant.class)))
-			.thenReturn(List.of(claimed));
+				.thenReturn(List.of(claimed));
 		when(posts.findByIdForUpdate(1L)).thenReturn(Optional.of(post(DirectionPostModerationStatus.PASSED)));
 		when(audiences.findByPostId(1L)).thenReturn(Optional.of(PostAudience.create(1L, 101L, "N",
-			BigDecimal.ZERO, BigDecimal.valueOf(90), 0, 20_100_000,
-			BigDecimal.valueOf(37.5), BigDecimal.valueOf(127.0), "TEST-CELL", NOW)));
+				BigDecimal.ZERO, BigDecimal.valueOf(90), 0, 20_100_000,
+				BigDecimal.valueOf(37.5), BigDecimal.valueOf(127.0), "TEST-CELL", NOW)));
 		when(presence.findCandidates(eq(11L), eq(37.5), eq(127.0), eq(0L), eq(20_100_000L),
-			eq(315.0), eq(45.0), eq(NOW), org.mockito.ArgumentMatchers.isNull())).thenReturn(List.of());
+				eq(315.0), eq(45.0), eq(NOW), org.mockito.ArgumentMatchers.isNull())).thenReturn(List.of());
 		when(outbox.complete(1L, "matching-worker", 1L, NOW)).thenReturn(true);
 
 		DirectionMatchingWorker worker = worker(outbox, posts, audiences, presence, transactionManager());
 
 		assertThat(worker.processBatch(command()).outcomes())
-			.containsExactly(DirectionMatchingWorker.Outcome.PROCESSED);
+				.containsExactly(DirectionMatchingWorker.Outcome.PROCESSED);
 		verify(presence).findCandidates(eq(11L), eq(37.5), eq(127.0), eq(0L), eq(20_100_000L),
-			eq(315.0), eq(45.0), eq(NOW), org.mockito.ArgumentMatchers.isNull());
+				eq(315.0), eq(45.0), eq(NOW), org.mockito.ArgumentMatchers.isNull());
 	}
 
 	@Test
@@ -107,23 +117,24 @@ class DirectionMatchingWorkerTest {
 		OutboxEvent first = matchingEvent(1L).claimed("matching-worker", NOW, NOW.plusSeconds(30));
 		OutboxEvent second = matchingEvent(2L).claimed("matching-worker", NOW, NOW.plusSeconds(30));
 		when(outbox.claimDue(any(), any(Integer.class), any(String.class), any(Instant.class), any(Instant.class)))
-			.thenReturn(List.of(first, second));
+				.thenReturn(List.of(first, second));
 		when(posts.findByIdForUpdate(1L)).thenReturn(Optional.of(post(1L, DirectionPostStatus.MATCHING,
-			DirectionPostModerationStatus.REJECTED, NOW.plusSeconds(3600))));
+				DirectionPostModerationStatus.REJECTED, NOW.plusSeconds(3600))));
 		when(posts.findByIdForUpdate(2L)).thenReturn(Optional.of(post(2L, DirectionPostStatus.MATCHING,
-			DirectionPostModerationStatus.REJECTED, NOW.plusSeconds(2))));
+				DirectionPostModerationStatus.REJECTED, NOW.plusSeconds(2))));
 		when(outbox.complete(anyLong(), eq("matching-worker"), eq(1L), any(Instant.class))).thenReturn(true);
 
 		DirectionMatchingWorker worker = worker(outbox, posts, transactionManager,
-			new SequenceClock(List.of(NOW, NOW.plusSeconds(1), NOW.plusSeconds(3))));
+				new SequenceClock(List.of(NOW, NOW.plusSeconds(1), NOW.plusSeconds(3))));
 		DirectionMatchingWorker.BatchResult result = worker.processBatch(
-			new DirectionMatchingWorker.BatchCommand(10, "matching-worker", null, NOW.plusSeconds(30), retryPolicy()));
+				new DirectionMatchingWorker.BatchCommand(10, "matching-worker", null, NOW.plusSeconds(30),
+						retryPolicy()));
 
 		assertThat(result.outcomes()).containsExactly(DirectionMatchingWorker.Outcome.PROCESSED,
-			DirectionMatchingWorker.Outcome.PROCESSED);
+				DirectionMatchingWorker.Outcome.PROCESSED);
 		ArgumentCaptor<Instant> processingTimes = ArgumentCaptor.forClass(Instant.class);
 		verify(outbox, org.mockito.Mockito.times(2)).complete(anyLong(), eq("matching-worker"), eq(1L),
-			processingTimes.capture());
+				processingTimes.capture());
 		assertThat(processingTimes.getAllValues()).containsExactly(NOW.plusSeconds(1), NOW.plusSeconds(3));
 		ArgumentCaptor<DirectionPost> savedPosts = ArgumentCaptor.forClass(DirectionPost.class);
 		verify(posts).save(savedPosts.capture());
@@ -134,29 +145,30 @@ class DirectionMatchingWorkerTest {
 	@Test
 	@DisplayName("batch command는 lease와 retry policy가 없으면 거절한다")
 	void rejectsInvalidBatchCommand() {
-		assertThatThrownBy(() -> new DirectionMatchingWorker.BatchCommand(0, "worker", NOW, NOW.plusSeconds(30), retryPolicy()))
-			.isInstanceOf(RuntimeException.class);
+		assertThatThrownBy(
+				() -> new DirectionMatchingWorker.BatchCommand(0, "worker", NOW, NOW.plusSeconds(30), retryPolicy()))
+				.isInstanceOf(RuntimeException.class);
 		assertThatThrownBy(() -> new DirectionMatchingWorker.BatchCommand(10, "worker", NOW, NOW, retryPolicy()))
-			.isInstanceOf(RuntimeException.class);
+				.isInstanceOf(RuntimeException.class);
 		assertThatThrownBy(() -> new DirectionMatchingWorker.BatchCommand(10, "worker", NOW, NOW.plusSeconds(30), null))
-			.isInstanceOf(RuntimeException.class);
+				.isInstanceOf(RuntimeException.class);
 	}
 
 	@Test
 	@DisplayName("방향 매칭 경계의 잘못된 입력은 DirectionException과 방향 오류 코드로 분류한다")
 	void classifiesDirectionBoundaryValidation() {
 		assertThatThrownBy(() -> new DirectionMatchingWorker.BatchResult(-1, List.of()))
-			.isInstanceOf(DirectionException.class)
-			.hasFieldOrPropertyWithValue("errorCode", DirectionErrorCode.INVALID_VALUE_RANGE);
+				.isInstanceOf(DirectionException.class)
+				.hasFieldOrPropertyWithValue("errorCode", DirectionErrorCode.INVALID_VALUE_RANGE);
 		assertThatThrownBy(() -> new DirectionMatchingWorker.BatchResult(0, null))
-			.isInstanceOf(DirectionException.class)
-			.hasFieldOrPropertyWithValue("errorCode", DirectionErrorCode.REQUIRED_VALUE_MISSING);
+				.isInstanceOf(DirectionException.class)
+				.hasFieldOrPropertyWithValue("errorCode", DirectionErrorCode.REQUIRED_VALUE_MISSING);
 		assertThatThrownBy(() -> new RecipientReceiveStateRepository.LockCandidate(0, BigDecimal.ONE))
-			.isInstanceOf(DirectionException.class)
-			.hasFieldOrPropertyWithValue("errorCode", DirectionErrorCode.INVALID_ID);
+				.isInstanceOf(DirectionException.class)
+				.hasFieldOrPropertyWithValue("errorCode", DirectionErrorCode.INVALID_ID);
 		assertThatThrownBy(() -> new RecipientReceiveStateRepository.LockCandidate(1, null))
-			.isInstanceOf(DirectionException.class)
-			.hasFieldOrPropertyWithValue("errorCode", DirectionErrorCode.REQUIRED_VALUE_MISSING);
+				.isInstanceOf(DirectionException.class)
+				.hasFieldOrPropertyWithValue("errorCode", DirectionErrorCode.REQUIRED_VALUE_MISSING);
 	}
 
 	@Test
@@ -167,9 +179,10 @@ class DirectionMatchingWorkerTest {
 		PlatformTransactionManager transactionManager = transactionManager();
 		OutboxEvent claimed = matchingEvent().claimed("matching-worker", NOW, NOW.plusSeconds(30));
 		when(outbox.claimDue(any(), any(Integer.class), any(String.class), any(Instant.class), any(Instant.class)))
-			.thenReturn(List.of(claimed));
+				.thenReturn(List.of(claimed));
 		when(posts.findByIdForUpdate(1L)).thenReturn(Optional.of(post(DirectionPostModerationStatus.PENDING)));
-		when(outbox.fail(eq(1L), eq("matching-worker"), eq(1L), eq(NOW), any(OutboxRetryDecision.class))).thenReturn(true);
+		when(outbox.fail(eq(1L), eq("matching-worker"), eq(1L), eq(NOW), any(OutboxRetryDecision.class)))
+				.thenReturn(true);
 
 		DirectionMatchingWorker.BatchResult result = worker(outbox, posts, transactionManager).processBatch(command());
 
@@ -182,14 +195,17 @@ class DirectionMatchingWorkerTest {
 	void classifiesInvalidEventAsPermanent() {
 		OutboxEventRepository outbox = mock(OutboxEventRepository.class);
 		PlatformTransactionManager transactionManager = transactionManager();
-		OutboxEvent claimed = withId(OutboxEvent.pending(com.dnd.qello.notification.domain.OutboxAggregateType.ANSWER, 1L,
-			OutboxEventType.ANSWER_PUBLISHED, "invalid-event", "{\"answerId\":1}", NOW)
-		).claimed("matching-worker", NOW, NOW.plusSeconds(30));
+		OutboxEvent claimed = withId(
+				OutboxEvent.pending(com.dnd.qello.notification.domain.OutboxAggregateType.ANSWER, 1L,
+						OutboxEventType.ANSWER_PUBLISHED, "invalid-event", "{\"answerId\":1}", NOW))
+				.claimed("matching-worker", NOW, NOW.plusSeconds(30));
 		when(outbox.claimDue(any(), any(Integer.class), any(String.class), any(Instant.class), any(Instant.class)))
-			.thenReturn(List.of(claimed));
-		when(outbox.fail(eq(1L), eq("matching-worker"), eq(1L), eq(NOW), any(OutboxRetryDecision.class))).thenReturn(true);
+				.thenReturn(List.of(claimed));
+		when(outbox.fail(eq(1L), eq("matching-worker"), eq(1L), eq(NOW), any(OutboxRetryDecision.class)))
+				.thenReturn(true);
 
-		DirectionMatchingWorker.BatchResult result = worker(outbox, mock(DirectionPostRepository.class), transactionManager).processBatch(command());
+		DirectionMatchingWorker.BatchResult result = worker(outbox, mock(DirectionPostRepository.class),
+				transactionManager).processBatch(command());
 
 		assertThat(result.outcomes()).containsExactly(DirectionMatchingWorker.Outcome.DEAD);
 		verify(outbox).fail(eq(1L), eq("matching-worker"), eq(1L), eq(NOW), any(OutboxRetryDecision.class));
@@ -203,7 +219,7 @@ class DirectionMatchingWorkerTest {
 		PlatformTransactionManager transactionManager = transactionManager();
 		OutboxEvent claimed = matchingEvent().claimed("matching-worker", NOW, NOW.plusSeconds(30));
 		when(outbox.claimDue(any(), any(Integer.class), any(String.class), any(Instant.class), any(Instant.class)))
-			.thenReturn(List.of(claimed));
+				.thenReturn(List.of(claimed));
 		when(posts.findByIdForUpdate(1L)).thenReturn(Optional.of(post(DirectionPostModerationStatus.REJECTED)));
 		when(outbox.complete(1L, "matching-worker", 1L, NOW)).thenReturn(false);
 
@@ -211,7 +227,59 @@ class DirectionMatchingWorkerTest {
 
 		assertThat(result.outcomes()).containsExactly(DirectionMatchingWorker.Outcome.STALE_LEASE);
 		verify(outbox).complete(1L, "matching-worker", 1L, NOW);
-		org.mockito.Mockito.verify(outbox, org.mockito.Mockito.never()).fail(any(Long.class), any(String.class), any(Long.class), any(Instant.class), any(), org.mockito.ArgumentMatchers.anyBoolean());
+		org.mockito.Mockito.verify(outbox, org.mockito.Mockito.never()).fail(any(Long.class), any(String.class),
+				any(Long.class), any(Instant.class), any(), org.mockito.ArgumentMatchers.anyBoolean());
+	}
+
+	@ParameterizedTest
+	@EnumSource(value = AccountStatus.class, names = {"BLOCKED", "WITHDRAWAL_PENDING", "DELETED"})
+	@DisplayName("TEST-PLAN-GH-337-ACCOUNT-WITHDRAWAL-UNIT-018: 발신자가 ACTIVE가 아니면 PASSED 질문글도 수신자·슬롯·activate 없이 claim을 완료한다")
+	void completesWithoutRecipientsWhenSenderIsNotActive(AccountStatus senderStatus) {
+		OutboxEventRepository outbox = mock(OutboxEventRepository.class);
+		DirectionPostRepository posts = mock(DirectionPostRepository.class);
+		PostAudienceRepository audiences = mock(PostAudienceRepository.class);
+		ActiveUserPresenceRepository presence = mock(ActiveUserPresenceRepository.class);
+		PostRecipientRepository recipients = mock(PostRecipientRepository.class);
+		RecipientReceiveStateRepository receiveStates = mock(RecipientReceiveStateRepository.class);
+		OutboxEvent claimed = matchingEvent().claimed("matching-worker", NOW, NOW.plusSeconds(30));
+		when(outbox.claimDue(any(), any(Integer.class), any(String.class), any(Instant.class), any(Instant.class)))
+				.thenReturn(List.of(claimed));
+		when(posts.findByIdForUpdate(1L)).thenReturn(Optional.of(post(DirectionPostModerationStatus.PASSED)));
+		when(outbox.complete(1L, "matching-worker", 1L, NOW)).thenReturn(true);
+
+		DirectionMatchingWorker.BatchResult result = worker(outbox, posts, audiences, presence, recipients,
+				receiveStates, transactionManager(), accountsWithSender(senderStatus)).processBatch(command());
+
+		assertThat(result.outcomes()).containsExactly(DirectionMatchingWorker.Outcome.PROCESSED);
+		verify(outbox).complete(1L, "matching-worker", 1L, NOW);
+		verify(outbox, never()).fail(anyLong(), any(String.class), anyLong(), any(Instant.class),
+				any(OutboxRetryDecision.class));
+		verify(posts, never()).save(any(DirectionPost.class));
+		verifyNoInteractions(audiences, presence, recipients, receiveStates);
+	}
+
+	@Test
+	@DisplayName("TEST-PLAN-GH-337-ACCOUNT-WITHDRAWAL-UNIT-019: 판정 전(PENDING) 질문글이라도 발신자가 탈퇴 유예 중이면 재시도가 아니라 완료다")
+	void senderGateRunsBeforeModerationGate() {
+		OutboxEventRepository outbox = mock(OutboxEventRepository.class);
+		DirectionPostRepository posts = mock(DirectionPostRepository.class);
+		PostRecipientRepository recipients = mock(PostRecipientRepository.class);
+		OutboxEvent claimed = matchingEvent().claimed("matching-worker", NOW, NOW.plusSeconds(30));
+		when(outbox.claimDue(any(), any(Integer.class), any(String.class), any(Instant.class), any(Instant.class)))
+				.thenReturn(List.of(claimed));
+		when(posts.findByIdForUpdate(1L)).thenReturn(Optional.of(post(DirectionPostModerationStatus.PENDING)));
+		when(outbox.complete(1L, "matching-worker", 1L, NOW)).thenReturn(true);
+
+		DirectionMatchingWorker.BatchResult result = worker(outbox, posts, mock(PostAudienceRepository.class),
+				mock(ActiveUserPresenceRepository.class), recipients, mock(RecipientReceiveStateRepository.class),
+				transactionManager(), accountsWithSender(AccountStatus.WITHDRAWAL_PENDING)).processBatch(command());
+
+		assertThat(result.outcomes()).containsExactly(DirectionMatchingWorker.Outcome.PROCESSED);
+		verify(outbox).complete(1L, "matching-worker", 1L, NOW);
+		verify(outbox, never()).fail(anyLong(), any(String.class), anyLong(), any(Instant.class),
+				any(OutboxRetryDecision.class));
+		verify(posts, never()).save(any(DirectionPost.class));
+		verifyNoInteractions(recipients);
 	}
 
 	private DirectionMatchingWorker worker(OutboxEventRepository outbox) {
@@ -219,33 +287,60 @@ class DirectionMatchingWorkerTest {
 	}
 
 	private DirectionMatchingWorker worker(OutboxEventRepository outbox, DirectionPostRepository posts,
-		PlatformTransactionManager transactionManager) {
+			PlatformTransactionManager transactionManager) {
 		return worker(outbox, posts, mock(PostAudienceRepository.class), mock(ActiveUserPresenceRepository.class),
-			transactionManager, Clock.fixed(NOW, ZoneOffset.UTC));
+				transactionManager, Clock.fixed(NOW, ZoneOffset.UTC));
 	}
 
 	private DirectionMatchingWorker worker(OutboxEventRepository outbox, DirectionPostRepository posts,
-		PlatformTransactionManager transactionManager, Clock clock) {
+			PlatformTransactionManager transactionManager, Clock clock) {
 		return worker(outbox, posts, mock(PostAudienceRepository.class), mock(ActiveUserPresenceRepository.class),
-			transactionManager, clock);
+				transactionManager, clock);
 	}
 
 	private DirectionMatchingWorker worker(OutboxEventRepository outbox, DirectionPostRepository posts,
-		PostAudienceRepository audiences, ActiveUserPresenceRepository presence,
-		PlatformTransactionManager transactionManager) {
+			PostAudienceRepository audiences, ActiveUserPresenceRepository presence,
+			PlatformTransactionManager transactionManager) {
 		return worker(outbox, posts, audiences, presence, transactionManager, Clock.fixed(NOW, ZoneOffset.UTC));
 	}
 
 	private DirectionMatchingWorker worker(OutboxEventRepository outbox, DirectionPostRepository posts,
-		PostAudienceRepository audiences, ActiveUserPresenceRepository presence,
-		PlatformTransactionManager transactionManager, Clock clock) {
+			PostAudienceRepository audiences, ActiveUserPresenceRepository presence,
+			PlatformTransactionManager transactionManager, Clock clock) {
+		// #337 이전 시나리오는 발신자가 ACTIVE라는 전제로 쓰였다.
+		return worker(outbox, posts, audiences, presence, mock(PostRecipientRepository.class),
+				mock(RecipientReceiveStateRepository.class), transactionManager, clock,
+				accountsWithSender(AccountStatus.ACTIVE));
+	}
+
+	private DirectionMatchingWorker worker(OutboxEventRepository outbox, DirectionPostRepository posts,
+			PostAudienceRepository audiences, ActiveUserPresenceRepository presence, PostRecipientRepository recipients,
+			RecipientReceiveStateRepository receiveStates, PlatformTransactionManager transactionManager,
+			AccountRepository accounts) {
+		return worker(outbox, posts, audiences, presence, recipients, receiveStates, transactionManager,
+				Clock.fixed(NOW, ZoneOffset.UTC), accounts);
+	}
+
+	private DirectionMatchingWorker worker(OutboxEventRepository outbox, DirectionPostRepository posts,
+			PostAudienceRepository audiences, ActiveUserPresenceRepository presence, PostRecipientRepository recipients,
+			RecipientReceiveStateRepository receiveStates, PlatformTransactionManager transactionManager, Clock clock,
+			AccountRepository accounts) {
 		return new DirectionMatchingWorker(outbox, posts, audiences,
-			presence, mock(PostRecipientRepository.class),
-			mock(RecipientReceiveStateRepository.class), new DirectionRecipientSelectionProperties(10),
-			new DirectionPostProperties(DirectionPostProperties.DeliveryScope.GLOBAL, 0, 20_100_000,
-				Duration.ofHours(12), 300, 1),
-			new DirectionReceiveProperties(5), new DistanceBandPolicy(new FeedDistanceProperties(10_000)),
-			transactionManager, clock);
+				presence, recipients,
+				receiveStates, new DirectionRecipientSelectionProperties(10),
+				new DirectionPostProperties(DirectionPostProperties.DeliveryScope.GLOBAL, 0, 20_100_000,
+						Duration.ofHours(12), 300, 1),
+				new DirectionReceiveProperties(5), new DistanceBandPolicy(new FeedDistanceProperties(10_000)),
+				transactionManager, clock, accounts);
+	}
+
+	private AccountRepository accountsWithSender(AccountStatus status) {
+		AccountRepository accounts = mock(AccountRepository.class);
+		Instant deletedAt = status == AccountStatus.DELETED ? NOW.minusSeconds(10) : null;
+		Instant withdrawalRequestedAt = status == AccountStatus.WITHDRAWAL_PENDING ? NOW.minusSeconds(10) : null;
+		when(accounts.findById(SENDER_ID)).thenReturn(Optional.of(Account.restore(SENDER_ID, AccountRole.USER, status,
+				"KR", "TEST-REGION", "ko-KR", "Asia/Seoul", "발신자", deletedAt, withdrawalRequestedAt)));
+		return accounts;
 	}
 
 	private PlatformTransactionManager transactionManager() {
@@ -260,7 +355,7 @@ class DirectionMatchingWorkerTest {
 
 	private OutboxEvent matchingEvent(long postId) {
 		return withId(postId, OutboxEvent.matchingPending(postId, 1, "matching-event-" + postId,
-			"{\"postId\":" + postId + "}", NOW));
+				"{\"postId\":" + postId + "}", NOW));
 	}
 
 	private OutboxEvent withId(OutboxEvent event) {
@@ -268,9 +363,11 @@ class DirectionMatchingWorkerTest {
 	}
 
 	private OutboxEvent withId(long id, OutboxEvent event) {
-		return new OutboxEvent(id, event.aggregateType(), event.aggregateId(), event.eventType(), event.dedupKey(), event.payload(),
-			event.status(), event.attemptCount(), event.nextAttemptAt(), event.createdAt(), event.processedAt(), event.matchRound(),
-			event.leaseOwner(), event.leaseExpiresAt(), event.leaseGeneration());
+		return new OutboxEvent(id, event.aggregateType(), event.aggregateId(), event.eventType(), event.dedupKey(),
+				event.payload(),
+				event.status(), event.attemptCount(), event.nextAttemptAt(), event.createdAt(), event.processedAt(),
+				event.matchRound(),
+				event.leaseOwner(), event.leaseExpiresAt(), event.leaseGeneration());
 	}
 
 	private DirectionPost post(DirectionPostModerationStatus moderationStatus) {
@@ -282,9 +379,9 @@ class DirectionMatchingWorkerTest {
 	}
 
 	private DirectionPost post(long postId, DirectionPostStatus status,
-		DirectionPostModerationStatus moderationStatus, Instant expiresAt) {
-		return DirectionPost.restore(postId, 11L, 101L, status, "matching-key-" + postId, "matching body",
-			"TEST-REGION", moderationStatus, NOW.minusSeconds(60), null, expiresAt, null, null);
+			DirectionPostModerationStatus moderationStatus, Instant expiresAt) {
+		return DirectionPost.restore(postId, SENDER_ID, 101L, status, "matching-key-" + postId, "matching body",
+				"TEST-REGION", moderationStatus, NOW.minusSeconds(60), null, expiresAt, null, null);
 	}
 
 	private DirectionMatchingWorker.BatchCommand command() {
