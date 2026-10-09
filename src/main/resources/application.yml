@@ -23,9 +23,23 @@ spring:
           time_zone: UTC
   session:
     store-type: jdbc
+    # 운영자 세션의 미사용 만료(AUTH_DESIGN.md 2절). 빠지면 server.servlet.session.timeout 기본값
+    # 30분이 적용된다. 로그인 시각 기준의 최대 수명은 qello.auth.operator-session이 맡는다.
+    timeout: PT8H
     jdbc:
       # 세션 테이블은 Flyway가 소유한다(V6). 라이브러리 자동 초기화를 끈다.
       initialize-schema: never
+
+server:
+  servlet:
+    session:
+      cookie:
+        # 지정하지 않으면 Spring Session이 request.isSecure()를 따라, TLS를 끝내는 프록시 뒤에서는
+        # Secure가 빠진다. 기본은 항상 켜고 HTTP로 직접 노출하는 local·dev 프로필만 끈다.
+        secure: true
+  # forward-headers-strategy는 두지 않는다. 앞단 프록시가 없는 지금 켜면 클라이언트가 보낸
+  # X-Forwarded-For가 연결 주소를 대신해 IP 단위 요청 한도(#315)를 우회할 수 있다. 프록시나 LB를
+  # 둘 때 켤 설정은 AUTH_DESIGN.md 8.2절에 있다.
 
 springdoc:
   # 스펙 엔드포인트를 기본으로 끈다. 운영에서는 라우트 자체가 생기지 않으므로
@@ -56,6 +70,9 @@ qello:
       operator-login:
         max-requests: ${QELLO_AUTH_OPERATOR_LOGIN_RATE_LIMIT:20}
         window: PT15M
+    operator-session:
+      # 로그인 후 사용 여부와 무관하게 세션이 끝나는 시간(AUTH_DESIGN.md 2절, #342).
+      absolute-timeout: PT12H
   account:
     nickname-change:
       # 마지막 변경 후 다음 변경까지의 최소 간격(F01). 가입 때 정한 닉네임은 이 주기에 넣지 않는다.

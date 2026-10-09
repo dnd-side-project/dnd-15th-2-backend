@@ -12,6 +12,14 @@ spring:
       minimum-idle: 1
       connection-timeout: 5000
 
+# 테스트 서버는 TLS 없이 HTTP 8080을 그대로 노출한다(#229). Secure 쿠키는 브라우저가 HTTP에서
+# 저장하지 않아 운영자 로그인이 불가능해지므로 이 프로필에서만 끈다.
+server:
+  servlet:
+    session:
+      cookie:
+        secure: false
+
 # 프론트 개발자가 API를 직접 탐색할 수 있게 켠다. local 프로필과 동일한
 # 판단이다. 운영 기본값(false)은 바뀌지 않는다.
 springdoc:
