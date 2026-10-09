@@ -74,6 +74,10 @@ public final class ChangedJavaTypes {
 		command.add("safe.directory=*");
 		command.addAll(List.of(args));
 		ProcessBuilder builder = new ProcessBuilder(command);
+		// pre-commit 훅이 넘긴 GIT_DIR·GIT_INDEX_FILE을 물려받으면
+		// linked worktree에서는 repositoryRoot가 아니라 훅을 실행한 저장소를 읽는다.
+		// 저장소는 작업 디렉터리로 찾게 한다(#337).
+		builder.environment().keySet().removeIf(name -> name.startsWith("GIT_"));
 		builder.directory(repositoryRoot.toFile());
 		builder.redirectErrorStream(true);
 		try {
