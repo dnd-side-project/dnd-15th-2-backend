@@ -1,20 +1,9 @@
 /**
  * Created at: 2026-08-14T17:52:07+09:00
  * Source scenario: TEST-PLAN-GH-123-DIRECTION-NOTIFICATION-FANOUT-UNIT-001 through UNIT-010
+ * Source scenario: TEST-PLAN-GH-337-ACCOUNT-WITHDRAWAL-UNIT-024 (added 2026-10-09T18:14:46+09:00)
  */
 package com.dnd.qello.notification.fanout;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
-import static org.mockito.Mockito.when;
 
 import java.math.BigDecimal;
 import java.time.Clock;
@@ -66,6 +55,18 @@ import com.dnd.qello.notification.repository.OutboxEventRepository;
 import com.dnd.qello.safety.domain.UserBlock;
 import com.dnd.qello.safety.repository.SafetyRepository;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
+
 class RecipientNotificationFanOutWorkerTest {
 
 	private static final Instant NOW = Instant.parse("2026-08-14T08:00:00Z");
@@ -78,14 +79,15 @@ class RecipientNotificationFanOutWorkerTest {
 	@DisplayName("batch worker는 RECIPIENTS_CONFIRMED만 claim한다")
 	void claimsOnlyRecipientsConfirmedEvents() {
 		Context context = context();
-		when(context.outbox.claimDue(any(), any(Integer.class), any(String.class), any(Instant.class), any(Instant.class)))
-			.thenReturn(List.of());
+		when(context.outbox.claimDue(any(), any(Integer.class), any(String.class), any(Instant.class),
+				any(Instant.class)))
+				.thenReturn(List.of());
 
 		context.worker.processBatch(command());
 
 		ArgumentCaptor<Set<OutboxEventType>> types = ArgumentCaptor.forClass(Set.class);
 		verify(context.outbox).claimDue(types.capture(), eq(10), eq("notification-worker"), eq(NOW),
-			eq(NOW.plusSeconds(30)));
+				eq(NOW.plusSeconds(30)));
 		assertThat(types.getValue()).containsExactly(OutboxEventType.RECIPIENTS_CONFIRMED);
 	}
 
@@ -94,15 +96,16 @@ class RecipientNotificationFanOutWorkerTest {
 	void rejectsMalformedAggregateBeforeNotificationWrite() {
 		Context context = context();
 		OutboxEvent malformed = claimedEvent(1L, OutboxAggregateType.ANSWER, POST_RECIPIENT_ID,
-			OutboxEventType.RECIPIENTS_CONFIRMED, "{\"postRecipientId\":999,\"recipientId\":999}");
+				OutboxEventType.RECIPIENTS_CONFIRMED, "{\"postRecipientId\":999,\"recipientId\":999}");
 		givenClaimed(context, malformed);
 		when(context.outbox.fail(eq(1L), eq("notification-worker"), eq(1L), eq(NOW),
-			any(OutboxRetryDecision.class))).thenReturn(true);
+				any(OutboxRetryDecision.class))).thenReturn(true);
 
 		RecipientNotificationFanOutWorker.BatchResult result = context.worker.processBatch(command());
 
 		assertThat(result.outcomes()).containsExactly(RecipientNotificationFanOutWorker.Outcome.DEAD);
-		verifyNoInteractions(context.notifications, context.recipients, context.posts, context.accounts, context.safety);
+		verifyNoInteractions(context.notifications, context.recipients, context.posts, context.accounts,
+				context.safety);
 	}
 
 	@Test
@@ -110,17 +113,18 @@ class RecipientNotificationFanOutWorkerTest {
 	void classifiesMissingLeaseIdentityAsStaleLease() {
 		Context context = context();
 		OutboxEvent pendingWithoutLease = storedEvent(1L, OutboxEvent.pending(
-			OutboxAggregateType.POST_RECIPIENT, POST_RECIPIENT_ID,
-			OutboxEventType.RECIPIENTS_CONFIRMED, "malformed-claim", "{}", NOW));
+				OutboxAggregateType.POST_RECIPIENT, POST_RECIPIENT_ID,
+				OutboxEventType.RECIPIENTS_CONFIRMED, "malformed-claim", "{}", NOW));
 		givenClaimed(context, pendingWithoutLease);
 
 		RecipientNotificationFanOutWorker.BatchResult result = context.worker.processBatch(command());
 
 		assertThat(result.outcomes()).containsExactly(RecipientNotificationFanOutWorker.Outcome.STALE_LEASE);
 		verify(context.outbox, never()).fail(anyLong(), any(String.class), anyLong(), any(Instant.class),
-			any(OutboxRetryDecision.class));
+				any(OutboxRetryDecision.class));
 		verify(context.outbox, never()).complete(anyLong(), any(String.class), anyLong(), any(Instant.class));
-		verifyNoInteractions(context.notifications, context.recipients, context.posts, context.accounts, context.safety);
+		verifyNoInteractions(context.notifications, context.recipients, context.posts, context.accounts,
+				context.safety);
 	}
 
 	@Test
@@ -136,10 +140,10 @@ class RecipientNotificationFanOutWorkerTest {
 		when(malformed.leaseGeneration()).thenReturn(1L);
 		givenClaimed(context, malformed);
 		when(context.outbox.fail(eq(1L), eq("notification-worker"), eq(1L), eq(NOW),
-			any(OutboxRetryDecision.class))).thenReturn(true);
+				any(OutboxRetryDecision.class))).thenReturn(true);
 
 		assertThat(context.worker.processBatch(command()).outcomes())
-			.containsExactly(RecipientNotificationFanOutWorker.Outcome.DEAD);
+				.containsExactly(RecipientNotificationFanOutWorker.Outcome.DEAD);
 		ArgumentCaptor<OutboxRetryDecision> decision = ArgumentCaptor.forClass(OutboxRetryDecision.class);
 		verify(context.outbox).fail(eq(1L), eq("notification-worker"), eq(1L), eq(NOW), decision.capture());
 		assertThat(decision.getValue().dead()).isTrue();
@@ -152,14 +156,14 @@ class RecipientNotificationFanOutWorkerTest {
 	void rejectsMismatchedLockedAggregateIdentity() {
 		Context context = context();
 		givenClaimed(context, confirmedEvent(1L, POST_RECIPIENT_ID,
-			"{\"postRecipientId\":" + POST_RECIPIENT_ID + "}"));
+				"{\"postRecipientId\":" + POST_RECIPIENT_ID + "}"));
 		when(context.recipients.findByIdForUpdate(POST_RECIPIENT_ID))
-			.thenReturn(Optional.of(recipient(999L, POST_ID, RECIPIENT_ID, PostRecipientStatus.AVAILABLE)));
+				.thenReturn(Optional.of(recipient(999L, POST_ID, RECIPIENT_ID, PostRecipientStatus.AVAILABLE)));
 		when(context.outbox.fail(eq(1L), eq("notification-worker"), eq(1L), eq(NOW),
-			any(OutboxRetryDecision.class))).thenReturn(true);
+				any(OutboxRetryDecision.class))).thenReturn(true);
 
 		assertThat(context.worker.processBatch(command()).outcomes())
-			.containsExactly(RecipientNotificationFanOutWorker.Outcome.DEAD);
+				.containsExactly(RecipientNotificationFanOutWorker.Outcome.DEAD);
 		verifyNoInteractions(context.notifications, context.posts, context.accounts, context.safety);
 	}
 
@@ -168,7 +172,7 @@ class RecipientNotificationFanOutWorkerTest {
 	void createsNotificationAndPendingDeviceDeliveriesFromAggregate() {
 		Context context = eligibleContext();
 		OutboxEvent event = confirmedEvent(1L, POST_RECIPIENT_ID,
-			"{\"postRecipientId\":999,\"recipientId\":999,\"postId\":999}");
+				"{\"postRecipientId\":999,\"recipientId\":999,\"postId\":999}");
 		givenClaimed(context, event);
 		when(context.notifications.findActiveDeviceIdsByUserId(RECIPIENT_ID)).thenReturn(List.of(701L, 702L));
 
@@ -192,15 +196,15 @@ class RecipientNotificationFanOutWorkerTest {
 		ArgumentCaptor<NotificationDelivery> deliveries = ArgumentCaptor.forClass(NotificationDelivery.class);
 		verify(context.notifications, times(2)).saveDeliveryIfAbsent(deliveries.capture());
 		assertThat(deliveries.getAllValues())
-			.extracting(NotificationDelivery::pushDeviceId)
-			.containsExactly(701L, 702L);
+				.extracting(NotificationDelivery::pushDeviceId)
+				.containsExactly(701L, 702L);
 		assertThat(deliveries.getAllValues())
-			.allSatisfy(delivery -> {
-				assertThat(delivery.notificationId()).isEqualTo(RECIPIENT_ID + 500L);
-				assertThat(delivery.status()).isEqualTo(DeliveryStatus.PENDING);
-				assertThat(delivery.nextAttemptAt()).isEqualTo(NOW);
-				assertThat(delivery.createdAt()).isEqualTo(NOW);
-			});
+				.allSatisfy(delivery -> {
+					assertThat(delivery.notificationId()).isEqualTo(RECIPIENT_ID + 500L);
+					assertThat(delivery.status()).isEqualTo(DeliveryStatus.PENDING);
+					assertThat(delivery.nextAttemptAt()).isEqualTo(NOW);
+					assertThat(delivery.createdAt()).isEqualTo(NOW);
+				});
 	}
 
 	@Test
@@ -209,15 +213,15 @@ class RecipientNotificationFanOutWorkerTest {
 		Context enabled = eligibleContext();
 		givenClaimed(enabled, confirmedEvent(1L, POST_RECIPIENT_ID, "{}"));
 		assertThat(enabled.worker.processBatch(command()).outcomes())
-			.containsExactly(RecipientNotificationFanOutWorker.Outcome.PROCESSED);
+				.containsExactly(RecipientNotificationFanOutWorker.Outcome.PROCESSED);
 		verify(enabled.notifications).saveIfAbsent(any(Notification.class));
 		verify(enabled.notifications).findActiveDeviceIdsByUserId(RECIPIENT_ID);
 
 		Context disabled = eligibleContext();
 		givenClaimed(disabled, confirmedEvent(2L, POST_RECIPIENT_ID, "{}"));
-			when(disabled.preferences.isPushEnabled(RECIPIENT_ID,
+		when(disabled.preferences.isPushEnabled(RECIPIENT_ID,
 				NotificationType.DIRECTION_POST_RECEIVED)).thenReturn(false);
-			assertThat(disabled.worker.processBatch(command()).outcomes())
+		assertThat(disabled.worker.processBatch(command()).outcomes())
 				.containsExactly(RecipientNotificationFanOutWorker.Outcome.PROCESSED);
 		// #176 결정 10: preference는 delivery만 막는다. 차단·계정·만료와 달리 알림함
 		// 기록 자체는 preference와 무관하게 남아야 한다.
@@ -235,10 +239,12 @@ class RecipientNotificationFanOutWorkerTest {
 		givenClaimed(context, confirmedEvent(1L, POST_RECIPIENT_ID, "{}"));
 
 		assertThat(context.worker.processBatch(command()).outcomes())
-			.containsExactly(RecipientNotificationFanOutWorker.Outcome.PROCESSED);
+				.containsExactly(RecipientNotificationFanOutWorker.Outcome.PROCESSED);
 
-		if (allowed) verify(context.notifications).saveIfAbsent(any(Notification.class));
-		else verify(context.notifications, never()).saveIfAbsent(any(Notification.class));
+		if (allowed)
+			verify(context.notifications).saveIfAbsent(any(Notification.class));
+		else
+			verify(context.notifications, never()).saveIfAbsent(any(Notification.class));
 	}
 
 	@ParameterizedTest(name = "{0}")
@@ -250,8 +256,24 @@ class RecipientNotificationFanOutWorkerTest {
 		suppression.apply(context);
 
 		assertThat(context.worker.processBatch(command()).outcomes())
-			.containsExactly(RecipientNotificationFanOutWorker.Outcome.PROCESSED);
+				.containsExactly(RecipientNotificationFanOutWorker.Outcome.PROCESSED);
 		verify(context.notifications, never()).saveIfAbsent(any(Notification.class));
+		verify(context.outbox).complete(1L, "notification-worker", 1L, NOW);
+	}
+
+	@ParameterizedTest(name = "{0}")
+	@MethodSource("withdrawalPendingParties")
+	@DisplayName("TEST-PLAN-GH-337-ACCOUNT-WITHDRAWAL-UNIT-024: 발신자나 수신자가 탈퇴 유예 중이면 notification과 delivery를 만들지 않고 이벤트를 완료한다")
+	void suppressesFanOutForWithdrawalPendingAccount(String party, long pendingUserId) {
+		Context context = eligibleContext();
+		givenClaimed(context, confirmedEvent(1L, POST_RECIPIENT_ID, "{}"));
+		when(context.accounts.findById(pendingUserId))
+				.thenReturn(Optional.of(account(pendingUserId, AccountStatus.WITHDRAWAL_PENDING)));
+
+		assertThat(context.worker.processBatch(command()).outcomes())
+				.containsExactly(RecipientNotificationFanOutWorker.Outcome.PROCESSED);
+		verify(context.notifications, never()).saveIfAbsent(any(Notification.class));
+		verify(context.notifications, never()).saveDeliveryIfAbsent(any(NotificationDelivery.class));
 		verify(context.outbox).complete(1L, "notification-worker", 1L, NOW);
 	}
 
@@ -264,7 +286,7 @@ class RecipientNotificationFanOutWorkerTest {
 		when(context.notifications.findActiveDeviceIdsByUserId(RECIPIENT_ID)).thenReturn(List.of(701L));
 
 		assertThat(context.worker.processBatch(command()).outcomes())
-			.containsExactly(RecipientNotificationFanOutWorker.Outcome.PROCESSED);
+				.containsExactly(RecipientNotificationFanOutWorker.Outcome.PROCESSED);
 		ArgumentCaptor<NotificationDelivery> delivery = ArgumentCaptor.forClass(NotificationDelivery.class);
 		verify(context.notifications).saveDeliveryIfAbsent(delivery.capture());
 		assertThat(delivery.getValue().notificationId()).isEqualTo(900L);
@@ -276,12 +298,12 @@ class RecipientNotificationFanOutWorkerTest {
 		Context context = eligibleContext();
 		givenClaimed(context, confirmedEvent(1L, POST_RECIPIENT_ID, "{}"));
 		when(context.notifications.saveIfAbsent(any(Notification.class)))
-			.thenThrow(new TransientDataAccessResourceException("retry"));
+				.thenThrow(new TransientDataAccessResourceException("retry"));
 		when(context.outbox.fail(eq(1L), eq("notification-worker"), eq(1L), eq(NOW),
-			any(OutboxRetryDecision.class))).thenReturn(true);
+				any(OutboxRetryDecision.class))).thenReturn(true);
 
 		assertThat(context.worker.processBatch(command()).outcomes())
-			.containsExactly(RecipientNotificationFanOutWorker.Outcome.RETRYABLE);
+				.containsExactly(RecipientNotificationFanOutWorker.Outcome.RETRYABLE);
 		ArgumentCaptor<OutboxRetryDecision> decision = ArgumentCaptor.forClass(OutboxRetryDecision.class);
 		verify(context.outbox).fail(eq(1L), eq("notification-worker"), eq(1L), eq(NOW), decision.capture());
 		assertThat(decision.getValue().dead()).isFalse();
@@ -294,12 +316,12 @@ class RecipientNotificationFanOutWorkerTest {
 		Context context = eligibleContext();
 		givenClaimed(context, confirmedEvent(1L, POST_RECIPIENT_ID, "{}"));
 		when(context.notifications.saveIfAbsent(any(Notification.class)))
-			.thenThrow(new DataIntegrityViolationException("constraint"));
+				.thenThrow(new DataIntegrityViolationException("constraint"));
 		when(context.outbox.fail(eq(1L), eq("notification-worker"), eq(1L), eq(NOW),
-			any(OutboxRetryDecision.class))).thenReturn(true);
+				any(OutboxRetryDecision.class))).thenReturn(true);
 
 		assertThat(context.worker.processBatch(command()).outcomes())
-			.containsExactly(RecipientNotificationFanOutWorker.Outcome.DEAD);
+				.containsExactly(RecipientNotificationFanOutWorker.Outcome.DEAD);
 	}
 
 	@Test
@@ -310,9 +332,9 @@ class RecipientNotificationFanOutWorkerTest {
 		when(context.outbox.complete(1L, "notification-worker", 1L, NOW)).thenReturn(false);
 
 		assertThat(context.worker.processBatch(command()).outcomes())
-			.containsExactly(RecipientNotificationFanOutWorker.Outcome.STALE_LEASE);
+				.containsExactly(RecipientNotificationFanOutWorker.Outcome.STALE_LEASE);
 		verify(context.outbox, never()).fail(anyLong(), any(String.class), anyLong(), any(Instant.class),
-			any(OutboxRetryDecision.class));
+				any(OutboxRetryDecision.class));
 	}
 
 	@Test
@@ -326,20 +348,20 @@ class RecipientNotificationFanOutWorkerTest {
 		givenEligible(context, 301L, 101L, 22L, PostRecipientStatus.AVAILABLE);
 		givenEligible(context, 302L, 102L, 23L, PostRecipientStatus.AVAILABLE);
 		when(context.preferences.isPushEnabled(anyLong(), eq(NotificationType.DIRECTION_POST_RECEIVED)))
-			.thenReturn(false);
+				.thenReturn(false);
 		when(context.outbox.complete(anyLong(), eq("notification-worker"), eq(1L), any(Instant.class)))
-			.thenReturn(true);
+				.thenReturn(true);
 
 		RecipientNotificationFanOutWorker.BatchCommand command = new RecipientNotificationFanOutWorker.BatchCommand(
-			10, "notification-worker", null, NOW.plusSeconds(30), retryPolicy());
+				10, "notification-worker", null, NOW.plusSeconds(30), retryPolicy());
 		assertThat(context.worker.processBatch(command).outcomes())
-			.containsExactly(RecipientNotificationFanOutWorker.Outcome.PROCESSED,
-				RecipientNotificationFanOutWorker.Outcome.PROCESSED);
+				.containsExactly(RecipientNotificationFanOutWorker.Outcome.PROCESSED,
+						RecipientNotificationFanOutWorker.Outcome.PROCESSED);
 
 		verify(context.outbox).claimDue(any(), eq(10), eq("notification-worker"), eq(NOW), eq(NOW.plusSeconds(30)));
 		ArgumentCaptor<Instant> processingTimes = ArgumentCaptor.forClass(Instant.class);
 		verify(context.outbox, times(2)).complete(anyLong(), eq("notification-worker"), eq(1L),
-			processingTimes.capture());
+				processingTimes.capture());
 		assertThat(processingTimes.getAllValues()).containsExactly(NOW.plusSeconds(1), NOW.plusSeconds(2));
 	}
 
@@ -350,23 +372,24 @@ class RecipientNotificationFanOutWorkerTest {
 		OutboxEvent normal = confirmedEvent(1L, 301L, "{}");
 		OutboxEvent transientEvent = confirmedEvent(2L, 302L, "{}");
 		OutboxEvent permanent = claimedEvent(3L, OutboxAggregateType.ANSWER, 303L,
-			OutboxEventType.RECIPIENTS_CONFIRMED, "{}");
+				OutboxEventType.RECIPIENTS_CONFIRMED, "{}");
 		givenClaimed(context, normal, transientEvent, permanent);
 		givenEligible(context, 301L, 101L, 22L, PostRecipientStatus.AVAILABLE);
 		givenEligible(context, 302L, 102L, 23L, PostRecipientStatus.AVAILABLE);
 		when(context.notifications.saveIfAbsent(any(Notification.class))).thenAnswer(invocation -> {
 			Notification candidate = invocation.getArgument(0);
-			if (candidate.recipientId() == 23L) throw new TransientDataAccessResourceException("retry");
+			if (candidate.recipientId() == 23L)
+				throw new TransientDataAccessResourceException("retry");
 			return withId(candidate, candidate.recipientId() + 500L);
 		});
 		when(context.outbox.complete(1L, "notification-worker", 1L, NOW)).thenReturn(true);
 		when(context.outbox.fail(anyLong(), eq("notification-worker"), eq(1L), eq(NOW),
-			any(OutboxRetryDecision.class))).thenReturn(true);
+				any(OutboxRetryDecision.class))).thenReturn(true);
 
 		assertThat(context.worker.processBatch(command()).outcomes()).containsExactly(
-			RecipientNotificationFanOutWorker.Outcome.PROCESSED,
-			RecipientNotificationFanOutWorker.Outcome.RETRYABLE,
-			RecipientNotificationFanOutWorker.Outcome.DEAD);
+				RecipientNotificationFanOutWorker.Outcome.PROCESSED,
+				RecipientNotificationFanOutWorker.Outcome.RETRYABLE,
+				RecipientNotificationFanOutWorker.Outcome.DEAD);
 	}
 
 	@Test
@@ -386,11 +409,12 @@ class RecipientNotificationFanOutWorkerTest {
 			return withId(candidate, candidate.recipientId() + 500L);
 		});
 		when(context.outbox.fail(eq(1L), eq("notification-worker"), eq(1L), eq(NOW),
-			any(OutboxRetryDecision.class))).thenThrow(new TransientDataAccessResourceException("failure recording"));
+				any(OutboxRetryDecision.class)))
+				.thenThrow(new TransientDataAccessResourceException("failure recording"));
 
 		assertThat(context.worker.processBatch(command()).outcomes()).containsExactly(
-			RecipientNotificationFanOutWorker.Outcome.FAILURE_RECORDING_FAILED,
-			RecipientNotificationFanOutWorker.Outcome.PROCESSED);
+				RecipientNotificationFanOutWorker.Outcome.FAILURE_RECORDING_FAILED,
+				RecipientNotificationFanOutWorker.Outcome.PROCESSED);
 		verify(context.outbox).complete(2L, "notification-worker", 1L, NOW);
 	}
 
@@ -400,41 +424,50 @@ class RecipientNotificationFanOutWorkerTest {
 		Context context = context();
 		assertNotificationError(() -> context.worker.processBatch(null), NotificationErrorCode.REQUIRED_VALUE_MISSING);
 		assertNotificationError(() -> new RecipientNotificationFanOutWorker.BatchCommand(0, "worker", NOW,
-			NOW.plusSeconds(1), retryPolicy()), NotificationErrorCode.INVALID_VALUE_RANGE);
+				NOW.plusSeconds(1), retryPolicy()), NotificationErrorCode.INVALID_VALUE_RANGE);
 		assertNotificationError(() -> new RecipientNotificationFanOutWorker.BatchCommand(1, " ", NOW,
-			NOW.plusSeconds(1), retryPolicy()), NotificationErrorCode.INVALID_TEXT);
+				NOW.plusSeconds(1), retryPolicy()), NotificationErrorCode.INVALID_TEXT);
 		assertNotificationError(() -> new RecipientNotificationFanOutWorker.BatchCommand(1, "worker", NOW,
-			NOW, retryPolicy()), NotificationErrorCode.INVALID_VALUE_RANGE);
+				NOW, retryPolicy()), NotificationErrorCode.INVALID_VALUE_RANGE);
 		assertNotificationError(() -> new RecipientNotificationFanOutWorker.BatchCommand(1, "worker", NOW,
-			NOW.plusSeconds(1), null), NotificationErrorCode.REQUIRED_VALUE_MISSING);
+				NOW.plusSeconds(1), null), NotificationErrorCode.REQUIRED_VALUE_MISSING);
 		verifyNoInteractions(context.outbox);
 	}
 
 	private static Stream<Arguments> recipientStatusCases() {
 		return Stream.of(
-			Arguments.of(PostRecipientStatus.AVAILABLE, true),
-			Arguments.of(PostRecipientStatus.DISCOVERED, true),
-			Arguments.of(PostRecipientStatus.OPENED, true),
-			Arguments.of(PostRecipientStatus.SKIP_PENDING, true),
-			Arguments.of(PostRecipientStatus.ANSWERED, false),
-			Arguments.of(PostRecipientStatus.SKIPPED, false),
-			Arguments.of(PostRecipientStatus.EXPIRED, false),
-			Arguments.of(PostRecipientStatus.BLOCKED, false));
+				Arguments.of(PostRecipientStatus.AVAILABLE, true),
+				Arguments.of(PostRecipientStatus.DISCOVERED, true),
+				Arguments.of(PostRecipientStatus.OPENED, true),
+				Arguments.of(PostRecipientStatus.SKIP_PENDING, true),
+				Arguments.of(PostRecipientStatus.ANSWERED, false),
+				Arguments.of(PostRecipientStatus.SKIPPED, false),
+				Arguments.of(PostRecipientStatus.EXPIRED, false),
+				Arguments.of(PostRecipientStatus.BLOCKED, false));
+	}
+
+	private static Stream<Arguments> withdrawalPendingParties() {
+		return Stream.of(
+				Arguments.of("sender", SENDER_ID),
+				Arguments.of("recipient", RECIPIENT_ID));
 	}
 
 	private static Stream<EligibilitySuppression> eligibilitySuppressions() {
 		return Stream.of(
-			context -> when(context.accounts.findById(SENDER_ID)).thenReturn(Optional.of(account(SENDER_ID, AccountStatus.BLOCKED))),
-			context -> when(context.accounts.findById(RECIPIENT_ID)).thenReturn(Optional.of(account(RECIPIENT_ID, AccountStatus.DELETED))),
-			context -> when(context.posts.findById(POST_ID)).thenReturn(Optional.of(post(POST_ID, SENDER_ID,
-				DirectionPostStatus.EXPIRED, NOW.plusSeconds(3600)))),
-			context -> when(context.posts.findById(POST_ID)).thenReturn(Optional.of(deletedPost(POST_ID, SENDER_ID))),
-			context -> when(context.posts.findById(POST_ID)).thenReturn(Optional.of(post(POST_ID, SENDER_ID,
-				DirectionPostStatus.ACTIVE, NOW))),
-			context -> when(context.safety.findBlock(RECIPIENT_ID, SENDER_ID))
-				.thenReturn(Optional.of(UserBlock.create(RECIPIENT_ID, SENDER_ID, NOW.minusSeconds(60)))),
-			context -> when(context.safety.findBlock(SENDER_ID, RECIPIENT_ID))
-				.thenReturn(Optional.of(UserBlock.create(SENDER_ID, RECIPIENT_ID, NOW.minusSeconds(60)))));
+				context -> when(context.accounts.findById(SENDER_ID))
+						.thenReturn(Optional.of(account(SENDER_ID, AccountStatus.BLOCKED))),
+				context -> when(context.accounts.findById(RECIPIENT_ID))
+						.thenReturn(Optional.of(account(RECIPIENT_ID, AccountStatus.DELETED))),
+				context -> when(context.posts.findById(POST_ID)).thenReturn(Optional.of(post(POST_ID, SENDER_ID,
+						DirectionPostStatus.EXPIRED, NOW.plusSeconds(3600)))),
+				context -> when(context.posts.findById(POST_ID))
+						.thenReturn(Optional.of(deletedPost(POST_ID, SENDER_ID))),
+				context -> when(context.posts.findById(POST_ID)).thenReturn(Optional.of(post(POST_ID, SENDER_ID,
+						DirectionPostStatus.ACTIVE, NOW))),
+				context -> when(context.safety.findBlock(RECIPIENT_ID, SENDER_ID))
+						.thenReturn(Optional.of(UserBlock.create(RECIPIENT_ID, SENDER_ID, NOW.minusSeconds(60)))),
+				context -> when(context.safety.findBlock(SENDER_ID, RECIPIENT_ID))
+						.thenReturn(Optional.of(UserBlock.create(SENDER_ID, RECIPIENT_ID, NOW.minusSeconds(60)))));
 	}
 
 	private Context eligibleContext() {
@@ -485,7 +518,7 @@ class RecipientNotificationFanOutWorkerTest {
 		PlatformTransactionManager transactions = mock(PlatformTransactionManager.class);
 		when(transactions.getTransaction(any())).thenReturn(mock(TransactionStatus.class));
 		RecipientNotificationFanOutWorker worker = new RecipientNotificationFanOutWorker(outbox, notifications,
-			preferences, recipients, posts, accounts, safety, transactions, clock);
+				preferences, recipients, posts, accounts, safety, transactions, clock);
 		return new Context(worker, outbox, notifications, preferences, recipients, posts, accounts, safety);
 	}
 
@@ -496,7 +529,7 @@ class RecipientNotificationFanOutWorkerTest {
 
 	private RecipientNotificationFanOutWorker.BatchCommand command() {
 		return new RecipientNotificationFanOutWorker.BatchCommand(10, "notification-worker", NOW,
-			NOW.plusSeconds(30), retryPolicy());
+				NOW.plusSeconds(30), retryPolicy());
 	}
 
 	private OutboxRetryPolicy retryPolicy() {
@@ -505,21 +538,22 @@ class RecipientNotificationFanOutWorkerTest {
 
 	private static OutboxEvent confirmedEvent(long eventId, long postRecipientId, String payload) {
 		return claimedEvent(eventId, OutboxAggregateType.POST_RECIPIENT, postRecipientId,
-			OutboxEventType.RECIPIENTS_CONFIRMED, payload);
+				OutboxEventType.RECIPIENTS_CONFIRMED, payload);
 	}
 
 	private static OutboxEvent claimedEvent(long eventId, OutboxAggregateType aggregateType, long aggregateId,
-		OutboxEventType eventType, String payload) {
+			OutboxEventType eventType, String payload) {
 		OutboxEvent pending = OutboxEvent.pending(aggregateType, aggregateId, eventType,
-			"notification-fanout-event-" + eventId, payload, NOW);
+				"notification-fanout-event-" + eventId, payload, NOW);
 		return storedEvent(eventId, pending).claimed("notification-worker", NOW, NOW.plusSeconds(30));
 	}
 
 	private static OutboxEvent storedEvent(long eventId, OutboxEvent pending) {
 		return new OutboxEvent(eventId, pending.aggregateType(), pending.aggregateId(), pending.eventType(),
-			pending.dedupKey(), pending.payload(), pending.status(), pending.attemptCount(), pending.nextAttemptAt(),
-			pending.createdAt(), pending.processedAt(), pending.matchRound(), pending.leaseOwner(),
-			pending.leaseExpiresAt(), pending.leaseGeneration());
+				pending.dedupKey(), pending.payload(), pending.status(), pending.attemptCount(),
+				pending.nextAttemptAt(),
+				pending.createdAt(), pending.processedAt(), pending.matchRound(), pending.leaseOwner(),
+				pending.leaseExpiresAt(), pending.leaseGeneration());
 	}
 
 	private static PostRecipient recipient(long id, long postId, long recipientId, PostRecipientStatus status) {
@@ -538,52 +572,54 @@ class RecipientNotificationFanOutWorkerTest {
 		};
 		Instant terminalAt = NOW.minusSeconds(60);
 		return PostRecipient.restore(id, postId, recipientId, status, "NEAR", BigDecimal.valueOf(10),
-			"TEST-REGION", matched, discovered, opened, skipRequested,
-			status == PostRecipientStatus.SKIPPED ? terminalAt : null,
-			isTerminal(status) ? terminalAt : null,
-			status == PostRecipientStatus.EXPIRED ? terminalAt : null,
-			status == PostRecipientStatus.BLOCKED ? terminalAt : null,
-			BigDecimal.valueOf(190), 100, null);
+				"TEST-REGION", matched, discovered, opened, skipRequested,
+				status == PostRecipientStatus.SKIPPED ? terminalAt : null,
+				isTerminal(status) ? terminalAt : null,
+				status == PostRecipientStatus.EXPIRED ? terminalAt : null,
+				status == PostRecipientStatus.BLOCKED ? terminalAt : null,
+				BigDecimal.valueOf(190), 100, null);
 	}
 
 	private static boolean isTerminal(PostRecipientStatus status) {
 		return status == PostRecipientStatus.ANSWERED || status == PostRecipientStatus.SKIPPED
-			|| status == PostRecipientStatus.EXPIRED || status == PostRecipientStatus.BLOCKED;
+				|| status == PostRecipientStatus.EXPIRED || status == PostRecipientStatus.BLOCKED;
 	}
 
 	private static DirectionPost post(long id, long senderId, DirectionPostStatus status, Instant expiresAt) {
 		return DirectionPost.restore(id, senderId, 1L, status, "post-key-" + id, "body", "TEST-REGION",
-			DirectionPostModerationStatus.PASSED, NOW.minusSeconds(3600), NOW.minusSeconds(1800), expiresAt,
-			null, null);
+				DirectionPostModerationStatus.PASSED, NOW.minusSeconds(3600), NOW.minusSeconds(1800), expiresAt,
+				null, null);
 	}
 
 	private static DirectionPost deletedPost(long id, long senderId) {
 		return DirectionPost.restore(id, senderId, 1L, DirectionPostStatus.DELETED, "post-key-" + id, "body",
-			"TEST-REGION", DirectionPostModerationStatus.PASSED, NOW.minusSeconds(3600), NOW.minusSeconds(1800),
-			NOW.plusSeconds(3600), null, NOW.minusSeconds(60));
+				"TEST-REGION", DirectionPostModerationStatus.PASSED, NOW.minusSeconds(3600), NOW.minusSeconds(1800),
+				NOW.plusSeconds(3600), null, NOW.minusSeconds(60));
 	}
 
 	private static Account account(long id, AccountStatus status) {
 		return Account.restore(id, AccountRole.USER, status, "KR", "TEST-REGION", "ko-KR", "Asia/Seoul",
-			"user-" + id, status == AccountStatus.DELETED ? NOW.minusSeconds(60) : null);
+				"user-" + id, status == AccountStatus.DELETED ? NOW.minusSeconds(60) : null,
+				status == AccountStatus.WITHDRAWAL_PENDING ? NOW.minusSeconds(60) : null);
 	}
 
 	private static Notification notification(long id, long sourceEventId) {
 		return new Notification(id, RECIPIENT_ID, sourceEventId, NotificationType.DIRECTION_POST_RECEIVED,
-			"direction-post-received:" + POST_RECIPIENT_ID, POST_ID, null, null, NotificationStatus.UNREAD, NOW, null);
+				"direction-post-received:" + POST_RECIPIENT_ID, POST_ID, null, null, NotificationStatus.UNREAD, NOW,
+				null);
 	}
 
 	private static Notification withId(Notification notification, long id) {
 		return new Notification(id, notification.recipientId(), notification.outboxEventId(),
-			notification.notificationType(), notification.dedupKey(), notification.directionPostId(),
-			notification.answerId(), notification.reportId(), notification.status(), notification.createdAt(),
-			notification.readAt());
+				notification.notificationType(), notification.dedupKey(), notification.directionPostId(),
+				notification.answerId(), notification.reportId(), notification.status(), notification.createdAt(),
+				notification.readAt());
 	}
 
 	private static void assertNotificationError(Runnable action, NotificationErrorCode errorCode) {
 		assertThatThrownBy(action::run)
-			.isInstanceOf(NotificationException.class)
-			.hasFieldOrPropertyWithValue("errorCode", errorCode);
+				.isInstanceOf(NotificationException.class)
+				.hasFieldOrPropertyWithValue("errorCode", errorCode);
 	}
 
 	@FunctionalInterface
@@ -592,9 +628,9 @@ class RecipientNotificationFanOutWorkerTest {
 	}
 
 	private record Context(RecipientNotificationFanOutWorker worker, OutboxEventRepository outbox,
-		NotificationRepository notifications, NotificationPreferenceRepository preferences,
-		PostRecipientRepository recipients,
-		DirectionPostRepository posts, AccountRepository accounts, SafetyRepository safety) {
+			NotificationRepository notifications, NotificationPreferenceRepository preferences,
+			PostRecipientRepository recipients,
+			DirectionPostRepository posts, AccountRepository accounts, SafetyRepository safety) {
 	}
 
 	private static final class SequenceClock extends Clock {
