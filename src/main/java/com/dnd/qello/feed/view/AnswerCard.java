@@ -10,11 +10,13 @@ import java.util.List;
  * reactor_id) 복합으로 바꾸면서 볼 수 있는 사람 전원이 각자 공감할 수 있게 됐다. reactionCount는 그 답변이 받은
  * 공감 총수다. distanceM과 distanceBand는 현재 조회자와 질문 원점 사이의 거리 표시다. 근거리 하한 미만이면
  * distanceM이 null이고 distanceBand만 채워지며, 하한 이상이면 반대다. 답변 작성자의 answer.distance_m과
- * answer.distance_band는 이 표시의 근거로 사용하지 않는다.
+ * answer.distance_band는 이 표시의 근거로 사용하지 않는다. authorWithdrawn이 true면 작성자가 탈퇴를
+ * 요청했거나 탈퇴가 끝난 것이고 authorNickname은 null이다(#337).
  */
 public record AnswerCard(
 		long answerId,
 		String authorNickname,
+		boolean authorWithdrawn,
 		String authorCoarseRegionCode,
 		String bodyText,
 		List<MediaView> media,

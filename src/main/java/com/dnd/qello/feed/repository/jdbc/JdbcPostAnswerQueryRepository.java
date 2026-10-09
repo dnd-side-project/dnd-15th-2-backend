@@ -58,6 +58,7 @@ public class JdbcPostAnswerQueryRepository implements PostAnswerQueryRepository 
 		return new AnswerCard(
 				rs.getLong("answer_id"),
 				rs.getString("author_nickname"),
+				rs.getBoolean("author_withdrawn"),
 				rs.getString("author_region_code"),
 				rs.getString("body_text"),
 				mediaViewIssuer.issue(FeedRowMappers.attachedMedia(rs)),

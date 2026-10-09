@@ -30,7 +30,8 @@ public record AnswerListingResponse(
 	@Schema(name = "AnswerCard")
 	public record Answer(
 			@Schema(description = "답변 식별자") long answerId,
-			@Schema(description = "답변 작성자의 닉네임") String authorNickname,
+			@Schema(description = "답변 작성자의 닉네임. 작성자가 탈퇴했으면 null입니다", nullable = true) String authorNickname,
+			@Schema(description = "작성자가 탈퇴했는지 여부. true면 \"탈퇴한 사용자\"로 표시합니다") boolean authorWithdrawn,
 			@Schema(description = "답변 작성자의 대략적인 지역 코드") String authorCoarseRegionCode,
 			@Schema(description = "답변 본문") String bodyText,
 			@Schema(description = "첨부 이미지 목록. 첨부가 없거나 READY 상태가 아니면 빈 배열입니다") List<MediaResponse> media,
@@ -47,7 +48,8 @@ public record AnswerListingResponse(
 
 		public static Answer from(AnswerCard card) {
 			return new Answer(
-					card.answerId(), card.authorNickname(), card.authorCoarseRegionCode(), card.bodyText(),
+					card.answerId(), card.authorNickname(), card.authorWithdrawn(), card.authorCoarseRegionCode(),
+					card.bodyText(),
 					MediaResponse.from(card.media()), card.bearingFromSenderDegrees(), card.distanceM(),
 					card.distanceBand(),
 					card.publishedAt(), card.editedAt(), card.reactedByMe(), card.reactionCount());
