@@ -19,6 +19,8 @@ import com.dnd.qello.auth.security.DeviceSecretHasher;
 import com.dnd.qello.auth.token.AccessTokenIssuer;
 import com.dnd.qello.auth.token.IssuedAccessToken;
 
+import lombok.RequiredArgsConstructor;
+
 // 토큰 재발급. 계정 차단이 세션이 아니라 이 경로에서 반영되는 지점이다.
 //
 // JWT는 stateless라 즉시 차단할 수 없다. 재발급마다 계정 상태를 확인해 반영 지연을
@@ -27,6 +29,7 @@ import com.dnd.qello.auth.token.IssuedAccessToken;
 // 탈퇴 유예 중인 계정도 재발급한다(#337). 같은 기기로 철회 API를 부를 수 있어야 하기 때문이다. ACTIVE가 필요한
 // 다른 API는 각 서비스가 계속 거절한다.
 @Service
+@RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class DeviceTokenService {
 
@@ -35,19 +38,6 @@ public class DeviceTokenService {
 	private final DeviceSecretHasher secretHasher;
 	private final AccessTokenIssuer accessTokenIssuer;
 	private final Clock clock;
-
-	public DeviceTokenService(
-			AccountRepository accountRepository,
-			DeviceCredentialRepository credentialRepository,
-			DeviceSecretHasher secretHasher,
-			AccessTokenIssuer accessTokenIssuer,
-			Clock clock) {
-		this.accountRepository = accountRepository;
-		this.credentialRepository = credentialRepository;
-		this.secretHasher = secretHasher;
-		this.accessTokenIssuer = accessTokenIssuer;
-		this.clock = clock;
-	}
 
 	/**
 	 * installationId는 secret_hash 조회 결과의 교차 검증용이다.
