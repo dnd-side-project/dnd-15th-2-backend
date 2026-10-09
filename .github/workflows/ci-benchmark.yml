@@ -1,7 +1,7 @@
 name: CI Benchmark
 
 # 같은 커밋에서 두 설정의 테스트 시간을 비교하는 측정 전용 workflow다(GH-330).
-# 기준 ref와 비교 ref를 10회씩, job 20개로 동시에 돌려 runner 상태가 비슷한 시간대에 잰다.
+# 기준 ref와 비교 ref를 같은 횟수만큼 돌려 runner 상태가 비슷한 시간대에 잰다.
 # 두 ref에 같은 커밋을 넣으면 실행 사이의 흩어짐만 잰다.
 # Harness Policy를 여러 번 실행하지 않는 이유: 같은 브랜치에서 연달아 실행하면 concurrency 때문에 앞 run이 취소된다.
 # 측정 기록(build.gradle의 컨텍스트 캐시 로그와 가비지 컬렉션 로그)은 GH-330 이후 커밋에만 있다.
@@ -17,20 +17,61 @@ on:
         description: 비교 ref. 기준 ref와 같게 두면 같은 커밋의 실행 사이 흩어짐만 잰다
         required: true
         type: string
+      task:
+        description: 실행할 Gradle task. check는 Harness Policy test job과 같은 명령이고 test는 단위 테스트만 돈다
+        required: false
+        default: check
+        type: choice
+        options:
+          - check
+          - test
+      attempts:
+        description: 설정마다 반복할 횟수(1~20)
+        required: false
+        default: 10
+        type: number
 
 permissions:
   contents: read
 
 jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      attempts: ${{ steps.attempts.outputs.attempts }}
+    steps:
+      # 입력은 실행 명령에 쓰기 전에 허용 값만 통과시킨다(GH-338).
+      # 반복 상한 20은 job 40개로, 조직의 동시 job 상한(Free 20개)의 두 배다. 그보다 늘리면 측정 하나가
+      # 다른 PR의 CI를 더 오래 막으므로 필요할 때 상한을 따로 올린다.
+      - name: Validate inputs and list attempts
+        id: attempts
+        env:
+          GRADLE_TASK: ${{ inputs.task }}
+          ATTEMPTS: ${{ inputs.attempts }}
+        run: |
+          case "$GRADLE_TASK" in
+            check|test) ;;
+            *) echo "::error::task must be check or test"; exit 1 ;;
+          esac
+          if ! [[ "$ATTEMPTS" =~ ^([1-9]|1[0-9]|20)$ ]]; then
+            echo "::error::attempts must be an integer from 1 to 20"
+            exit 1
+          fi
+          echo "attempts=[$(seq 1 "$ATTEMPTS" | paste -sd, -)]" >> "$GITHUB_OUTPUT"
+
   measure:
     name: measure (${{ matrix.side }} ${{ matrix.attempt }})
+    needs: plan
     runs-on: ubuntu-latest
     timeout-minutes: 40
     strategy:
       fail-fast: false
+      # 회차를 바깥, 설정을 안쪽에 둬서 job이 base 1, head 1, base 2 순서로 만들어진다.
+      # job 수가 동시 job 상한을 넘으면 앞쪽 job부터 시작하므로, 설정이 바깥이면 base가 모두 먼저 돌고
+      # head가 나중 시간대에 돈다(GH-338).
       matrix:
+        attempt: ${{ fromJSON(needs.plan.outputs.attempts) }}
         side: [base, head]
-        attempt: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
     steps:
       - name: Checkout the measured ref
         uses: actions/checkout@v5
@@ -48,26 +89,31 @@ jobs:
       - name: Make Gradle wrapper executable
         run: chmod +x gradlew
 
-      # Harness Policy test job과 같은 명령으로 잰다.
+      # task가 check이면 Harness Policy test job과 같은 명령으로 잰다.
       - name: Run project tests
-        run: ./gradlew check --profile
+        env:
+          GRADLE_TASK: ${{ inputs.task }}
+        run: ./gradlew "$GRADLE_TASK" --profile
 
       - name: Record the measured commit and runner
         if: ${{ !cancelled() }}
         env:
           SIDE: ${{ matrix.side }}
           ATTEMPT: ${{ matrix.attempt }}
+          GRADLE_TASK: ${{ inputs.task }}
         run: |
           mkdir -p build/benchmark
           {
             echo "side=$SIDE"
             echo "attempt=$ATTEMPT"
+            echo "task=$GRADLE_TASK"
             echo "sha=$(git rev-parse HEAD)"
             echo "runner_image=${ImageOS:-unknown} ${ImageVersion:-unknown}"
             echo "cpus=$(nproc)"
             echo "memory_mb=$(free -m | awk '/^Mem:/ {print $2}')"
           } > build/benchmark/meta.txt
 
+      # task가 test이면 integrationTest 결과와 가비지 컬렉션 로그는 없다. 경로 일부가 비어도 업로드는 계속된다.
       - name: Upload measurement records
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v7
