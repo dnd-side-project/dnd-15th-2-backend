@@ -1,6 +1,7 @@
 /*
  * Created at: 2026-10-06T14:26:52+09:00
  * Source scenario: TEST-PLAN-GH-315-AUTH-NICKNAME-RATE-LIMIT-UNIT-015
+ * Source scenario: TEST-PLAN-GH-337-ACCOUNT-WITHDRAWAL-UNIT-023 (added 2026-10-09T18:14:46+09:00)
  */
 package com.dnd.qello.config;
 
@@ -19,6 +20,7 @@ import org.springframework.core.env.MutablePropertySources;
 import org.springframework.core.env.PropertySource;
 import org.springframework.core.io.ClassPathResource;
 
+import com.dnd.qello.account.config.AccountWithdrawalProperties;
 import com.dnd.qello.account.config.NicknameChangeProperties;
 import com.dnd.qello.auth.config.AuthRateLimitProperties;
 import com.dnd.qello.common.ratelimit.RateLimitPolicy;
@@ -58,5 +60,14 @@ class RateLimitDefaultsTest {
 
 		assertThat(properties.cooldown()).isEqualTo(Duration.ofDays(30));
 		assertThat(properties.attemptRateLimit()).isEqualTo(new RateLimitPolicy(10, Duration.ofDays(1)));
+	}
+
+	@Test
+	@DisplayName("TEST-PLAN-GH-337-ACCOUNT-WITHDRAWAL-UNIT-023: 탈퇴 유예 기간 기본값은 30일이다")
+	void accountWithdrawalGracePeriodDefault() {
+		AccountWithdrawalProperties properties = binder
+				.bind("qello.account.withdrawal", AccountWithdrawalProperties.class).get();
+
+		assertThat(properties.gracePeriod()).isEqualTo(Duration.ofDays(30));
 	}
 }

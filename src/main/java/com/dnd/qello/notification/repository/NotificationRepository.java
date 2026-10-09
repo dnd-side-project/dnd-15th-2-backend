@@ -52,5 +52,10 @@ public interface NotificationRepository {
 
 	int revokeOwnedDevice(long userId, String platform, String tokenFingerprint, Instant at);
 
+	/**
+	 * 사용자의 ACTIVE 푸시 기기를 모두 해지하고 PENDING·FAILED 전달을 취소한다(#337 탈퇴). 해지한 기기 수를 돌려준다.
+	 */
+	int revokeAllDevicesByUserId(long userId, Instant at);
+
 	List<Long> findActiveDeviceIdsByUserId(long userId);
 }

@@ -295,6 +295,35 @@ public final class NotificationSql {
 			SELECT count(*) FROM revoked
 			""";
 
+	/**
+	 * REVOKE_OWNED_PUSH_DEVICE와 같지만 token이 아니라 사용자 단위로 모든 ACTIVE 기기를 해지한다(#337 탈퇴).
+	 */
+	public static final String REVOKE_ALL_PUSH_DEVICES_BY_USER = """
+			WITH current_active AS MATERIALIZED (
+				SELECT pd.id
+				FROM push_device pd
+				WHERE pd.user_id = :userId
+				  AND pd.device_status = 'ACTIVE'
+				ORDER BY pd.id
+				FOR UPDATE
+			),
+			revoked AS (
+				UPDATE push_device
+				SET device_status = 'REVOKED', revoked_at = :revokedAt
+				WHERE id IN (SELECT id FROM current_active)
+				RETURNING id
+			),
+			cancelled AS (
+				UPDATE notification_delivery AS nd
+				SET status = 'CANCELLED'
+				FROM revoked
+				WHERE nd.push_device_id = revoked.id
+				  AND nd.status IN ('PENDING', 'FAILED')
+				RETURNING nd.id
+			)
+			SELECT count(*) FROM revoked
+			""";
+
 	public static final String FIND_ACTIVE_PUSH_DEVICE_IDS = """
 			SELECT id
 			FROM push_device
