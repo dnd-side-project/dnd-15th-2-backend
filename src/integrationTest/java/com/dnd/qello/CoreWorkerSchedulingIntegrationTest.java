@@ -1,10 +1,9 @@
 /**
  * Created at: 2026-08-27T15:28:15+09:00
  * Source scenario: TEST-PLAN-GH-182-CORE-WORKER-SCHEDULING-INT-001, INT-002
+ * Source scenario: TEST-PLAN-GH-337-ACCOUNT-WITHDRAWAL-INT-019 (account withdrawal sweep adapter, added 2026-10-09T18:47:28+09:00)
  */
 package com.dnd.qello;
-
-import static org.assertj.core.api.Assertions.assertThat;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -16,6 +15,7 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 import org.springframework.test.context.ActiveProfiles;
 
 import com.dnd.qello.scheduling.WorkerInstanceIdentity;
+import com.dnd.qello.scheduling.adapter.AccountWithdrawalSweepScheduledAdapter;
 import com.dnd.qello.scheduling.adapter.DirectionMatchingScheduledAdapter;
 import com.dnd.qello.scheduling.adapter.NotificationFanOutScheduledAdapter;
 import com.dnd.qello.scheduling.adapter.PushDeliveryDispatchScheduledAdapter;
@@ -24,6 +24,8 @@ import com.dnd.qello.scheduling.adapter.RecipientNotificationFanOutScheduledAdap
 import com.dnd.qello.scheduling.adapter.ReportResolutionFanOutScheduledAdapter;
 import com.dnd.qello.scheduling.adapter.SkipConfirmationSweepScheduledAdapter;
 import com.dnd.qello.scheduling.observability.WorkerMetrics;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 @SpringBootTest
 @ActiveProfiles("test")
@@ -49,15 +51,16 @@ class CoreWorkerSchedulingIntegrationTest extends PostgisContainerIntegrationTes
 		assertThat(applicationContext.getBeansOfType(RecipientExpirationSweepScheduledAdapter.class)).isEmpty();
 		assertThat(applicationContext.getBeansOfType(SkipConfirmationSweepScheduledAdapter.class)).isEmpty();
 		assertThat(applicationContext.getBeansOfType(PushDeliveryDispatchScheduledAdapter.class)).isEmpty();
+		assertThat(applicationContext.getBeansOfType(AccountWithdrawalSweepScheduledAdapter.class)).isEmpty();
 	}
 }
 
 @SpringBootTest(properties = {
-	"qello.notification.push.policy.bundle-window=PT10M",
-	"qello.notification.push.policy.max-delay=PT8H",
-	"qello.notification.push.policy.daily-limit=5",
-	"qello.notification.push.policy.direction-reserved=2",
-	"qello.notification.push.policy.recommendation-min-interval=PT24H"
+		"qello.notification.push.policy.bundle-window=PT10M",
+		"qello.notification.push.policy.max-delay=PT8H",
+		"qello.notification.push.policy.daily-limit=5",
+		"qello.notification.push.policy.direction-reserved=2",
+		"qello.notification.push.policy.recommendation-min-interval=PT24H"
 })
 @ActiveProfiles("local")
 class CoreWorkerSchedulingLocalProfileIntegrationTest extends PostgisContainerIntegrationTestSupport {
@@ -82,5 +85,6 @@ class CoreWorkerSchedulingLocalProfileIntegrationTest extends PostgisContainerIn
 		assertThat(applicationContext.getBeansOfType(RecipientExpirationSweepScheduledAdapter.class)).isEmpty();
 		assertThat(applicationContext.getBeansOfType(SkipConfirmationSweepScheduledAdapter.class)).isEmpty();
 		assertThat(applicationContext.getBeansOfType(PushDeliveryDispatchScheduledAdapter.class)).isEmpty();
+		assertThat(applicationContext.getBeansOfType(AccountWithdrawalSweepScheduledAdapter.class)).isEmpty();
 	}
 }

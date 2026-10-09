@@ -2,6 +2,7 @@
  * Created at: 2026-08-27T14:32:15+09:00
  * Extended at: 2026-08-27T15:28:15+09:00
  * Source scenario: TEST-PLAN-GH-182-CORE-WORKER-SCHEDULING-UNIT-006 through UNIT-008, INT-003
+ * Source scenario: TEST-PLAN-GH-337-ACCOUNT-WITHDRAWAL-UNIT-025 (added 2026-10-09T18:14:46+09:00)
  */
 package com.dnd.qello.scheduling;
 
@@ -22,6 +23,7 @@ import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 
+import com.dnd.qello.account.sweep.AccountWithdrawalSweepWorker;
 import com.dnd.qello.direction.matching.DirectionMatchingWorker;
 import com.dnd.qello.direction.sweep.RecipientExpirationSweepWorker;
 import com.dnd.qello.direction.sweep.SkipConfirmationSweepWorker;
@@ -32,6 +34,7 @@ import com.dnd.qello.notification.fanout.NotificationFanOutWorker;
 import com.dnd.qello.notification.fanout.RecipientNotificationFanOutWorker;
 import com.dnd.qello.notification.fanout.ReportResolutionFanOutWorker;
 import com.dnd.qello.notification.service.PushDeliveryDispatchWorker;
+import com.dnd.qello.scheduling.adapter.AccountWithdrawalSweepScheduledAdapter;
 import com.dnd.qello.scheduling.adapter.AnswerModerationDeadlineScheduledAdapter;
 import com.dnd.qello.scheduling.adapter.AnswerModerationExecutionScheduledAdapter;
 import com.dnd.qello.scheduling.adapter.AnswerModerationVerdictScheduledAdapter;
@@ -136,6 +139,44 @@ class WorkerSchedulingConfigurationTest {
 					assertThat(context).doesNotHaveBean(AnswerModerationExecutionScheduledAdapter.class);
 					assertThat(context).doesNotHaveBean(AnswerModerationDeadlineScheduledAdapter.class);
 					assertThat(context).doesNotHaveBean(AnswerModerationVerdictScheduledAdapter.class);
+				});
+	}
+
+	@Test
+	@DisplayName("TEST-PLAN-GH-337-ACCOUNT-WITHDRAWAL-UNIT-025: 탈퇴 완료 sweep은 자기 enabled가 꺼져 있으면 adapter bean이 없다")
+	void accountWithdrawalSweepAdapterIsAbsentWhenDisabled() {
+		adapterRunner(mock(DirectionMatchingWorker.class))
+				.withBean(AccountWithdrawalSweepWorker.class, () -> mock(AccountWithdrawalSweepWorker.class))
+				.withPropertyValues(
+						"qello.worker.scheduling.enabled=true",
+						"qello.worker.scheduling.pool-size=1",
+						"qello.worker.scheduling.account-withdrawal-sweep.enabled=false")
+				.run(context -> {
+					assertThat(context).hasNotFailed();
+					assertThat(context).hasSingleBean(ThreadPoolTaskScheduler.class);
+					assertThat(context).doesNotHaveBean(AccountWithdrawalSweepScheduledAdapter.class);
+				});
+	}
+
+	@Test
+	@DisplayName("TEST-PLAN-GH-337-ACCOUNT-WITHDRAWAL-UNIT-025: global ON이고 탈퇴 완료 sweep이 ON이면 adapter 하나만 등록한다")
+	void accountWithdrawalSweepAdapterIsRegisteredWhenEnabled() {
+		AccountWithdrawalSweepWorker worker = mock(AccountWithdrawalSweepWorker.class);
+		when(worker.processBatch(any())).thenReturn(new AccountWithdrawalSweepWorker.BatchResult(0, 0, 0, 0));
+
+		adapterRunner(mock(DirectionMatchingWorker.class))
+				.withBean(AccountWithdrawalSweepWorker.class, () -> worker)
+				.withPropertyValues(
+						"qello.worker.scheduling.enabled=true",
+						"qello.worker.scheduling.pool-size=1",
+						"qello.worker.scheduling.account-withdrawal-sweep.enabled=true",
+						"qello.worker.scheduling.account-withdrawal-sweep.fixed-delay=PT1H",
+						"qello.worker.scheduling.account-withdrawal-sweep.batch-size=10")
+				.run(context -> {
+					assertThat(context).hasNotFailed();
+					assertThat(context).hasSingleBean(AccountWithdrawalSweepScheduledAdapter.class);
+					assertThat(context).doesNotHaveBean(RecipientExpirationSweepScheduledAdapter.class);
+					assertThat(context).doesNotHaveBean(SkipConfirmationSweepScheduledAdapter.class);
 				});
 	}
 

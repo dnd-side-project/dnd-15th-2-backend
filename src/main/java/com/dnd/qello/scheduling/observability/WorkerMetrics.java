@@ -53,7 +53,8 @@ public class WorkerMetrics {
 														"push_delivery_dispatch"), ANSWER_MODERATION_EXECUTION(
 																"answer_moderation_execution"), ANSWER_MODERATION_DEADLINE(
 																		"answer_moderation_deadline"), ANSWER_MODERATION_VERDICT(
-																				"answer_moderation_verdict");
+																				"answer_moderation_verdict"), ACCOUNT_WITHDRAWAL_SWEEP(
+																						"account_withdrawal_sweep");
 
 		private final String tag;
 

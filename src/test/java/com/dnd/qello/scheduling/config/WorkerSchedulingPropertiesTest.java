@@ -3,6 +3,7 @@
  * Extended at: 2026-09-07T10:20:00+09:00
  * Source scenario: TEST-PLAN-GH-182-CORE-WORKER-SCHEDULING-UNIT-001 through UNIT-004,
  * TEST-PLAN-GH-204-ANSWER-MODERATION-PRODUCTION-WIRING-UNIT-006
+ * Source scenario: TEST-PLAN-GH-337-ACCOUNT-WITHDRAWAL-UNIT-025 (added 2026-10-09T18:14:46+09:00)
  */
 package com.dnd.qello.scheduling.config;
 
@@ -72,93 +73,106 @@ class WorkerSchedulingPropertiesTest {
 	void bindsDistinctSettingsWithoutExchangingWorkers() {
 		runner.withPropertyValues(
 				ENABLED_DIRECTION_MATCHING)
-				.withPropertyValues(
-						PREFIX + ".recipient-notification-fan-out.enabled=true",
-						PREFIX + ".recipient-notification-fan-out.fixed-delay=PT0.06S",
-						PREFIX + ".recipient-notification-fan-out.batch-size=8",
-						PREFIX + ".recipient-notification-fan-out.lease-duration=PT31S",
-						PREFIX + ".recipient-notification-fan-out.retry.max-attempts=4",
-						PREFIX + ".recipient-notification-fan-out.retry.base-delay=PT2S",
-						PREFIX + ".recipient-notification-fan-out.retry.max-delay=PT31S",
-						PREFIX + ".notification-fan-out.enabled=true",
-						PREFIX + ".notification-fan-out.fixed-delay=PT0.07S",
-						PREFIX + ".notification-fan-out.batch-size=9",
-						PREFIX + ".notification-fan-out.lease-duration=PT32S",
-						PREFIX + ".notification-fan-out.retry.max-attempts=5",
-						PREFIX + ".notification-fan-out.retry.base-delay=PT3S",
-						PREFIX + ".notification-fan-out.retry.max-delay=PT32S",
-						PREFIX + ".report-resolution-fan-out.enabled=true",
-						PREFIX + ".report-resolution-fan-out.fixed-delay=PT0.08S",
-						PREFIX + ".report-resolution-fan-out.batch-size=10",
-						PREFIX + ".report-resolution-fan-out.lease-duration=PT33S",
-						PREFIX + ".report-resolution-fan-out.retry.max-attempts=6",
-						PREFIX + ".report-resolution-fan-out.retry.base-delay=PT4S",
-						PREFIX + ".report-resolution-fan-out.retry.max-delay=PT33S",
-						PREFIX + ".recipient-expiration-sweep.enabled=true",
-						PREFIX + ".recipient-expiration-sweep.fixed-delay=PT0.09S",
-						PREFIX + ".recipient-expiration-sweep.batch-size=11",
-						PREFIX + ".skip-confirmation-sweep.enabled=true",
-						PREFIX + ".skip-confirmation-sweep.fixed-delay=PT0.1S",
-						PREFIX + ".skip-confirmation-sweep.batch-size=12",
-						PREFIX + ".push-delivery-dispatch.enabled=true",
-						PREFIX + ".push-delivery-dispatch.fixed-delay=PT0.11S",
-						PREFIX + ".push-delivery-dispatch.batch-size=13",
-						PREFIX + ".push-delivery-dispatch.lease-duration=PT34S",
-						PREFIX + ".push-delivery-dispatch.retry.max-attempts=7",
-						PREFIX + ".push-delivery-dispatch.retry.base-backoff=PT5S",
-						PREFIX + ".push-delivery-dispatch.retry.backoff-cap=PT34S")
+				.withPropertyValues(distinctWorkerSettings())
 				.run(context -> {
 					assertThat(context).hasNotFailed();
 					WorkerSchedulingProperties properties = context.getBean(WorkerSchedulingProperties.class);
 
-					assertThat(properties.poolSize()).isEqualTo(3);
-					assertThat(properties.directionMatching().fixedDelay()).isEqualTo(Duration.ofMillis(50));
-					assertThat(properties.directionMatching().batchSize()).isEqualTo(7);
-					assertThat(properties.directionMatching().leaseDuration()).isEqualTo(Duration.ofSeconds(30));
-					assertThat(properties.directionMatching().retry().maxAttempts()).isEqualTo(3);
-					assertThat(properties.directionMatching().retry().baseDelay()).isEqualTo(Duration.ofSeconds(1));
-					assertThat(properties.directionMatching().retry().maxDelay()).isEqualTo(Duration.ofSeconds(30));
-
-					assertThat(properties.recipientNotificationFanOut().fixedDelay()).isEqualTo(Duration.ofMillis(60));
-					assertThat(properties.recipientNotificationFanOut().batchSize()).isEqualTo(8);
-					assertThat(properties.recipientNotificationFanOut().leaseDuration())
-							.isEqualTo(Duration.ofSeconds(31));
-					assertThat(properties.recipientNotificationFanOut().retry().maxAttempts()).isEqualTo(4);
-					assertThat(properties.recipientNotificationFanOut().retry().baseDelay())
-							.isEqualTo(Duration.ofSeconds(2));
-					assertThat(properties.recipientNotificationFanOut().retry().maxDelay())
-							.isEqualTo(Duration.ofSeconds(31));
-
-					assertThat(properties.notificationFanOut().fixedDelay()).isEqualTo(Duration.ofMillis(70));
-					assertThat(properties.notificationFanOut().batchSize()).isEqualTo(9);
-					assertThat(properties.notificationFanOut().leaseDuration()).isEqualTo(Duration.ofSeconds(32));
-					assertThat(properties.notificationFanOut().retry().maxAttempts()).isEqualTo(5);
-					assertThat(properties.notificationFanOut().retry().baseDelay()).isEqualTo(Duration.ofSeconds(3));
-					assertThat(properties.notificationFanOut().retry().maxDelay()).isEqualTo(Duration.ofSeconds(32));
-
-					assertThat(properties.reportResolutionFanOut().fixedDelay()).isEqualTo(Duration.ofMillis(80));
-					assertThat(properties.reportResolutionFanOut().batchSize()).isEqualTo(10);
-					assertThat(properties.reportResolutionFanOut().leaseDuration()).isEqualTo(Duration.ofSeconds(33));
-					assertThat(properties.reportResolutionFanOut().retry().maxAttempts()).isEqualTo(6);
-					assertThat(properties.reportResolutionFanOut().retry().baseDelay())
-							.isEqualTo(Duration.ofSeconds(4));
-					assertThat(properties.reportResolutionFanOut().retry().maxDelay())
-							.isEqualTo(Duration.ofSeconds(33));
-
-					assertThat(properties.recipientExpirationSweep().fixedDelay()).isEqualTo(Duration.ofMillis(90));
-					assertThat(properties.recipientExpirationSweep().batchSize()).isEqualTo(11);
-					assertThat(properties.skipConfirmationSweep().fixedDelay()).isEqualTo(Duration.ofMillis(100));
-					assertThat(properties.skipConfirmationSweep().batchSize()).isEqualTo(12);
-
-					assertThat(properties.pushDeliveryDispatch().fixedDelay()).isEqualTo(Duration.ofMillis(110));
-					assertThat(properties.pushDeliveryDispatch().batchSize()).isEqualTo(13);
-					assertThat(properties.pushDeliveryDispatch().leaseDuration()).isEqualTo(Duration.ofSeconds(34));
-					assertThat(properties.pushDeliveryDispatch().retry().maxAttempts()).isEqualTo(7);
-					assertThat(properties.pushDeliveryDispatch().retry().baseBackoff())
-							.isEqualTo(Duration.ofSeconds(5));
-					assertThat(properties.pushDeliveryDispatch().retry().backoffCap())
-							.isEqualTo(Duration.ofSeconds(34));
+					assertOutboxWorkerSettings(properties);
+					assertSweepAndPushWorkerSettings(properties);
 				});
+	}
+
+	// UNIT-004의 입력. 메서드 길이 제한(QELLO-JAVA-SIZE-001) 때문에 binding 단언과 나눴다(#337).
+	private static String[] distinctWorkerSettings() {
+		return new String[]{
+				PREFIX + ".recipient-notification-fan-out.enabled=true",
+				PREFIX + ".recipient-notification-fan-out.fixed-delay=PT0.06S",
+				PREFIX + ".recipient-notification-fan-out.batch-size=8",
+				PREFIX + ".recipient-notification-fan-out.lease-duration=PT31S",
+				PREFIX + ".recipient-notification-fan-out.retry.max-attempts=4",
+				PREFIX + ".recipient-notification-fan-out.retry.base-delay=PT2S",
+				PREFIX + ".recipient-notification-fan-out.retry.max-delay=PT31S",
+				PREFIX + ".notification-fan-out.enabled=true",
+				PREFIX + ".notification-fan-out.fixed-delay=PT0.07S",
+				PREFIX + ".notification-fan-out.batch-size=9",
+				PREFIX + ".notification-fan-out.lease-duration=PT32S",
+				PREFIX + ".notification-fan-out.retry.max-attempts=5",
+				PREFIX + ".notification-fan-out.retry.base-delay=PT3S",
+				PREFIX + ".notification-fan-out.retry.max-delay=PT32S",
+				PREFIX + ".report-resolution-fan-out.enabled=true",
+				PREFIX + ".report-resolution-fan-out.fixed-delay=PT0.08S",
+				PREFIX + ".report-resolution-fan-out.batch-size=10",
+				PREFIX + ".report-resolution-fan-out.lease-duration=PT33S",
+				PREFIX + ".report-resolution-fan-out.retry.max-attempts=6",
+				PREFIX + ".report-resolution-fan-out.retry.base-delay=PT4S",
+				PREFIX + ".report-resolution-fan-out.retry.max-delay=PT33S",
+				PREFIX + ".recipient-expiration-sweep.enabled=true",
+				PREFIX + ".recipient-expiration-sweep.fixed-delay=PT0.09S",
+				PREFIX + ".recipient-expiration-sweep.batch-size=11",
+				PREFIX + ".skip-confirmation-sweep.enabled=true",
+				PREFIX + ".skip-confirmation-sweep.fixed-delay=PT0.1S",
+				PREFIX + ".skip-confirmation-sweep.batch-size=12",
+				PREFIX + ".push-delivery-dispatch.enabled=true",
+				PREFIX + ".push-delivery-dispatch.fixed-delay=PT0.11S",
+				PREFIX + ".push-delivery-dispatch.batch-size=13",
+				PREFIX + ".push-delivery-dispatch.lease-duration=PT34S",
+				PREFIX + ".push-delivery-dispatch.retry.max-attempts=7",
+				PREFIX + ".push-delivery-dispatch.retry.base-backoff=PT5S",
+				PREFIX + ".push-delivery-dispatch.retry.backoff-cap=PT34S"
+		};
+	}
+
+	private static void assertOutboxWorkerSettings(WorkerSchedulingProperties properties) {
+		assertThat(properties.poolSize()).isEqualTo(3);
+		assertThat(properties.directionMatching().fixedDelay()).isEqualTo(Duration.ofMillis(50));
+		assertThat(properties.directionMatching().batchSize()).isEqualTo(7);
+		assertThat(properties.directionMatching().leaseDuration()).isEqualTo(Duration.ofSeconds(30));
+		assertThat(properties.directionMatching().retry().maxAttempts()).isEqualTo(3);
+		assertThat(properties.directionMatching().retry().baseDelay()).isEqualTo(Duration.ofSeconds(1));
+		assertThat(properties.directionMatching().retry().maxDelay()).isEqualTo(Duration.ofSeconds(30));
+
+		assertThat(properties.recipientNotificationFanOut().fixedDelay()).isEqualTo(Duration.ofMillis(60));
+		assertThat(properties.recipientNotificationFanOut().batchSize()).isEqualTo(8);
+		assertThat(properties.recipientNotificationFanOut().leaseDuration())
+				.isEqualTo(Duration.ofSeconds(31));
+		assertThat(properties.recipientNotificationFanOut().retry().maxAttempts()).isEqualTo(4);
+		assertThat(properties.recipientNotificationFanOut().retry().baseDelay())
+				.isEqualTo(Duration.ofSeconds(2));
+		assertThat(properties.recipientNotificationFanOut().retry().maxDelay())
+				.isEqualTo(Duration.ofSeconds(31));
+
+		assertThat(properties.notificationFanOut().fixedDelay()).isEqualTo(Duration.ofMillis(70));
+		assertThat(properties.notificationFanOut().batchSize()).isEqualTo(9);
+		assertThat(properties.notificationFanOut().leaseDuration()).isEqualTo(Duration.ofSeconds(32));
+		assertThat(properties.notificationFanOut().retry().maxAttempts()).isEqualTo(5);
+		assertThat(properties.notificationFanOut().retry().baseDelay()).isEqualTo(Duration.ofSeconds(3));
+		assertThat(properties.notificationFanOut().retry().maxDelay()).isEqualTo(Duration.ofSeconds(32));
+
+		assertThat(properties.reportResolutionFanOut().fixedDelay()).isEqualTo(Duration.ofMillis(80));
+		assertThat(properties.reportResolutionFanOut().batchSize()).isEqualTo(10);
+		assertThat(properties.reportResolutionFanOut().leaseDuration()).isEqualTo(Duration.ofSeconds(33));
+		assertThat(properties.reportResolutionFanOut().retry().maxAttempts()).isEqualTo(6);
+		assertThat(properties.reportResolutionFanOut().retry().baseDelay())
+				.isEqualTo(Duration.ofSeconds(4));
+		assertThat(properties.reportResolutionFanOut().retry().maxDelay())
+				.isEqualTo(Duration.ofSeconds(33));
+	}
+
+	private static void assertSweepAndPushWorkerSettings(WorkerSchedulingProperties properties) {
+		assertThat(properties.recipientExpirationSweep().fixedDelay()).isEqualTo(Duration.ofMillis(90));
+		assertThat(properties.recipientExpirationSweep().batchSize()).isEqualTo(11);
+		assertThat(properties.skipConfirmationSweep().fixedDelay()).isEqualTo(Duration.ofMillis(100));
+		assertThat(properties.skipConfirmationSweep().batchSize()).isEqualTo(12);
+
+		assertThat(properties.pushDeliveryDispatch().fixedDelay()).isEqualTo(Duration.ofMillis(110));
+		assertThat(properties.pushDeliveryDispatch().batchSize()).isEqualTo(13);
+		assertThat(properties.pushDeliveryDispatch().leaseDuration()).isEqualTo(Duration.ofSeconds(34));
+		assertThat(properties.pushDeliveryDispatch().retry().maxAttempts()).isEqualTo(7);
+		assertThat(properties.pushDeliveryDispatch().retry().baseBackoff())
+				.isEqualTo(Duration.ofSeconds(5));
+		assertThat(properties.pushDeliveryDispatch().retry().backoffCap())
+				.isEqualTo(Duration.ofSeconds(34));
 	}
 
 	@Test
@@ -257,8 +271,56 @@ class WorkerSchedulingPropertiesTest {
 				.run(context -> assertThat(context).hasFailed());
 	}
 
+	@Test
+	@DisplayName("TEST-PLAN-GH-337-ACCOUNT-WITHDRAWAL-UNIT-025: 탈퇴 완료 sweep 블록은 이름에 맞는 설정으로 binding된다")
+	void bindsAccountWithdrawalSweepSettings() {
+		runner.withPropertyValues(
+				PREFIX + ".enabled=true",
+				PREFIX + ".pool-size=1",
+				PREFIX + ".skip-confirmation-sweep.enabled=true",
+				PREFIX + ".skip-confirmation-sweep.fixed-delay=PT0.1S",
+				PREFIX + ".skip-confirmation-sweep.batch-size=12",
+				PREFIX + ".account-withdrawal-sweep.enabled=true",
+				PREFIX + ".account-withdrawal-sweep.fixed-delay=PT1M",
+				PREFIX + ".account-withdrawal-sweep.batch-size=14")
+				.run(context -> {
+					assertThat(context).hasNotFailed();
+					WorkerSchedulingProperties properties = context.getBean(WorkerSchedulingProperties.class);
+
+					assertThat(properties.accountWithdrawalSweep().enabled()).isTrue();
+					assertThat(properties.accountWithdrawalSweep().fixedDelay()).isEqualTo(Duration.ofMinutes(1));
+					assertThat(properties.accountWithdrawalSweep().batchSize()).isEqualTo(14);
+					assertThat(properties.skipConfirmationSweep().fixedDelay()).isEqualTo(Duration.ofMillis(100));
+					assertThat(properties.skipConfirmationSweep().batchSize()).isEqualTo(12);
+				});
+	}
+
+	@Test
+	@DisplayName("TEST-PLAN-GH-337-ACCOUNT-WITHDRAWAL-UNIT-025: 켜진 탈퇴 완료 sweep은 양수 fixed-delay와 batch-size를 요구한다")
+	void enabledAccountWithdrawalSweepRejectsInvalidValues() {
+		runner.withPropertyValues(
+				PREFIX + ".enabled=true",
+				PREFIX + ".pool-size=1",
+				PREFIX + ".account-withdrawal-sweep.enabled=true",
+				PREFIX + ".account-withdrawal-sweep.fixed-delay=PT1M")
+				.run(context -> assertThat(context).hasFailed());
+		runner.withPropertyValues(
+				PREFIX + ".enabled=true",
+				PREFIX + ".pool-size=1",
+				PREFIX + ".account-withdrawal-sweep.enabled=true",
+				PREFIX + ".account-withdrawal-sweep.fixed-delay=PT0S",
+				PREFIX + ".account-withdrawal-sweep.batch-size=10")
+				.run(context -> assertThat(context).hasFailed());
+		runner.withPropertyValues(
+				PREFIX + ".enabled=true",
+				PREFIX + ".pool-size=1",
+				PREFIX + ".account-withdrawal-sweep.enabled=false")
+				.run(context -> assertThat(context).hasNotFailed());
+	}
+
 	private WorkerSchedulingProperties propertiesWith(WorkerSchedulingProperties.OutboxSettings directionMatching) {
-		return new WorkerSchedulingProperties(true, 1, directionMatching, null, null, null, null, null, null, null);
+		return new WorkerSchedulingProperties(true, 1, directionMatching, null, null, null, null, null, null, null,
+				null);
 	}
 
 	private WorkerSchedulingProperties.OutboxRetrySettings retry() {

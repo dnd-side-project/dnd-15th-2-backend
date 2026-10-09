@@ -2,6 +2,7 @@
  * Created at: 2026-08-27T14:45:22+09:00
  * Extended at: 2026-08-27T15:03:15+09:00
  * Source scenario: TEST-PLAN-GH-182-CORE-WORKER-SCHEDULING-UNIT-009, UNIT-010, UNIT-011, UNIT-013, UNIT-017
+ * Source scenario: TEST-PLAN-GH-337-ACCOUNT-WITHDRAWAL-UNIT-025 (added 2026-10-09T18:14:46+09:00)
  */
 package com.dnd.qello.scheduling.adapter;
 
@@ -20,6 +21,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.scheduling.annotation.Scheduled;
 
+import com.dnd.qello.account.sweep.AccountWithdrawalSweepWorker;
 import com.dnd.qello.direction.matching.DirectionMatchingWorker;
 import com.dnd.qello.direction.sweep.RecipientExpirationSweepWorker;
 import com.dnd.qello.direction.sweep.SkipConfirmationSweepWorker;
@@ -68,6 +70,9 @@ class CoreWorkerScheduledAdapterTest {
 
 	@Mock
 	private SkipConfirmationSweepWorker skipConfirmationSweepWorker;
+
+	@Mock
+	private AccountWithdrawalSweepWorker accountWithdrawalSweepWorker;
 
 	@Test
 	@DisplayName("UNIT-009: matching adapter는 설정된 limit·owner·lease·retry로 한 batch를 실행한다")
@@ -221,6 +226,60 @@ class CoreWorkerScheduledAdapterTest {
 	}
 
 	@Test
+	@DisplayName("TEST-PLAN-GH-337-ACCOUNT-WITHDRAWAL-UNIT-025: 탈퇴 완료 sweep adapter는 설정 limit과 Clock 시각으로 실행하고 scan 결과 네 종류를 기록한다")
+	void accountWithdrawalSweepRecordsAllResultCounters() {
+		SimpleMeterRegistry registry = new SimpleMeterRegistry();
+		when(accountWithdrawalSweepWorker.processBatch(any()))
+				.thenReturn(new AccountWithdrawalSweepWorker.BatchResult(9, 4, 3, 2));
+		AccountWithdrawalSweepScheduledAdapter adapter = new AccountWithdrawalSweepScheduledAdapter(
+				accountWithdrawalSweepWorker, properties(), CLOCK, new WorkerMetrics(registry));
+
+		adapter.runOnce();
+
+		ArgumentCaptor<AccountWithdrawalSweepWorker.BatchCommand> command = ArgumentCaptor.forClass(
+				AccountWithdrawalSweepWorker.BatchCommand.class);
+		verify(accountWithdrawalSweepWorker).processBatch(command.capture());
+		assertThat(command.getValue().limit()).isEqualTo(13);
+		assertThat(command.getValue().at()).isEqualTo(NOW);
+		assertThat(counter(registry, WorkerMetrics.SCANNED_TOTAL, "account_withdrawal_sweep").count()).isEqualTo(9.0);
+		assertThat(counter(registry, WorkerMetrics.OUTCOME_TOTAL, "account_withdrawal_sweep", "PROCESSED").count())
+				.isEqualTo(4.0);
+		assertThat(counter(registry, WorkerMetrics.OUTCOME_TOTAL, "account_withdrawal_sweep", "INELIGIBLE").count())
+				.isEqualTo(3.0);
+		assertThat(counter(registry, WorkerMetrics.OUTCOME_TOTAL, "account_withdrawal_sweep", "FAILED").count())
+				.isEqualTo(2.0);
+	}
+
+	@Test
+	@DisplayName("TEST-PLAN-GH-337-ACCOUNT-WITHDRAWAL-UNIT-025: 탈퇴 완료 sweep adapter는 자기 fixed-delay 설정만 사용한다")
+	void accountWithdrawalSweepAdapterUsesItsOwnFixedDelay() throws ReflectiveOperationException {
+		assertFixedDelay(AccountWithdrawalSweepScheduledAdapter.class,
+				"${qello.worker.scheduling.account-withdrawal-sweep.fixed-delay}");
+	}
+
+	@Test
+	@DisplayName("TEST-PLAN-GH-337-ACCOUNT-WITHDRAWAL-UNIT-025: 탈퇴 완료 sweep batch 실패 후 다음 trigger는 BATCH_FAILED를 남기고 다시 실행할 수 있다")
+	void accountWithdrawalSweepRecordsFailureAndAllowsTheNextInvocation() {
+		SimpleMeterRegistry registry = new SimpleMeterRegistry();
+		when(accountWithdrawalSweepWorker.processBatch(any()))
+				.thenThrow(new IllegalStateException("temporary withdrawal sweep failure"))
+				.thenReturn(new AccountWithdrawalSweepWorker.BatchResult(1, 1, 0, 0));
+		AccountWithdrawalSweepScheduledAdapter adapter = new AccountWithdrawalSweepScheduledAdapter(
+				accountWithdrawalSweepWorker, properties(), CLOCK, new WorkerMetrics(registry));
+
+		assertThatThrownBy(adapter::runOnce).isInstanceOf(IllegalStateException.class)
+				.hasMessage("temporary withdrawal sweep failure");
+		adapter.runOnce();
+
+		verify(accountWithdrawalSweepWorker, times(2)).processBatch(any());
+		assertThat(counter(registry, WorkerMetrics.OUTCOME_TOTAL, "account_withdrawal_sweep", "BATCH_FAILED").count())
+				.isEqualTo(1.0);
+		assertThat(counter(registry, WorkerMetrics.SCANNED_TOTAL, "account_withdrawal_sweep").count()).isEqualTo(1.0);
+		assertThat(counter(registry, WorkerMetrics.OUTCOME_TOTAL, "account_withdrawal_sweep", "PROCESSED").count())
+				.isEqualTo(1.0);
+	}
+
+	@Test
 	@DisplayName("UNIT-013: 네 outbox adapter는 각 worker의 fixed-delay 설정만 사용한다")
 	void outboxAdaptersUseTheirOwnFixedDelaySchedulingProperty() throws ReflectiveOperationException {
 		assertFixedDelay(DirectionMatchingScheduledAdapter.class,
@@ -289,7 +348,7 @@ class CoreWorkerScheduledAdapterTest {
 	private WorkerSchedulingProperties properties() {
 		return new WorkerSchedulingProperties(true, 1,
 				outbox(7, 30, 3), outbox(8, 31, 4), outbox(9, 32, 5), outbox(10, 33, 6),
-				sweep(7), sweep(11), null, null);
+				sweep(7), sweep(11), sweep(13), null, null);
 	}
 
 	private OutboxSettings outbox(int batchSize, int leaseSeconds, int maxAttempts) {
