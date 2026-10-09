@@ -38,10 +38,16 @@ public final class PostAnswerQuerySql {
 	/**
 	 * 답변 목록 projection. 현재 조회자의 post_recipient 거리만 거리 표시의 근거로 사용하고
 	 * answer.distance_m·answer.distance_band는 읽지 않는다.
+	 *
+	 * <p>
+	 * 탈퇴를 요청했거나 탈퇴가 끝난 작성자의 닉네임은 내보내지 않는다(#337). 탈퇴가 끝나면 그 닉네임을 다른 계정이 쓸 수 있어 옛 답변이
+	 * 새 주인의 것처럼 보이기 때문이다. 답변 본문은 남긴다.
 	 */
 	public static final String SELECT_ANSWERS = """
 			SELECT a.id AS answer_id,
-			       ua.nickname AS author_nickname,
+			       CASE WHEN ua.status IN ('WITHDRAWAL_PENDING', 'DELETED') THEN NULL ELSE ua.nickname END
+			           AS author_nickname,
+			       ua.status IN ('WITHDRAWAL_PENDING', 'DELETED') AS author_withdrawn,
 			       a.coarse_region_code AS author_region_code,
 			       a.body_text,
 			       a.bearing_from_sender_deg,

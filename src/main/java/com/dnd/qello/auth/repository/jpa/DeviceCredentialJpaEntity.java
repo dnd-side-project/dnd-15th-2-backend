@@ -2,12 +2,6 @@ package com.dnd.qello.auth.repository.jpa;
 
 import java.time.Instant;
 
-import org.hibernate.annotations.JdbcTypeCode;
-import org.hibernate.type.SqlTypes;
-
-import com.dnd.qello.auth.domain.CredentialStatus;
-import com.dnd.qello.auth.domain.DevicePlatform;
-
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -16,13 +10,25 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+
+import org.hibernate.annotations.DynamicUpdate;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+
+import com.dnd.qello.auth.domain.CredentialStatus;
+import com.dnd.qello.auth.domain.DevicePlatform;
+
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 // device_credential은 updated_at 컬럼이 없다(V7). JpaAuditableEntity는 created_at과
 // updated_at을 짝으로 요구하므로 상속하지 않고 created_at을 애플리케이션이 직접 관리한다.
+//
+// 재발급(last_used_at 갱신)과 탈퇴 완료의 폐기(#337)가 같은 행을 동시에 고칠 수 있다. 전체 컬럼을 UPDATE하면
+// 늦게 flush한 재발급이 폐기를 ACTIVE로 되돌리므로 바뀐 컬럼만 쓴다.
 @Entity
+@DynamicUpdate
 @Table(name = "device_credential")
 @Getter(AccessLevel.PACKAGE)
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
@@ -63,15 +69,14 @@ public class DeviceCredentialJpaEntity {
 	private Instant revokedAt;
 
 	DeviceCredentialJpaEntity(
-		Long userId,
-		String installationId,
-		String secretHash,
-		DevicePlatform platform,
-		CredentialStatus status,
-		Instant lastUsedAt,
-		Instant createdAt,
-		Instant revokedAt
-	) {
+			Long userId,
+			String installationId,
+			String secretHash,
+			DevicePlatform platform,
+			CredentialStatus status,
+			Instant lastUsedAt,
+			Instant createdAt,
+			Instant revokedAt) {
 		this.userId = userId;
 		this.installationId = installationId;
 		this.secretHash = secretHash;
@@ -84,6 +89,11 @@ public class DeviceCredentialJpaEntity {
 
 	void updateLastUsedAt(Instant lastUsedAt) {
 		this.lastUsedAt = lastUsedAt;
+	}
+
+	void updateRevocation(CredentialStatus status, Instant revokedAt) {
+		this.status = status;
+		this.revokedAt = revokedAt;
 	}
 
 }

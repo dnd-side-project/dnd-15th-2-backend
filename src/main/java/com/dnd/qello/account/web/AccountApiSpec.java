@@ -21,7 +21,7 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 
 // AccountController의 문서 계약. 인증된 본인의 닉네임만 변경할 수 있다.
-@Tag(name = "계정", description = "내 닉네임 변경")
+@Tag(name = "계정", description = "내 닉네임 변경, 탈퇴 요청과 철회")
 @SecurityRequirement(name = OpenApiConfiguration.APP_ACCESS_TOKEN_SCHEME)
 public interface AccountApiSpec {
 

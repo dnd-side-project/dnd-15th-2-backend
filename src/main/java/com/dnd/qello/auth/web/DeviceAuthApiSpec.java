@@ -46,12 +46,15 @@ public interface DeviceAuthApiSpec {
 	@Operation(summary = "액세스 토큰 재발급", description = """
 			기기 등록 때 받은 installationId와 deviceSecret으로 새 액세스 토큰을 발급합니다.
 
+			탈퇴 유예 중인 계정도 발급합니다. 응답의 accountStatus가 WITHDRAWAL_PENDING이면 탈퇴 철회 화면을 보여 주세요.
+			차단되거나 탈퇴가 끝난 계정은 발급하지 않습니다.
+
 			로그인 없이 호출할 수 있습니다. 같은 IP에서 짧은 시간에 너무 많이 호출하면 429를 반환합니다.""")
 	@ApiResponses({
 			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "새 액세스 토큰을 발급했습니다."),
 			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "installationId 또는 deviceSecret이 비어 있습니다.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
-			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "기기 자격증명이 유효하지 않습니다.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
-			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "사용할 수 없는 계정입니다.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
+			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "기기 자격증명이 유효하지 않습니다. 탈퇴가 끝난 계정의 자격증명도 여기에 해당합니다.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
+			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "차단되었거나 사용할 수 없는 계정입니다.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
 			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "429", description = "같은 IP의 토큰 재발급 요청이 한도를 넘었습니다. 잠시 후 다시 시도해 주세요.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class)))
 	})
 	@PostMapping("/token")

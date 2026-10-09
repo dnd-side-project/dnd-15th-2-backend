@@ -26,7 +26,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * TEST-PLAN-GH-88-COUNTRY-ONBOARDING-INT-004,
  * TEST-PLAN-GH-115-DIRECTION-MATCHING-CONTRACT-INT-001,
  * TEST-PLAN-GH-294-COUNTRY-SEED-INT-006,
- * TEST-PLAN-GH-137-DIRECTION-POST-MODERATION (V32 latest version, added 2026-10-07T22:38:41+09:00)
+ * TEST-PLAN-GH-137-DIRECTION-POST-MODERATION (V32 latest version, added 2026-10-07T22:38:41+09:00),
+ * TEST-PLAN-GH-337-ACCOUNT-WITHDRAWAL-INT-001 (V33 latest version and catalog, added 2026-10-09T18:47:28+09:00)
  */
 @SpringBootTest
 @ActiveProfiles({"test", "flyway-migration"})
@@ -141,7 +142,8 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 			"uq_push_dispatch_group_collecting",
 			"push_dispatch_group_due_idx",
 			"push_dispatch_group_recommendation_history_idx",
-			"uq_push_dispatch_group_member_notification");
+			"uq_push_dispatch_group_member_notification",
+			"user_account_withdrawal_due_idx");
 
 	private static final Set<String> EXPECTED_FUNCTIONS = Set.of(
 			"enforce_question_text_immutability",
@@ -168,7 +170,7 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 			"ct_media_status_preserves_content",
 			"ct_answer_reaction_reactor_can_view");
 
-	private static final int LATEST_MIGRATION_VERSION = 32;
+	private static final int LATEST_MIGRATION_VERSION = 33;
 
 	@Autowired
 	private Flyway flyway;
@@ -254,14 +256,18 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 		// notification_preference의 ck_notification_preference_quiet_hours 1개를 제거해
 		// 124에서 125가 됐다.
 		// V28(#180)이 group CHECK 7개와 budget count CHECK 1개를 추가해 133이 됐다.
-		assertThat(countConstraints(constraints, "c")).isEqualTo(133);
+		// V33(#337)이 ck_user_account_withdrawal_requested_at 1개를 추가해 134가 됐다
+		// (ck_user_account_status는 같은 이름으로 교체돼 순증가는 없다).
+		assertThat(countConstraints(constraints, "c")).isEqualTo(134);
 		// V20(#113)이 operator_action_audit의 조회 인덱스 2개를 추가해 62에서 64가 됐다.
 		// V21(#168)이 uq_user_account_nickname_ci 1개를 추가해 64에서 65가 됐다.
 		// CREATE UNIQUE INDEX로 만든 부분 인덱스라 pg_constraint에는 잡히지 않는다 —
 		// countConstraints(constraints, "u")는 그대로다.
 		// V23(#155)이 report(reporter_id, answer_id) 부분 인덱스 1개를 추가해 65에서 66이 됐다.
 		// V28(#180)이 group/member 조회·멱등성 인덱스 4개를 추가해 70이 됐다.
-		assertThat(EXPECTED_INDEXES).hasSize(70);
+		// V33(#337)이 탈퇴 유예 만료 조회용 부분 인덱스 user_account_withdrawal_due_idx 1개를 추가해 71이
+		// 됐다.
+		assertThat(EXPECTED_INDEXES).hasSize(71);
 		assertThat(EXPECTED_FUNCTIONS).hasSize(11);
 		assertThat(EXPECTED_TRIGGERS).hasSize(10);
 
@@ -539,6 +545,34 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 		assertThat(reportIndexNames).contains(
 				"uq_open_case_user", "uq_open_case_post", "uq_open_case_answer",
 				"uq_open_report_user", "uq_open_report_post", "uq_open_report_answer");
+	}
+
+	@Test
+	@DisplayName("TEST-PLAN-GH-337-ACCOUNT-WITHDRAWAL-INT-001: V33은 계정 상태에 WITHDRAWAL_PENDING을 더하고 요청 시각 컬럼·CHECK와 유예 계정 전용 부분 인덱스를 만든다")
+	void v33AddsAccountWithdrawalCatalog() {
+		String statusConstraint = jdbcTemplate.queryForObject("""
+				SELECT pg_get_constraintdef(oid)
+				FROM pg_constraint
+				WHERE conname = 'ck_user_account_status' AND conrelid = 'user_account'::regclass
+				""", String.class);
+		String withdrawalConstraint = jdbcTemplate.queryForObject("""
+				SELECT pg_get_constraintdef(oid)
+				FROM pg_constraint
+				WHERE conname = 'ck_user_account_withdrawal_requested_at' AND conrelid = 'user_account'::regclass
+				""", String.class);
+		var column = jdbcTemplate.queryForMap(
+				"""
+						SELECT data_type, is_nullable
+						FROM information_schema.columns
+						WHERE table_schema = 'public' AND table_name = 'user_account' AND column_name = 'withdrawal_requested_at'
+						""");
+		String dueIndex = jdbcTemplate.queryForObject(
+				"SELECT indexdef FROM pg_indexes WHERE indexname = 'user_account_withdrawal_due_idx'", String.class);
+
+		assertThat(statusConstraint).contains("ACTIVE", "WITHDRAWAL_PENDING", "BLOCKED", "DELETED");
+		assertThat(withdrawalConstraint).contains("WITHDRAWAL_PENDING", "withdrawal_requested_at IS NOT NULL");
+		assertThat(column).containsEntry("data_type", "timestamp with time zone").containsEntry("is_nullable", "YES");
+		assertThat(dueIndex).contains("(withdrawal_requested_at, id)", "WHERE", "WITHDRAWAL_PENDING");
 	}
 
 	@Test

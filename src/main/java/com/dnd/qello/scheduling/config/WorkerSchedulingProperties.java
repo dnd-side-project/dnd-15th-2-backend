@@ -18,6 +18,7 @@ public record WorkerSchedulingProperties(
 		OutboxSettings reportResolutionFanOut,
 		SweepSettings recipientExpirationSweep,
 		SweepSettings skipConfirmationSweep,
+		SweepSettings accountWithdrawalSweep,
 		PushSettings pushDeliveryDispatch,
 		AnswerModerationSettings answerModeration) {
 	public WorkerSchedulingProperties {
@@ -30,6 +31,7 @@ public record WorkerSchedulingProperties(
 		validateOutbox(reportResolutionFanOut, "reportResolutionFanOut");
 		validateSweep(recipientExpirationSweep, "recipientExpirationSweep");
 		validateSweep(skipConfirmationSweep, "skipConfirmationSweep");
+		validateSweep(accountWithdrawalSweep, "accountWithdrawalSweep");
 		validatePush(pushDeliveryDispatch, "pushDeliveryDispatch");
 		validateAnswerModeration(answerModeration);
 	}

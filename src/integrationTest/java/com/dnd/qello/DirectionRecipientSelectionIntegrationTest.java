@@ -3,6 +3,7 @@
  * Source scenario: TEST-PLAN-GH-97-RECIPIENT-FILTER-LIMIT-DISTRIBUTION-INT-001 through INT-004, INT-006,
  * TEST-PLAN-GH-118-DIRECTION-POST-SUBMISSION-INT-001
  * Source scenario: TEST-PLAN-GH-137-DIRECTION-POST-MODERATION (release fixture only, added 2026-10-07T22:14:59+09:00)
+ * Source scenario: TEST-PLAN-GH-337-ACCOUNT-WITHDRAWAL-INT-004 (added 2026-10-09T18:47:28+09:00)
  */
 package com.dnd.qello;
 
@@ -108,6 +109,21 @@ class DirectionRecipientSelectionIntegrationTest extends PostgisContainerIntegra
 	}
 
 	@Test
+	@DisplayName("TEST-PLAN-GH-337-ACCOUNT-WITHDRAWAL-INT-004: 후보 조회는 위치 행이 남아 있어도 탈퇴 유예 중인 계정을 빼고 ACTIVE 계정만 반환한다")
+	void excludesWithdrawalPendingCandidates() {
+		long senderId = account("withdrawal-sender", "ACTIVE");
+		long activeId = account("withdrawal-active-candidate", "ACTIVE");
+		long pendingId = account("withdrawal-pending-candidate", "WITHDRAWAL_PENDING");
+		presence(activeId, 37.5010, 127.0001);
+		presence(pendingId, 37.5011, 127.0001);
+
+		List<DirectionCandidate> candidates = presenceRepository.findCandidates(senderId, 37.5000, 127.0000,
+				0, 2_000, 0, 360, AT, REGION);
+
+		assertThat(candidates).extracting(DirectionCandidate::userId).containsExactly(activeId);
+	}
+
+	@Test
 	@DisplayName("후보 조회는 최근 수신 횟수와 마지막 수신 시각을 우선하고 거리를 tie-break로 사용한다")
 	void ordersCandidatesByFairnessThenDistance() {
 		long senderId = account("ordering-sender", "ACTIVE");
@@ -182,6 +198,15 @@ class DirectionRecipientSelectionIntegrationTest extends PostgisContainerIntegra
 	}
 
 	private long account(String nickname, String status) {
+		if ("WITHDRAWAL_PENDING".equals(status)) {
+			return jdbc.queryForObject(
+					"""
+							INSERT INTO user_account (role, country_code, status, coarse_region_code, locale, timezone, nickname, withdrawal_requested_at)
+							VALUES ('USER', 'KR', ?, ?, 'ko-KR', 'Asia/Seoul', ?, ?)
+							RETURNING id
+							""",
+					Long.class, status, REGION, nickname, Timestamp.from(AT.minusSeconds(60)));
+		}
 		if ("DELETED".equals(status)) {
 			return jdbc.queryForObject(
 					"""

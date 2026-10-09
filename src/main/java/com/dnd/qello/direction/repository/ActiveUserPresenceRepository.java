@@ -13,22 +13,24 @@ public interface ActiveUserPresenceRepository {
 	ActiveUserPresence save(ActiveUserPresence presence);
 	boolean saveIfNewer(ActiveUserPresence presence);
 	Optional<ActiveUserPresence> findByUserId(long userId);
+	/** 사용자의 마지막 위치를 지운다(#337 탈퇴). 지운 행이 있으면 true다. */
+	boolean deleteByUserId(long userId);
 	List<DirectionCandidate> findCandidates(long excludedUserId, double originLatitude, double originLongitude,
-		long minDistanceMeters, long maxDistanceMeters, double sectorStartDegrees, double sectorEndDegrees,
-		Instant at, String regionCode);
+			long minDistanceMeters, long maxDistanceMeters, double sectorStartDegrees, double sectorEndDegrees,
+			Instant at, String regionCode);
 	List<DirectionSegmentCandidateCount> findCandidateCountsBySegment(long schemeId, long excludedUserId,
-		double originLatitude, double originLongitude, long minDistanceMeters, long maxDistanceMeters,
-		Instant at, String regionCode);
+			double originLatitude, double originLongitude, long minDistanceMeters, long maxDistanceMeters,
+			Instant at, String regionCode);
 
 	record DirectionSegmentCandidateCount(String segmentKey, long count) {
 		public DirectionSegmentCandidateCount {
 			if (segmentKey == null || segmentKey.isBlank()) {
 				throw new DirectionException(DirectionErrorCode.INVALID_TEXT, "segmentKey",
-					"segmentKey는 공백일 수 없습니다");
+						"segmentKey는 공백일 수 없습니다");
 			}
 			if (count < 0) {
 				throw new DirectionException(DirectionErrorCode.INVALID_VALUE_RANGE, "count",
-					"count는 음수일 수 없습니다");
+						"count는 음수일 수 없습니다");
 			}
 		}
 	}

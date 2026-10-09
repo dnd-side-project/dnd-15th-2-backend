@@ -1,6 +1,28 @@
 {
   "components" : {
     "schemas" : {
+      "AccountWithdrawalResponse" : {
+        "description" : "탈퇴 요청·철회 결과",
+        "properties" : {
+          "scheduledDeletionAt" : {
+            "description" : "계정이 삭제될 예정 시각. 탈퇴 유예 중일 때만 값이 있고 철회하면 null입니다",
+            "format" : "date-time",
+            "type" : [
+              "string",
+              "null"
+            ]
+          },
+          "status" : {
+            "description" : "처리 후 계정 상태",
+            "enum" : [
+              "WITHDRAWAL_PENDING",
+              "ACTIVE"
+            ],
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
       "AnswerCard" : {
         "properties" : {
           "answerId" : {
@@ -13,8 +35,15 @@
             "type" : "string"
           },
           "authorNickname" : {
-            "description" : "답변 작성자의 닉네임",
-            "type" : "string"
+            "description" : "답변 작성자의 닉네임. 작성자가 탈퇴했으면 null입니다",
+            "type" : [
+              "string",
+              "null"
+            ]
+          },
+          "authorWithdrawn" : {
+            "description" : "작성자가 탈퇴했는지 여부. true면 \"탈퇴한 사용자\"로 표시합니다",
+            "type" : "boolean"
           },
           "bearingFromSenderDegrees" : {
             "description" : "발신자 기준으로 계산한 방위각(도 단위)",
@@ -157,6 +186,25 @@
           },
           "message" : {
             "type" : "string"
+          },
+          "status" : {
+            "enum" : [
+              "success",
+              "error"
+            ],
+            "type" : "string"
+          },
+          "timestamp" : {
+            "format" : "date-time",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
+      "ApiResponseAccountWithdrawalResponse" : {
+        "properties" : {
+          "data" : {
+            "$ref" : "#/components/schemas/AccountWithdrawalResponse"
           },
           "status" : {
             "enum" : [
@@ -1440,6 +1488,14 @@
         "properties" : {
           "accessToken" : {
             "description" : "새로 발급한 API 호출용 액세스 토큰",
+            "type" : "string"
+          },
+          "accountStatus" : {
+            "description" : "계정 상태. WITHDRAWAL_PENDING이면 탈퇴 유예 중이라 철회 외의 쓰기 API는 403을 반환합니다",
+            "enum" : [
+              "ACTIVE",
+              "WITHDRAWAL_PENDING"
+            ],
             "type" : "string"
           },
           "expiresIn" : {
@@ -5267,7 +5323,7 @@
     },
     "/api/v1/auth/token" : {
       "post" : {
-        "description" : "기기 등록 때 받은 installationId와 deviceSecret으로 새 액세스 토큰을 발급합니다.\n\n로그인 없이 호출할 수 있습니다. 같은 IP에서 짧은 시간에 너무 많이 호출하면 429를 반환합니다.",
+        "description" : "기기 등록 때 받은 installationId와 deviceSecret으로 새 액세스 토큰을 발급합니다.\n\n탈퇴 유예 중인 계정도 발급합니다. 응답의 accountStatus가 WITHDRAWAL_PENDING이면 탈퇴 철회 화면을 보여 주세요.\n차단되거나 탈퇴가 끝난 계정은 발급하지 않습니다.\n\n로그인 없이 호출할 수 있습니다. 같은 IP에서 짧은 시간에 너무 많이 호출하면 429를 반환합니다.",
         "operationId" : "reissue",
         "requestBody" : {
           "content" : {
@@ -5308,7 +5364,7 @@
                 }
               }
             },
-            "description" : "기기 자격증명이 유효하지 않습니다."
+            "description" : "기기 자격증명이 유효하지 않습니다. 탈퇴가 끝난 계정의 자격증명도 여기에 해당합니다."
           },
           "403" : {
             "content" : {
@@ -5318,7 +5374,7 @@
                 }
               }
             },
-            "description" : "사용할 수 없는 계정입니다."
+            "description" : "차단되었거나 사용할 수 없는 계정입니다."
           },
           "429" : {
             "content" : {
@@ -9590,6 +9646,158 @@
         ]
       }
     },
+    "/api/v1/users/me/withdrawal" : {
+      "delete" : {
+        "description" : "탈퇴 요청을 철회하고 계정을 다시 쓸 수 있게 합니다. 닉네임은 그대로 남아 있습니다.\n\n철회한 뒤 푸시 알림 등록과 위치 갱신을 다시 보내야 알림과 질문을 받을 수 있습니다.\n\n탈퇴를 요청하지 않은 계정이면 아무것도 바꾸지 않고 200을 반환합니다. 삭제 예정 시각이 지났으면 철회할 수 없습니다.\n\n앱 로그인이 필요합니다. Authorization 헤더에 앱 액세스 토큰이 필요합니다.",
+        "operationId" : "cancelWithdrawal",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiResponseAccountWithdrawalResponse"
+                }
+              }
+            },
+            "description" : "탈퇴를 철회했습니다."
+          },
+          "400" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "요청 값이 올바르지 않습니다."
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "앱 액세스 토큰이 유효하지 않습니다."
+          },
+          "404" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "계정을 찾을 수 없습니다."
+          },
+          "409" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "철회할 수 없습니다. 삭제 예정 시각이 지났거나, 차단되었거나 삭제된 계정, 또는 같은 계정에 동시에 들어온 요청입니다."
+          },
+          "500" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "서버 내부 오류가 발생했습니다."
+          }
+        },
+        "security" : [
+          {
+            "appAccessToken" : [ ]
+          }
+        ],
+        "summary" : "탈퇴 철회",
+        "tags" : [
+          "계정"
+        ]
+      },
+      "post" : {
+        "description" : "내 계정의 탈퇴를 요청합니다. 계정은 바로 지워지지 않고 유예 기간(기본 30일)이 지난 뒤 삭제됩니다.\n\n요청하면 바로 질문 보내기, 답변하기, 위치 갱신 같은 쓰기 기능을 쓸 수 없고, 다른 사람에게 질문이 전달되거나 알림이 가지 않습니다. 푸시 알림 등록도 해지됩니다.\n\n유예 기간 안에는 같은 기기로 탈퇴를 철회할 수 있습니다. 유예가 끝나면 닉네임이 비워지고 기기 로그인 정보가 폐기되어 다시 들어올 수 없습니다. 이미 남긴 답변은 지워지지 않고 작성자가 \"탈퇴한 사용자\"로 표시됩니다.\n\n이미 탈퇴를 요청한 계정이면 처음 요청 때 정해진 삭제 예정 시각을 그대로 돌려줍니다.\n\n앱 로그인이 필요합니다. Authorization 헤더에 앱 액세스 토큰이 필요합니다.",
+        "operationId" : "requestWithdrawal",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiResponseAccountWithdrawalResponse"
+                }
+              }
+            },
+            "description" : "탈퇴 요청을 받았습니다. 응답의 scheduledDeletionAt에 계정이 삭제됩니다."
+          },
+          "400" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "요청 값이 올바르지 않습니다."
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "앱 액세스 토큰이 유효하지 않습니다."
+          },
+          "404" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "계정을 찾을 수 없습니다."
+          },
+          "409" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "지금 계정 상태로는 탈퇴를 요청할 수 없습니다. 차단되었거나 이미 삭제된 계정, 또는 같은 계정에 동시에 들어온 요청입니다."
+          },
+          "500" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "서버 내부 오류가 발생했습니다."
+          }
+        },
+        "security" : [
+          {
+            "appAccessToken" : [ ]
+          }
+        ],
+        "summary" : "탈퇴 요청",
+        "tags" : [
+          "계정"
+        ]
+      }
+    },
     "/api/v1/users/{userId}/blocks" : {
       "delete" : {
         "description" : "사용자 차단을 해제합니다.\n\n앱 로그인이 필요합니다. Authorization 헤더에 앱 액세스 토큰이 필요합니다.\n\n이미 차단 상태로 바뀐 수신 항목은 되돌아오지 않습니다.",
@@ -9842,6 +10050,10 @@
       "name" : "방향 질문글"
     },
     {
+      "description" : "내 닉네임 변경, 탈퇴 요청과 철회",
+      "name" : "계정"
+    },
+    {
       "description" : "비공개 처리된 내 답변의 이의제기 접수와 조회",
       "name" : "콘텐츠 이의제기"
     },
@@ -9900,10 +10112,6 @@
     {
       "description" : "받은 알림을 확인하고, 알림 점을 끄고, 알림에서 원래 글로 넘어갈 수 있는지 확인합니다. 알림을 어떻게 받을지 설정하는 것도 여기서 합니다.",
       "name" : "알림함"
-    },
-    {
-      "description" : "내 닉네임 변경",
-      "name" : "계정"
     },
     {
       "description" : "수신 자격이 있는 사용자의 질문글 공감 남김·취소",

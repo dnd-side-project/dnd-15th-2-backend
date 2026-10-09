@@ -1,19 +1,18 @@
 /*
  * Created at: 2026-08-07T20:52:09+09:00
  * Source scenario: TEST-PLAN-GH-73-DEVICE-TOKEN-UNIT-001 through UNIT-006
+ * Source scenario: TEST-PLAN-GH-337-ACCOUNT-WITHDRAWAL-UNIT-009 (added 2026-10-09T18:08:46+09:00)
  *
  * import 수가 많아 클래스 선언 위에 두면 정책 검사 범위(첫 30줄)를 벗어나므로 여기에 배치.
  */
 package com.dnd.qello.auth.service;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -22,6 +21,8 @@ import javax.crypto.spec.SecretKeySpec;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.security.oauth2.jwt.JwtEncoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
 
@@ -42,6 +43,9 @@ import com.dnd.qello.auth.token.AccessTokenIssuer;
 import com.dnd.qello.auth.token.AccessTokenProperties;
 import com.dnd.qello.auth.token.IssuedAccessToken;
 import com.nimbusds.jose.jwk.source.ImmutableSecret;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class DeviceTokenServiceTest {
 
@@ -65,13 +69,13 @@ class DeviceTokenServiceTest {
 		SecretKeySpec key = new SecretKeySpec(SECRET.getBytes(StandardCharsets.UTF_8), "HmacSHA256");
 		JwtEncoder jwtEncoder = new NimbusJwtEncoder(new ImmutableSecret<>(key));
 		AccessTokenIssuer accessTokenIssuer = new AccessTokenIssuer(
-			jwtEncoder,
-			new AccessTokenProperties("qello", "qello-app", 1800, SECRET),
-			Clock.fixed(NOW, ZoneOffset.UTC));
+				jwtEncoder,
+				new AccessTokenProperties("qello", "qello-app", 1800, SECRET),
+				Clock.fixed(NOW, ZoneOffset.UTC));
 
 		service = new DeviceTokenService(
-			accountRepository, credentialRepository, secretHasher, accessTokenIssuer,
-			Clock.fixed(NOW, ZoneOffset.UTC));
+				accountRepository, credentialRepository, secretHasher, accessTokenIssuer,
+				Clock.fixed(NOW, ZoneOffset.UTC));
 	}
 
 	@Test
@@ -80,7 +84,7 @@ class DeviceTokenServiceTest {
 		givenAccount(AccountStatus.ACTIVE);
 		givenCredential(CredentialStatus.ACTIVE);
 
-		IssuedAccessToken token = service.reissue(INSTALLATION_ID, RAW_SECRET);
+		IssuedAccessToken token = service.reissue(INSTALLATION_ID, RAW_SECRET).accessToken();
 
 		assertThat(token.value()).isNotBlank();
 		assertThat(credentialRepository.stored.getLastUsedAt()).isEqualTo(NOW);
@@ -93,8 +97,8 @@ class DeviceTokenServiceTest {
 		givenCredential(CredentialStatus.ACTIVE);
 
 		assertThatThrownBy(() -> service.reissue(INSTALLATION_ID, new DeviceSecret("wrong-secret")))
-			.isInstanceOf(AuthException.class)
-			.hasFieldOrPropertyWithValue("errorCode", AuthErrorCode.DEVICE_CREDENTIAL_INVALID);
+				.isInstanceOf(AuthException.class)
+				.hasFieldOrPropertyWithValue("errorCode", AuthErrorCode.DEVICE_CREDENTIAL_INVALID);
 	}
 
 	@Test
@@ -104,8 +108,8 @@ class DeviceTokenServiceTest {
 		givenCredential(CredentialStatus.ACTIVE);
 
 		assertThatThrownBy(() -> service.reissue("install-b", RAW_SECRET))
-			.isInstanceOf(AuthException.class)
-			.hasFieldOrPropertyWithValue("errorCode", AuthErrorCode.DEVICE_CREDENTIAL_INVALID);
+				.isInstanceOf(AuthException.class)
+				.hasFieldOrPropertyWithValue("errorCode", AuthErrorCode.DEVICE_CREDENTIAL_INVALID);
 	}
 
 	@Test
@@ -115,8 +119,8 @@ class DeviceTokenServiceTest {
 		givenCredential(CredentialStatus.REVOKED);
 
 		assertThatThrownBy(() -> service.reissue(INSTALLATION_ID, RAW_SECRET))
-			.isInstanceOf(AuthException.class)
-			.hasFieldOrPropertyWithValue("errorCode", AuthErrorCode.DEVICE_CREDENTIAL_INVALID);
+				.isInstanceOf(AuthException.class)
+				.hasFieldOrPropertyWithValue("errorCode", AuthErrorCode.DEVICE_CREDENTIAL_INVALID);
 	}
 
 	@Test
@@ -126,8 +130,8 @@ class DeviceTokenServiceTest {
 		givenCredential(CredentialStatus.ACTIVE);
 
 		assertThatThrownBy(() -> service.reissue(INSTALLATION_ID, RAW_SECRET))
-			.isInstanceOf(AuthException.class)
-			.hasFieldOrPropertyWithValue("errorCode", AuthErrorCode.ACCOUNT_NOT_ACTIVE);
+				.isInstanceOf(AuthException.class)
+				.hasFieldOrPropertyWithValue("errorCode", AuthErrorCode.ACCOUNT_NOT_ACTIVE);
 	}
 
 	@Test
@@ -137,28 +141,45 @@ class DeviceTokenServiceTest {
 		givenCredential(CredentialStatus.ACTIVE);
 
 		assertThatThrownBy(() -> service.reissue(INSTALLATION_ID, RAW_SECRET))
-			.isInstanceOf(AuthException.class)
-			.hasFieldOrPropertyWithValue("errorCode", AuthErrorCode.ACCOUNT_NOT_ACTIVE);
+				.isInstanceOf(AuthException.class)
+				.hasFieldOrPropertyWithValue("errorCode", AuthErrorCode.ACCOUNT_NOT_ACTIVE);
+	}
+
+	@ParameterizedTest
+	@EnumSource(value = AccountStatus.class, names = {"ACTIVE", "WITHDRAWAL_PENDING"})
+	@DisplayName("TEST-PLAN-GH-337-ACCOUNT-WITHDRAWAL-UNIT-009: ACTIVE와 탈퇴 유예 중 계정은 재발급되고 토큰과 함께 계정 상태를 돌려준다")
+	void reissuesForActiveAndWithdrawalPendingAccounts(AccountStatus status) {
+		givenAccount(status);
+		givenCredential(CredentialStatus.ACTIVE);
+
+		DeviceTokenReissue reissued = service.reissue(INSTALLATION_ID, RAW_SECRET);
+
+		assertThat(reissued.accessToken().value()).isNotBlank();
+		assertThat(reissued.accountStatus()).isEqualTo(status);
+		assertThat(credentialRepository.stored.getLastUsedAt()).isEqualTo(NOW);
+		assertThat(credentialRepository.stored.isActive()).isTrue();
 	}
 
 	private void givenAccount(AccountStatus status) {
 		Instant deletedAt = status == AccountStatus.DELETED ? NOW : null;
+		Instant withdrawalRequestedAt = status == AccountStatus.WITHDRAWAL_PENDING ? NOW.minusSeconds(60) : null;
 		accountRepository.store(Account.restore(
-			USER_ID, AccountRole.USER, status, "KR", "KR-TEST", "ko-KR", "Asia/Seoul", "바람", deletedAt));
+				USER_ID, AccountRole.USER, status, "KR", "KR-TEST", "ko-KR", "Asia/Seoul", "바람", deletedAt,
+				withdrawalRequestedAt));
 	}
 
 	private void givenCredential(CredentialStatus status) {
 		Instant revokedAt = status == CredentialStatus.REVOKED ? NOW : null;
 		credentialRepository.store(DeviceCredential.restore(
-			CREDENTIAL_ID,
-			USER_ID,
-			INSTALLATION_ID,
-			secretHasher.hash(RAW_SECRET),
-			DevicePlatform.IOS,
-			status,
-			NOW.minusSeconds(3600),
-			NOW.minusSeconds(3600),
-			revokedAt));
+				CREDENTIAL_ID,
+				USER_ID,
+				INSTALLATION_ID,
+				secretHasher.hash(RAW_SECRET),
+				DevicePlatform.IOS,
+				status,
+				NOW.minusSeconds(3600),
+				NOW.minusSeconds(3600),
+				revokedAt));
 	}
 
 	private static final class FakeAccountRepository implements AccountRepository {
@@ -190,12 +211,22 @@ class DeviceTokenServiceTest {
 		}
 
 		@Override
+		public Account updateDeletion(Account account) {
+			throw new UnsupportedOperationException();
+		}
+
+		@Override
 		public Optional<Account> findById(long id) {
 			return Optional.ofNullable(accounts.get(id));
 		}
 
 		@Override
 		public boolean existsActiveNickname(String nickname) {
+			throw new UnsupportedOperationException();
+		}
+
+		@Override
+		public List<Long> findWithdrawalDueIds(Instant requestedAtOrBefore, int limit) {
 			throw new UnsupportedOperationException();
 		}
 
@@ -224,15 +255,20 @@ class DeviceTokenServiceTest {
 		@Override
 		public Optional<DeviceCredential> findBySecretHash(SecretHash secretHash) {
 			return stored != null && stored.getSecretHash().equals(secretHash)
-				? Optional.of(stored)
-				: Optional.empty();
+					? Optional.of(stored)
+					: Optional.empty();
 		}
 
 		@Override
 		public Optional<DeviceCredential> findActiveByInstallationId(String installationId) {
 			return stored != null && stored.getInstallationId().equals(installationId) && stored.isActive()
-				? Optional.of(stored)
-				: Optional.empty();
+					? Optional.of(stored)
+					: Optional.empty();
+		}
+
+		@Override
+		public int revokeAllActiveByUserId(long userId, Instant revokedAt) {
+			throw new UnsupportedOperationException();
 		}
 
 	}

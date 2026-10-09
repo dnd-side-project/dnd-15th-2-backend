@@ -34,6 +34,7 @@ public final class Account {
 	private final Long profileImageMediaId;
 	private final Instant nicknameChangedAt;
 	private final Instant deletedAt;
+	private final Instant withdrawalRequestedAt;
 
 	private Account(
 			Long id,
@@ -46,7 +47,8 @@ public final class Account {
 			String nickname,
 			Long profileImageMediaId,
 			Instant nicknameChangedAt,
-			Instant deletedAt) {
+			Instant deletedAt,
+			Instant withdrawalRequestedAt) {
 		this.id = validateId(id);
 		this.role = requireValue(role, "role");
 		this.status = requireValue(status, "status");
@@ -59,7 +61,9 @@ public final class Account {
 		this.profileImageMediaId = validateProfileImageMediaId(profileImageMediaId);
 		this.nicknameChangedAt = nicknameChangedAt;
 		this.deletedAt = deletedAt;
+		this.withdrawalRequestedAt = withdrawalRequestedAt;
 		validateDeletionState(status, deletedAt);
+		validateWithdrawalState(status, withdrawalRequestedAt);
 	}
 
 	/**
@@ -84,6 +88,7 @@ public final class Account {
 				locale,
 				timezone,
 				normalizeNewNickname(nickname),
+				null,
 				null,
 				null,
 				null);
@@ -112,6 +117,7 @@ public final class Account {
 				normalizeNewNickname(nickname),
 				null,
 				null,
+				null,
 				null);
 	}
 
@@ -136,6 +142,27 @@ public final class Account {
 			String timezone,
 			String nickname,
 			Instant deletedAt) {
+		return restore(id, role, status, countryCode, coarseRegionCode, locale, timezone, nickname, deletedAt, null);
+	}
+
+	/**
+	 * 탈퇴 유예 중인 계정까지 복원한다. 유예 중이 아닌 계정은 withdrawalRequestedAt이 null이어야 한다(#337).
+	 *
+	 * <p>
+	 * 기존 시그니처를 남겨 둔 이유: 유예 중이 아닌 계정을 복원하는 호출자는 이 값을 알 필요가 없다. 유예 중 계정을 기존 시그니처로
+	 * 복원하면 상태 불변식이 거절하므로 값이 조용히 사라지지 않는다.
+	 */
+	public static Account restore(
+			Long id,
+			AccountRole role,
+			AccountStatus status,
+			String countryCode,
+			String coarseRegionCode,
+			String locale,
+			String timezone,
+			String nickname,
+			Instant deletedAt,
+			Instant withdrawalRequestedAt) {
 		if (id == null) {
 			throw new AccountException(
 					AccountErrorCode.INVALID_ID, "id", "restore는 유효한 기존 id가 필요합니다");
@@ -151,7 +178,8 @@ public final class Account {
 				nickname,
 				null,
 				null,
-				deletedAt);
+				deletedAt,
+				withdrawalRequestedAt);
 	}
 
 	public Account updateProfile(
@@ -170,7 +198,8 @@ public final class Account {
 				normalizeNewNickname(nickname),
 				profileImageMediaId,
 				nicknameChangedAt,
-				deletedAt);
+				deletedAt,
+				withdrawalRequestedAt);
 	}
 
 	/**
@@ -195,7 +224,7 @@ public final class Account {
 		requireValue(changedAt, "nicknameChangedAt");
 		return new Account(
 				id, role, status, countryCode, coarseRegionCode, locale, timezone, normalizeNewNickname(newNickname),
-				profileImageMediaId, changedAt, deletedAt);
+				profileImageMediaId, changedAt, deletedAt, withdrawalRequestedAt);
 	}
 
 	/**
@@ -223,7 +252,7 @@ public final class Account {
 	public Account withNicknameChangedAt(Instant changedAt) {
 		return new Account(
 				id, role, status, countryCode, coarseRegionCode, locale, timezone, nickname,
-				profileImageMediaId, changedAt, deletedAt);
+				profileImageMediaId, changedAt, deletedAt, withdrawalRequestedAt);
 	}
 
 	/**
@@ -246,17 +275,26 @@ public final class Account {
 				nickname,
 				nextProfileImageMediaId,
 				nicknameChangedAt,
-				deletedAt);
+				deletedAt,
+				withdrawalRequestedAt);
 	}
 
+	/**
+	 * 탈퇴 유예 중인 계정은 차단하지 않는다(#337). 유예 중에는 이미 쓰기·매칭·알림에서 빠지고, 철회하면 ACTIVE로 돌아오므로 그때
+	 * 차단하면 된다. 유예 중 차단을 허용하면 BLOCKED 상태가 만료 시각을 따로 들고 있어야 한다.
+	 */
 	public Account block() {
 		if (status == AccountStatus.DELETED) {
 			throw new AccountException(
 					AccountErrorCode.INVALID_STATUS_TRANSITION, "status", "삭제된 계정은 차단할 수 없습니다");
 		}
+		if (status == AccountStatus.WITHDRAWAL_PENDING) {
+			throw new AccountException(
+					AccountErrorCode.INVALID_STATUS_TRANSITION, "status", "탈퇴 유예 중인 계정은 차단할 수 없습니다");
+		}
 		return new Account(
 				id, role, AccountStatus.BLOCKED, countryCode, coarseRegionCode, locale, timezone, nickname,
-				profileImageMediaId, nicknameChangedAt, deletedAt);
+				profileImageMediaId, nicknameChangedAt, deletedAt, null);
 	}
 
 	public Account unblock() {
@@ -266,7 +304,7 @@ public final class Account {
 		}
 		return new Account(
 				id, role, AccountStatus.ACTIVE, countryCode, coarseRegionCode, locale, timezone, nickname,
-				profileImageMediaId, nicknameChangedAt, deletedAt);
+				profileImageMediaId, nicknameChangedAt, deletedAt, null);
 	}
 
 	public Account delete(Instant deletedAt) {
@@ -277,7 +315,72 @@ public final class Account {
 		}
 		return new Account(
 				id, role, AccountStatus.DELETED, countryCode, coarseRegionCode, locale, timezone, nickname,
-				profileImageMediaId, nicknameChangedAt, deletedAt);
+				profileImageMediaId, nicknameChangedAt, deletedAt, null);
+	}
+
+	/**
+	 * 탈퇴를 요청한다(#337). 이미 유예 중이면 처음 요청 시각을 그대로 둔다 — 재요청으로 삭제 시각이 미뤄지지 않는다. ACTIVE가
+	 * 아닌 계정은 거절한다. 차단된 계정이 탈퇴로 차단을 피하지 못하게 한다.
+	 */
+	public Account requestWithdrawal(Instant requestedAt) {
+		requireValue(requestedAt, "withdrawalRequestedAt");
+		if (status == AccountStatus.WITHDRAWAL_PENDING) {
+			return this;
+		}
+		if (status != AccountStatus.ACTIVE) {
+			throw new AccountException(
+					AccountErrorCode.INVALID_STATUS_TRANSITION, "status", "활성 계정만 탈퇴를 요청할 수 있습니다");
+		}
+		return new Account(
+				id, role, AccountStatus.WITHDRAWAL_PENDING, countryCode, coarseRegionCode, locale, timezone, nickname,
+				profileImageMediaId, nicknameChangedAt, null, requestedAt);
+	}
+
+	/**
+	 * 탈퇴를 철회한다(#337). ACTIVE 계정은 그대로 돌려준다. 삭제 예정 시각이 지났으면 sweep이 아직 처리하지 않았어도 거절한다
+	 * — 삭제 시점이 sweep 실행 간격에 따라 달라지지 않게 한다.
+	 */
+	public Account cancelWithdrawal(Instant now, Duration gracePeriod) {
+		if (status == AccountStatus.ACTIVE) {
+			return this;
+		}
+		if (status != AccountStatus.WITHDRAWAL_PENDING) {
+			throw new AccountException(
+					AccountErrorCode.INVALID_STATUS_TRANSITION, "status", "탈퇴 유예 중인 계정만 철회할 수 있습니다");
+		}
+		if (isWithdrawalDue(now, gracePeriod)) {
+			throw new AccountException(
+					AccountErrorCode.INVALID_STATUS_TRANSITION, "status", "탈퇴 유예 기간이 끝났습니다");
+		}
+		return new Account(
+				id, role, AccountStatus.ACTIVE, countryCode, coarseRegionCode, locale, timezone, nickname,
+				profileImageMediaId, nicknameChangedAt, null, null);
+	}
+
+	/**
+	 * 유예가 끝난 탈퇴를 완료한다(#337). 닉네임을 비워 다른 사람이 쓸 수 있게 하고, 남은 답변은 작성자 없이 표시된다.
+	 */
+	public Account completeWithdrawal(Instant completedAt, Duration gracePeriod) {
+		requireValue(completedAt, "deletedAt");
+		if (!isWithdrawalDue(completedAt, gracePeriod)) {
+			throw new AccountException(
+					AccountErrorCode.INVALID_STATUS_TRANSITION, "status", "유예가 끝난 탈퇴 요청만 완료할 수 있습니다");
+		}
+		return new Account(
+				id, role, AccountStatus.DELETED, countryCode, coarseRegionCode, locale, timezone, null,
+				profileImageMediaId, nicknameChangedAt, completedAt, null);
+	}
+
+	/** 유예 중이고 now가 삭제 예정 시각 이후(같은 시각 포함)이면 true다. */
+	public boolean isWithdrawalDue(Instant now, Duration gracePeriod) {
+		requireValue(now, "now");
+		return status == AccountStatus.WITHDRAWAL_PENDING && !now.isBefore(withdrawalDeadline(gracePeriod));
+	}
+
+	/** 유예 중인 계정의 삭제 예정 시각이다. 유예 중이 아니면 null이다. */
+	public Instant withdrawalDeadline(Duration gracePeriod) {
+		requireValue(gracePeriod, "gracePeriod");
+		return withdrawalRequestedAt == null ? null : withdrawalRequestedAt.plus(gracePeriod);
 	}
 
 	public Long getId() {
@@ -324,6 +427,11 @@ public final class Account {
 
 	public Instant getDeletedAt() {
 		return deletedAt;
+	}
+
+	/** null이면 탈퇴 유예 중이 아니라는 뜻이다. */
+	public Instant getWithdrawalRequestedAt() {
+		return withdrawalRequestedAt;
 	}
 
 	private static Long validateId(Long id) {
@@ -466,6 +574,16 @@ public final class Account {
 		if (deleted != (deletedAt != null)) {
 			throw new AccountException(
 					AccountErrorCode.INVALID_DELETION_STATE, "deletedAt", "DELETED 상태와 deletedAt은 함께 설정되어야 합니다");
+		}
+	}
+
+	private static void validateWithdrawalState(AccountStatus status, Instant withdrawalRequestedAt) {
+		boolean pending = status == AccountStatus.WITHDRAWAL_PENDING;
+		if (pending != (withdrawalRequestedAt != null)) {
+			throw new AccountException(
+					AccountErrorCode.INVALID_DELETION_STATE,
+					"withdrawalRequestedAt",
+					"WITHDRAWAL_PENDING 상태와 withdrawalRequestedAt은 함께 설정되어야 합니다");
 		}
 	}
 

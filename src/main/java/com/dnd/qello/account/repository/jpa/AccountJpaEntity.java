@@ -66,6 +66,11 @@ public class AccountJpaEntity extends JpaAuditableEntity {
 	@Column(name = "deleted_at")
 	private Instant deletedAt;
 
+	// 탈퇴를 요청한 시각. WITHDRAWAL_PENDING일 때만 값이 있다(#337,
+	// ck_user_account_withdrawal_requested_at).
+	@Column(name = "withdrawal_requested_at")
+	private Instant withdrawalRequestedAt;
+
 	// 같은 계정을 동시에 수정한 요청 중 뒤늦은 쪽을 거절한다. 값은 Hibernate가 관리하므로
 	// 도메인이나 Mapper가 읽거나 쓰지 않는다.
 	@Version
@@ -107,9 +112,14 @@ public class AccountJpaEntity extends JpaAuditableEntity {
 		this.profileImageMediaId = profileImageMediaId;
 	}
 
-	void updateStatus(AccountStatus status, Instant deletedAt) {
+	void updateStatus(AccountStatus status, Instant deletedAt, Instant withdrawalRequestedAt) {
 		this.status = status;
 		this.deletedAt = deletedAt;
+		this.withdrawalRequestedAt = withdrawalRequestedAt;
+	}
+
+	void clearNickname() {
+		this.nickname = null;
 	}
 
 }

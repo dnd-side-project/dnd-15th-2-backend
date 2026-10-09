@@ -1,11 +1,15 @@
 package com.dnd.qello.account.repository.jpa;
 
+import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.dnd.qello.account.domain.Account;
+import com.dnd.qello.account.domain.AccountStatus;
 import com.dnd.qello.account.error.AccountErrorCode;
 import com.dnd.qello.account.error.AccountException;
 import com.dnd.qello.account.repository.AccountRepository;
@@ -58,6 +62,14 @@ public class JpaAccountRepository implements AccountRepository {
 	}
 
 	@Override
+	@Transactional
+	public Account updateDeletion(Account account) {
+		AccountJpaEntity entity = findManaged(account.getId());
+		AccountJpaMapper.updateDeletion(entity, account);
+		return AccountJpaMapper.toDomain(entity);
+	}
+
+	@Override
 	public Optional<Account> findById(long id) {
 		return repository.findById(id).map(AccountJpaMapper::toDomain);
 	}
@@ -67,14 +79,20 @@ public class JpaAccountRepository implements AccountRepository {
 		return repository.existsActiveByNicknameIgnoreCase(nickname);
 	}
 
+	@Override
+	public List<Long> findWithdrawalDueIds(Instant requestedAtOrBefore, int limit) {
+		return repository.findWithdrawalDueIds(
+				AccountStatus.WITHDRAWAL_PENDING, requestedAtOrBefore, PageRequest.of(0, limit));
+	}
+
 	/**
-	 * 현재 트랜잭션의 Persistence Context가 관리하는 엔티티를 조회한다.
-	 * 새 엔티티를 만들어 merge하지 않고 Dirty Checking에 위임한다.
+	 * 현재 트랜잭션의 Persistence Context가 관리하는 엔티티를 조회한다. 새 엔티티를 만들어 merge하지 않고 Dirty
+	 * Checking에 위임한다.
 	 */
 	private AccountJpaEntity findManaged(Long id) {
 		return repository.findById(id)
-			.orElseThrow(() -> new AccountException(
-				AccountErrorCode.ACCOUNT_NOT_FOUND, "id", "대상 계정이 존재하지 않습니다"));
+				.orElseThrow(() -> new AccountException(
+						AccountErrorCode.ACCOUNT_NOT_FOUND, "id", "대상 계정이 존재하지 않습니다"));
 	}
 
 }

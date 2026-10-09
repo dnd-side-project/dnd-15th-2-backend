@@ -103,6 +103,10 @@ class ChangedJavaTypesTest {
 		command.add("commit.gpgsign=false");
 		command.addAll(List.of(args));
 		ProcessBuilder builder = new ProcessBuilder(command);
+		// pre-commit 훅 안에서 실행되면 git이 넘긴 GIT_DIR·GIT_INDEX_FILE을 물려받는다.
+		// linked worktree에서는 이 값이 절대 경로라 임시 저장소가 아니라
+		// 실제 저장소의 index와 ref를 고치게 되므로 지운다(#337).
+		builder.environment().keySet().removeIf(name -> name.startsWith("GIT_"));
 		builder.directory(repositoryRoot.toFile());
 		builder.redirectErrorStream(true);
 		Process process = builder.start();

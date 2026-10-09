@@ -3,6 +3,7 @@
  * Source scenario: TEST-PLAN-GH-120-DIRECTION-MATCHING-WORKER-INT-001 through INT-009, INT-013, INT-015
  * Source scenario: TEST-PLAN-GH-122-DIRECTION-PREVIEW-SUBMISSION-API-INT-014
  * Source scenario: TEST-PLAN-GH-137-DIRECTION-POST-MODERATION (release fixture and DIRECTION_POST outbox filter, added 2026-10-07T22:14:59+09:00)
+ * Source scenario: TEST-PLAN-GH-337-ACCOUNT-WITHDRAWAL-INT-006 (added 2026-10-09T18:47:28+09:00)
  */
 package com.dnd.qello;
 
@@ -16,6 +17,8 @@ import java.util.stream.IntStream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -209,6 +212,33 @@ class DirectionMatchingWorkerIntegrationTest extends PostgisContainerIntegration
 		assertThat(jdbc.queryForList("SELECT recipient_id FROM post_recipient WHERE post_id = ? ORDER BY recipient_id",
 				Long.class, postId))
 				.containsExactly(fixture.candidateIds().get(3));
+	}
+
+	@ParameterizedTest
+	@ValueSource(strings = {"WITHDRAWAL_PENDING", "BLOCKED"})
+	@DisplayName("TEST-PLAN-GH-337-ACCOUNT-WITHDRAWAL-INT-006: 발신자가 탈퇴 유예 중이거나 차단되면 PASSED 질문글도 수신자·슬롯 없이 매칭 이벤트를 완료하고 질문글은 MATCHING으로 남는다")
+	void completesMatchingWithoutRecipientsWhenSenderIsNotActive(String senderStatus) {
+		Fixture fixture = fixtureWithCandidates(2);
+		long postId = submitAndPass(fixture, "worker-sender-" + senderStatus.toLowerCase());
+		jdbc.update("""
+				UPDATE user_account
+				SET status = ?, withdrawal_requested_at = CASE WHEN ? = 'WITHDRAWAL_PENDING' THEN ?::timestamptz END
+				WHERE id = ?
+				""", senderStatus, senderStatus, Timestamp.from(NOW.minusSeconds(30)), fixture.senderId());
+
+		DirectionMatchingWorker.BatchResult result = worker.processBatch(command());
+
+		assertThat(result.outcomes()).containsExactly(DirectionMatchingWorker.Outcome.PROCESSED);
+		assertThat(jdbc.queryForObject("SELECT count(*) FROM post_recipient WHERE post_id = ?", Long.class, postId))
+				.isZero();
+		assertThat(jdbc.queryForObject("SELECT count(*) FROM recipient_receive_state", Long.class)).isZero();
+		assertThat(jdbc.queryForObject("SELECT count(*) FROM outbox_event WHERE aggregate_type = 'POST_RECIPIENT'",
+				Long.class)).isZero();
+		assertThat(jdbc.queryForObject(
+				"SELECT status FROM outbox_event WHERE aggregate_type = 'DIRECTION_POST' AND aggregate_id = ?",
+				String.class, postId)).isEqualTo(OutboxStatus.PROCESSED.name());
+		assertThat(jdbc.queryForObject("SELECT status FROM direction_post WHERE id = ?", String.class, postId))
+				.isEqualTo("MATCHING");
 	}
 
 	@Test

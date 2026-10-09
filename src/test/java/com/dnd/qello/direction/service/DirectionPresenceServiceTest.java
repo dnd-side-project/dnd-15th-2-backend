@@ -4,9 +4,6 @@
  */
 package com.dnd.qello.direction.service;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Duration;
@@ -28,6 +25,9 @@ import com.dnd.qello.direction.error.DirectionErrorCode;
 import com.dnd.qello.direction.error.DirectionException;
 import com.dnd.qello.direction.repository.ActiveUserPresenceRepository;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
 class DirectionPresenceServiceTest {
 
 	private static final Instant NOW = Instant.parse("2026-08-13T15:00:00Z");
@@ -41,8 +41,9 @@ class DirectionPresenceServiceTest {
 		accountRepository = new FakeAccountRepository(activeUser(1L, "SERVER-REGION"));
 		presenceRepository = new FakePresenceRepository();
 		service = new DirectionPresenceService(accountRepository, presenceRepository,
-			new DirectionPresenceProperties(TTL, BigDecimal.valueOf(100), Duration.ofSeconds(30), Duration.ofMinutes(5)),
-			Clock.fixed(NOW, ZoneOffset.UTC));
+				new DirectionPresenceProperties(TTL, BigDecimal.valueOf(100), Duration.ofSeconds(30),
+						Duration.ofMinutes(5)),
+				Clock.fixed(NOW, ZoneOffset.UTC));
 	}
 
 	@Test
@@ -60,9 +61,9 @@ class DirectionPresenceServiceTest {
 	@DisplayName("정확도 상한 초과는 저장 전에 안전한 direction 오류로 거절한다")
 	void rejectsAccuracyAboveConfiguredLimit() {
 		assertThatThrownBy(() -> service.update(1L, command(NOW, new BigDecimal("100.01"), true)))
-			.isInstanceOf(DirectionException.class)
-			.hasFieldOrPropertyWithValue("errorCode", DirectionErrorCode.INVALID_VALUE_RANGE)
-			.hasFieldOrPropertyWithValue("field", "accuracyMeters");
+				.isInstanceOf(DirectionException.class)
+				.hasFieldOrPropertyWithValue("errorCode", DirectionErrorCode.INVALID_VALUE_RANGE)
+				.hasFieldOrPropertyWithValue("field", "accuracyMeters");
 		assertThat(presenceRepository.saved).isNull();
 	}
 
@@ -73,11 +74,12 @@ class DirectionPresenceServiceTest {
 		assertThat(service.update(1L, command(NOW.minus(Duration.ofMinutes(5)), BigDecimal.ONE, true))).isTrue();
 
 		assertThatThrownBy(() -> service.update(1L, command(NOW.plusSeconds(31), BigDecimal.ONE, true)))
-			.isInstanceOf(DirectionException.class)
-			.hasFieldOrPropertyWithValue("errorCode", DirectionErrorCode.INVALID_TIME_ORDER);
-		assertThatThrownBy(() -> service.update(1L, command(NOW.minus(Duration.ofMinutes(5)).minusSeconds(1), BigDecimal.ONE, true)))
-			.isInstanceOf(DirectionException.class)
-			.hasFieldOrPropertyWithValue("errorCode", DirectionErrorCode.INVALID_TIME_ORDER);
+				.isInstanceOf(DirectionException.class)
+				.hasFieldOrPropertyWithValue("errorCode", DirectionErrorCode.INVALID_TIME_ORDER);
+		assertThatThrownBy(() -> service.update(1L,
+				command(NOW.minus(Duration.ofMinutes(5)).minusSeconds(1), BigDecimal.ONE, true)))
+				.isInstanceOf(DirectionException.class)
+				.hasFieldOrPropertyWithValue("errorCode", DirectionErrorCode.INVALID_TIME_ORDER);
 	}
 
 	@Test
@@ -85,34 +87,36 @@ class DirectionPresenceServiceTest {
 	void rejectsMissingOrIneligibleAccountAtFeatureBoundary() {
 		accountRepository.account = null;
 		assertThatThrownBy(() -> service.update(1L, command(NOW, BigDecimal.ONE, true)))
-			.isInstanceOf(DirectionException.class)
-			.hasFieldOrPropertyWithValue("errorCode", DirectionErrorCode.PRESENCE_ACCOUNT_NOT_FOUND);
+				.isInstanceOf(DirectionException.class)
+				.hasFieldOrPropertyWithValue("errorCode", DirectionErrorCode.PRESENCE_ACCOUNT_NOT_FOUND);
 
-		for (Account account : new Account[] {
-			account(1L, AccountRole.USER, AccountStatus.BLOCKED),
-			account(1L, AccountRole.USER, AccountStatus.DELETED),
-			account(1L, AccountRole.OPERATOR, AccountStatus.ACTIVE)
+		for (Account account : new Account[]{
+				account(1L, AccountRole.USER, AccountStatus.BLOCKED),
+				account(1L, AccountRole.USER, AccountStatus.DELETED),
+				account(1L, AccountRole.OPERATOR, AccountStatus.ACTIVE)
 		}) {
 			accountRepository.account = account;
 			assertThatThrownBy(() -> service.update(1L, command(NOW, BigDecimal.ONE, true)))
-				.isInstanceOf(DirectionException.class)
-				.hasFieldOrPropertyWithValue("errorCode", DirectionErrorCode.PRESENCE_ACCOUNT_NOT_ELIGIBLE);
+					.isInstanceOf(DirectionException.class)
+					.hasFieldOrPropertyWithValue("errorCode", DirectionErrorCode.PRESENCE_ACCOUNT_NOT_ELIGIBLE);
 		}
 		assertThat(presenceRepository.saved).isNull();
 	}
 
-	private DirectionPresenceService.UpdateCommand command(Instant observedAt, BigDecimal accuracy, boolean receiveAllowed) {
+	private DirectionPresenceService.UpdateCommand command(Instant observedAt, BigDecimal accuracy,
+			boolean receiveAllowed) {
 		return new DirectionPresenceService.UpdateCommand(BigDecimal.valueOf(37.5), BigDecimal.valueOf(127), accuracy,
-			receiveAllowed, observedAt);
+				receiveAllowed, observedAt);
 	}
 
 	private static Account activeUser(long id, String region) {
-		return Account.restore(id, AccountRole.USER, AccountStatus.ACTIVE, "KR", region, "ko-KR", "Asia/Seoul", null, null);
+		return Account.restore(id, AccountRole.USER, AccountStatus.ACTIVE, "KR", region, "ko-KR", "Asia/Seoul", null,
+				null);
 	}
 
 	private static Account account(long id, AccountRole role, AccountStatus status) {
 		return Account.restore(id, role, status, role == AccountRole.USER ? "KR" : null, "TEST-REGION",
-			"ko-KR", "Asia/Seoul", null, status == AccountStatus.DELETED ? NOW.minusSeconds(1) : null);
+				"ko-KR", "Asia/Seoul", null, status == AccountStatus.DELETED ? NOW.minusSeconds(1) : null);
 	}
 
 	private static final class FakeAccountRepository implements AccountRepository {
@@ -122,25 +126,72 @@ class DirectionPresenceServiceTest {
 			this.account = account;
 		}
 
-		@Override public Account save(Account account) { throw new UnsupportedOperationException(); }
-		@Override public Account updateProfile(Account account) { throw new UnsupportedOperationException(); }
-		@Override public Account updateProfileImage(Account account) { throw new UnsupportedOperationException(); }
-		@Override public Account updateStatus(Account account) { throw new UnsupportedOperationException(); }
-		@Override public Optional<Account> findById(long id) { return Optional.ofNullable(account); }
-		@Override public boolean existsActiveNickname(String nickname) { throw new UnsupportedOperationException(); }
+		@Override
+		public Account save(Account account) {
+			throw new UnsupportedOperationException();
+		}
+		@Override
+		public Account updateProfile(Account account) {
+			throw new UnsupportedOperationException();
+		}
+		@Override
+		public Account updateProfileImage(Account account) {
+			throw new UnsupportedOperationException();
+		}
+		@Override
+		public Account updateStatus(Account account) {
+			throw new UnsupportedOperationException();
+		}
+		@Override
+		public Account updateDeletion(Account account) {
+			throw new UnsupportedOperationException();
+		}
+		@Override
+		public Optional<Account> findById(long id) {
+			return Optional.ofNullable(account);
+		}
+		@Override
+		public boolean existsActiveNickname(String nickname) {
+			throw new UnsupportedOperationException();
+		}
+		@Override
+		public java.util.List<Long> findWithdrawalDueIds(Instant requestedAtOrBefore, int limit) {
+			throw new UnsupportedOperationException();
+		}
 	}
 
 	private static final class FakePresenceRepository implements ActiveUserPresenceRepository {
 		private ActiveUserPresence saved;
 
-		@Override public ActiveUserPresence save(ActiveUserPresence presence) { saved = presence; return presence; }
-		@Override public boolean saveIfNewer(ActiveUserPresence presence) { saved = presence; return true; }
-		@Override public Optional<ActiveUserPresence> findByUserId(long userId) { return Optional.empty(); }
-		@Override public java.util.List<com.dnd.qello.direction.domain.DirectionCandidate> findCandidates(long excludedUserId,
-			double originLatitude, double originLongitude, long minDistanceMeters, long maxDistanceMeters,
-			double sectorStartDegrees, double sectorEndDegrees, Instant at, String regionCode) { return java.util.List.of(); }
-		@Override public java.util.List<DirectionSegmentCandidateCount> findCandidateCountsBySegment(long schemeId,
-			long excludedUserId, double originLatitude, double originLongitude, long minDistanceMeters,
-			long maxDistanceMeters, Instant at, String regionCode) { return java.util.List.of(); }
+		@Override
+		public ActiveUserPresence save(ActiveUserPresence presence) {
+			saved = presence;
+			return presence;
+		}
+		@Override
+		public boolean saveIfNewer(ActiveUserPresence presence) {
+			saved = presence;
+			return true;
+		}
+		@Override
+		public Optional<ActiveUserPresence> findByUserId(long userId) {
+			return Optional.empty();
+		}
+		@Override
+		public boolean deleteByUserId(long userId) {
+			throw new UnsupportedOperationException();
+		}
+		@Override
+		public java.util.List<com.dnd.qello.direction.domain.DirectionCandidate> findCandidates(long excludedUserId,
+				double originLatitude, double originLongitude, long minDistanceMeters, long maxDistanceMeters,
+				double sectorStartDegrees, double sectorEndDegrees, Instant at, String regionCode) {
+			return java.util.List.of();
+		}
+		@Override
+		public java.util.List<DirectionSegmentCandidateCount> findCandidateCountsBySegment(long schemeId,
+				long excludedUserId, double originLatitude, double originLongitude, long minDistanceMeters,
+				long maxDistanceMeters, Instant at, String regionCode) {
+			return java.util.List.of();
+		}
 	}
 }

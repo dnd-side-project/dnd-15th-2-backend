@@ -64,6 +64,9 @@ qello:
       attempt-rate-limit:
         max-requests: ${QELLO_ACCOUNT_NICKNAME_CHANGE_ATTEMPT_LIMIT:10}
         window: P1D
+    withdrawal:
+      # 탈퇴 요청 후 계정을 삭제하기까지의 유예 기간(#337). 이 기간 안에는 같은 기기로 철회할 수 있다.
+      grace-period: ${QELLO_ACCOUNT_WITHDRAWAL_GRACE_PERIOD:P30D}
   direction:
     # 사용자별 활성 미처리 수신 상한. DB CHECK가 아니라 운영 설정값이며, DB는 안전 상한 50만만 강제한다.
     receive-capacity: 5

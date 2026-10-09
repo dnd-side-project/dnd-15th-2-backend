@@ -262,6 +262,23 @@ public class JdbcNotificationRepository implements OutboxEventRepository, Notifi
 	}
 
 	@Override
+	@Transactional
+	public int revokeAllDevicesByUserId(long userId, Instant at) {
+		if (at == null) {
+			throw new NotificationException(NotificationErrorCode.INVALID_PUSH_DEVICE_REQUEST, "at",
+					"처리 시각은 필수입니다.");
+		}
+		// 등록·해지 경로와 같은 user-platform 키를 enum 선언 순서로 잡는다. 같은 사용자의 등록과 순서가 엇갈리지 않는다.
+		for (PushPlatform platform : PushPlatform.values()) {
+			acquireTransactionAdvisoryLock(userPlatformLockKey(userId, platform.name()));
+		}
+		Number revokedCount = jdbc.queryForObject(NotificationSql.REVOKE_ALL_PUSH_DEVICES_BY_USER,
+				new MapSqlParameterSource().addValue("userId", userId).addValue("revokedAt", timestamp(at)),
+				Number.class);
+		return revokedCount == null ? 0 : revokedCount.intValue();
+	}
+
+	@Override
 	public List<Long> findActiveDeviceIdsByUserId(long userId) {
 		return jdbc.queryForList(NotificationSql.FIND_ACTIVE_PUSH_DEVICE_IDS,
 				new MapSqlParameterSource("userId", userId), Long.class);

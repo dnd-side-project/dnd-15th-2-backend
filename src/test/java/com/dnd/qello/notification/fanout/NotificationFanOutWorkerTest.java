@@ -3,18 +3,9 @@
  * Source scenario: TEST-PLAN-GH-177-NOTIFICATION-FANOUT-EXPANSION-UNIT-001,
  * UNIT-002, UNIT-003, UNIT-004, UNIT-005, UNIT-006, UNIT-007, UNIT-008,
  * UNIT-009, UNIT-010, UNIT-011
+ * Source scenario: TEST-PLAN-GH-337-ACCOUNT-WITHDRAWAL-UNIT-024 (added 2026-10-09T18:14:46+09:00)
  */
 package com.dnd.qello.notification.fanout;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
-import static org.mockito.Mockito.lenient;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -26,6 +17,8 @@ import java.util.Set;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.RecoverableDataAccessException;
@@ -48,18 +41,35 @@ import com.dnd.qello.notification.repository.NotificationRepository;
 import com.dnd.qello.notification.repository.OutboxEventRepository;
 import com.dnd.qello.safety.repository.SafetyRepository;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
 @ExtendWith(MockitoExtension.class)
 class NotificationFanOutWorkerTest {
 
 	private static final Instant NOW = Instant.parse("2026-08-20T10:00:00Z");
 
-	@Mock private OutboxEventRepository outbox;
-	@Mock private NotificationRepository notifications;
-	@Mock private NotificationPreferenceRepository preferences;
-	@Mock private NotificationFanOutResolver resolver;
-	@Mock private com.dnd.qello.account.repository.AccountRepository accounts;
-	@Mock private SafetyRepository safety;
-	@Mock private PlatformTransactionManager transactionManager;
+	@Mock
+	private OutboxEventRepository outbox;
+	@Mock
+	private NotificationRepository notifications;
+	@Mock
+	private NotificationPreferenceRepository preferences;
+	@Mock
+	private NotificationFanOutResolver resolver;
+	@Mock
+	private com.dnd.qello.account.repository.AccountRepository accounts;
+	@Mock
+	private SafetyRepository safety;
+	@Mock
+	private PlatformTransactionManager transactionManager;
 
 	@Test
 	@DisplayName("네 가지 notification fan-out event만 claim한다")
@@ -179,6 +189,34 @@ class NotificationFanOutWorkerTest {
 		verify(notifications, never()).saveIfAbsent(any(Notification.class));
 	}
 
+	@ParameterizedTest
+	@EnumSource(WithdrawalPendingParty.class)
+	@DisplayName("TEST-PLAN-GH-337-ACCOUNT-WITHDRAWAL-UNIT-024: 수신자나 actor가 탈퇴 유예 중이면 notification과 delivery를 만들지 않고 이벤트를 완료한다")
+	void suppressesNotificationWhenAccountIsWithdrawalPending(WithdrawalPendingParty party) {
+		when(resolver.eventTypes()).thenReturn(Set.of(OutboxEventType.ANSWER_REACTED));
+		NotificationFanOutWorker worker = worker();
+		OutboxEvent event = claimedEvent(OutboxEventType.ANSWER_REACTED, 91L,
+			"{\"answerId\":91,\"reactorId\":9}");
+		when(outbox.claimDue(any(), any(Integer.class), any(String.class), any(Instant.class), any(Instant.class)))
+			.thenReturn(List.of(event));
+		when(resolver.resolve(event)).thenReturn(FanOutInstruction.notification(
+			NotificationType.ANSWER_REACTED, 3L, 9L, 91L, "answer-reacted:event:91"));
+		if (party == WithdrawalPendingParty.RECIPIENT) {
+			when(accounts.findById(3L)).thenReturn(Optional.of(withdrawalPendingAccount(3L)));
+		} else {
+			when(accounts.findById(3L)).thenReturn(Optional.of(account(3L)));
+			when(accounts.findById(9L)).thenReturn(Optional.of(withdrawalPendingAccount(9L)));
+		}
+		when(outbox.complete(anyLong(), any(String.class), anyLong(), any(Instant.class))).thenReturn(true);
+
+		var result = worker.processBatch(command());
+
+		assertThat(result.outcomes()).containsExactly(NotificationFanOutWorker.Outcome.PROCESSED);
+		verify(outbox).complete(anyLong(), any(String.class), anyLong(), any(Instant.class));
+		verify(notifications, never()).saveIfAbsent(any(Notification.class));
+		verify(notifications, never()).saveDeliveryIfAbsent(any(NotificationDelivery.class));
+	}
+
 	@Test
 	@DisplayName("resolver의 malformed event는 notification을 만들지 않고 permanent DEAD로 분류한다")
 	void classifiesMalformedEventAsDead() {
@@ -256,8 +294,8 @@ class NotificationFanOutWorkerTest {
 	private NotificationFanOutWorker worker() {
 		givenTransactionRunsInline();
 		return new NotificationFanOutWorker(outbox, notifications, preferences, List.of(resolver),
-			accounts, safety, transactionManager,
-			Clock.fixed(NOW, ZoneOffset.UTC));
+				accounts, safety, transactionManager,
+				Clock.fixed(NOW, ZoneOffset.UTC));
 	}
 
 	private void givenTransactionRunsInline() {
@@ -266,26 +304,36 @@ class NotificationFanOutWorkerTest {
 
 	private static Account account(long id) {
 		return Account.restore(id, AccountRole.USER, AccountStatus.ACTIVE, "KR", "KR-TEST",
-			"ko-KR", "Asia/Seoul", "user-" + id, null);
+				"ko-KR", "Asia/Seoul", "user-" + id, null);
+	}
+
+	private static Account withdrawalPendingAccount(long id) {
+		return Account.restore(id, AccountRole.USER, AccountStatus.WITHDRAWAL_PENDING, "KR", "KR-TEST",
+				"ko-KR", "Asia/Seoul", "user-" + id, null, NOW.minusSeconds(60));
+	}
+
+	private enum WithdrawalPendingParty {
+		RECIPIENT, ACTOR
 	}
 
 	private static Notification notification(long id, long recipientId, NotificationType type, String dedupKey) {
 		return new Notification(id, recipientId, 1L, type, dedupKey, null, null, null,
-			com.dnd.qello.notification.domain.NotificationStatus.UNREAD, NOW, null);
+				com.dnd.qello.notification.domain.NotificationStatus.UNREAD, NOW, null);
 	}
 
 	private static OutboxEvent claimedEvent(OutboxEventType type, long aggregateId, String payload) {
 		OutboxEvent pending = OutboxEvent.pending(OutboxAggregateType.ANSWER, aggregateId, type,
-			"event:" + aggregateId + ":" + type, payload, NOW);
+				"event:" + aggregateId + ":" + type, payload, NOW);
 		OutboxEvent stored = new OutboxEvent(1L, pending.aggregateType(), pending.aggregateId(), pending.eventType(),
-			pending.dedupKey(), pending.payload(), pending.status(), pending.attemptCount(), pending.nextAttemptAt(),
-			pending.createdAt(), pending.processedAt());
+				pending.dedupKey(), pending.payload(), pending.status(), pending.attemptCount(),
+				pending.nextAttemptAt(),
+				pending.createdAt(), pending.processedAt());
 		return stored.claimed("notification-fanout-expansion",
-			NOW, NOW.plusSeconds(30));
+				NOW, NOW.plusSeconds(30));
 	}
 
 	private NotificationFanOutWorker.BatchCommand command() {
 		return new NotificationFanOutWorker.BatchCommand(10, "notification-fanout-expansion", NOW,
-			NOW.plusSeconds(30), new OutboxRetryPolicy(3, attempt -> java.time.Duration.ofSeconds(1)));
+				NOW.plusSeconds(30), new OutboxRetryPolicy(3, attempt -> java.time.Duration.ofSeconds(1)));
 	}
 }

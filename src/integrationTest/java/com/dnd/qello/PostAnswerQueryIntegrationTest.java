@@ -1,10 +1,9 @@
 /**
  * Created at: 2026-08-08T14:19:39+09:00
  * Source scenario: TEST-PLAN-GH-79-ANSWER-VISIBILITY-RECIPIENTS-INT-001 through INT-003, INT-006
+ * Source scenario: TEST-PLAN-GH-337-ACCOUNT-WITHDRAWAL-INT-017 (added 2026-10-09T18:47:28+09:00)
  */
 package com.dnd.qello;
-
-import static org.assertj.core.api.Assertions.assertThat;
 
 import java.sql.Timestamp;
 import java.time.Instant;
@@ -21,8 +20,11 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 
+import com.dnd.qello.account.service.AccountWithdrawalCompletionService;
 import com.dnd.qello.feed.service.PostAnswerQueryService;
 import com.dnd.qello.feed.view.AnswerCard;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 @SpringBootTest
 @ActiveProfiles("test")
@@ -35,6 +37,8 @@ class PostAnswerQueryIntegrationTest extends PostgisContainerIntegrationTestSupp
 	private JdbcTemplate jdbc;
 	@Autowired
 	private PostAnswerQueryService postAnswerQueryService;
+	@Autowired
+	private AccountWithdrawalCompletionService withdrawalCompletionService;
 
 	private long senderId;
 	private long recipientId;
@@ -54,43 +58,51 @@ class PostAnswerQueryIntegrationTest extends PostgisContainerIntegrationTestSupp
 		jdbc.update("DELETE FROM user_block");
 		jdbc.update("DELETE FROM user_account WHERE coarse_region_code = ?", REGION);
 		jdbc.update("DELETE FROM region_code WHERE code = ?", REGION);
-		jdbc.update("INSERT INTO region_code (code, parent_code, display_name, level) VALUES ('KR', NULL, 'Korea', 'COUNTRY') ON CONFLICT (code, level) DO NOTHING");
-		jdbc.update("INSERT INTO region_code (code, parent_code, display_name, level) VALUES (?, 'KR', 'Answer Query', 'REGION')", REGION);
+		jdbc.update(
+				"INSERT INTO region_code (code, parent_code, display_name, level) VALUES ('KR', NULL, 'Korea', 'COUNTRY') ON CONFLICT (code, level) DO NOTHING");
+		jdbc.update(
+				"INSERT INTO region_code (code, parent_code, display_name, level) VALUES (?, 'KR', 'Answer Query', 'REGION')",
+				REGION);
 
 		senderId = account("aq-sender");
 		recipientId = account("aq-recipient");
 		outsiderId = account("aq-outsider");
 		questionId = jdbc.queryForObject("""
-			INSERT INTO approved_question
-				(source_type, status, question_text, answer_format, active_from, approved_at, approved_by)
-			VALUES ('OPERATOR', 'ACTIVE', '오늘 뭐 하고 있나요?', 'TEXT', ?, ?, ?)
-			RETURNING id
-			""", Long.class, Timestamp.from(NOW.minusSeconds(60)), Timestamp.from(NOW), senderId);
+				INSERT INTO approved_question
+					(source_type, status, question_text, answer_format, active_from, approved_at, approved_by)
+				VALUES ('OPERATOR', 'ACTIVE', '오늘 뭐 하고 있나요?', 'TEXT', ?, ?, ?)
+				RETURNING id
+				""", Long.class, Timestamp.from(NOW.minusSeconds(60)), Timestamp.from(NOW), senderId);
 	}
 
 	private long account(String nickname) {
 		return jdbc.queryForObject("""
-			INSERT INTO user_account (role, country_code, status, coarse_region_code, locale, timezone, nickname)
-			VALUES ('USER', 'KR', 'ACTIVE', ?, 'ko-KR', 'Asia/Seoul', ?)
-			RETURNING id
-			""", Long.class, REGION, nickname);
+				INSERT INTO user_account (role, country_code, status, coarse_region_code, locale, timezone, nickname)
+				VALUES ('USER', 'KR', 'ACTIVE', ?, 'ko-KR', 'Asia/Seoul', ?)
+				RETURNING id
+				""", Long.class, REGION, nickname);
+	}
+
+	private void requestWithdrawal(long userId, Instant requestedAt) {
+		jdbc.update("UPDATE user_account SET status = 'WITHDRAWAL_PENDING', withdrawal_requested_at = ? WHERE id = ?",
+				Timestamp.from(requestedAt), userId);
 	}
 
 	private long post(String key, Instant submittedAt, Instant expiresAt) {
 		return jdbc.queryForObject("""
-			INSERT INTO direction_post
-				(sender_id, approved_question_id, status, idempotency_key, body_text,
-				 coarse_region_code, moderation_status, submitted_at, published_at, expires_at)
-			VALUES (?, ?, 'ACTIVE', ?, '본문', ?, 'PASSED', ?, ?, ?)
-			RETURNING id
-			""", Long.class, senderId, questionId, key, REGION,
-			Timestamp.from(submittedAt), Timestamp.from(submittedAt), Timestamp.from(expiresAt));
+				INSERT INTO direction_post
+					(sender_id, approved_question_id, status, idempotency_key, body_text,
+					 coarse_region_code, moderation_status, submitted_at, published_at, expires_at)
+				VALUES (?, ?, 'ACTIVE', ?, '본문', ?, 'PASSED', ?, ?, ?)
+				RETURNING id
+				""", Long.class, senderId, questionId, key, REGION,
+				Timestamp.from(submittedAt), Timestamp.from(submittedAt), Timestamp.from(expiresAt));
 	}
 
 	/**
-	 * V1 ck_post_recipient_status_timestamps가 상태별로 채워야 하는 타임스탬프를
-	 * 강제한다(AVAILABLE은 discovered_at·opened_at 둘 다 NULL, OPENED는 둘 다 필요,
-	 * ANSWERED는 discovered_at·opened_at·capacity_released_at 모두 필요) — 기존
+	 * V1 ck_post_recipient_status_timestamps가 상태별로 채워야 하는 타임스탬프를 강제한다(AVAILABLE은
+	 * discovered_at·opened_at 둘 다 NULL, OPENED는 둘 다 필요, ANSWERED는
+	 * discovered_at·opened_at·capacity_released_at 모두 필요) — 기존
 	 * InboxQueryIntegrationTest.recipient()와 동일한 패턴이다.
 	 */
 	private long recipient(long postId, long userId, String status) {
@@ -99,25 +111,27 @@ class PostAnswerQueryIntegrationTest extends PostgisContainerIntegrationTestSupp
 
 	private long recipient(long postId, long userId, String status, long distanceM) {
 		String[] columns = switch (status) {
-			case "OPENED" -> new String[] {"discovered_at", "opened_at"};
-			case "ANSWERED" -> new String[] {"discovered_at", "opened_at", "capacity_released_at"};
-			case "SKIPPED" -> new String[] {"discovered_at", "skip_requested_at", "skipped_at", "capacity_released_at"};
+			case "OPENED" -> new String[]{"discovered_at", "opened_at"};
+			case "ANSWERED" -> new String[]{"discovered_at", "opened_at", "capacity_released_at"};
+			case "SKIPPED" -> new String[]{"discovered_at", "skip_requested_at", "skipped_at", "capacity_released_at"};
 			default -> new String[0];
 		};
 		String columnList = columns.length == 0 ? "" : ", " + String.join(", ", columns);
-		String placeholderList = columns.length == 0 ? "" : ", "
-			+ Arrays.stream(columns).map(column -> "?").collect(Collectors.joining(", "));
+		String placeholderList = columns.length == 0
+				? ""
+				: ", "
+						+ Arrays.stream(columns).map(column -> "?").collect(Collectors.joining(", "));
 		Object[] baseParams = {postId, userId, status, REGION, Timestamp.from(NOW), distanceM};
 		Object[] params = new Object[baseParams.length + columns.length];
 		System.arraycopy(baseParams, 0, params, 0, baseParams.length);
 		Arrays.fill(params, baseParams.length, params.length, Timestamp.from(NOW));
 		return jdbc.queryForObject("""
-			INSERT INTO post_recipient
-				(post_id, recipient_id, status, distance_band, matched_bearing_deg, matched_region_code,
-				 matched_at, inbound_bearing_deg, distance_m%s)
-			VALUES (?, ?, ?, 'NEAR', 45, ?, ?, 225, ?%s)
-			RETURNING id
-			""".formatted(columnList, placeholderList), Long.class, params);
+				INSERT INTO post_recipient
+					(post_id, recipient_id, status, distance_band, matched_bearing_deg, matched_region_code,
+					 matched_at, inbound_bearing_deg, distance_m%s)
+				VALUES (?, ?, ?, 'NEAR', 45, ?, ?, 225, ?%s)
+				RETURNING id
+				""".formatted(columnList, placeholderList), Long.class, params);
 	}
 
 	private long answer(long postRecipientId, long authorId, String key, Instant publishedAt) {
@@ -126,13 +140,13 @@ class PostAnswerQueryIntegrationTest extends PostgisContainerIntegrationTestSupp
 
 	private long answer(long postRecipientId, long authorId, String key, Instant publishedAt, long distanceM) {
 		return jdbc.queryForObject("""
-			INSERT INTO answer
-				(post_recipient_id, author_id, status, idempotency_key, body_text, coarse_region_code,
-				 bearing_from_sender_deg, distance_band, distance_m, moderation_status, submitted_at, published_at)
-			VALUES (?, ?, 'PUBLISHED', ?, '답변 본문', ?, 45, 'NEAR', ?, 'PASSED', ?, ?)
-			RETURNING id
-			""", Long.class, postRecipientId, authorId, key, REGION, distanceM,
-			Timestamp.from(NOW), Timestamp.from(publishedAt));
+				INSERT INTO answer
+					(post_recipient_id, author_id, status, idempotency_key, body_text, coarse_region_code,
+					 bearing_from_sender_deg, distance_band, distance_m, moderation_status, submitted_at, published_at)
+				VALUES (?, ?, 'PUBLISHED', ?, '답변 본문', ?, 45, 'NEAR', ?, 'PASSED', ?, ?)
+				RETURNING id
+				""", Long.class, postRecipientId, authorId, key, REGION, distanceM,
+				Timestamp.from(NOW), Timestamp.from(publishedAt));
 	}
 
 	@Test
@@ -228,6 +242,34 @@ class PostAnswerQueryIntegrationTest extends PostgisContainerIntegrationTestSupp
 	}
 
 	@Test
+	@DisplayName("TEST-PLAN-GH-337-ACCOUNT-WITHDRAWAL-INT-017: 탈퇴 유예 중이거나 탈퇴가 끝난 작성자의 답변은 본문을 남기고 닉네임 null·authorWithdrawn true로 내려가며, 풀린 닉네임을 새 계정이 써도 옛 답변에 보이지 않는다")
+	void hidesNicknameOfWithdrawnAuthorsButKeepsAnswers() {
+		long pendingAuthorId = account("aq-pending");
+		long deletedAuthorId = account("aq-reused");
+		requestWithdrawal(pendingAuthorId, NOW.minus(1, ChronoUnit.DAYS));
+		requestWithdrawal(deletedAuthorId, NOW.minus(31, ChronoUnit.DAYS));
+		long postId = post("p-withdrawn-authors", NOW, NOW.plus(2, ChronoUnit.HOURS));
+		long activeAnswer = answer(recipient(postId, recipientId, "ANSWERED"), recipientId, "a-active",
+				NOW.plusSeconds(30));
+		long pendingAnswer = answer(recipient(postId, pendingAuthorId, "ANSWERED"), pendingAuthorId, "a-pending",
+				NOW.plusSeconds(20));
+		long deletedAnswer = answer(recipient(postId, deletedAuthorId, "ANSWERED"), deletedAuthorId, "a-deleted",
+				NOW.plusSeconds(10));
+		assertThat(withdrawalCompletionService.complete(deletedAuthorId, NOW)).isTrue();
+		long newOwnerId = account("aq-reused");
+
+		List<AnswerCard> answers = postAnswerQueryService.answers(senderId, postId, null, 10, NOW.plusSeconds(60));
+
+		assertThat(answers).extracting(AnswerCard::answerId).containsExactly(activeAnswer, pendingAnswer,
+				deletedAnswer);
+		assertThat(answers).extracting(AnswerCard::authorNickname).containsExactly("aq-recipient", null, null);
+		assertThat(answers).extracting(AnswerCard::authorWithdrawn).containsExactly(false, true, true);
+		assertThat(answers).extracting(AnswerCard::bodyText).containsOnly("답변 본문");
+		assertThat(jdbc.queryForObject("SELECT nickname FROM user_account WHERE id = ?", String.class, newOwnerId))
+				.isEqualTo("aq-reused");
+	}
+
+	@Test
 	@DisplayName("뷰어가 차단한 답변 작성자의 답변은 그 뷰어의 목록에서만 빠진다")
 	void hidesBlockedAuthorAnswersFromTheBlockingViewerOnly() {
 		long postId = post("p-blocked-author", NOW, NOW.plus(2, ChronoUnit.HOURS));
@@ -250,18 +292,18 @@ class PostAnswerQueryIntegrationTest extends PostgisContainerIntegrationTestSupp
 		Instant at = NOW.plusSeconds(120);
 
 		jdbc.update("INSERT INTO user_block (blocker_id, blocked_id, created_at) VALUES (?, ?, ?)",
-			senderId, recipientId, Timestamp.from(NOW));
+				senderId, recipientId, Timestamp.from(NOW));
 		assertThat(postAnswerQueryService.canView(recipientId, postId, at)).isFalse();
 		assertThat(postAnswerQueryService.answers(recipientId, postId, null, 10, at)).isEmpty();
 
 		jdbc.update("DELETE FROM user_block WHERE blocker_id = ? AND blocked_id = ?", senderId, recipientId);
 		jdbc.update("INSERT INTO user_block (blocker_id, blocked_id, created_at) VALUES (?, ?, ?)",
-			recipientId, senderId, Timestamp.from(NOW));
+				recipientId, senderId, Timestamp.from(NOW));
 		assertThat(postAnswerQueryService.canView(recipientId, postId, at)).isFalse();
 		assertThat(postAnswerQueryService.answers(recipientId, postId, null, 10, at)).isEmpty();
 
 		jdbc.update("UPDATE user_block SET released_at = ? WHERE blocker_id = ? AND blocked_id = ?",
-			Timestamp.from(at), recipientId, senderId);
+				Timestamp.from(at), recipientId, senderId);
 		assertThat(postAnswerQueryService.canView(recipientId, postId, at)).isTrue();
 		assertThat(postAnswerQueryService.answers(recipientId, postId, null, 10, at)).hasSize(1);
 	}

@@ -3,6 +3,7 @@ package com.dnd.qello.account.repository.jpa;
 import java.time.Instant;
 
 import com.dnd.qello.account.domain.Account;
+import com.dnd.qello.account.domain.AccountStatus;
 import com.dnd.qello.account.error.AccountErrorCode;
 import com.dnd.qello.account.error.AccountException;
 
@@ -44,7 +45,8 @@ final class AccountJpaMapper {
 				entity.getLocale(),
 				entity.getTimezone(),
 				entity.getNickname(),
-				entity.getDeletedAt());
+				entity.getDeletedAt(),
+				entity.getWithdrawalRequestedAt());
 		Instant nicknameChangedAt = entity.getNicknameChangedAt();
 		Account withChangedAt = nicknameChangedAt == null
 				? restored
@@ -70,7 +72,19 @@ final class AccountJpaMapper {
 	}
 
 	static void updateStatus(AccountJpaEntity entity, Account account) {
-		entity.updateStatus(account.getStatus(), account.getDeletedAt());
+		entity.updateStatus(account.getStatus(), account.getDeletedAt(), account.getWithdrawalRequestedAt());
+	}
+
+	/**
+	 * 탈퇴 완료는 상태와 함께 닉네임을 비운다. 도메인이 이미 닉네임을 비웠는지 확인해 다른 상태 변경에서 닉네임이 지워지지 않게 한다.
+	 */
+	static void updateDeletion(AccountJpaEntity entity, Account account) {
+		if (account.getStatus() != AccountStatus.DELETED || account.getNickname() != null) {
+			throw new AccountException(
+					AccountErrorCode.INVALID_DELETION_STATE, "nickname", "탈퇴 완료 계정은 닉네임이 비어 있어야 합니다");
+		}
+		updateStatus(entity, account);
+		entity.clearNickname();
 	}
 
 }

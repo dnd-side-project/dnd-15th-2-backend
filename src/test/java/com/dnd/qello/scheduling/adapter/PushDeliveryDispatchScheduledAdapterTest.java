@@ -118,7 +118,7 @@ class PushDeliveryDispatchScheduledAdapterTest {
 	}
 
 	private WorkerSchedulingProperties properties() {
-		return new WorkerSchedulingProperties(true, 1, null, null, null, null, null, null,
+		return new WorkerSchedulingProperties(true, 1, null, null, null, null, null, null, null,
 				new PushSettings(true, Duration.ofMillis(50), 7, Duration.ofSeconds(30),
 						new PushRetrySettings(3, Duration.ofSeconds(1), Duration.ofSeconds(30))),
 				null);

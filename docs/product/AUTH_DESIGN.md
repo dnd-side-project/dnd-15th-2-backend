@@ -274,7 +274,7 @@ POST /api/v1/auth/token
 ```http
 200 OK
 
-{ "accessToken": "eyJ...", "expiresIn": 1800 }
+{ "accessToken": "eyJ...", "expiresIn": 1800, "accountStatus": "ACTIVE" }
 ```
 
 서버 처리:
@@ -282,8 +282,9 @@ POST /api/v1/auth/token
 1. `secret_hash = sha256(deviceSecret)`로 조회. `installationId`는 교차 검증용.
 2. `credential_status = 'ACTIVE'` 확인.
 3. **`user_account.status` 확인.** BLOCKED/DELETED면 403. 차단이 반영되는 지점이다.
+   WITHDRAWAL_PENDING은 발급한다. 같은 기기로 탈퇴를 철회할 수 있어야 하기 때문이다(4.7절).
 4. `last_used_at` 갱신.
-5. Access token 발급.
+5. Access token 발급. 응답의 `accountStatus`로 앱이 탈퇴 유예 상태를 알 수 있다.
 
 클라이언트는 401 응답 시 재발급을 시도하고, 재발급도 401/403이면 로그아웃 상태로
 전환한다. **동시에 발생한 여러 401이 재발급을 중복 호출하지 않도록 앱 인터셉터에서
@@ -320,6 +321,29 @@ JWT는 stateless라 차단 반영이 최대 TTL만큼 지연된다. 단계적으
 
 2단계는 스키마 변경 없이 추가할 수 있으므로 F08(신고·차단) 정책 확정 후 도입해도
 된다.
+
+차단과 해제는 `AccountStatusService.block`·`unblock`으로 한다(#337). 계정 상태만 바꾸고
+기기 자격증명은 폐기하지 않는다. 차단이 풀리면 같은 기기로 다시 쓸 수 있어야 하기 때문이다.
+언제 누구를 차단할지, 운영자 API와 감사 이력은 F08이 정한다.
+
+### 4.7 탈퇴
+
+탈퇴는 30일 유예로 받는다(#337). 기간은 `qello.account.withdrawal.grace-period`로 바꿀 수 있다.
+
+| 시점 | 계정 | 기기 자격증명 | 푸시 기기·위치 | 닉네임 |
+| --- | --- | --- | --- | --- |
+| 요청 `POST /api/v1/users/me/withdrawal` | WITHDRAWAL_PENDING | 유지 | 해지·삭제 | 유지 |
+| 철회 `DELETE /api/v1/users/me/withdrawal` | ACTIVE | 유지 | 앱이 다시 등록 | 유지 |
+| 유예 만료(sweep) | DELETED | 전부 REVOKED | 푸시 기기 다시 해지 | NULL |
+
+- 유예 중에는 ACTIVE가 아니므로 쓰기 API가 403을 반환하고 매칭 후보·알림 fan-out·푸시 발송에서 빠진다.
+- 철회는 삭제 예정 시각 전에만 받는다. sweep이 아직 돌지 않았어도 시각이 지났으면 409다.
+- 철회와 만료 처리가 같은 계정을 동시에 바꾸면 `user_account.version`이 한쪽을 거절한다. 만료 처리는 계정 상태와
+  자격증명 폐기를 한 트랜잭션에서 하므로 ACTIVE인데 자격증명만 폐기된 계정은 남지 않는다.
+- 유예 중에는 `deleted_at`이 NULL이라 닉네임 유일 인덱스가 닉네임을 묶어 둔다. 만료 후에는 닉네임이 풀리므로 답변 목록은
+  탈퇴한 작성자의 닉네임을 내보내지 않고 `authorWithdrawn`으로 표시한다.
+- 앱 로그아웃과 분실 기기 폐기는 8.1절 결정 전까지 만들지 않는다. 복구 수단이 없어 서버에서 자격증명을 폐기하면
+  그 계정으로 다시 들어올 수 없다.
 
 ## 5. 백오피스 인증
 

@@ -412,6 +412,11 @@ class NicknameRegistrationServiceTest {
 		}
 
 		@Override
+		public Account updateDeletion(Account account) {
+			throw new UnsupportedOperationException();
+		}
+
+		@Override
 		public Optional<Account> findById(long id) {
 			findByIdCallCount++;
 			if (!queuedReads.isEmpty()) {
@@ -424,6 +429,11 @@ class NicknameRegistrationServiceTest {
 		public boolean existsActiveNickname(String nickname) {
 			lastCheckedNickname = nickname;
 			return alwaysDuplicate;
+		}
+
+		@Override
+		public List<Long> findWithdrawalDueIds(Instant requestedAtOrBefore, int limit) {
+			throw new UnsupportedOperationException();
 		}
 	}
 

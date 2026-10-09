@@ -3,6 +3,7 @@
  * Source scenario: TEST-PLAN-GH-170-FEED-READ-INTERACTION-API-UNIT-013,
  * UNIT-014 (답변 목록 단언을 SentPostApiMockMvcTest에서 이전, GH-296),
  * TEST-PLAN-GH-300-FEED-MEDIA-VIEW-URL-UNIT-006 (added 2026-10-02T17:02:54+09:00)
+ * Source scenario: TEST-PLAN-GH-337-ACCOUNT-WITHDRAWAL-UNIT-020 (added 2026-10-09T18:08:46+09:00)
  */
 package com.dnd.qello.feed.web;
 
@@ -27,6 +28,7 @@ import com.dnd.qello.feed.service.FeedInteractionApplicationService;
 import com.dnd.qello.feed.view.AnswerCard;
 import com.dnd.qello.feed.view.MediaView;
 
+import static org.hamcrest.Matchers.nullValue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -82,6 +84,27 @@ class PostAnswerApiMockMvcTest {
 	}
 
 	@Test
+	@DisplayName("TEST-PLAN-GH-337-ACCOUNT-WITHDRAWAL-UNIT-020: 탈퇴한 작성자의 답변은 닉네임 없이 authorWithdrawn=true로, 일반 답변은 닉네임과 authorWithdrawn=false로 나간다")
+	void answersMarkWithdrawnAuthorsWithoutNickname() throws Exception {
+		AnswerCard withdrawn = new AnswerCard(102L, null, true, "KR-11", "탈퇴 작성자 답변 본문", List.of(), null, null,
+				"NEAR", NOW.minusSeconds(20), null, false, 0);
+		when(applicationService.answers(VIEWER_ID, POST_ID, null, null, 20))
+				.thenReturn(List.of(withdrawn, answerCard()));
+
+		mockMvc.perform(get("/api/v1/direction/posts/{postId}/answers", POST_ID))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.data.answers[0].answerId").value(102))
+				.andExpect(jsonPath("$.data.answers[0].authorNickname").value(nullValue()))
+				.andExpect(jsonPath("$.data.answers[0].authorWithdrawn").value(true))
+				.andExpect(jsonPath("$.data.answers[0].bodyText").value("탈퇴 작성자 답변 본문"))
+				.andExpect(jsonPath("$.data.answers[1].answerId").value(101))
+				.andExpect(jsonPath("$.data.answers[1].authorNickname").value("닉네임"))
+				.andExpect(jsonPath("$.data.answers[1].authorWithdrawn").value(false))
+				.andExpect(jsonPath("$.data.answers[1].reactedByMe").value(true))
+				.andExpect(jsonPath("$.data.answers[1].reactionCount").value(2));
+	}
+
+	@Test
 	@DisplayName("인증 정보가 없으면 답변 목록은 401이고 application service를 호출하지 않는다")
 	void answersRequiresAuthentication() throws Exception {
 		buildMockMvc(false).perform(get("/api/v1/direction/posts/{postId}/answers", POST_ID))
@@ -98,7 +121,7 @@ class PostAnswerApiMockMvcTest {
 	}
 
 	private static AnswerCard answerCard() {
-		return new AnswerCard(101L, "닉네임", "KR-11", "답변 본문", List.of(mediaView()), null, null, "NEAR",
+		return new AnswerCard(101L, "닉네임", false, "KR-11", "답변 본문", List.of(mediaView()), null, null, "NEAR",
 				NOW.minusSeconds(10), null, true, 2);
 	}
 
