@@ -14,6 +14,8 @@ import com.dnd.qello.answer.repository.AnswerRepository;
 import com.dnd.qello.filtering.domain.FilterTargetType;
 import com.dnd.qello.filtering.moderation.PublicationBlockChecker;
 
+import lombok.RequiredArgsConstructor;
+
 // 이의제기 인용 직전의 "moderation 말고 다른 공개 금지 사유" 재검증(#112).
 //
 // 여기서 확인하는 사유는 전부 필터링 판정과 독립적이다. 계정이 차단·삭제됐거나
@@ -24,6 +26,7 @@ import com.dnd.qello.filtering.moderation.PublicationBlockChecker;
 // 그런 사유가 데이터 모델에 생기면 이 클래스에 조건을 추가한다 — 필터링 도메인은
 // 사유 코드를 문자열로만 다루므로 함께 고칠 필요가 없다.
 @Component
+@RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class AnswerPublicationBlockChecker implements PublicationBlockChecker {
 
@@ -31,15 +34,11 @@ public class AnswerPublicationBlockChecker implements PublicationBlockChecker {
 	private static final String ANSWER_DELETED = "ANSWER_DELETED";
 	private static final String ACCOUNT_BLOCKED = "ACCOUNT_BLOCKED";
 	private static final String ACCOUNT_DELETED = "ACCOUNT_DELETED";
+	private static final String ACCOUNT_WITHDRAWAL_PENDING = "ACCOUNT_WITHDRAWAL_PENDING";
 	private static final String UNSUPPORTED_TARGET_TYPE = "UNSUPPORTED_TARGET_TYPE";
 
 	private final AnswerRepository answerRepository;
 	private final AccountRepository accountRepository;
-
-	public AnswerPublicationBlockChecker(AnswerRepository answerRepository, AccountRepository accountRepository) {
-		this.answerRepository = answerRepository;
-		this.accountRepository = accountRepository;
-	}
 
 	@Override
 	public Optional<String> findPublicationBlockReason(FilterTargetType targetType, long targetId) {
@@ -65,6 +64,11 @@ public class AnswerPublicationBlockChecker implements PublicationBlockChecker {
 		}
 		if (status == AccountStatus.DELETED) {
 			return Optional.of(ACCOUNT_DELETED);
+		}
+		// 탈퇴를 요청한 작성자의 답변은 이의제기가 받아들여져도 다시 공개하지 않는다(#337). 철회하면 ACTIVE로 돌아오지만
+		// 이미 내린 판정을 자동으로 되살리지는 않는다.
+		if (status == AccountStatus.WITHDRAWAL_PENDING) {
+			return Optional.of(ACCOUNT_WITHDRAWAL_PENDING);
 		}
 		return Optional.empty();
 	}
