@@ -1,5 +1,6 @@
 package com.dnd.qello.auth.config;
 
+import java.time.Clock;
 import java.util.List;
 
 import org.springframework.boot.actuate.autoconfigure.security.servlet.EndpointRequest;
@@ -14,12 +15,14 @@ import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.context.SecurityContextHolderFilter;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import com.dnd.qello.auth.web.AuthEntryPoints;
+import com.dnd.qello.auth.web.OperatorSessionAbsoluteTimeoutFilter;
 
 // 백오피스와 앱 API의 보안 설정을 두 체인으로 나눈다.
 //
@@ -27,7 +30,7 @@ import com.dnd.qello.auth.web.AuthEntryPoints;
 // 백오피스를 위해 세션을 만들면 앱 API가 상태를 갖는다. 경로로 갈라 두면 그 사고가
 // 구조적으로 막힌다. 근거는 docs/adr/0006-split-operator-and-device-authentication.md에 있다.
 @Configuration(proxyBeanMethods = false)
-@EnableConfigurationProperties(CorsProperties.class)
+@EnableConfigurationProperties({CorsProperties.class, OperatorSessionProperties.class})
 public class SecurityConfiguration {
 
 	public static final String ADMIN_PATH = "/admin/**";
@@ -42,9 +45,16 @@ public class SecurityConfiguration {
 	public static final String API_DOCS_SUBPATH = "/v3/api-docs/**";
 
 	private final AuthEntryPoints authEntryPoints;
+	private final Clock clock;
+	private final OperatorSessionProperties operatorSessionProperties;
 
-	public SecurityConfiguration(AuthEntryPoints authEntryPoints) {
+	public SecurityConfiguration(
+			AuthEntryPoints authEntryPoints,
+			Clock clock,
+			OperatorSessionProperties operatorSessionProperties) {
 		this.authEntryPoints = authEntryPoints;
+		this.clock = clock;
+		this.operatorSessionProperties = operatorSessionProperties;
 	}
 
 	// #229 EC2 테스트 서버를 프론트가 브라우저에서 호출하려면 CORS가 필요하다.
@@ -118,6 +128,7 @@ public class SecurityConfiguration {
 						// 로그인 성공 시 세션 ID를 새로 발급한다. 로그인 전에 심어진 세션 ID가
 						// 인증 후에도 유효하면 session fixation 공격이 성립한다.
 						.sessionFixation(fixation -> fixation.newSession()))
+				.addFilterBefore(operatorSessionAbsoluteTimeoutFilter(), SecurityContextHolderFilter.class)
 				.csrf(csrf -> csrf
 						// 브라우저 클라이언트가 토큰을 읽어 헤더로 돌려보낼 수 있어야 한다.
 						.csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse()))
@@ -150,6 +161,7 @@ public class SecurityConfiguration {
 				.securityMatcher(OPERATOR_API_PATH)
 				.sessionManagement(session -> session
 						.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))
+				.addFilterBefore(operatorSessionAbsoluteTimeoutFilter(), SecurityContextHolderFilter.class)
 				.csrf(csrf -> csrf
 						// /admin/login이 발급한 세션의 CSRF 토큰을 그대로 재사용한다 — 별도
 						// 로그인 엔드포인트가 이 체인에는 없다.
@@ -194,6 +206,13 @@ public class SecurityConfiguration {
 				.httpBasic(basic -> basic.disable())
 				.logout(logout -> logout.disable())
 				.build();
+	}
+
+	// 세션 기반 두 체인(/admin/**, /api/v1/operator/**)에만 넣는다(#342).
+	// SecurityContextHolderFilter보다 앞에 둬야 최대 수명이 지난 세션의 인증 정보를
+	// 읽기 전에 세션을 무효화할 수 있다.
+	private OperatorSessionAbsoluteTimeoutFilter operatorSessionAbsoluteTimeoutFilter() {
+		return new OperatorSessionAbsoluteTimeoutFilter(clock, operatorSessionProperties.absoluteTimeout());
 	}
 
 	// 두 체인 어디에도 속하지 않는 경로. 매칭되는 체인이 없으면 Spring Security가

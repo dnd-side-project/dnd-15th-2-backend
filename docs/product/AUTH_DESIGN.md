@@ -39,6 +39,8 @@ API 계약, 패키지 구조, 미결 제품 결정을 포함한다.
 | CSRF | 필요 | 불필요 (Bearer 헤더) |
 | 계정 생성 | 자체 가입 없음 (시드/CLI) | 앱 최초 실행 시 자동 |
 
+운영자 세션 수명은 #342에서 구현했다. 설정 키와 판정 방식은 5.2절에 있다.
+
 ## 3. 스키마 설계
 
 ### 3.1 `operator_credential`
@@ -407,6 +409,18 @@ ADR-0005가 204 No Content를 쓰지 않기로 했으므로 성공 응답도 200
   방어가 조용히 사라지고, cost factor가 바뀌면 비용도 달라진다.
 - **세션 저장소**: Spring Session JDBC를 사용해 기존 PostgreSQL만으로 처리한다.
   팀 5명 규모에 Redis를 별도로 도입하지 않는다.
+- **세션 수명**(#342): 미사용 만료는 `spring.session.timeout=PT8H`로 둔다. 이 값이 없으면 Spring
+  Boot 기본값 30분이 적용된다. Spring Session에는 로그인 시각 기준의 상한이 없어서, 최대 수명은
+  `OperatorSessionAbsoluteTimeoutFilter`가 `/admin/**`·`/api/v1/operator/**` 체인에서 판정한다.
+  로그인할 때 세션을 새로 발급하므로 세션 생성 시각이 곧 로그인 시각이고, 생성 후
+  `qello.auth.operator-session.absolute-timeout`(기본 `PT12H`)이 되는 순간부터 만료다. 만료된
+  세션은 무효화(행 삭제)만 하고 요청은 익명으로 계속 진행한다. 보호 경로는 401이 되고
+  `/admin/csrf`·`/admin/login`은 그대로 열려 있어 오래된 쿠키를 가진 브라우저도 다시 로그인할 수
+  있다. 필터 시각은 `Clock` 빈이고 세션 생성 시각은 Spring Session이 기록한 시스템 시각이다.
+  테스트에서 `Clock`을 미래로 고정하면 세션이 바로 만료된다.
+- **세션 쿠키**(#342): `server.servlet.session.cookie.secure=true`가 기본이다. 지정하지 않으면
+  `request.isSecure()`를 따라 TLS를 끝내는 프록시 뒤에서 `Secure`가 빠진다. HTTP로 직접 노출하는
+  `local`·`dev` 프로필만 `false`다. `HttpOnly`와 `SameSite=Lax`는 Spring Session 기본값이다.
 - **CSRF**: 쿠키 기반이므로 상태 변경 요청에 CSRF 토큰을 요구한다.
 - **도메인 배치**: 백오피스를 `admin.qello.app`, API를 `api.qello.app`처럼 같은
   등록 도메인 하위에 두면 `SameSite=Lax`로 XHR이 동작한다. 다른 등록 도메인에
@@ -576,6 +590,12 @@ Keychain도 보존을 보장할 수 없다.
   프록시 없이 앱 포트를 직접 노출하므로 그 헤더는 클라이언트가 위조할 수 있다. 프록시나 LB를 두면
   모든 요청이 한 주소로 보이므로 `server.forward-headers-strategy`와 신뢰할 프록시 범위를 함께
   설정해야 한다. IPv6는 /64 접두사 단위로 센다.
+- 프록시나 LB를 둘 때 켤 설정(#342에서 정했고 아직 적용하지 않았다): `server.forward-headers-strategy=native`로
+  Tomcat `RemoteIpValve`를 켜고, `server.tomcat.remoteip.internal-proxies`를 LB가 있는 서브넷 범위로 좁힌다.
+  기본값은 사설 IP 대역 전체를 신뢰하므로, 같은 VPC 안의 다른 호스트가 보낸 `X-Forwarded-For`까지
+  연결 주소로 받아들인다. 켜면 `remoteAddr`가 프록시가 적은 클라이언트 주소가 되어 이 절의 IP
+  한도가 그대로 동작하고, `request.isSecure()`는 `X-Forwarded-Proto`를 따른다. 세션 쿠키 `Secure`는
+  이와 무관하게 설정값으로 켜 둔다.
 - 모바일 통신사 NAT처럼 여러 사용자가 IP 하나를 공유하면 정상 사용자도 함께 막힐 수 있다.
   기본값은 이 경우를 감안해 넉넉하게 잡았고, 운영 지표를 보고 조정한다.
 
