@@ -1,19 +1,23 @@
 #!/usr/bin/env python3
-"""Compare the two sides of a CI Benchmark run (GH-330).
+"""Compare the two sides of a CI Benchmark run (GH-330, GH-338).
 
 Download every artifact of one run first:
 
     gh run download <run-id> -D <dir>
 
-then run this script on <dir>. It checks that both sides ran the same tests and
-compares task durations from the Gradle --profile report with a one-sided
-Mann-Whitney U test (alternative: the head side is faster).
+then run this script on <dir>. It checks that each side ran the same tests in
+every job, lists the test classes only one side ran, and compares task durations
+from the Gradle --profile report with a one-sided Mann-Whitney U test
+(alternative: the head side is faster). Only tasks that left results are compared,
+so a run of the test task alone has no integrationTest results or gc logs.
 """
 
 from __future__ import annotations
 
 import argparse
+import contextlib
 import html
+import io
 import re
 import statistics
 import sys
@@ -138,11 +142,32 @@ def load(root: Path) -> list[dict]:
             "artifact": artifact.name,
             "side": meta["side"],
             "sha": meta.get("sha", "unknown"),
+            # records before GH-338 have no task line and always ran check
+            "gradle_task": meta.get("task", "check"),
             "profile": read_profile(artifact),
             "junit": {task: read_junit(artifact, task) for task in TASKS},
             "gc": read_gc(artifact),
         })
     return jobs
+
+
+def measured_tasks(jobs: list[dict]) -> list[str]:
+    """Tasks that left JUnit results or a profile row in at least one job."""
+    return [t for t in TASKS if any(j["junit"][t]["counts"]["tests"] or t in j["profile"] for j in jobs)]
+
+
+def class_changes(base: frozenset[str], head: frozenset[str]) -> list[str]:
+    """Test names only one side ran, grouped by class: '-' only base ran them, '+' only head ran them."""
+    lines = []
+    for sign, only, other in (("-", base - head, head), ("+", head - base, base)):
+        by_class: dict[str, int] = {}
+        for name in only:
+            test_class = name.partition("#")[0]
+            by_class[test_class] = by_class.get(test_class, 0) + 1
+        for test_class, count in sorted(by_class.items()):
+            partial = any(name.partition("#")[0] == test_class for name in other)
+            lines.append(f"  {sign} {test_class}: {count} tests{' (class also on the other side)' if partial else ''}")
+    return lines
 
 
 def mann_whitney_less(head: list[float], base: list[float]) -> float:
@@ -199,26 +224,43 @@ def summarize(jobs: list[dict]) -> int:
     print("== Runs")
     for side in SIDES:
         shas = sorted({j["sha"] for j in by_side[side]})
-        print(f"{side}: {len(by_side[side])} jobs, commit {', '.join(s[:12] for s in shas) or '-'}")
+        gradle_tasks = sorted({j["gradle_task"] for j in by_side[side]})
+        print(f"{side}: {len(by_side[side])} jobs, commit {', '.join(s[:12] for s in shas) or '-'}, "
+              f"gradle task {', '.join(gradle_tasks) or '-'}")
     if not all(by_side.values()):
         print("Both sides need at least one job.")
         return 1
+    tasks = measured_tasks(jobs)
 
     print("\n== Test consistency")
-    consistent = True
-    for task in TASKS:
-        counts = {tuple(sorted(j["junit"][task]["counts"].items())) for j in jobs}
-        names = {frozenset(j["junit"][task]["names"]) for j in jobs}
+    consistent = len({j["gradle_task"] for j in jobs}) == 1
+    if not consistent:
+        print("Jobs ran different Gradle tasks.")
+    sides_differ = False
+    for task in tasks:
         failed = sum(j["junit"][task]["counts"]["failures"] + j["junit"][task]["counts"]["errors"] for j in jobs)
-        ok = len(counts) == 1 and len(names) == 1 and failed == 0
-        consistent &= ok
-        sample = dict(next(iter(counts))) if len(counts) == 1 else "differs between jobs"
-        print(f"{task}: {'same' if ok else 'MISMATCH'} {sample} failures+errors={failed}")
+        counts, names = {}, {}
+        for side in SIDES:
+            side_counts = {tuple(sorted(j["junit"][task]["counts"].items())) for j in by_side[side]}
+            side_names = {frozenset(j["junit"][task]["names"]) for j in by_side[side]}
+            counts[side] = dict(next(iter(side_counts))) if len(side_counts) == 1 else None
+            names[side] = next(iter(side_names)) if len(side_names) == 1 else None
+        if None in counts.values() or None in names.values():
+            consistent = False
+            print(f"{task}: MISMATCH between jobs of the same side failures+errors={failed}")
+        elif names["base"] == names["head"] and counts["base"] == counts["head"]:
+            print(f"{task}: same {counts['base']} failures+errors={failed}")
+        else:
+            sides_differ = True
+            print(f"{task}: DIFFERS between sides base {counts['base']} head {counts['head']} "
+                  f"failures+errors={failed}")
+            print("\n".join(class_changes(names["base"], names["head"])))
+        consistent &= failed == 0
 
     print("\n== Durations (seconds, from --profile)")
     print("task | base median [min-max] | head median [min-max] | shift head-base [95% interval] | one-sided p")
     verdicts = {}
-    for task in (*TASKS, "total"):
+    for task in (*tasks, "total"):
         series = {side: [j["profile"][task] for j in by_side[side] if task in j["profile"]] for side in SIDES}
         if not all(series.values()):
             print(f"{task} | no data")
@@ -231,50 +273,63 @@ def summarize(jobs: list[dict]) -> int:
               f"{statistics.median(head):.1f} [{min(head):.1f}-{max(head):.1f}] n={len(head)} | "
               f"{shift:+.1f} [{low:+.1f}, {high:+.1f}] | {p:.4f}")
 
-    print("\n== Integration test JVM")
-    for side in SIDES:
-        contexts = [j["junit"][":integrationTest"]["contexts"] for j in by_side[side]]
-        gcs = [j["gc"] for j in by_side[side] if j["gc"]]
-        context_text = statistics.median(c for c in contexts if c is not None) if any(c is not None for c in contexts) else "no cache log"
-        if gcs:
-            peak = statistics.median(g["peak_used_mb"] for g in gcs)
-            cap = max(g["max_capacity_mb"] for g in gcs)
-            pause = statistics.median(g["pause_ms"] for g in gcs) / 1000
-            gc_text = f"peak heap {peak:.0f} MB of {cap:.0f} MB, gc pauses {pause:.1f} s (medians)"
-        else:
-            gc_text = "no gc log"
-        print(f"{side}: contexts loaded {context_text} (median), {gc_text}")
+    if ":integrationTest" in tasks:
+        print("\n== Integration test JVM")
+        for side in SIDES:
+            contexts = [j["junit"][":integrationTest"]["contexts"] for j in by_side[side]]
+            gcs = [j["gc"] for j in by_side[side] if j["gc"]]
+            context_text = statistics.median(c for c in contexts if c is not None) if any(c is not None for c in contexts) else "no cache log"
+            if gcs:
+                peak = statistics.median(g["peak_used_mb"] for g in gcs)
+                cap = max(g["max_capacity_mb"] for g in gcs)
+                pause = statistics.median(g["pause_ms"] for g in gcs) / 1000
+                gc_text = f"peak heap {peak:.0f} MB of {cap:.0f} MB, gc pauses {pause:.1f} s (medians)"
+            else:
+                gc_text = "no gc log"
+            print(f"{side}: contexts loaded {context_text} (median), {gc_text}")
 
     print("\n== Verdict")
     if not consistent:
-        print("Tests differ between jobs; durations are not comparable.")
+        print("Tests differ between jobs of the same side, failed, or ran different tasks; "
+              "durations are not comparable.")
         return 1
+    if sides_differ:
+        print("The two sides ran different tests (listed above); the shift includes that difference.")
     for task, p in verdicts.items():
         result = "head is faster" if p < ALPHA else "no difference shown"
         print(f"{task}: {result} (one-sided p={p:.4f}, alpha={ALPHA})")
     return 0
 
 
-def _write_fixture(root: Path, side: str, attempt: int, seconds: float) -> None:
+def _write_fixture(root: Path, side: str, attempt: int, seconds: float, only_test: bool = False,
+                   classes: tuple[str, ...] = ("A",)) -> None:
+    """One job's artifact; seconds is the integrationTest time, or the test time when only_test."""
     artifact = root / f"benchmark-{side}-{attempt}"
     (artifact / "benchmark").mkdir(parents=True)
-    (artifact / "benchmark" / "meta.txt").write_text(f"side={side}\nattempt={attempt}\nsha={side * 10}\n")
+    (artifact / "benchmark" / "meta.txt").write_text(
+        f"side={side}\nattempt={attempt}\nsha={side * 10}\ntask={'test' if only_test else 'check'}\n")
     (artifact / "reports" / "profile").mkdir(parents=True)
     minutes, rest = divmod(seconds, 60)
+    measured = f'<td class="numeric">{int(minutes)}m{rest:.3f}s</td>'
     (artifact / "reports" / "profile" / "profile-2026-10-08-00-00-00.html").write_text(
         '<tr>\n<td>Total Build Time</td>\n<td class="numeric">13m5.000s</td>\n</tr>\n'
-        f'<tr>\n<td class="indentPath">:integrationTest</td>\n<td class="numeric">{int(minutes)}m{rest:.3f}s</td>\n<td></td>\n</tr>\n'
-        '<tr>\n<td class="indentPath">:test</td>\n<td class="numeric">25.900s</td>\n<td></td>\n</tr>\n'
+        + ("" if only_test else
+           f'<tr>\n<td class="indentPath">:integrationTest</td>\n{measured}\n<td></td>\n</tr>\n')
+        + '<tr>\n<td class="indentPath">:test</td>\n'
+        + (measured if only_test else '<td class="numeric">25.900s</td>') + "\n<td></td>\n</tr>\n"
     )
-    for task in ("test", "integrationTest"):
+    for task in ("test",) if only_test else ("test", "integrationTest"):
         (artifact / "test-results" / task).mkdir(parents=True)
-        (artifact / "test-results" / task / "TEST-a.xml").write_text(
-            '<testsuite tests="2" skipped="0" failures="0" errors="0">'
-            '<testcase classname="A" name="one"/><testcase classname="A" name="two"/>'
-            "<system-out>Spring test ApplicationContext cache statistics: [DefaultContextCache@1a "
-            "size = 1, maxSize = 32, parentContextCount = 0, hitCount = 3, missCount = 95, failureCount = 0]"
-            "</system-out></testsuite>"
-        )
+        for test_class in classes:
+            (artifact / "test-results" / task / f"TEST-{test_class}.xml").write_text(
+                '<testsuite tests="2" skipped="0" failures="0" errors="0">'
+                f'<testcase classname="{test_class}" name="one"/><testcase classname="{test_class}" name="two"/>'
+                "<system-out>Spring test ApplicationContext cache statistics: [DefaultContextCache@1a "
+                "size = 1, maxSize = 32, parentContextCount = 0, hitCount = 3, missCount = 95, failureCount = 0]"
+                "</system-out></testsuite>"
+            )
+    if only_test:
+        return
     (artifact / "gc").mkdir()
     (artifact / "gc" / "integrationTest-1.log").write_text(
         "[2026-10-08T00:00:00.000+0000][1.0s][info][gc          ] GC(0) Pause Young (Normal) "
@@ -315,6 +370,23 @@ def self_test() -> list[str]:
         base = [j["profile"][":integrationTest"] for j in jobs if j["side"] == "base"]
         if mann_whitney_less(head, base) >= ALPHA:
             errors.append("clear speedup not detected")
+    with tempfile.TemporaryDirectory() as tmp:
+        # test task alone, 20 attempts per side, and head no longer runs class B
+        root = Path(tmp)
+        for attempt in range(1, 21):
+            _write_fixture(root, "base", attempt, 90 + attempt, only_test=True, classes=("A", "B"))
+            _write_fixture(root, "head", attempt, 75 + attempt, only_test=True)
+        jobs = load(root)
+        if len(jobs) != 40 or measured_tasks(jobs) != [":test"] or jobs[0]["gc"] is not None:
+            errors.append("test-only fixture loading")
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            code = summarize(jobs)
+        text = output.getvalue()
+        if code != 0 or "  - B: 2 tests\n" not in text or "+ " in text or "Integration test JVM" in text:
+            errors.append("test-only comparison or class difference listing")
+        if ":test: head is faster" not in text:
+            errors.append("test-only speedup not detected")
     return errors
 
 
