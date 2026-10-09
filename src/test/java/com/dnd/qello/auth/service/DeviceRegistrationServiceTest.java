@@ -15,6 +15,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -282,6 +283,11 @@ class DeviceRegistrationServiceTest {
 		}
 
 		@Override
+		public Account updateDeletion(Account account) {
+			throw new UnsupportedOperationException();
+		}
+
+		@Override
 		public Optional<Account> findById(long id) {
 			return Optional.ofNullable(accounts.get(id));
 		}
@@ -292,6 +298,11 @@ class DeviceRegistrationServiceTest {
 					.anyMatch(account -> account.getNickname() != null
 							&& account.getNickname().equalsIgnoreCase(nickname)
 							&& account.getDeletedAt() == null);
+		}
+
+		@Override
+		public List<Long> findWithdrawalDueIds(Instant requestedAtOrBefore, int limit) {
+			throw new UnsupportedOperationException();
 		}
 
 	}
@@ -362,6 +373,11 @@ class DeviceRegistrationServiceTest {
 					.filter(credential -> credential.getInstallationId().equals(installationId)
 							&& credential.isActive())
 					.findFirst();
+		}
+
+		@Override
+		public int revokeAllActiveByUserId(long userId, Instant revokedAt) {
+			throw new UnsupportedOperationException();
 		}
 
 	}

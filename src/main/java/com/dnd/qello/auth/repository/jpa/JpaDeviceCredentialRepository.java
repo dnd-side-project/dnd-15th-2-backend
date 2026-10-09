@@ -1,5 +1,7 @@
 package com.dnd.qello.auth.repository.jpa;
 
+import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 
 import org.springframework.stereotype.Repository;
@@ -44,19 +46,30 @@ public class JpaDeviceCredentialRepository implements DeviceCredentialRepository
 	@Override
 	public Optional<DeviceCredential> findBySecretHash(SecretHash secretHash) {
 		return repository.findBySecretHash(secretHash.value())
-			.map(DeviceCredentialJpaMapper::toDomain);
+				.map(DeviceCredentialJpaMapper::toDomain);
 	}
 
 	@Override
 	public Optional<DeviceCredential> findActiveByInstallationId(String installationId) {
 		return repository.findByInstallationIdAndStatus(installationId, CredentialStatus.ACTIVE)
-			.map(DeviceCredentialJpaMapper::toDomain);
+				.map(DeviceCredentialJpaMapper::toDomain);
+	}
+
+	@Override
+	@Transactional
+	public int revokeAllActiveByUserId(long userId, Instant revokedAt) {
+		List<DeviceCredentialJpaEntity> active = repository.findAllByUserIdAndStatus(userId, CredentialStatus.ACTIVE);
+		for (DeviceCredentialJpaEntity entity : active) {
+			DeviceCredential revoked = DeviceCredentialJpaMapper.toDomain(entity).revoke(revokedAt);
+			DeviceCredentialJpaMapper.updateRevocation(entity, revoked);
+		}
+		return active.size();
 	}
 
 	private DeviceCredentialJpaEntity findManaged(Long id) {
 		return repository.findById(id)
-			.orElseThrow(() -> new AuthException(
-				AuthErrorCode.CREDENTIAL_NOT_FOUND, "id", "대상 자격증명이 존재하지 않습니다"));
+				.orElseThrow(() -> new AuthException(
+						AuthErrorCode.CREDENTIAL_NOT_FOUND, "id", "대상 자격증명이 존재하지 않습니다"));
 	}
 
 }

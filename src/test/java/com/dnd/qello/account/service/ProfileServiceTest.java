@@ -240,12 +240,22 @@ class ProfileServiceTest {
 		}
 
 		@Override
+		public Account updateDeletion(Account account) {
+			throw new UnsupportedOperationException();
+		}
+
+		@Override
 		public Optional<Account> findById(long id) {
 			return Optional.ofNullable(stored.get(id));
 		}
 
 		@Override
 		public boolean existsActiveNickname(String nickname) {
+			throw new UnsupportedOperationException();
+		}
+
+		@Override
+		public List<Long> findWithdrawalDueIds(Instant requestedAtOrBefore, int limit) {
 			throw new UnsupportedOperationException();
 		}
 	}

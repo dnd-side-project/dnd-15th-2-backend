@@ -6,15 +6,12 @@
  */
 package com.dnd.qello.auth.service;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.assertj.core.api.Assertions.catchThrowable;
-
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -35,6 +32,10 @@ import com.dnd.qello.auth.security.PasswordHash;
 import com.dnd.qello.auth.security.RawPassword;
 import com.dnd.qello.auth.security.bcrypt.BCryptPasswordHasher;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.catchThrowable;
+
 class OperatorLoginServiceTest {
 
 	private static final Instant NOW = Instant.parse("2026-08-07T09:00:00Z");
@@ -52,7 +53,7 @@ class OperatorLoginServiceTest {
 		credentialRepository = new FakeCredentialRepository();
 		accountRepository = new FakeAccountRepository();
 		service = new OperatorLoginService(
-			credentialRepository, accountRepository, passwordHasher, Clock.fixed(NOW, ZoneOffset.UTC));
+				credentialRepository, accountRepository, passwordHasher, Clock.fixed(NOW, ZoneOffset.UTC));
 	}
 
 	@Test
@@ -74,21 +75,21 @@ class OperatorLoginServiceTest {
 		givenOperator(AccountStatus.ACTIVE);
 		credentialRepository.store(storedCredential());
 
-		Throwable unknownLoginId = catchThrowable(() ->
-			service.login(new LoginId("no-such-operator"), new RawPassword(CORRECT_PASSWORD)));
-		Throwable wrongPassword = catchThrowable(() ->
-			service.login(new LoginId("qello-admin"), new RawPassword("wrong-password")));
+		Throwable unknownLoginId = catchThrowable(
+				() -> service.login(new LoginId("no-such-operator"), new RawPassword(CORRECT_PASSWORD)));
+		Throwable wrongPassword = catchThrowable(
+				() -> service.login(new LoginId("qello-admin"), new RawPassword("wrong-password")));
 
 		assertThat(unknownLoginId)
-			.isInstanceOf(AuthException.class)
-			.hasFieldOrPropertyWithValue("errorCode", AuthErrorCode.LOGIN_FAILED);
+				.isInstanceOf(AuthException.class)
+				.hasFieldOrPropertyWithValue("errorCode", AuthErrorCode.LOGIN_FAILED);
 		assertThat(wrongPassword)
-			.isInstanceOf(AuthException.class)
-			.hasFieldOrPropertyWithValue("errorCode", AuthErrorCode.LOGIN_FAILED);
+				.isInstanceOf(AuthException.class)
+				.hasFieldOrPropertyWithValue("errorCode", AuthErrorCode.LOGIN_FAILED);
 		assertThat(((AuthException) unknownLoginId).getReason())
-			.isEqualTo(((AuthException) wrongPassword).getReason());
+				.isEqualTo(((AuthException) wrongPassword).getReason());
 		assertThat(((AuthException) unknownLoginId).getField())
-			.isEqualTo(((AuthException) wrongPassword).getField());
+				.isEqualTo(((AuthException) wrongPassword).getField());
 	}
 
 	@Test
@@ -98,10 +99,10 @@ class OperatorLoginServiceTest {
 		givenOperator(AccountStatus.ACTIVE);
 		credentialRepository.store(storedCredential());
 
-		long unknownElapsed = elapsedNanos(() ->
-			service.login(new LoginId("no-such-operator"), new RawPassword(CORRECT_PASSWORD)));
-		long wrongPasswordElapsed = elapsedNanos(() ->
-			service.login(new LoginId("qello-admin"), new RawPassword("wrong-password")));
+		long unknownElapsed = elapsedNanos(
+				() -> service.login(new LoginId("no-such-operator"), new RawPassword(CORRECT_PASSWORD)));
+		long wrongPasswordElapsed = elapsedNanos(
+				() -> service.login(new LoginId("qello-admin"), new RawPassword("wrong-password")));
 
 		// bcrypt 한 번의 비용은 수 ms다. 검증을 건너뛰면 두 경로의 차이가 그만큼 벌어진다.
 		assertThat(unknownElapsed).isGreaterThan(wrongPasswordElapsed / 10);
@@ -114,18 +115,16 @@ class OperatorLoginServiceTest {
 		credentialRepository.store(storedCredential());
 
 		for (int attempt = 0; attempt < OperatorCredential.MAX_FAILED_ATTEMPTS; attempt++) {
-			assertThatThrownBy(() ->
-				service.login(new LoginId("qello-admin"), new RawPassword("wrong-password")))
-				.isInstanceOf(AuthException.class)
-				.hasFieldOrPropertyWithValue("errorCode", AuthErrorCode.LOGIN_FAILED);
+			assertThatThrownBy(() -> service.login(new LoginId("qello-admin"), new RawPassword("wrong-password")))
+					.isInstanceOf(AuthException.class)
+					.hasFieldOrPropertyWithValue("errorCode", AuthErrorCode.LOGIN_FAILED);
 		}
 
-		assertThatThrownBy(() ->
-			service.login(new LoginId("qello-admin"), new RawPassword(CORRECT_PASSWORD)))
-			.isInstanceOf(AuthException.class)
-			.hasFieldOrPropertyWithValue("errorCode", AuthErrorCode.CREDENTIAL_LOCKED);
+		assertThatThrownBy(() -> service.login(new LoginId("qello-admin"), new RawPassword(CORRECT_PASSWORD)))
+				.isInstanceOf(AuthException.class)
+				.hasFieldOrPropertyWithValue("errorCode", AuthErrorCode.CREDENTIAL_LOCKED);
 		assertThat(credentialRepository.stored.getLockedUntil())
-			.isEqualTo(NOW.plus(Duration.ofMinutes(15)));
+				.isEqualTo(NOW.plus(Duration.ofMinutes(15)));
 	}
 
 	@Test
@@ -134,10 +133,9 @@ class OperatorLoginServiceTest {
 		givenOperator(AccountStatus.BLOCKED);
 		credentialRepository.store(storedCredential());
 
-		assertThatThrownBy(() ->
-			service.login(new LoginId("qello-admin"), new RawPassword(CORRECT_PASSWORD)))
-			.isInstanceOf(AuthException.class)
-			.hasFieldOrPropertyWithValue("errorCode", AuthErrorCode.ACCOUNT_NOT_ACTIVE);
+		assertThatThrownBy(() -> service.login(new LoginId("qello-admin"), new RawPassword(CORRECT_PASSWORD)))
+				.isInstanceOf(AuthException.class)
+				.hasFieldOrPropertyWithValue("errorCode", AuthErrorCode.ACCOUNT_NOT_ACTIVE);
 	}
 
 	@Test
@@ -146,8 +144,8 @@ class OperatorLoginServiceTest {
 		givenOperator(AccountStatus.ACTIVE);
 		credentialRepository.store(storedCredential());
 
-		Throwable failure = catchThrowable(() ->
-			service.login(new LoginId("qello-admin"), new RawPassword("super-secret-input")));
+		Throwable failure = catchThrowable(
+				() -> service.login(new LoginId("qello-admin"), new RawPassword("super-secret-input")));
 
 		assertThat(failure).isInstanceOf(AuthException.class);
 		AuthException exception = (AuthException) failure;
@@ -164,7 +162,7 @@ class OperatorLoginServiceTest {
 
 	private void givenOperator(AccountStatus status) {
 		accountRepository.store(Account.restore(
-			OPERATOR_ID, AccountRole.OPERATOR, status, null, "KR-TEST", "ko-KR", "Asia/Seoul", "admin", null));
+				OPERATOR_ID, AccountRole.OPERATOR, status, null, "KR-TEST", "ko-KR", "Asia/Seoul", "admin", null));
 	}
 
 	private OperatorCredential storedCredential() {
@@ -195,15 +193,15 @@ class OperatorLoginServiceTest {
 		@Override
 		public Optional<OperatorCredential> findByLoginId(LoginId loginId) {
 			return stored != null && stored.getLoginId().equals(loginId)
-				? Optional.of(stored)
-				: Optional.empty();
+					? Optional.of(stored)
+					: Optional.empty();
 		}
 
 		@Override
 		public Optional<OperatorCredential> findByUserId(long userId) {
 			return stored != null && stored.getUserId() == userId
-				? Optional.of(stored)
-				: Optional.empty();
+					? Optional.of(stored)
+					: Optional.empty();
 		}
 	}
 
@@ -236,12 +234,22 @@ class OperatorLoginServiceTest {
 		}
 
 		@Override
+		public Account updateDeletion(Account account) {
+			throw new UnsupportedOperationException();
+		}
+
+		@Override
 		public Optional<Account> findById(long id) {
 			return Optional.ofNullable(accounts.get(id));
 		}
 
 		@Override
 		public boolean existsActiveNickname(String nickname) {
+			throw new UnsupportedOperationException();
+		}
+
+		@Override
+		public List<Long> findWithdrawalDueIds(Instant requestedAtOrBefore, int limit) {
 			throw new UnsupportedOperationException();
 		}
 	}

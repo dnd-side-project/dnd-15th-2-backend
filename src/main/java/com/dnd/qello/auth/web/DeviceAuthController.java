@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.dnd.qello.auth.security.DeviceSecret;
 import com.dnd.qello.auth.service.DeviceRegistrationResult;
 import com.dnd.qello.auth.service.DeviceRegistrationService;
+import com.dnd.qello.auth.service.DeviceTokenReissue;
 import com.dnd.qello.auth.service.DeviceTokenService;
 import com.dnd.qello.auth.token.IssuedAccessToken;
 import com.dnd.qello.common.web.response.ApiResponse;
@@ -68,11 +69,12 @@ public class DeviceAuthController implements DeviceAuthApiSpec {
 			DeviceTokenRequest request,
 			HttpServletRequest httpRequest) {
 		rateLimiter.checkTokenReissue(httpRequest);
-		IssuedAccessToken issuedToken = tokenService.reissue(
+		DeviceTokenReissue reissued = tokenService.reissue(
 				request.installationId(), new DeviceSecret(request.deviceSecret()));
+		IssuedAccessToken issuedToken = reissued.accessToken();
 
-		return ResponseEntity.ok(responseFactory.success(
-				new DeviceTokenResponse(issuedToken.value(), issuedToken.expiresInSeconds())));
+		return ResponseEntity.ok(responseFactory.success(new DeviceTokenResponse(
+				issuedToken.value(), issuedToken.expiresInSeconds(), reissued.accountStatus().name())));
 	}
 
 }

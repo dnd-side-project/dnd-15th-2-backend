@@ -1,5 +1,6 @@
 package com.dnd.qello.auth.repository.jpa;
 
+import java.util.List;
 import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -11,5 +12,7 @@ interface SpringDataDeviceCredentialRepository extends JpaRepository<DeviceCrede
 	Optional<DeviceCredentialJpaEntity> findBySecretHash(String secretHash);
 
 	Optional<DeviceCredentialJpaEntity> findByInstallationIdAndStatus(String installationId, CredentialStatus status);
+
+	List<DeviceCredentialJpaEntity> findAllByUserIdAndStatus(Long userId, CredentialStatus status);
 
 }

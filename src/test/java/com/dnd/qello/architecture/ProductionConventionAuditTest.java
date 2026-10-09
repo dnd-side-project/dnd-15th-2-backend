@@ -1,6 +1,9 @@
 /*
  * Created at: 2026-09-02T17:42:43+09:00
  * Source scenario: TEST-PLAN-GH-210-PRODUCTION-CONVENTION-RATCHET-UNIT-001 through UNIT-004, UNIT-018
+ * Source scenario: TEST-PLAN-GH-337-ACCOUNT-WITHDRAWAL-UNIT-022 (added 2026-10-09T18:14:46+09:00;
+ * DeviceTokenService가 method 단위 쓰기 트랜잭션으로 바뀌어 class write 단언을 반대로 바꿨다, A7.
+ * 그 결과 class write inventory가 비어 겹침 검사를 교집합 비교로 바꿨다)
  */
 package com.dnd.qello.architecture;
 
@@ -27,12 +30,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 class ProductionConventionAuditTest {
 
 	@Test
-	@DisplayName("production Service bytecode를 읽어 DeviceTokenService class write를 보고한다")
-	void reportsDeviceTokenServiceClassWrite() {
+	@DisplayName("TEST-PLAN-GH-337-ACCOUNT-WITHDRAWAL-UNIT-022: production Service bytecode를 읽고 method 단위 쓰기로 바꾼 DeviceTokenService는 class write로 보고하지 않는다")
+	void reportsDeviceTokenServiceAsClassReadOnly() {
 		AuditReport report = scanMainClasses();
 
 		assertThat(report.serviceNames()).contains("com.dnd.qello.auth.service.DeviceTokenService");
-		assertThat(report.classWrite()).contains("com.dnd.qello.auth.service.DeviceTokenService");
+		assertThat(report.classWrite()).doesNotContain("com.dnd.qello.auth.service.DeviceTokenService");
+		assertThat(report.missingReadOnly()).doesNotContain("com.dnd.qello.auth.service.DeviceTokenService");
 	}
 
 	@Test
@@ -41,7 +45,11 @@ class ProductionConventionAuditTest {
 		AuditReport report = scanMainClasses();
 
 		assertThat(report.missingReadOnly()).isNotEmpty();
-		assertThat(report.missingReadOnly()).doesNotContainAnyElementsOf(report.classWrite());
+		// class write Service가 하나도 없을 수 있다(#337). doesNotContainAnyElementsOf는 빈 목록을
+		// 거절하므로 교집합으로 본다.
+		Set<String> overlap = new TreeSet<>(report.missingReadOnly());
+		overlap.retainAll(report.classWrite());
+		assertThat(overlap).isEmpty();
 	}
 
 	@Test

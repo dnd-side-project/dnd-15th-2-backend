@@ -10,29 +10,27 @@ final class DeviceCredentialJpaMapper {
 
 	static DeviceCredentialJpaEntity toNewEntity(DeviceCredential credential) {
 		return new DeviceCredentialJpaEntity(
-			credential.getUserId(),
-			credential.getInstallationId(),
-			credential.getSecretHash().value(),
-			credential.getPlatform(),
-			credential.getStatus(),
-			credential.getLastUsedAt(),
-			credential.getCreatedAt(),
-			credential.getRevokedAt()
-		);
+				credential.getUserId(),
+				credential.getInstallationId(),
+				credential.getSecretHash().value(),
+				credential.getPlatform(),
+				credential.getStatus(),
+				credential.getLastUsedAt(),
+				credential.getCreatedAt(),
+				credential.getRevokedAt());
 	}
 
 	static DeviceCredential toDomain(DeviceCredentialJpaEntity entity) {
 		return DeviceCredential.restore(
-			entity.getId(),
-			entity.getUserId(),
-			entity.getInstallationId(),
-			new SecretHash(entity.getSecretHash()),
-			entity.getPlatform(),
-			entity.getStatus(),
-			entity.getLastUsedAt(),
-			entity.getCreatedAt(),
-			entity.getRevokedAt()
-		);
+				entity.getId(),
+				entity.getUserId(),
+				entity.getInstallationId(),
+				new SecretHash(entity.getSecretHash()),
+				entity.getPlatform(),
+				entity.getStatus(),
+				entity.getLastUsedAt(),
+				entity.getCreatedAt(),
+				entity.getRevokedAt());
 	}
 
 	/**
@@ -40,6 +38,10 @@ final class DeviceCredentialJpaMapper {
 	 */
 	static void updateLastUsedAt(DeviceCredentialJpaEntity entity, DeviceCredential credential) {
 		entity.updateLastUsedAt(credential.getLastUsedAt());
+	}
+
+	static void updateRevocation(DeviceCredentialJpaEntity entity, DeviceCredential credential) {
+		entity.updateRevocation(credential.getStatus(), credential.getRevokedAt());
 	}
 
 }

@@ -26,16 +26,15 @@ public final class DeviceCredential {
 	private final Instant revokedAt;
 
 	private DeviceCredential(
-		Long id,
-		long userId,
-		String installationId,
-		SecretHash secretHash,
-		DevicePlatform platform,
-		CredentialStatus status,
-		Instant lastUsedAt,
-		Instant createdAt,
-		Instant revokedAt
-	) {
+			Long id,
+			long userId,
+			String installationId,
+			SecretHash secretHash,
+			DevicePlatform platform,
+			CredentialStatus status,
+			Instant lastUsedAt,
+			Instant createdAt,
+			Instant revokedAt) {
 		this.id = id;
 		this.userId = requireUserId(userId);
 		this.installationId = requireInstallationId(installationId);
@@ -52,34 +51,32 @@ public final class DeviceCredential {
 	 * 신규 등록. status는 항상 ACTIVE로 시작한다.
 	 */
 	public static DeviceCredential issue(
-		long userId,
-		String installationId,
-		SecretHash secretHash,
-		DevicePlatform platform,
-		Instant issuedAt
-	) {
+			long userId,
+			String installationId,
+			SecretHash secretHash,
+			DevicePlatform platform,
+			Instant issuedAt) {
 		return new DeviceCredential(
-			null, userId, installationId, secretHash, platform,
-			CredentialStatus.ACTIVE, issuedAt, issuedAt, null);
+				null, userId, installationId, secretHash, platform,
+				CredentialStatus.ACTIVE, issuedAt, issuedAt, null);
 	}
 
 	public static DeviceCredential restore(
-		Long id,
-		long userId,
-		String installationId,
-		SecretHash secretHash,
-		DevicePlatform platform,
-		CredentialStatus status,
-		Instant lastUsedAt,
-		Instant createdAt,
-		Instant revokedAt
-	) {
+			Long id,
+			long userId,
+			String installationId,
+			SecretHash secretHash,
+			DevicePlatform platform,
+			CredentialStatus status,
+			Instant lastUsedAt,
+			Instant createdAt,
+			Instant revokedAt) {
 		if (id == null) {
 			throw new AuthException(
-				AuthErrorCode.INVALID_CREDENTIAL_STATE, "id", "restore는 유효한 기존 id가 필요합니다");
+					AuthErrorCode.INVALID_CREDENTIAL_STATE, "id", "restore는 유효한 기존 id가 필요합니다");
 		}
 		return new DeviceCredential(
-			id, userId, installationId, secretHash, platform, status, lastUsedAt, createdAt, revokedAt);
+				id, userId, installationId, secretHash, platform, status, lastUsedAt, createdAt, revokedAt);
 	}
 
 	public boolean isActive() {
@@ -92,7 +89,19 @@ public final class DeviceCredential {
 	public DeviceCredential touch(Instant usedAt) {
 		requireValue(usedAt, "usedAt");
 		return new DeviceCredential(
-			id, userId, installationId, secretHash, platform, status, usedAt, createdAt, revokedAt);
+				id, userId, installationId, secretHash, platform, status, usedAt, createdAt, revokedAt);
+	}
+
+	/**
+	 * 자격증명을 폐기한다(#337). 이미 폐기된 자격증명은 처음 폐기 시각을 그대로 둔다.
+	 */
+	public DeviceCredential revoke(Instant at) {
+		requireValue(at, "revokedAt");
+		if (status == CredentialStatus.REVOKED) {
+			return this;
+		}
+		return new DeviceCredential(
+				id, userId, installationId, secretHash, platform, CredentialStatus.REVOKED, lastUsedAt, createdAt, at);
 	}
 
 	public Long getId() {
@@ -134,7 +143,7 @@ public final class DeviceCredential {
 	private static long requireUserId(long userId) {
 		if (userId <= 0) {
 			throw new AuthException(
-				AuthErrorCode.REQUIRED_VALUE_MISSING, "userId", "userId는 양수여야 합니다");
+					AuthErrorCode.REQUIRED_VALUE_MISSING, "userId", "userId는 양수여야 합니다");
 		}
 		return userId;
 	}
@@ -142,14 +151,13 @@ public final class DeviceCredential {
 	private static String requireInstallationId(String installationId) {
 		if (installationId == null || installationId.isBlank()) {
 			throw new AuthException(
-				AuthErrorCode.INVALID_INSTALLATION_ID, "installationId", "installationId는 비어 있을 수 없습니다");
+					AuthErrorCode.INVALID_INSTALLATION_ID, "installationId", "installationId는 비어 있을 수 없습니다");
 		}
 		if (installationId.length() > INSTALLATION_ID_MAX_LENGTH) {
 			throw new AuthException(
-				AuthErrorCode.INVALID_INSTALLATION_ID,
-				"installationId",
-				"installationId는 " + INSTALLATION_ID_MAX_LENGTH + "자를 초과할 수 없습니다"
-			);
+					AuthErrorCode.INVALID_INSTALLATION_ID,
+					"installationId",
+					"installationId는 " + INSTALLATION_ID_MAX_LENGTH + "자를 초과할 수 없습니다");
 		}
 		return installationId;
 	}
@@ -157,7 +165,7 @@ public final class DeviceCredential {
 	private static <T> T requireValue(T value, String field) {
 		if (value == null) {
 			throw new AuthException(
-				AuthErrorCode.REQUIRED_VALUE_MISSING, field, field + "은 필수입니다");
+					AuthErrorCode.REQUIRED_VALUE_MISSING, field, field + "은 필수입니다");
 		}
 		return value;
 	}
@@ -166,10 +174,9 @@ public final class DeviceCredential {
 		boolean revoked = status == CredentialStatus.REVOKED;
 		if (revoked != (revokedAt != null)) {
 			throw new AuthException(
-				AuthErrorCode.INVALID_CREDENTIAL_STATE,
-				"revokedAt",
-				"REVOKED와 revokedAt은 함께 존재해야 합니다"
-			);
+					AuthErrorCode.INVALID_CREDENTIAL_STATE,
+					"revokedAt",
+					"REVOKED와 revokedAt은 함께 존재해야 합니다");
 		}
 	}
 
