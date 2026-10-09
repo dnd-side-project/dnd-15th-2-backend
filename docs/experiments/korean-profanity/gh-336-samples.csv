@@ -1,0 +1,133 @@
+id,group,subtype,expected,text
+T01,targeted,name_calling,block,너 진짜 개새끼구나
+T02,targeted,name_calling,block,야 이 씨발놈아 내 말 안 들려?
+T03,targeted,name_calling,block,병신아 그것도 못 하냐
+T04,targeted,name_calling,block,저 미친년은 왜 저래
+T05,targeted,name_calling,block,니가 뭔데 지랄이야 이 새끼야
+T06,targeted,name_calling,block,좆같은 놈이 말이 많네
+T07,targeted,name_calling,block,이 등신 같은 새끼야 정신 차려
+T08,targeted,name_calling,block,걔는 진짜 썅놈이야
+T09,targeted,name_calling,block,너 같은 찐따는 말 걸지 마
+T10,targeted,name_calling,block,니 얼굴 보면 토 나와 씨발
+T11,targeted,command,block,닥쳐 이 개새끼야
+T12,targeted,command,block,꺼져 병신아
+T13,targeted,command,block,좆까 너나 잘해
+T14,targeted,command,block,아가리 닥치고 꺼져라 이 새끼야
+T15,targeted,family,block,느금마 뭐하시냐
+T16,targeted,family,block,니 애미 없냐
+T17,targeted,family,block,너네 엄마가 그렇게 가르쳤냐 씨발
+T18,targeted,name_calling,block,이 호로새끼야
+T19,targeted,name_calling,block,쟤 완전 개또라이네
+T20,targeted,name_calling,block,팀장 저 새끼 진짜 쓰레기다
+T21,targeted,threat,block,씨발 너 내일 학교에서 보자 죽여버린다
+T22,targeted,name_calling,block,너 진짜 존나 못생겼다
+U01,untargeted,exclamation,block,아 씨발 지갑 놓고 왔다
+U02,untargeted,exclamation,block,씨발 비 오네
+U03,untargeted,descriptor,block,아 개같네 버스 또 놓쳤어
+U04,untargeted,exclamation,block,개씨발 또 야근이야
+U05,untargeted,descriptor,block,좆됐다 내일 시험인데 공부 하나도 안 했어
+U06,untargeted,exclamation,block,아 존나 짜증나
+U07,untargeted,intensifier,block,이 집 떡볶이 존나 맛있다
+U08,untargeted,intensifier,block,시험 존나 어려웠음
+U09,untargeted,intensifier,block,오늘 씨발 진짜 덥다
+U10,untargeted,intensifier,block,졸라 피곤해서 바로 잘 거야
+U11,untargeted,intensifier,block,그 영화 좆나 재밌더라
+U12,untargeted,intensifier,block,존나게 많이 걸었더니 다리 아파
+U13,untargeted,descriptor,block,오늘 하루 진짜 좆같다
+U14,untargeted,descriptor,block,회사 분위기 개좆같음
+U15,untargeted,descriptor,block,이번 패치 완전 병신같네
+U16,untargeted,descriptor,block,날씨 지랄 맞다
+U17,untargeted,exclamation,block,인생 시발 왜 이렇게 꼬이냐
+U18,untargeted,exclamation,block,교통 체증 미쳤네 씨발
+U19,untargeted,exclamation,block,에이 씨팔 또 틀렸네
+U20,untargeted,exclamation,block,염병할 비가 또 오네
+U21,untargeted,descriptor,block,이 게임 존나 병신 같아서 접었다
+U22,untargeted,exclamation,block,아오 썅 와이파이 또 끊겼어
+E01,evasion,choseong,block,ㅅㅂ 오늘 왜 이래
+E02,evasion,choseong,block,ㅆㅂ 진짜 짜증나
+E03,evasion,choseong,block,너 진짜 ㅂㅅ이냐
+E04,evasion,choseong,block,ㄱㅅㄲ야 꺼져
+E05,evasion,choseong,block,ㅈㄴ 맛없네
+E06,evasion,choseong,block,ㅈㄹ하지 마
+E07,evasion,choseong,block,ㅆㅂㄴ아 꺼져
+E08,evasion,number_sub,block,시1발 진짜 왜 이래
+E09,evasion,number_sub,block,병1신아 그것도 못 해?
+E10,evasion,number_sub,block,아 18 진짜 열받네
+E11,evasion,number_sub,block,ㅅ1ㅂ 또 졌어
+E12,evasion,symbol_insert,block,씨-발 진짜 어이없다
+E13,evasion,symbol_insert,block,개.새.끼야 꺼져
+E14,evasion,symbol_insert,block,병*신 같은 소리 하네
+E15,evasion,symbol_insert,block,씨@발 오늘 망했다
+E16,evasion,space_insert,block,씨 발 놈 아 조용히 해
+E17,evasion,space_insert,block,존 나 짜증 나
+E18,evasion,variant_spelling,block,씌발 또 늦었어
+E19,evasion,variant_spelling,block,씨바 진짜 덥네
+E20,evasion,variant_spelling,block,븅신아 정신 차려
+E21,evasion,variant_spelling,block,저 개쉑 또 지각했네
+E22,evasion,variant_spelling,block,좃같네 진짜
+E23,evasion,variant_spelling,block,씨빨 왜 안 돼
+E24,evasion,english_spelling,block,sibal 진짜 짜증나
+E25,evasion,english_spelling,block,c발 오늘 왜 이래
+E26,evasion,english_spelling,block,byungsin 같은 소리 하지 마
+E27,evasion,keyboard_typing,block,tlqkf 진짜 어이없네
+E28,evasion,keyboard_typing,block,너 qudtls이야?
+E29,evasion,jamo_split,block,ㅅㅣㅂㅏㄹ 진짜 왜 이래
+E30,evasion,jamo_split,block,ㅂㅕㅇㅅㅣㄴ 같은 소리 하네
+E31,evasion,zero_width,block,씨\u200b발 진짜 짜증나
+E32,evasion,fullwidth,block,ｓｉｂａｌ 진짜 짜증나
+F01,fp_candidate,hanja_word,allow,시발점으로 돌아가서 다시 계산하자
+F02,fp_candidate,hanja_word,allow,2016년 병신년 새해 계획을 세웠다
+F03,fp_candidate,hanja_word,allow,이 버스는 시발역에서 출발한다
+F04,fp_candidate,hanja_word,allow,국산 첫 자동차 시발을 박물관에서 봤다
+F05,fp_candidate,word_boundary,allow,아저씨 발이 정말 크시네요
+F06,fp_candidate,word_boundary,allow,수박씨 발라 먹기 귀찮다
+F07,fp_candidate,word_boundary,allow,체리 씨 발라내는 도구를 샀다
+F08,fp_candidate,word_boundary,allow,1조부터 5조까지 발표를 마쳤다
+F09,fp_candidate,literal_meaning,allow,옆집 개 새끼들이 눈을 떴다
+F10,fp_candidate,literal_meaning,allow,새끼손가락 걸고 약속했다
+F11,fp_candidate,literal_meaning,allow,길에서 새끼 고양이를 구조했다
+F12,fp_candidate,literal_meaning,allow,새끼 오리들이 엄마를 따라간다
+F13,fp_candidate,literal_meaning,allow,울릉도 호박엿 먹어 봤어?
+F14,fp_candidate,verb_form,allow,그 영화는 보지 마 너무 지루해
+F15,fp_candidate,verb_form,allow,늦게까지 자지 말고 일찍 일어나
+F16,fp_candidate,verb_form,allow,껌을 씹다가 혀를 깨물었다
+F17,fp_candidate,verb_form,allow,고기를 오래 씹어서 먹어야 소화가 잘된다
+F18,fp_candidate,verb_form,allow,방 불이 꺼져 있어서 아무도 없는 줄 알았다
+F19,fp_candidate,verb_form,allow,닥치는 대로 책을 읽었다
+F20,fp_candidate,number,allow,노래방 내 십팔번은 이 노래야
+F21,fp_candidate,number,allow,만 18세 이상만 가입할 수 있다
+F22,fp_candidate,number,allow,오늘이 벌써 18일이다
+F23,fp_candidate,slang_praise,allow,이 집 국밥 진짜 죽여준다
+F24,fp_candidate,slang_praise,allow,미친 듯이 공부해서 합격했다
+F25,fp_candidate,slang_praise,allow,이번 신곡 미쳤다 계속 듣게 돼
+F26,fp_candidate,similar_sound,allow,시바견을 키우고 있어
+F27,fp_candidate,similar_sound,allow,시베리아 횡단 열차를 타 보고 싶다
+F28,fp_candidate,similar_sound,allow,개나리가 활짝 피었다
+F29,fp_candidate,similar_sound,allow,저 사람 존재감이 대단하다
+F30,fp_candidate,similar_sound,allow,시방 어디 가는 거여
+F31,fp_candidate,choseong_normal,allow,ㅋㅋㅋ 진짜 웃기다
+F32,fp_candidate,choseong_normal,allow,ㅇㅇ 알겠어
+F33,fp_candidate,choseong_normal,allow,ㄱㅅ 내일 봐
+F34,fp_candidate,choseong_normal,allow,ㅎㅇ 반가워
+N01,normal,daily,allow,오늘 점심은 김치찌개 먹었다
+N02,normal,daily,allow,내일 비 온다고 하니까 우산 챙겨
+N03,normal,negative_emotion,allow,시험을 망쳐서 너무 속상하다
+N04,normal,negative_emotion,allow,아 진짜 짜증 나 버스 또 놓쳤어
+N05,normal,negative_emotion,allow,그 사람이랑은 다시는 말 섞기 싫다
+N06,normal,negative_emotion,allow,회의가 너무 길어서 지쳤다
+N07,normal,daily,allow,이번 주말에 같이 영화 보러 갈래?
+N08,normal,negative_emotion,allow,너 때문에 기분이 많이 상했어
+N09,normal,daily,allow,고양이가 창가에서 졸고 있다
+N10,normal,daily,allow,퇴근길 지하철이 너무 붐볐다
+N11,normal,daily,allow,시험 끝나면 여행 가고 싶다
+N12,normal,negative_emotion,allow,진짜 어이가 없네
+N13,normal,daily,allow,오늘 하루도 고생 많았어
+N14,normal,negative_emotion,allow,그 결정은 정말 실망스러웠다
+N15,normal,negative_emotion,allow,넌 왜 맨날 약속에 늦어?
+N16,normal,daily,allow,다이어트는 내일부터 하자
+N17,normal,negative_emotion,allow,화가 나서 문을 쾅 닫았다
+N18,normal,negative_emotion,allow,이 문제 너무 어려워서 머리 터질 것 같아
+N19,normal,negative_emotion,allow,친구랑 크게 싸워서 마음이 불편하다
+N20,normal,daily,allow,운동하고 나니까 개운하다
+N21,normal,daily,allow,숙제를 깜빡해서 선생님께 혼났다
+N22,normal,daily,allow,월요일 아침은 늘 힘들다
