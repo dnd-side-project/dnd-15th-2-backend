@@ -1,43 +1,38 @@
-# GitHub Issue #338 Task Contract
+# GitHub Issue #347 Task Contract
 
-> Generated at: `2026-10-09T22:43:41+09:00`
+> Generated at: `2026-10-10T04:28:44+09:00`
 >
 > 이 파일은 현재 작업 브랜치의 계약이다. 저장소 전역 정책은 `AGENTS.md`를
 > 따른다.
 
 ## Work gate
 
-- Title: `test task의 컨벤션 테스트 중복 실행 제거와 측정 workflow의 task 선택`
-- GitHub Issue: `#338`
-- Branch: `ci/gh-338-dedupe-convention-tests`
+- Title: `통합 테스트 PostGIS·LocalStack 컨테이너를 한 번만 띄워 공유`
+- GitHub Issue: `#347`
+- Branch: `test/gh-347-share-test-containers`
 - Base branch: `main`
 
 ## Objective
 
-`./gradlew check`에서 컨벤션 테스트 5개 클래스(`JavaConventionArchitectureTest`, `ChangedJavaTypesTest`,
-`ProductionConventionAuditTest`, `ProductionConventionRatchetTest`, `JavaSourceConventionTest`)가 `test`와
-`javaConventionArchitectureTest`, `javaConventionSourceTest`에서 두 번 실행된다. 기준 측정(CI Benchmark, 같은 커밋
-20회)에서 `test` 중앙값은 86.6초, 이 5개 클래스의 시간 합 중앙값은 10.85초였다. `test`에서 이 클래스를 빼고,
-설정마다 10회 비교로는 이 차이를 잡을 확률이 약 58%라서 측정 workflow에 task와 반복 횟수 입력을 추가한다.
+통합 테스트는 클래스마다 PostGIS 컨테이너를 새로 띄운다. 기준 측정(CI Benchmark run 37884006551, 같은 커밋
+20회)에서 컨테이너 기동이 run당 106번, 355초로 `integrationTest` 중앙값 688초의 절반이었다. 컨테이너를
+JVM당 한 번만 띄워 공유하고, 줄어든 시간을 같은 방식으로 잰다.
 
 ## Scope
 
-- `build.gradle`: 두 컨벤션 task의 include 패턴 목록을 한 곳에 두고 `test`에서 같은 패턴을 exclude한다.
-  `ApiResponseConventionTest`, `JavaConventionBaselineTest`, `JavaStaticAnalysisRuleTest`는 `test`에 남긴다.
-- `.github/workflows/ci-benchmark.yml`: `workflow_dispatch` 입력에 Gradle task(`check`·`test`, 기본 `check`)와
-  설정당 반복 횟수(기본 10)를 추가한다. 입력은 env로 넘기고 허용 값을 검사한다. matrix는 회차를 바깥,
-  설정을 안쪽에 두어 base와 head job이 번갈아 시작하게 한다. 입력을 생략하면 지금과 같이 `check` 10회씩이다.
-- `scripts/experiments/ci-benchmark-compare.py`: 결과가 있는 task만 비교하고, 두 설정의 테스트 이름 목록이
-  다르면 빠지거나 추가된 클래스를 출력한다. 자체 검사에 `test`만 도는 경우를 추가한다.
-- 측정: 브랜치를 push한 뒤 base=main, head=이 브랜치, task=`test`, 20회로 CI Benchmark를 실행하고 run과 비교
-  출력을 PR에 기록한다.
+- `PostgisContainerIntegrationTestSupport`: `@Testcontainers`·`@Container`를 빼고 static 블록에서 컨테이너를 한 번만
+  start한다. 테스트 클래스가 시작될 때마다 같은 이름의 DB(`qello_test`)를 `DROP DATABASE ... WITH (FORCE)`로 지우고
+  `template_postgis`로 다시 만든다. `@ServiceConnection`과 `@DirtiesContext(AFTER_CLASS)`는 그대로 둔다.
+- `LocalStackContainerIntegrationTestSupport`: LocalStack도 static 블록에서 한 번만 띄운다.
+- 한 DB를 공유한 첫 시도의 실패(51개 클래스)는 트러블슈팅으로 기록한다. 테스트를 지우거나 건너뛰게 하지 않는다.
+- CI Benchmark(base=main, head=이 브랜치, task=check, 10회씩)로 잰다. 실행 전 사용자 승인을 받는다.
+- 위 변경의 테스트 계획은 `/harness-test-plan`으로 먼저 승인받는다.
 
 ## Explicit exclusions
 
-- Harness Policy `test` job 명령을 `./gradlew check -x javaConventionCheck`로 바꾸는 방법
-- java-conventions job이 다른 VM에서 한 번 더 실행하는 컨벤션 검사
-- Gradle 캐시와 main 캐시 workflow(#339), #313의 트리거와 concurrency
-- 컨벤션 테스트 코드 변경
+- `@DirtiesContext` 제거와 클래스 간 데이터 정리 시점(다음 단계, 별도 이슈)
+- fork 병렬 실행과 샤딩
+- 운영 코드, Flyway 마이그레이션 변경
 - 인프라 apply, 배포, 프로덕션 변경은 별도 승인 없이는 실행하지 않는다.
 - Secret, 계정 식별자, 토큰, `.env` 값은 기록하지 않는다.
 
@@ -45,40 +40,40 @@
 
 | Area | Owner | Required review |
 | --- | --- | --- |
-| `build.gradle` `test` 필터, 측정 workflow, 비교 스크립트 | 실행 에이전트 | 사용자 PR 리뷰 |
-| CI Benchmark 실행(job 40개, 동시 job 상한 점유) | 사용자 승인 후 실행 에이전트 | 사용자 |
+| 통합 테스트 지원 클래스·깨진 통합 테스트 수정·측정 | 실행 에이전트 | 사용자 PR 리뷰 |
 
 ## Existing user-owned changes
 
-- 작업 시작 시 `git status --short`는 깨끗했다. 최신 `origin/main`(#341 병합 커밋)에서 별도 작업 폴더로 분기했다.
-- 이 main은 #343(`DeviceTokenService` baseline 해시) 수정 전이라 `JavaConventionBaselineTest`가 실패한다. #343이
-  병합되면 sync한 뒤 `pr-ready`와 측정을 진행한다.
+- 작업 시작 시 `git status --short`는 깨끗했다. 최신 `origin/main`(`994bc0a1`)에서 분기했다.
 
 ## Validation
 
 ```bash
-python3 scripts/experiments/ci-benchmark-compare.py --self-test
-python3 scripts/validate-workflows.py
-./gradlew test
-./gradlew javaConventionCheck
 ./harness check
 ./harness pr-ready --project-tests
-npm run hooks:validate
 git diff --check
 ```
 
 ## Completion criteria
 
-- 이 브랜치의 `test` JUnit XML에서 위 5개 클래스만 빠지고 나머지 테스트 이름 목록은 main과 같다.
-- 로컬 `./gradlew javaConventionCheck` 후 `build/test-results/javaConventionArchitectureTest/`와
-  `build/test-results/javaConventionSourceTest/`에 5개 클래스 결과가 있다.
-- CI Benchmark(base=main, head=이 브랜치, task=`test`, 20회) run에서 job 40개가 모두 결과 파일을 남기고, 비교
-  스크립트가 `test` 중앙값 차이, 95% 구간, 단측 p값을 출력한다. run과 출력을 PR에 기록한다.
-- 같은 run의 job 시작 시각에서 base와 head job이 번갈아 시작했다.
-- `python3 scripts/validate-workflows.py`, `./harness check`, `./harness pr-ready --project-tests`가 통과한다.
+- 로컬 `integrationTest`에서 PostGIS·LocalStack 컨테이너 기동이 각각 1번이고, 테스트 이름 목록과 건너뜀 수가 main과
+  같고 실패 0이다.
+- 클래스 실행 순서를 무작위로 바꾼 실행(seed 2개)에서도 실패 0이다.
+- CI Benchmark 비교 출력에 `integrationTest` 중앙값 차이, 95% 구간, 단측 p가 있고, 두 설정의 테스트 목록이 같고
+  실패 0이다. run ID와 출력을 PR에 기록한다.
+- `./harness check`, `./harness pr-ready --project-tests`가 통과한다.
 
 ## Decisions
 
-- 2026-10-09 #338 이슈 작성 세션: 패턴은 `*Convention*`처럼 넓게 쓰지 않는다. 컨벤션 task에 없는 세 클래스까지
-  빠지기 때문이다. 측정 판정 기준은 테스트 목록 차이가 5개 클래스뿐이고 실패 0, 단측 p<0.05다. p가 0.05를
-  넘어도 결과를 그대로 기록하며, 이슈 완료 조건은 측정 기록까지다.
+- 2026-10-10 사용자 승인: 이슈 유형은 test, Sprint Week 10, Priority P1, Status In Progress. LocalStack도 PostGIS와
+  같은 방식으로 한 번만 띄운다. 메인 클론에서 작업한다.
+- 2026-10-10 사용자 승인: `docs/test-plans/gh-347-TEST-PLAN-GH-347-SHARE-TEST-CONTAINERS.md`. 깨진 테스트는 그 클래스 안에서만
+  최소로 고치고 base 클래스에 공통 정리를 넣지 않는다. `FlywayMigrationIntegrationTest`의 표시 이름은 바꾸지 않는다.
+  무작위 클래스 순서 실행은 저장소 밖 Gradle init script로 한다.
+- 2026-10-10 사용자 결정: 한 DB를 공유한 첫 시도에서 51개 클래스(438건)가 실패했다. 깨진 클래스마다 정리를 고치는 안(D1),
+  base에서 클래스 시작 전 TRUNCATE하는 안 대신, 컨테이너 하나 안에서 클래스마다 새 DB를 만드는 안을 택했다. D1·D2는
+  이 결정으로 대체한다. 실패 내용, 대안별 트레이드오프, 변경 범위와 전후 코드, 선택 이유를 기록한다.
+- 2026-10-10 구현 변경(위 결정 범위 안): 처음에는 번호 붙은 DB(`qello_test_class_<n>`)를 만들고 `@DynamicPropertySource`로
+  접속 정보를 넘겼다. 이 방식은 마이그레이션 테스트 5개와 `QelloLocalProfileIntegrationTest`도 고쳐야 했고, 고친
+  `SchemaRevisionMigrationIntegrationTest`의 기존 긴 메서드 4개가 pre-commit의 staged checkstyle(QELLO-JAVA-SIZE-001)에
+  걸렸다. 같은 이름의 DB를 다시 만들면 접속 정보가 그대로라 base 클래스 2개만 바꾸면 된다.
