@@ -2,6 +2,7 @@
  * Created at: 2026-08-18T15:40:00+09:00
  * Source scenario: TEST-PLAN-DIRECTION-MATCHING-VERTICAL-FLOW-INT-001 through INT-005
  * Source scenario: TEST-PLAN-GH-137-DIRECTION-POST-MODERATION (release fixture and filter_job_status_history cleanup, added 2026-10-07T22:14:59+09:00)
+ * Source scenario: TEST-PLAN-GH-350-SHARE-SPRING-CONTEXT-INT-001 (base와 중복된 컨텍스트 폐기 선언 제거, added 2026-10-10T15:19:46+09:00)
  */
 package com.dnd.qello;
 
@@ -25,7 +26,6 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Primary;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
 
 import com.dnd.qello.answer.domain.Answer;
@@ -78,7 +78,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 @SpringBootTest
 @ActiveProfiles("test")
 @Import(DirectionFlow127TestClockConfiguration.class)
-@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 class DirectionMatchingVerticalFlowIntegrationTest extends PostgisContainerIntegrationTestSupport {
 
 	private static final String REGION = "TEST-DIRECTION-FLOW-127";
