@@ -1,37 +1,32 @@
-# GitHub Issue #350 Task Contract
+# GitHub Issue #339 Task Contract
 
-> Generated at: `2026-10-10T14:55:47+09:00`
+> Generated at: `2026-10-10T18:42:53+09:00`
 >
 > 이 파일은 현재 작업 브랜치의 계약이다. 저장소 전역 정책은 `AGENTS.md`를
 > 따른다.
 
 ## Work gate
 
-- Title: `통합 테스트 Spring 컨텍스트를 클래스끼리 공유하고 데이터 정리 방식 정하기`
-- GitHub Issue: `#350`
-- Branch: `test/gh-350-share-spring-context`
+- Title: `main Gradle 의존성 캐시 생성 workflow`
+- GitHub Issue: `#339`
+- Branch: `ci/gh-339-main-gradle-cache`
 - Base branch: `main`
 
 ## Objective
 
-#347로 컨테이너 기동은 run당 1번이 됐지만 클래스마다 Spring 컨텍스트를 새로 띄운다. CI Benchmark run 38023671076에서
-컨텍스트 캐시 miss가 110번, Flyway 적용이 123번(합계 중앙값 약 63초)이었다. `@DirtiesContext`를 빼서 설정이 같은
-클래스끼리 컨텍스트를 공유하고, 줄어든 시간을 같은 방식으로 잰다.
+PR run은 `actions/setup-java`의 `cache: gradle`로 Gradle 의존성을 복원하지만 main에 캐시를 만드는 workflow가 없어
+새 브랜치의 첫 run이 캐시 미스로 시작한다. main ref에 Gradle 의존성 캐시를 만드는 workflow를 추가한다.
 
 ## Scope
 
-- `@DirtiesContext(AFTER_CLASS)` 12곳(base 1, 클래스 11): 제거하거나 꼭 필요한 곳만 남긴다.
-- `ClassDatabaseExtension`의 클래스별 DB 재생성: 컨텍스트를 공유하면 열린 커넥션 풀 아래의 DB를 지우게 되므로 공유 DB
-  정리 방식으로 바꾼다.
-- 데이터 정리 방식과 시점은 `/harness-test-plan`에서 대안을 비교해 사람 승인을 받는다.
-- 깨진 테스트, 검토한 대안과 선택 이유를 테스트 보고서에 기록한다. 테스트를 지우거나 건너뛰게 하지 않는다.
-- CI Benchmark(base=main, head=이 브랜치, task=check, 10회씩)로 잰다. 실행 전 사용자 승인을 받는다.
+- `.github/workflows/gradle-cache.yml` 신규: Harness Policy와 같은 `actions/setup-java@v5` 설정(`temurin`, `21`,
+  `cache: gradle`)으로 test, java-conventions, sync-api-docs job이 쓰는 의존성을 받아 main ref에 캐시를 저장한다.
 
 ## Explicit exclusions
 
-- fork 병렬 실행과 샤딩
-- 운영 코드, Flyway 마이그레이션 변경
-- heap 상한 변경(측정만 하고, 바꿀 필요가 보이면 별도 이슈)
+- `gradle/actions/setup-gradle`로 교체, Gradle 빌드 캐시(`org.gradle.caching`)
+- Harness Policy 등 기존 workflow 변경, Gradle 빌드 파일 변경
+- Apply workflow와 승인 게이트
 - 인프라 apply, 배포, 프로덕션 변경은 별도 승인 없이는 실행하지 않는다.
 - Secret, 계정 식별자, 토큰, `.env` 값은 기록하지 않는다.
 
@@ -39,15 +34,16 @@
 
 | Area | Owner | Required review |
 | --- | --- | --- |
-| 통합 테스트 지원 클래스·깨진 통합 테스트 수정·측정 | 실행 에이전트 | 사용자 PR 리뷰 |
+| 캐시 생성 workflow·측정 | 실행 에이전트 | 사용자 PR 리뷰 |
 
 ## Existing user-owned changes
 
-- 작업 시작 시 `git status --short`는 깨끗했다. 최신 `origin/main`(`68f530fa`, #348 병합)에서 분기했다.
+- 작업 시작 시 `git status --short`는 깨끗했다. 최신 `origin/main`(`e0210d6e`, #352 병합)에서 별도 작업 폴더로 분기했다.
 
 ## Validation
 
 ```bash
+python scripts/validate-workflows.py
 ./harness check
 ./harness pr-ready --project-tests
 git diff --check
@@ -55,16 +51,21 @@ git diff --check
 
 ## Completion criteria
 
-- 로컬 `integrationTest`: 테스트 이름 목록·건너뜀 수가 main과 같고 실패 0, 컨테이너 기동 1번 유지.
-- 클래스 실행 순서를 무작위로 바꾼 실행(seed 2개)에서도 실패 0.
-- CI Benchmark 비교 출력에 `integrationTest` 중앙값 차이, 95% 구간, 단측 p가 있고 두 설정의 테스트 목록이 같고 실패 0.
-- 컨텍스트 miss 수·Flyway 적용 횟수·heap 최고치를 base와 비교해 기록한다.
-- `./harness check`, `./harness pr-ready --project-tests`가 통과한다.
+- 머지 후 새 workflow run이 main ref에 `setup-java-Linux-x64-gradle-<hash>` 캐시를 저장한다.
+- Gradle 파일을 바꾸지 않은 새 브랜치의 첫 PR run에서 test, java-conventions, sync-api-docs job의 Set up Java 로그에
+  `Cache restored from key`가 있다(run ID를 이슈에 기록).
+- 같은 run의 test job에서 Gradle 시작부터 첫 task 실행까지 걸린 시간을 기록한다. 비교 기준은 1부의 캐시 미스 run이다.
+- `python scripts/validate-workflows.py`, `./harness check`, `./harness pr-ready --project-tests`가 통과한다.
 
 ## Decisions
 
-- 2026-10-10 사용자 승인: 이슈 유형은 test, Sprint Week 10, Priority P1, Status In Progress.
-- 2026-10-10 사용자 승인: `docs/test-plans/gh-350-TEST-PLAN-GH-350-SHARE-SPRING-CONTEXT.md`. D1 클래스 시작 전 base에서 전체
-  초기화(TRUNCATE ... RESTART IDENTITY CASCADE, 기준 데이터 스냅샷 복원, 남은 별도 스키마 삭제), 테스트 클래스 정리 코드는
-  바꾸지 않는다. D2 `@DirtiesContext` 12곳 모두 제거. D3 캐시 크기는 기본 32로 먼저 재고, 문제가 보이면 결과를 보여주고
-  `maxSize` 16을 다시 묻는다. D4 무작위 순서는 저장소 밖 init script.
+- 2026-10-10 사용자 승인: 구현·PR 없이 닫혀 있던 이슈를 다시 열고 그 이유를 이슈 댓글로 남긴다.
+- 2026-10-10 사용자 승인: Gradle 명령은 `./gradlew javaConventionCheck integrationTest --tests
+  "*OpenApiSpecificationIntegrationTest"`. `check`의 의존성은 `javaConventionCheck`, `test`, `integrationTest`에서 오고
+  `test`는 컨벤션 테스트와 같은 classpath를 쓴다. 컴파일까지만 하면 테스트 실행 classpath의 jar가 빠질 수 있고,
+  `dependencies` 리포트는 jar를 내려받지 않는다.
+- 2026-10-10 사용자 승인: 실행 조건은 setup-java가 key 계산에 쓰는 Gradle 파일이나 이 workflow가 바뀐 main push, 주 1회
+  주기 실행(지워진 캐시 재생성), 수동 실행. `cache-hit`이면 Gradle 단계를 건너뛴다(key가 같으면 setup-java가 다시
+  저장하지 않는다).
+- 2026-10-10 사용자 승인: 지금 main 캐시와 key가 같아 첫 run이 저장을 건너뛰면, 머지 직후 별도 승인을 받아 main의 해당
+  캐시 1개를 지우고 수동 실행해 저장을 기록한다.

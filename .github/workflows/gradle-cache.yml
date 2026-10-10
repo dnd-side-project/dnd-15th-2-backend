@@ -1,0 +1,59 @@
+name: Gradle Cache
+
+# PR run은 setup-java의 cache: gradle로 의존성 캐시를 복원하고, PR은 main ref의 캐시를 읽을 수 있다.
+# main에 캐시를 만드는 run이 없으면 새 브랜치의 첫 run은 의존성을 모두 내려받는다(GH-339).
+# cache key는 Gradle 파일의 hash이고 key가 같으면 setup-java가 다시 저장하지 않으므로, 그 파일이 바뀐
+# push에서만 돈다. 주기 실행은 7일 동안 읽히지 않거나 저장소 한도를 넘어 지워진 캐시를 다시 만든다.
+on:
+  push:
+    branches: [main]
+    # setup-java v5가 cache key hash에 쓰는 패턴이다. 이 workflow가 바뀌어도 캐시 내용이 달라질 수 있어 같이 본다.
+    paths:
+      - "**/*.gradle*"
+      - "**/gradle-wrapper.properties"
+      - "buildSrc/**/Versions.kt"
+      - "buildSrc/**/Dependencies.kt"
+      - "gradle/*.versions.toml"
+      - "**/versions.properties"
+      - ".github/workflows/gradle-cache.yml"
+  schedule:
+    # 월요일 03:00 KST
+    - cron: "0 18 * * 0"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# 저장 중인 run을 취소하면 반쯤 채운 캐시가 남을 수 있어 앞 run이 끝날 때까지 기다린다.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  warm:
+    runs-on: ubuntu-latest
+    steps:
+      # spotless의 ratchetFrom이 origin/main을 읽는다.
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Set up Java
+        id: setup-java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+
+      - name: Make Gradle wrapper executable
+        if: steps.setup-java.outputs.cache-hit != 'true'
+        run: chmod +x gradlew
+
+      # Harness Policy의 test, java-conventions, sync-api-docs job이 쓰는 의존성을 받는다. check의 의존성은
+      # javaConventionCheck, test, integrationTest에서 오고 test는 컨벤션 테스트와 같은 classpath를 쓴다.
+      # 컴파일만 하면 테스트 실행 classpath의 jar가 빠질 수 있어 두 Test task를 실제로 실행한다.
+      - name: Resolve dependencies used by pull request jobs
+        if: steps.setup-java.outputs.cache-hit != 'true'
+        run: ./gradlew javaConventionCheck integrationTest --tests "*OpenApiSpecificationIntegrationTest"
