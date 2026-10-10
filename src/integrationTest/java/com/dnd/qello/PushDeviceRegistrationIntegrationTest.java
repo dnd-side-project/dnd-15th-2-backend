@@ -6,12 +6,6 @@
  */
 package com.dnd.qello;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
-
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 import java.time.Clock;
@@ -44,6 +38,8 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.JwtRequestPostProcessor;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -67,6 +63,12 @@ import com.dnd.qello.notification.repository.NotificationRepository;
 import com.dnd.qello.notification.repository.OutboxEventRepository;
 import com.dnd.qello.notification.service.PushDeviceCommand;
 import com.dnd.qello.notification.service.PushDeviceService;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -104,14 +106,14 @@ class PushDeviceRegistrationIntegrationTest extends PostgisContainerIntegrationT
 		jdbc.update("DELETE FROM user_account WHERE coarse_region_code = ?", REGION);
 		jdbc.update("DELETE FROM region_code WHERE code = ?", REGION);
 		jdbc.update("""
-			INSERT INTO region_code (code, parent_code, display_name, level)
-			VALUES ('KR', NULL, 'Korea', 'COUNTRY')
-			ON CONFLICT (code, level) DO NOTHING
-			""");
+				INSERT INTO region_code (code, parent_code, display_name, level)
+				VALUES ('KR', NULL, 'Korea', 'COUNTRY')
+				ON CONFLICT (code, level) DO NOTHING
+				""");
 		jdbc.update("""
-			INSERT INTO region_code (code, parent_code, display_name, level)
-			VALUES (?, 'KR', 'GH179 Push Delivery', 'REGION')
-			""", REGION);
+				INSERT INTO region_code (code, parent_code, display_name, level)
+				VALUES (?, 'KR', 'GH179 Push Delivery', 'REGION')
+				""", REGION);
 	}
 
 	@AfterEach
@@ -125,19 +127,19 @@ class PushDeviceRegistrationIntegrationTest extends PostgisContainerIntegrationT
 	void registersOwnPushTokenWithoutLeakingPlaintext(CapturedOutput output) throws Exception {
 		long userId = account("gh179-register-own");
 		String body = """
-			{"platform":"ANDROID","token":"%s"}
-			""".formatted(TOKEN_SENTINEL);
+				{"platform":"ANDROID","token":"%s"}
+				""".formatted(TOKEN_SENTINEL);
 
 		mockMvc.perform(post("/api/v1/notifications/devices")
-				.with(jwt().jwt(token -> token.subject(String.valueOf(userId))))
+				.with(userJwt(userId))
 				.contentType(MediaType.APPLICATION_JSON)
 				.content(body))
-			.andExpect(status().isNoContent())
-			.andExpect(content().string(""));
+				.andExpect(status().isNoContent())
+				.andExpect(content().string(""));
 
 		assertThat(jdbc.queryForObject("""
-			SELECT count(*) FROM push_device WHERE user_id = ? AND device_status = 'ACTIVE'
-			""", Integer.class, userId)).isEqualTo(1);
+				SELECT count(*) FROM push_device WHERE user_id = ? AND device_status = 'ACTIVE'
+				""", Integer.class, userId)).isEqualTo(1);
 		assertThat(output.getOut()).doesNotContain(TOKEN_SENTINEL, OTHER_TOKEN_SENTINEL);
 		assertThat(output.getErr()).doesNotContain(TOKEN_SENTINEL, OTHER_TOKEN_SENTINEL);
 	}
@@ -148,42 +150,43 @@ class PushDeviceRegistrationIntegrationTest extends PostgisContainerIntegrationT
 		long userId = account("gh179-revoke-own");
 		ProtectedPushToken protectedToken = protectedToken(TOKEN_SENTINEL);
 		PushDevice device = notifications.saveDevice(new PushDevice(null, userId, PushPlatform.ANDROID,
-			protectedToken.envelope(), protectedToken.fingerprint(), PushDeviceStatus.ACTIVE, NOW, null));
+				protectedToken.envelope(), protectedToken.fingerprint(), PushDeviceStatus.ACTIVE, NOW, null));
 		long pendingNotificationId = notificationFor(userId);
 		long failedNotificationId = notificationFor(userId);
 		long sentNotificationId = notificationFor(userId);
 		notifications.saveDelivery(NotificationDelivery.pending(pendingNotificationId, device.id(), NOW));
-		notifications.saveDelivery(new NotificationDelivery(null, failedNotificationId, device.id(), DeliveryStatus.FAILED,
-			1, NOW, NOW, null, null));
+		notifications
+				.saveDelivery(new NotificationDelivery(null, failedNotificationId, device.id(), DeliveryStatus.FAILED,
+						1, NOW, NOW, null, null));
 		notifications.saveDelivery(new NotificationDelivery(null, sentNotificationId, device.id(), DeliveryStatus.SENT,
-			1, NOW, NOW, NOW, "provider-message"));
+				1, NOW, NOW, NOW, "provider-message"));
 
 		String body = """
-			{"platform":"ANDROID","token":"%s"}
-			""".formatted(TOKEN_SENTINEL);
+				{"platform":"ANDROID","token":"%s"}
+				""".formatted(TOKEN_SENTINEL);
 
 		mockMvc.perform(post("/api/v1/notifications/devices/revoke")
-				.with(jwt().jwt(token -> token.subject(String.valueOf(userId))))
+				.with(userJwt(userId))
 				.contentType(MediaType.APPLICATION_JSON)
 				.content(body))
-			.andExpect(status().isNoContent())
-			.andExpect(content().string(""));
+				.andExpect(status().isNoContent())
+				.andExpect(content().string(""));
 		mockMvc.perform(post("/api/v1/notifications/devices/revoke")
-				.with(jwt().jwt(token -> token.subject(String.valueOf(userId))))
+				.with(userJwt(userId))
 				.contentType(MediaType.APPLICATION_JSON)
 				.content(body))
-			.andExpect(status().isNoContent())
-			.andExpect(content().string(""));
+				.andExpect(status().isNoContent())
+				.andExpect(content().string(""));
 
 		assertThat(jdbc.queryForObject("""
-			SELECT device_status FROM push_device WHERE id = ?
-			""", String.class, device.id())).isEqualTo(PushDeviceStatus.REVOKED.name());
+				SELECT device_status FROM push_device WHERE id = ?
+				""", String.class, device.id())).isEqualTo(PushDeviceStatus.REVOKED.name());
 		assertThat(jdbc.queryForObject("""
-			SELECT count(*) FROM notification_delivery WHERE status = 'CANCELLED'
-			""", Integer.class)).isEqualTo(2);
+				SELECT count(*) FROM notification_delivery WHERE status = 'CANCELLED'
+				""", Integer.class)).isEqualTo(2);
 		assertThat(jdbc.queryForObject("""
-			SELECT count(*) FROM notification_delivery WHERE status = 'SENT'
-			""", Integer.class)).isEqualTo(1);
+				SELECT count(*) FROM notification_delivery WHERE status = 'SENT'
+				""", Integer.class)).isEqualTo(1);
 	}
 
 	@Test
@@ -193,34 +196,35 @@ class PushDeviceRegistrationIntegrationTest extends PostgisContainerIntegrationT
 		long otherUserId = account("gh179-other");
 		ProtectedPushToken protectedToken = protectedToken(OTHER_TOKEN_SENTINEL);
 		PushDevice device = notifications.saveDevice(new PushDevice(null, ownerId, PushPlatform.IOS,
-			protectedToken.envelope(), protectedToken.fingerprint(), PushDeviceStatus.ACTIVE, NOW, null));
+				protectedToken.envelope(), protectedToken.fingerprint(), PushDeviceStatus.ACTIVE, NOW, null));
 		long pendingNotificationId = notificationFor(ownerId);
 		long failedNotificationId = notificationFor(ownerId);
 		notifications.saveDelivery(NotificationDelivery.pending(pendingNotificationId, device.id(), NOW));
-		notifications.saveDelivery(new NotificationDelivery(null, failedNotificationId, device.id(), DeliveryStatus.FAILED,
-			1, NOW, NOW, null, null));
+		notifications
+				.saveDelivery(new NotificationDelivery(null, failedNotificationId, device.id(), DeliveryStatus.FAILED,
+						1, NOW, NOW, null, null));
 
 		mockMvc.perform(post("/api/v1/notifications/devices/revoke")
-				.with(jwt().jwt(token -> token.subject(String.valueOf(otherUserId))))
+				.with(userJwt(otherUserId))
 				.contentType(MediaType.APPLICATION_JSON)
 				.content("""
-					{"platform":"IOS","token":"%s"}
-					""".formatted(OTHER_TOKEN_SENTINEL)))
-			.andExpect(status().isNoContent())
-			.andExpect(content().string(""));
+						{"platform":"IOS","token":"%s"}
+						""".formatted(OTHER_TOKEN_SENTINEL)))
+				.andExpect(status().isNoContent())
+				.andExpect(content().string(""));
 
 		assertThat(jdbc.queryForObject("""
-			SELECT device_status FROM push_device WHERE id = ?
-			""", String.class, device.id())).isEqualTo(PushDeviceStatus.ACTIVE.name());
+				SELECT device_status FROM push_device WHERE id = ?
+				""", String.class, device.id())).isEqualTo(PushDeviceStatus.ACTIVE.name());
 		assertThat(jdbc.queryForObject("""
-			SELECT count(*) FROM notification_delivery WHERE status = 'CANCELLED'
-			""", Integer.class)).isZero();
+				SELECT count(*) FROM notification_delivery WHERE status = 'CANCELLED'
+				""", Integer.class)).isZero();
 		assertThat(jdbc.queryForObject("""
-			SELECT count(*) FROM notification_delivery WHERE status = 'PENDING'
-			""", Integer.class)).isEqualTo(1);
+				SELECT count(*) FROM notification_delivery WHERE status = 'PENDING'
+				""", Integer.class)).isEqualTo(1);
 		assertThat(jdbc.queryForObject("""
-			SELECT count(*) FROM notification_delivery WHERE status = 'FAILED'
-			""", Integer.class)).isEqualTo(1);
+				SELECT count(*) FROM notification_delivery WHERE status = 'FAILED'
+				""", Integer.class)).isEqualTo(1);
 	}
 
 	@Test
@@ -234,8 +238,8 @@ class PushDeviceRegistrationIntegrationTest extends PostgisContainerIntegrationT
 		ExecutorService executor = Executors.newFixedThreadPool(2);
 		try {
 			List<Callable<Object>> jobs = List.of(
-				() -> concurrentRegister(service, userId, command, ready, start),
-				() -> concurrentRegister(service, userId, command, ready, start));
+					() -> concurrentRegister(service, userId, command, ready, start),
+					() -> concurrentRegister(service, userId, command, ready, start));
 			List<Future<Object>> futures = new ArrayList<>();
 			for (Callable<Object> job : jobs) {
 				futures.add(executor.submit(job));
@@ -250,13 +254,13 @@ class PushDeviceRegistrationIntegrationTest extends PostgisContainerIntegrationT
 		}
 
 		assertThat(jdbc.queryForObject("""
-			SELECT count(*) FROM push_device
-			WHERE user_id = ? AND device_status = 'ACTIVE'
-			""", Integer.class, userId)).isEqualTo(1);
+				SELECT count(*) FROM push_device
+				WHERE user_id = ? AND device_status = 'ACTIVE'
+				""", Integer.class, userId)).isEqualTo(1);
 		assertThat(jdbc.queryForObject("""
-			SELECT token_ciphertext IS NOT NULL FROM push_device
-			WHERE user_id = ? AND device_status = 'ACTIVE'
-			""", Boolean.class, userId)).isTrue();
+				SELECT token_ciphertext IS NOT NULL FROM push_device
+				WHERE user_id = ? AND device_status = 'ACTIVE'
+				""", Boolean.class, userId)).isTrue();
 	}
 
 	@Test
@@ -265,31 +269,31 @@ class PushDeviceRegistrationIntegrationTest extends PostgisContainerIntegrationT
 		long userId = account("gh179-refresh-owner");
 		ProtectedPushToken previousToken = protectedToken(OTHER_TOKEN_SENTINEL);
 		PushDevice existing = notifications.saveDevice(new PushDevice(null, userId, PushPlatform.ANDROID,
-			previousToken.envelope(), previousToken.fingerprint(), PushDeviceStatus.ACTIVE, NOW, null));
+				previousToken.envelope(), previousToken.fingerprint(), PushDeviceStatus.ACTIVE, NOW, null));
 		long pendingNotificationId = notificationFor(userId);
 		long failedNotificationId = notificationFor(userId);
 		notifications.saveDelivery(NotificationDelivery.pending(pendingNotificationId, existing.id(), NOW));
 		notifications.saveDelivery(new NotificationDelivery(null, failedNotificationId, existing.id(),
-			DeliveryStatus.FAILED, 1, NOW, NOW, null, null));
+				DeliveryStatus.FAILED, 1, NOW, NOW, null, null));
 
 		PushDeviceService service = new PushDeviceService(notifications, protector(), Clock.fixed(NOW, ZoneOffset.UTC));
 		PushDevice refreshed = service.registerOrTransferDevice(userId,
-			new PushDeviceCommand(PushPlatform.ANDROID, PushToken.of(TOKEN_SENTINEL)));
+				new PushDeviceCommand(PushPlatform.ANDROID, PushToken.of(TOKEN_SENTINEL)));
 
 		assertThat(refreshed.id()).isEqualTo(existing.id());
 		assertThat(jdbc.queryForObject("""
-			SELECT count(*) FROM push_device
-			WHERE user_id = ? AND device_status = 'ACTIVE'
-			""", Integer.class, userId)).isEqualTo(1);
+				SELECT count(*) FROM push_device
+				WHERE user_id = ? AND device_status = 'ACTIVE'
+				""", Integer.class, userId)).isEqualTo(1);
 		assertThat(jdbc.queryForObject("""
-			SELECT count(*) FROM notification_delivery WHERE status = 'CANCELLED'
-			""", Integer.class)).isZero();
+				SELECT count(*) FROM notification_delivery WHERE status = 'CANCELLED'
+				""", Integer.class)).isZero();
 		assertThat(jdbc.queryForObject("""
-			SELECT count(*) FROM notification_delivery WHERE status = 'PENDING'
-			""", Integer.class)).isEqualTo(1);
+				SELECT count(*) FROM notification_delivery WHERE status = 'PENDING'
+				""", Integer.class)).isEqualTo(1);
 		assertThat(jdbc.queryForObject("""
-			SELECT count(*) FROM notification_delivery WHERE status = 'FAILED'
-			""", Integer.class)).isEqualTo(1);
+				SELECT count(*) FROM notification_delivery WHERE status = 'FAILED'
+				""", Integer.class)).isEqualTo(1);
 	}
 
 	@Test
@@ -299,13 +303,13 @@ class PushDeviceRegistrationIntegrationTest extends PostgisContainerIntegrationT
 		long otherId = account("gh179-transfer-other");
 		ProtectedPushToken initialToken = protectedToken(TOKEN_SENTINEL);
 		PushDevice ownerDevice = notifications.saveDevice(new PushDevice(null, ownerId, PushPlatform.ANDROID,
-			initialToken.envelope(), initialToken.fingerprint(), PushDeviceStatus.ACTIVE, NOW, null));
+				initialToken.envelope(), initialToken.fingerprint(), PushDeviceStatus.ACTIVE, NOW, null));
 		long pendingNotificationId = notificationFor(ownerId);
 		long failedNotificationId = notificationFor(ownerId);
 		NotificationDelivery pending = notifications.saveDelivery(NotificationDelivery.pending(pendingNotificationId,
-			ownerDevice.id(), NOW));
+				ownerDevice.id(), NOW));
 		notifications.saveDelivery(new NotificationDelivery(null, failedNotificationId, ownerDevice.id(),
-			DeliveryStatus.FAILED, 1, NOW, NOW, null, null));
+				DeliveryStatus.FAILED, 1, NOW, NOW, null, null));
 		Object service = newService();
 		Object ownerCommand = command(PushPlatform.ANDROID, TOKEN_SENTINEL);
 		Object otherCommand = command(PushPlatform.ANDROID, TOKEN_SENTINEL);
@@ -314,8 +318,8 @@ class PushDeviceRegistrationIntegrationTest extends PostgisContainerIntegrationT
 		ExecutorService executor = Executors.newFixedThreadPool(2);
 		try {
 			List<Future<Object>> futures = List.of(
-				executor.submit(() -> concurrentRegister(service, ownerId, ownerCommand, ready, start)),
-				executor.submit(() -> concurrentRegister(service, otherId, otherCommand, ready, start)));
+					executor.submit(() -> concurrentRegister(service, ownerId, ownerCommand, ready, start)),
+					executor.submit(() -> concurrentRegister(service, otherId, otherCommand, ready, start)));
 			assertThat(ready.await(10, TimeUnit.SECONDS)).isTrue();
 			start.countDown();
 			for (Future<Object> future : futures) {
@@ -326,75 +330,85 @@ class PushDeviceRegistrationIntegrationTest extends PostgisContainerIntegrationT
 		}
 
 		assertThat(jdbc.queryForObject("""
-			SELECT count(*) FROM push_device WHERE device_status = 'ACTIVE'
-			""", Integer.class)).isEqualTo(1);
+				SELECT count(*) FROM push_device WHERE device_status = 'ACTIVE'
+				""", Integer.class)).isEqualTo(1);
 		assertThat(jdbc.queryForObject("""
-			SELECT count(*) FROM notification_delivery WHERE status = 'CANCELLED'
-			""", Integer.class)).isEqualTo(2);
+				SELECT count(*) FROM notification_delivery WHERE status = 'CANCELLED'
+				""", Integer.class)).isEqualTo(2);
 		assertThat(jdbc.queryForObject("""
-			SELECT count(*) FROM notification_delivery WHERE status = 'PENDING'
-			""", Integer.class)).isZero();
+				SELECT count(*) FROM notification_delivery WHERE status = 'PENDING'
+				""", Integer.class)).isZero();
 		assertThat(pending.id()).isNotNull();
 	}
 
 	@Test
 	@DisplayName("INT-018: 인증·validation·204 계약은 register와 revoke 모두에서 토큰 원문을 노출하지 않아야 한다")
 	void validatesAuthenticationAndRedactsTokenAcrossBothEndpoints(CapturedOutput output) throws Exception {
-		String invalidBody = """
-			{"platform":"ANDROID","token":"%s"}
-			""".formatted(TOKEN_SENTINEL);
-		mockMvc.perform(post("/api/v1/notifications/devices")
-				.contentType(MediaType.APPLICATION_JSON)
-				.content(invalidBody))
-			.andExpect(status().isUnauthorized());
-		mockMvc.perform(post("/api/v1/notifications/devices/revoke")
-				.contentType(MediaType.APPLICATION_JSON)
-				.content(invalidBody))
-			.andExpect(status().isUnauthorized());
+		rejectsUnauthenticatedRegisterAndRevoke();
 
 		long userId = account("gh179-validation");
 		mockMvc.perform(post("/api/v1/notifications/devices")
-				.with(jwt().jwt(token -> token.subject(String.valueOf(userId))))
+				.with(userJwt(userId))
 				.contentType(MediaType.APPLICATION_JSON)
 				.content("{}"))
-			.andExpect(status().isBadRequest());
+				.andExpect(status().isBadRequest());
 		mockMvc.perform(post("/api/v1/notifications/devices")
-				.with(jwt().jwt(token -> token.subject(String.valueOf(userId))))
+				.with(userJwt(userId))
 				.contentType(MediaType.APPLICATION_JSON))
-			.andExpect(status().isBadRequest());
+				.andExpect(status().isBadRequest());
 		mockMvc.perform(post("/api/v1/notifications/devices")
-				.with(jwt().jwt(token -> token.subject(String.valueOf(userId))))
+				.with(userJwt(userId))
 				.contentType(MediaType.APPLICATION_JSON)
 				.content("""
-					{"platform":"INVALID","token":"%s"}
-					""".formatted(TOKEN_SENTINEL)))
-			.andExpect(status().isBadRequest());
+						{"platform":"INVALID","token":"%s"}
+						""".formatted(TOKEN_SENTINEL)))
+				.andExpect(status().isBadRequest());
 		mockMvc.perform(post("/api/v1/notifications/devices/revoke")
-				.with(jwt().jwt(token -> token.subject(String.valueOf(userId))))
+				.with(userJwt(userId))
 				.contentType(MediaType.APPLICATION_JSON)
 				.content("""
-					{"platform":"ANDROID","token":"%s"}
-					""".formatted(" ".repeat(2))))
-			.andExpect(status().isBadRequest());
+						{"platform":"ANDROID","token":"%s"}
+						""".formatted(" ".repeat(2))))
+				.andExpect(status().isBadRequest());
 		mockMvc.perform(post("/api/v1/notifications/devices/revoke")
-				.with(jwt().jwt(token -> token.subject(String.valueOf(userId))))
+				.with(userJwt(userId))
 				.contentType(MediaType.APPLICATION_JSON))
-			.andExpect(status().isBadRequest());
+				.andExpect(status().isBadRequest());
 
 		String oversizeToken = "x".repeat(4097);
 		mockMvc.perform(post("/api/v1/notifications/devices")
-				.with(jwt().jwt(token -> token.subject(String.valueOf(userId))))
+				.with(userJwt(userId))
 				.contentType(MediaType.APPLICATION_JSON)
 				.content("""
-					{"platform":"ANDROID","token":"%s"}
-					""".formatted(oversizeToken)))
-			.andExpect(status().isBadRequest());
+						{"platform":"ANDROID","token":"%s"}
+						""".formatted(oversizeToken)))
+				.andExpect(status().isBadRequest());
 		assertThat(jdbc.queryForObject("""
-			SELECT count(*) FROM push_device WHERE user_id = ?
-			""", Integer.class, userId)).isZero();
+				SELECT count(*) FROM push_device WHERE user_id = ?
+				""", Integer.class, userId)).isZero();
 
 		assertThat(output.getOut()).doesNotContain(TOKEN_SENTINEL, OTHER_TOKEN_SENTINEL);
 		assertThat(output.getErr()).doesNotContain(TOKEN_SENTINEL, OTHER_TOKEN_SENTINEL);
+	}
+
+	private void rejectsUnauthenticatedRegisterAndRevoke() throws Exception {
+		String invalidBody = """
+				{"platform":"ANDROID","token":"%s"}
+				""".formatted(TOKEN_SENTINEL);
+		mockMvc.perform(post("/api/v1/notifications/devices")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(invalidBody))
+				.andExpect(status().isUnauthorized());
+		mockMvc.perform(post("/api/v1/notifications/devices/revoke")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(invalidBody))
+				.andExpect(status().isUnauthorized());
+	}
+
+	// 앱 API 체인은 USER role을 요구한다(#349). jwt()는 디코더·role 변환기를 거치지 않으므로 권한을 직접 준다.
+	private static JwtRequestPostProcessor userJwt(long userId) {
+		return jwt().authorities(new SimpleGrantedAuthority("ROLE_USER"))
+				.jwt(token -> token.subject(String.valueOf(userId)));
 	}
 
 	private Object newService() {
@@ -406,7 +420,8 @@ class PushDeviceRegistrationIntegrationTest extends PostgisContainerIntegrationT
 					continue;
 				}
 				int repositoryIndex = indexOfAssignable(parameterTypes, NotificationRepository.class);
-				int protectorIndex = indexOfAssignable(parameterTypes, com.dnd.qello.notification.push.security.PushTokenProtector.class);
+				int protectorIndex = indexOfAssignable(parameterTypes,
+						com.dnd.qello.notification.push.security.PushTokenProtector.class);
 				int clockIndex = indexOfAssignable(parameterTypes, Clock.class);
 				if (repositoryIndex < 0 || protectorIndex < 0 || clockIndex < 0) {
 					continue;
@@ -426,19 +441,19 @@ class PushDeviceRegistrationIntegrationTest extends PostgisContainerIntegrationT
 
 	private void deleteRegionFixtures() {
 		jdbc.update("""
-			DELETE FROM notification_delivery
-			WHERE notification_id IN (
-				SELECT id FROM notification WHERE recipient_id IN (
-					SELECT id FROM user_account WHERE coarse_region_code = ?))
-			""", REGION);
+				DELETE FROM notification_delivery
+				WHERE notification_id IN (
+					SELECT id FROM notification WHERE recipient_id IN (
+						SELECT id FROM user_account WHERE coarse_region_code = ?))
+				""", REGION);
 		jdbc.update("""
-			DELETE FROM notification WHERE recipient_id IN (
-				SELECT id FROM user_account WHERE coarse_region_code = ?)
-			""", REGION);
+				DELETE FROM notification WHERE recipient_id IN (
+					SELECT id FROM user_account WHERE coarse_region_code = ?)
+				""", REGION);
 		jdbc.update("""
-			DELETE FROM push_device WHERE user_id IN (
-				SELECT id FROM user_account WHERE coarse_region_code = ?)
-			""", REGION);
+				DELETE FROM push_device WHERE user_id IN (
+					SELECT id FROM user_account WHERE coarse_region_code = ?)
+				""", REGION);
 		jdbc.update("DELETE FROM outbox_event WHERE dedup_key LIKE 'gh179-%'");
 	}
 
@@ -450,10 +465,12 @@ class PushDeviceRegistrationIntegrationTest extends PostgisContainerIntegrationT
 				if (parameterTypes.length != 2) {
 					continue;
 				}
-				Object first = convertParameter(parameterTypes[0], constructor.getParameters()[0].getName(), 0, platform,
-					tokenValue);
-				Object second = convertParameter(parameterTypes[1], constructor.getParameters()[1].getName(), 1, platform,
-					tokenValue);
+				Object first = convertParameter(parameterTypes[0], constructor.getParameters()[0].getName(), 0,
+						platform,
+						tokenValue);
+				Object second = convertParameter(parameterTypes[1], constructor.getParameters()[1].getName(), 1,
+						platform,
+						tokenValue);
 				if (first == UNMATCHED || second == UNMATCHED) {
 					continue;
 				}
@@ -466,8 +483,9 @@ class PushDeviceRegistrationIntegrationTest extends PostgisContainerIntegrationT
 		}
 	}
 
-	private Object concurrentRegister(Object service, long userId, Object command, CountDownLatch ready, CountDownLatch start)
-		throws Exception {
+	private Object concurrentRegister(Object service, long userId, Object command, CountDownLatch ready,
+			CountDownLatch start)
+			throws Exception {
 		ready.countDown();
 		assertThat(start.await(10, TimeUnit.SECONDS)).isTrue();
 		Method method = service.getClass().getMethod("registerOrTransferDevice", long.class, command.getClass());
@@ -485,7 +503,7 @@ class PushDeviceRegistrationIntegrationTest extends PostgisContainerIntegrationT
 	}
 
 	private Object convertParameter(Class<?> parameterType, String parameterName, int index, PushPlatform platform,
-		String tokenValue) {
+			String tokenValue) {
 		if (parameterType.isEnum() && parameterType.isAssignableFrom(platform.getDeclaringClass())) {
 			return platform;
 		}
@@ -510,32 +528,34 @@ class PushDeviceRegistrationIntegrationTest extends PostgisContainerIntegrationT
 
 	private ProtectedPushToken protectedToken(String tokenValue) {
 		AesGcmPushTokenProtector protector = new AesGcmPushTokenProtector(
-			new PushTokenKeyRing(CURRENT_KEY_ID, Map.of(CURRENT_KEY_ID, ENCRYPTION_KEY), FINGERPRINT_KEY));
+				new PushTokenKeyRing(CURRENT_KEY_ID, Map.of(CURRENT_KEY_ID, ENCRYPTION_KEY), FINGERPRINT_KEY));
 		return protector.protect(PushToken.of(tokenValue));
 	}
 
 	private com.dnd.qello.notification.push.security.PushTokenProtector protector() {
 		return new AesGcmPushTokenProtector(
-			new PushTokenKeyRing(CURRENT_KEY_ID, Map.of(CURRENT_KEY_ID, ENCRYPTION_KEY), FINGERPRINT_KEY));
+				new PushTokenKeyRing(CURRENT_KEY_ID, Map.of(CURRENT_KEY_ID, ENCRYPTION_KEY), FINGERPRINT_KEY));
 	}
 
 	private long account(String nickname) {
 		return jdbc.queryForObject("""
-			INSERT INTO user_account
-				(role, country_code, status, coarse_region_code, locale, timezone, nickname)
-			VALUES ('USER', 'KR', 'ACTIVE', ?, 'ko-KR', 'Asia/Seoul', ?)
-			RETURNING id
-			""", Long.class, REGION, nickname);
+				INSERT INTO user_account
+					(role, country_code, status, coarse_region_code, locale, timezone, nickname)
+				VALUES ('USER', 'KR', 'ACTIVE', ?, 'ko-KR', 'Asia/Seoul', ?)
+				RETURNING id
+				""", Long.class, REGION, nickname);
 	}
 
 	private long notificationFor(long recipientId) {
 		int sequence = NOTIFICATION_SEQUENCE.incrementAndGet();
 		OutboxEvent outboxEvent = outboxEvents.save(OutboxEvent.pending(OutboxAggregateType.POST_RECIPIENT, recipientId,
-			OutboxEventType.RECIPIENTS_CONFIRMED, "gh179-" + recipientId + "-" + sequence, "{\"source\":\"push-int\"}",
-			NOW));
+				OutboxEventType.RECIPIENTS_CONFIRMED, "gh179-" + recipientId + "-" + sequence,
+				"{\"source\":\"push-int\"}",
+				NOW));
 		Notification notification = notifications.save(new Notification(null, recipientId, outboxEvent.id(),
-			NotificationType.DIRECTION_POST_RECEIVED, "gh179-notification-" + recipientId + "-" + sequence, null, null,
-			null, NotificationStatus.UNREAD, NOW, null));
+				NotificationType.DIRECTION_POST_RECEIVED, "gh179-notification-" + recipientId + "-" + sequence, null,
+				null,
+				null, NotificationStatus.UNREAD, NOW, null));
 		return notification.id();
 	}
 
@@ -551,7 +571,7 @@ class PushDeviceRegistrationIntegrationTest extends PostgisContainerIntegrationT
 		@Bean
 		PushTokenProtector testPushTokenProtector() {
 			return new AesGcmPushTokenProtector(
-				new PushTokenKeyRing(CURRENT_KEY_ID, Map.of(CURRENT_KEY_ID, ENCRYPTION_KEY), FINGERPRINT_KEY));
+					new PushTokenKeyRing(CURRENT_KEY_ID, Map.of(CURRENT_KEY_ID, ENCRYPTION_KEY), FINGERPRINT_KEY));
 		}
 	}
 
