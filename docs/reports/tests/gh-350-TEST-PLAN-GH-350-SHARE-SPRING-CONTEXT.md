@@ -3,19 +3,19 @@
 > Created at: `2026-10-10T16:05:56+09:00`
 > GitHub Issue: `#350`
 > Branch: `test/gh-350-share-spring-context`
-> Commit: `68f530fa`(최종 로컬 실행은 커밋 전 작업 트리에서 했다)
+> Commit: `a27ffe2b`(측정한 커밋, main `c7906f20` 위로 rebase 후)
 
 ## 1. Executive summary
 
-- Result: `PARTIAL`. 로컬 시나리오 INT-001~005는 통과했다. CI Benchmark(INT-006)는 아직 실행하지 않았다.
+- Result: `PASS`. 로컬 시나리오 INT-001~005와 CI Benchmark(INT-006)가 통과했다.
 - Tested scope:
   - `@DirtiesContext`를 모두 빼서 설정이 같은 클래스끼리 Spring 컨텍스트를 공유하게 했다.
   - 클래스 시작 전마다 DB를 Flyway를 막 적용한 상태로 되돌리는 초기화를 넣었다.
   - 통합 테스트 전체를 기본 순서와 무작위 클래스 순서(seed 2개)로 실행했고, `performanceTest`도 1회 실행했다.
-- Unverified scope:
-  - CI Benchmark 측정.
-  - 캐시 크기를 32보다 줄였을 때의 효과(D3 조건에 해당하지 않아 바꾸지 않았다).
-- Release recommendation: CI Benchmark에서 두 설정의 테스트 목록이 같고 실패가 0이면 병합 가능.
+- Unverified scope: 캐시 크기를 32보다 줄였을 때의 효과(D3 조건에 해당하지 않아 바꾸지 않았다).
+- Release recommendation: 병합 가능.
+  - CI Benchmark(run 38040191351)에서 `integrationTest` 중앙값이 277.1초에서 182.2초로 줄었다(단측 p=0.0001).
+  - 두 설정의 테스트 수·목록이 같고 실패 0이다.
 
 ## 2. Environment
 
@@ -41,6 +41,14 @@
 | Integration, 최종 무작위 순서 seed 350 | PASS | 852건, 실패 0 | 190초 | 로컬 결과 XML |
 | Integration, 최종 무작위 순서 seed 20261010 | PASS | 852건, 실패 0 | 166초 | 로컬 결과 XML |
 | `performanceTest`, 최종 | PASS | 17건, 실패 0 | 212초 | 로컬 결과 XML |
+| Integration, main `c7906f20`(#351 병합 후 기준, `--rerun`) | PASS | 856건, 실패 0 | 455초 | 로컬 결과 XML |
+| Integration, rebase 후 기본 순서·seed 350·seed 20261010 | PASS | 856건, 실패 0 | 236·228·167초 | 로컬 결과 XML |
+| 목록 검사 임시 마이그레이션(목록 밖 테이블에 행) | 기대한 FAIL | 첫 클래스 실패 | - | 5.4절 |
+| 목록 검사 임시 마이그레이션(목록 테이블 비움) | 기대한 FAIL | 첫 클래스 실패 | - | 5.4절 |
+| Integration, 목록 검사 추가 후 기본 순서·seed 350·seed 20261010 | PASS | 856건, 실패 0 | 167·149·204초 | 로컬 결과 XML |
+| `performanceTest`, 목록 검사 추가 후 | PASS | 17건, 실패 0 | 256초 | 로컬 결과 XML |
+| CI Benchmark run 38035622011(목록 검사 전 커밋) | PASS | 단위 1,399건·통합 856건, 두 설정 같음, 실패 0 | 4.1절 | 비교 스크립트 출력 |
+| CI Benchmark run 38040191351(측정 커밋 `a27ffe2b`) | PASS | 단위 1,399건·통합 856건, 두 설정 같음, 실패 0 | 4.1절 | 비교 스크립트 출력 |
 
 - 시간은 Gradle 명령의 벽시계 시간이고 같은 Mac에서 1회씩 쟀다.
 - main 기준 실행 때 Mac의 load average가 10~15로 높았다. #347 때 같은 코드의 로컬 시간은 241~288초였다. 그래서 로컬 시간은 비교
@@ -55,9 +63,12 @@
 | TEST-PLAN-GH-350-SHARE-SPRING-CONTEXT-INT-003 | PASS | 무작위 클래스 순서 seed 350, 20261010 | 첫 클래스가 각각 `InboxDetailScope`(A 그룹), `OperatorLogin`(C 그룹)이다. C 그룹 컨텍스트가 먼저 떠도 Flyway 적용과 스냅샷이 맞았다. missCount는 44·45(LRU 축출 후 재생성 1번) |
 | TEST-PLAN-GH-350-SHARE-SPRING-CONTEXT-INT-004 | PASS | GC 로그, 결과 XML | OOM·연결 오류 없음. GC 멈춤 합계는 main 13.8초 → 4.3초. 다만 Full GC 직후 남은 heap이 크게 늘었다(6절) |
 | TEST-PLAN-GH-350-SHARE-SPRING-CONTEXT-INT-005 | PASS | `performanceTest` 5개 클래스 | 첫 실행에서 1건 실패, 초기화 보완 후 통과(5.2절) |
-| TEST-PLAN-GH-350-SHARE-SPRING-CONTEXT-INT-006 | 미실행 | CI Benchmark | push와 측정 전 사용자 승인 필요 |
+| TEST-PLAN-GH-350-SHARE-SPRING-CONTEXT-INT-006 | PASS | CI Benchmark run 38040191351 | 4.1절 |
 
-INT-001 내부 지표(최종 기본 순서, 결과 XML과 GC 로그에서 추출):
+작업 중 main에 #351이 병합돼 rebase했다. 통합 테스트가 852건에서 856건이 됐다. rebase 뒤 비교 기준은 main `c7906f20`의
+로컬 결과다. rebase 뒤 결과와 목록 검사 추가 뒤 결과도 기본 순서·무작위 순서 모두 목록이 같고 실패 0이다(3절).
+
+INT-001 내부 지표(rebase 전 최종 기본 순서, 결과 XML과 GC 로그에서 추출):
 
 | 지표 | main | 이 브랜치 |
 | --- | --- | --- |
@@ -79,6 +90,39 @@ INT-001 내부 지표(최종 기본 순서, 결과 XML과 GC 로그에서 추출
 | 기준 데이터 복원 | FlywayMigration(OCTANT 1행·segment 8행), CountrySeedMigration(COUNTRY 249행, non-COUNTRY 0행, KR '대한민국') |
 | 별도 스키마 삭제 | FlywayMigration의 `pg_indexes` 조회, ProfileImage·AppealCase·OperatorActionAudit의 카탈로그 개수 |
 | identity 초기화 | DeviceRegistrationTransaction |
+
+### 4.1 CI Benchmark (INT-006)
+
+측정 커밋: run 38040191351.
+- base = main `c7906f20`, head = `a27ffe2b`, task `check`, 설정당 10회, job 21개 모두 성공(약 8분 반).
+
+```text
+:integrationTest: same {'errors': 0, 'failures': 0, 'skipped': 0, 'tests': 856} failures+errors=0
+:test: same {'errors': 0, 'failures': 0, 'skipped': 0, 'tests': 1399} failures+errors=0
+
+task | base median [min-max] | head median [min-max] | shift head-base [95% interval] | one-sided p
+:integrationTest | 277.1 [216.7-339.4] n=10 | 182.2 [149.5-237.7] n=10 | -96.7 [-144.7, -58.2] | 0.0001
+:test | 62.6 [49.0-79.2] n=10 | 63.0 [54.5-78.5] n=10 | +1.0 [-11.9, +12.4] | 0.6303
+total | 393.5 [312.0-485.1] n=10 | 296.9 [254.6-379.4] n=10 | -99.5 [-168.9, -36.3] | 0.0014
+
+base: contexts loaded 110.0 (median), peak heap 512 MB of 512 MB, gc pauses 6.7 s (medians)
+head: contexts loaded 44.0 (median), peak heap 511 MB of 512 MB, gc pauses 4.0 s (medians)
+```
+
+| 내부 지표(설정당 10개 job) | base | head |
+| --- | --- | --- |
+| 컨텍스트 캐시 missCount | 110 | 44 |
+| Flyway `Successfully applied` 횟수 / 시간 합계 중앙값 | 123번 / 55.0초 | 14번 / 4.0초 |
+| PostGIS·LocalStack 기동 | 1번·1번 | 1번·1번 |
+| heap 최고(상한 512MB) | 511~512MB | 511~512MB |
+| Full GC 직후 heap | 70~103MB | 257~394MB |
+| GC 멈춤 합계 | 5.8~8.1초 | 3.7~5.1초 |
+
+목록 검사를 넣기 전 커밋(`7e7d59e7`)으로 먼저 잰 run 38035622011도 있다. base는 같은 main이다.
+- `integrationTest`: 328.2초 → 206.9초, -122.4초 [-146.1, -113.6], p<0.0001
+- missCount 110 → 44, Flyway 123번 → 14번
+- 두 run의 차이 크기가 다른 것은 base 쪽 중앙값이 328.2초와 277.1초로 달랐기 때문이다. 같은 커밋인데 러너 편차가 컸다.
+- 목록 검사는 첫 클래스에서 한 번 도는 조회라 측정 차이의 원인으로 보지 않는다.
 
 ## 5. Failures and diagnostics
 
@@ -136,6 +180,25 @@ INT-001 내부 지표(최종 기본 순서, 결과 XML과 GC 로그에서 추출
    - 열 통계 삭제(5.2)
    - 스냅샷에 없는 스키마 `DROP SCHEMA ... CASCADE`(`pg_` 계열 제외)
    - 기준 데이터를 원래 id로 다시 넣고 identity 시퀀스를 최대 id 뒤로 옮긴다
+
+### 5.4 기준 데이터 목록 검사(측정 전 추가)
+
+- 이유:
+  - 초기화는 두 번째 클래스부터 public 테이블을 모두 비우고 `REFERENCE_TABLES` 세 개만 복원한다.
+  - 나중에 마이그레이션이 다른 테이블에 기준 데이터를 넣으면, 그 테이블은 첫 클래스에서만 차 있고 이후 내내 빈다.
+  - 그 테이블을 쓰는 테스트는 전체 실행에서만 틀어진다. 혼자 돌리면 첫 클래스라 통과한다.
+- 변경:
+  - 첫 클래스에서 Flyway 직후(컨텍스트 기동 뒤), 유지하는 두 테이블을 뺀 public 테이블마다 `SELECT exists(...)`로 행이 있는
+    테이블을 구한다.
+  - 그 집합이 `REFERENCE_TABLES`와 다르면 `IllegalStateException`으로 실패한다. 메시지에는 목록 밖에 행이 있는 테이블, 목록에
+    있는데 빈 테이블, 시퀀스 확인 안내를 넣었다.
+  - 기동 코드가 넣는 행도 같은 시점에 걸린다. 정상 실행에서 통과하므로 지금은 그런 코드가 없다.
+  - identity 시퀀스 대상도 고정 목록을 없앴다. `REFERENCE_TABLES`의 열 중 `pg_get_serial_sequence`가 있는 열을 찾는다.
+- 확인(커밋하지 않는 임시 마이그레이션 V34를 통합 테스트 리소스에 넣고 클래스 하나를 돌린 뒤 지움):
+  - 첫 시도에서 비교값 버그를 찾았다. `boolean::text`는 `'true'`인데 `'t'`와 비교해, 항상 "목록에 있는데 비어 있음: 세 테이블
+    모두"로 실패했다. 고친 뒤 확인했다.
+  - `CREATE TABLE tmp_seed_probe` + `INSERT`: "목록에 없는데 행이 있음: [tmp_seed_probe], 목록에 있는데 비어 있음: []"로 실패
+  - `DELETE FROM direction_segment`: "목록에 없는데 행이 있음: [], 목록에 있는데 비어 있음: [direction_segment]"로 실패
 
 ## 6. Potential issues
 
@@ -196,13 +259,13 @@ INT-001 내부 지표(최종 기본 순서, 결과 XML과 GC 로그에서 추출
 ## 8. Artifacts
 
 - Test plan: `docs/test-plans/gh-350-TEST-PLAN-GH-350-SHARE-SPRING-CONTEXT.md`
-- CI run: 미실행(INT-006)
+- CI run: 38040191351(측정 커밋), 38035622011(목록 검사 전 커밋)
 - Related ADR: 없음
 - PR: 미생성
 
 ## 9. Reviewer checklist
 
 - [x] 보고서에 `.env` 값이나 비밀정보가 없음
-- [x] 미실행 테스트가 명시됨(INT-006)
+- [x] 미실행 테스트가 명시됨(없음)
 - [ ] 잠재 문제에 후속 GitHub Issue가 연결됨(heap 여유는 측정 후 판단)
 - [ ] 실행 결과와 PR 설명이 일치함
