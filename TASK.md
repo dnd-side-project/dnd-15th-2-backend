@@ -21,12 +21,9 @@ JVM당 한 번만 띄워 공유하고, 줄어든 시간을 같은 방식으로 �
 ## Scope
 
 - `PostgisContainerIntegrationTestSupport`: `@Testcontainers`·`@Container`를 빼고 static 블록에서 컨테이너를 한 번만
-  start한다. 테스트 클래스마다 `template_postgis`에서 새 데이터베이스를 만들고(직전 클래스의 DB는 지운다),
-  `@ServiceConnection` 대신 `@DynamicPropertySource`로 그 DB 접속 정보를 넘긴다. `@DirtiesContext(AFTER_CLASS)`는
-  그대로 둔다.
+  start한다. 테스트 클래스가 시작될 때마다 같은 이름의 DB(`qello_test`)를 `DROP DATABASE ... WITH (FORCE)`로 지우고
+  `template_postgis`로 다시 만든다. `@ServiceConnection`과 `@DirtiesContext(AFTER_CLASS)`는 그대로 둔다.
 - `LocalStackContainerIntegrationTestSupport`: LocalStack도 static 블록에서 한 번만 띄운다.
-- 별도 스키마에 Flyway를 실행하는 마이그레이션 테스트 5개: 접속 URL을 클래스 DB로 바꾼다.
-- `QelloLocalProfileIntegrationTest`: 연결된 DB 이름 기대값을 `qello_test`에서 클래스 DB 이름으로 바꾼다.
 - 한 DB를 공유한 첫 시도의 실패(51개 클래스)는 트러블슈팅으로 기록한다. 테스트를 지우거나 건너뛰게 하지 않는다.
 - CI Benchmark(base=main, head=이 브랜치, task=check, 10회씩)로 잰다. 실행 전 사용자 승인을 받는다.
 - 위 변경의 테스트 계획은 `/harness-test-plan`으로 먼저 승인받는다.
@@ -76,3 +73,7 @@ git diff --check
 - 2026-10-10 사용자 결정: 한 DB를 공유한 첫 시도에서 51개 클래스(438건)가 실패했다. 깨진 클래스마다 정리를 고치는 안(D1),
   base에서 클래스 시작 전 TRUNCATE하는 안 대신, 컨테이너 하나 안에서 클래스마다 새 DB를 만드는 안을 택했다. D1·D2는
   이 결정으로 대체한다. 실패 내용, 대안별 트레이드오프, 변경 범위와 전후 코드, 선택 이유를 기록한다.
+- 2026-10-10 구현 변경(위 결정 범위 안): 처음에는 번호 붙은 DB(`qello_test_class_<n>`)를 만들고 `@DynamicPropertySource`로
+  접속 정보를 넘겼다. 이 방식은 마이그레이션 테스트 5개와 `QelloLocalProfileIntegrationTest`도 고쳐야 했고, 고친
+  `SchemaRevisionMigrationIntegrationTest`의 기존 긴 메서드 4개가 pre-commit의 staged checkstyle(QELLO-JAVA-SIZE-001)에
+  걸렸다. 같은 이름의 DB를 다시 만들면 접속 정보가 그대로라 base 클래스 2개만 바꾸면 된다.

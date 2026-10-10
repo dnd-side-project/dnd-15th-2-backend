@@ -16,14 +16,10 @@
 ### Included
 
 - `PostgisContainerIntegrationTestSupport`: `@Testcontainers`·`@Container`를 빼고 static 블록에서 한 번만 start한다.
-  JUnit `BeforeAllCallback`으로 클래스마다 `template_postgis`에서 새 DB를 만들고 직전 클래스의 DB를 지운다.
-  `@ServiceConnection` 대신 `@DynamicPropertySource`로 그 DB의 접속 정보를 넘긴다. `@DirtiesContext(AFTER_CLASS)`와
-  `pg_stat_statements` 옵션 분기는 그대로 둔다.
+  JUnit `BeforeAllCallback`으로 클래스가 시작될 때마다 같은 이름의 DB(`qello_test`)를 지우고 `template_postgis`로 다시
+  만든다. `@ServiceConnection`, `@DirtiesContext(AFTER_CLASS)`, `pg_stat_statements` 옵션 분기는 그대로 둔다.
 - `LocalStackContainerIntegrationTestSupport`: LocalStack도 static 블록에서 한 번만 띄운다. `@DynamicPropertySource`와
   `@BeforeAll` 버킷 생성은 그대로 둔다.
-- 별도 스키마에 Flyway를 실행하는 마이그레이션 테스트 5개: Flyway 접속 URL을 클래스 DB로 바꾼다.
-- `QelloLocalProfileIntegrationTest`: 연결된 DB 이름 기대값을 컨테이너 기본 DB `qello_test`에서 클래스 DB 이름으로 바꾼다.
-  local 프로필 설정 대신 테스트 컨테이너에 연결되는지 보는 의도는 그대로다.
 - 한 DB를 공유한 첫 시도의 실패 기록(클래스, 증상, 원인)과 방식 변경 기록(12절).
 - 클래스 실행 순서를 무작위로 바꾼 로컬 실행.
 - CI Benchmark 측정과 내부 지표 추출.
@@ -72,8 +68,8 @@
 | Risk | Impact | Likelihood | Priority | Evidence needed |
 | --- | --- | --- | --- | --- |
 | 앞 클래스가 남긴 자식 테이블 행 때문에 뒤 클래스의 `DELETE FROM 부모`가 FK 위반 | 그 클래스 전체 실패 | 높음(첫 시도에서 발생) | P0 | 클래스마다 새 DB에서 전체 실행 실패 0 |
-| 클래스 DB가 Spring 컨텍스트나 각 클래스의 `@BeforeAll`보다 늦게 만들어짐 | 컨텍스트가 직전 클래스 DB나 없는 DB에 연결, 마이그레이션 테스트의 `@BeforeAll` Flyway 실패 | 낮음 | P0 | 마이그레이션 테스트 5개와 전체 실행 통과 |
-| 직전 클래스 DB를 지울 때 남은 연결 | `DROP DATABASE` 실패로 다음 클래스 시작 불가 | 낮음(`WITH (FORCE)`) | P1 | 전체 실행 실패 0 |
+| 클래스 DB가 Spring 컨텍스트나 각 클래스의 `@BeforeAll`보다 늦게 만들어짐 | 컨텍스트가 직전 클래스가 쓰던 DB에 연결, 마이그레이션 테스트의 `@BeforeAll` Flyway가 지워질 DB에 실행 | 낮음 | P0 | 마이그레이션 테스트 5개와 전체 실행 통과 |
+| DB를 지울 때 직전 클래스의 연결이 남음 | `DROP DATABASE` 실패로 다음 클래스 시작 불가 | 낮음(`WITH (FORCE)`) | P1 | 전체 실행 실패 0 |
 | `template_postgis`가 기본 DB와 다른 확장 구성 | PostGIS 함수·Flyway V1 결과가 달라짐 | 낮음(이미지 초기화 스크립트가 두 DB에 같은 확장 설치) | P1 | `FlywayMigrationIntegrationTest` catalog 단언 통과 |
 | `CREATE DATABASE` 비용 | 줄어든 시간 일부 상쇄 | 확실(크기 미측정) | P2 | 로컬 전후 시간, CI Benchmark |
 | 테이블 전체를 세는 `count(*)`·전체 목록 단언이 남은 행을 셈 | 단언 실패 | 중간 | P0 | 전체 실행 실패 0 |
@@ -153,7 +149,7 @@ Full GC 직후 값, 멈춤 합계.
 | --- | --- | --- | --- | --- |
 | 1 | 실행 에이전트(이 세션) | 로컬 main 기준 결과(커밋하지 않음) | INT-003 기준 | main에서 `./gradlew integrationTest` |
 | 2 | 실행 에이전트 | `PostgisContainerIntegrationTestSupport.java`, `LocalStackContainerIntegrationTestSupport.java` | INT-001, INT-002 | `./gradlew integrationTest` |
-| 3 | 실행 에이전트 | `PostgisContainerIntegrationTestSupport.java`, 마이그레이션 테스트 5개(`CountrySeed`, `SchemaRevision`, `NotificationPreference`, `QuestionProposalDeleteMute`, `FlywayMigration`), `QelloLocalProfileIntegrationTest.java` | INT-001, INT-005 | 클래스마다 새 DB로 바꾼 뒤 전체 재실행 |
+| 3 | 실행 에이전트 | `PostgisContainerIntegrationTestSupport.java` | INT-001, INT-005 | 클래스마다 DB를 다시 만들도록 바꾼 뒤 전체 재실행 |
 | 4 | 실행 에이전트 | 저장소 밖 init script | INT-004 | seed 2개 전체 실행, 실패 시 3으로 돌아감 |
 | 5 | 실행 에이전트 | `docs/reports/tests/` 보고서 | INT-003 | `./harness check`, `./harness pr-ready --project-tests`, `git diff --check` |
 | 6 | 실행 에이전트(사용자 승인 후) | 없음 | INT-006 | push, CI Benchmark dispatch, 비교 스크립트, artifact 지표 추출 |
@@ -194,6 +190,16 @@ Full GC 직후 값, 멈춤 합계.
 
 | 방안 | 장점 | 단점 |
 | --- | --- | --- |
-| 클래스마다 새 DB(선택) | 클래스마다 빈 DB에서 Flyway가 도는 지금 격리를 그대로 유지한다. 테스트 정리 코드를 바꾸지 않는다. 줄어드는 몫이 컨테이너 기동뿐이라 다음 단계(컨텍스트·Flyway)와 측정이 섞이지 않는다 | base 클래스에 JUnit 확장과 접속 정보 등록이 늘고 `@ServiceConnection`을 쓰지 않는다. 클래스마다 `CREATE DATABASE` 비용 |
+| 클래스마다 새 DB(선택) | 클래스마다 빈 DB에서 Flyway가 도는 지금 격리를 그대로 유지한다. 테스트 정리 코드를 바꾸지 않는다. 줄어드는 몫이 컨테이너 기동뿐이라 다음 단계(컨텍스트·Flyway)와 측정이 섞이지 않는다 | base 클래스에 JUnit 확장이 는다. 클래스마다 `DROP DATABASE`·`CREATE DATABASE` 비용 |
 | 깨진 클래스마다 정리 보강(D1) | base 클래스는 단순하다 | 약 50개 파일 수정. 각 클래스가 자기 밖 자식 테이블까지 FK 순서로 알아야 하고, 테이블이 늘 때마다 여러 클래스가 다시 깨진다. 정리 방식이 다음 단계 결정과 겹친다 |
 | base에서 클래스 시작 전 TRUNCATE | 수정 파일이 적다. Flyway가 한 번만 돈다 | 다음 단계에서 정하기로 한 정리 시점을 지금 정한다. 기준 데이터 테이블(`region_code` 등)을 테스트가 바꾼 경우와 마이그레이션 테스트가 남긴 스키마를 따로 처리해야 한다. 측정에 Flyway 몫이 섞인다 |
+
+### 12.1 구현 변경(같은 결정 안)
+
+처음에는 클래스마다 번호 붙은 DB(`qello_test_class_<n>`)를 만들고 `@ServiceConnection` 대신 `@DynamicPropertySource`로
+접속 정보를 넘겼다. 이 구현으로 전체 실행이 통과했지만 마이그레이션 테스트 5개(Flyway 접속 URL)와
+`QelloLocalProfileIntegrationTest`(DB 이름 `qello_test` 단언)도 고쳐야 했다. 고친 `SchemaRevisionMigrationIntegrationTest`는
+기존 메서드 4개가 50줄을 넘어 pre-commit의 staged checkstyle(QELLO-JAVA-SIZE-001)에 걸렸다.
+
+같은 이름의 DB를 관리용 `postgres` DB에서 지우고 다시 만들면 접속 정보가 바뀌지 않는다. `@ServiceConnection`을 그대로 쓰고
+base 클래스 2개만 바꾼다. 클래스마다 빈 DB에서 시작한다는 결정 내용은 같다.
