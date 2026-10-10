@@ -4,6 +4,7 @@
  * Source scenario: TEST-PLAN-GH-122-DIRECTION-PREVIEW-SUBMISSION-API-INT-014
  * Source scenario: TEST-PLAN-GH-137-DIRECTION-POST-MODERATION (release fixture and DIRECTION_POST outbox filter, added 2026-10-07T22:14:59+09:00)
  * Source scenario: TEST-PLAN-GH-337-ACCOUNT-WITHDRAWAL-INT-006 (added 2026-10-09T18:47:28+09:00)
+ * Source scenario: TEST-PLAN-GH-350-SHARE-SPRING-CONTEXT-INT-001 (base와 중복된 컨텍스트 폐기 선언 제거, added 2026-10-10T15:19:46+09:00)
  */
 package com.dnd.qello;
 
@@ -22,7 +23,6 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
 
 import com.dnd.qello.direction.domain.ActiveUserPresence;
@@ -43,7 +43,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 @SpringBootTest
 @ActiveProfiles("test")
-@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 class DirectionMatchingWorkerIntegrationTest extends PostgisContainerIntegrationTestSupport {
 
 	private static final String REGION = "TEST-DIRECTION-MATCHING-WORKER";
