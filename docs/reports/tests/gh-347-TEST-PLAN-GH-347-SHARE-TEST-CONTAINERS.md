@@ -7,11 +7,12 @@
 
 ## 1. Executive summary
 
-- Result: `PARTIAL`. 로컬 시나리오 INT-001~005는 통과했다. CI Benchmark(INT-006)는 push와 사용자 승인 뒤에 실행한다.
+- Result: `PASS`. 로컬 시나리오 INT-001~005와 CI Benchmark(INT-006)가 통과했다.
 - Tested scope: PostGIS·LocalStack 컨테이너를 JVM에서 한 번만 띄우고, 테스트 클래스가 시작될 때마다 같은 이름의 DB를
   `template_postgis`로 다시 만드는 변경. 통합 테스트 전체를 기본 순서와 무작위 클래스 순서(seed 2개)로 실행했다.
-- Unverified scope: CI(Linux runner)에서의 실행과 시간 비교, CI artifact의 내부 지표.
-- Release recommendation: CI Benchmark에서 두 설정의 테스트 목록이 같고 실패 0이면 병합 가능하다.
+- Unverified scope: 클래스마다 DB를 다시 만드는 시간(로그에 남지 않아 따로 재지 않았다).
+- Release recommendation: 병합 가능. CI Benchmark(run 38023671076)에서 `integrationTest` 중앙값이 706.5초에서 315.5초로
+  줄었고(단측 p<0.0001), 두 설정의 테스트 수·목록이 같고 실패 0이다.
 
 ## 2. Environment
 
@@ -37,6 +38,8 @@
 | Integration, 최종 무작위 순서 seed 1 | PASS | 852건, 실패 0 | 288초 | 로컬 결과 XML |
 | Integration, 최종 무작위 순서 seed 2 | PASS | 852건, 실패 0 | 275초 | 로컬 결과 XML |
 
+| CI Benchmark run 38023671076(`check`, 설정당 10회) | PASS | 단위 1,381건·통합 852건, 두 설정 같음, 실패 0 | 4.1절 | 비교 스크립트 출력 |
+
 시간은 Gradle 명령의 벽시계 시간이고 같은 Mac에서 1회씩 쟀다. 최종 구현이 번호 붙은 DB 구현보다 40~60초 느렸다. 두 구현은
 클래스마다 같은 DB 작업(삭제 1번, 생성 1번)을 한다. 그래서 실행 시점의 Mac 부하 차이로 보지만 확인하지 않았다. 판정은
 CI Benchmark로 한다.
@@ -50,7 +53,34 @@ CI Benchmark로 한다.
 | TEST-PLAN-GH-347-SHARE-TEST-CONTAINERS-INT-003 | PASS | main 결과와 비교 | `classname#name` 목록 852개 동일, 건너뜀 0 동일. Flyway 적용 로그 123번 동일 |
 | TEST-PLAN-GH-347-SHARE-TEST-CONTAINERS-INT-004 | PASS | 무작위 클래스 순서 seed 1, 2 | 두 순서는 서로 다르고 알파벳순과도 다르다. 두 구현 모두 실패 0 |
 | TEST-PLAN-GH-347-SHARE-TEST-CONTAINERS-INT-005 | 기록 완료 | DB 공유 첫 시도 | 51개 클래스 실패. 방식을 바꿨다(5절, 테스트 계획 12절) |
-| TEST-PLAN-GH-347-SHARE-TEST-CONTAINERS-INT-006 | 미실행 | CI Benchmark | push와 사용자 승인 뒤 실행 |
+| TEST-PLAN-GH-347-SHARE-TEST-CONTAINERS-INT-006 | PASS | CI Benchmark run 38023671076 | 4.1절 |
+
+### 4.1 CI Benchmark (INT-006)
+
+base = main `994bc0a1`, head = `60c5e6a4`, task `check`, 설정당 10회, job 20개 모두 성공. 비교 스크립트
+(`scripts/experiments/ci-benchmark-compare.py`) 출력:
+
+| task | base 중앙값 [최소~최대] | head 중앙값 [최소~최대] | 차이 head-base [95% 구간] | 단측 p |
+| --- | --- | --- | --- | --- |
+| `:integrationTest` | 706.5초 [586.4~739.4] | 315.5초 [230.8~343.8] | -380.3초 [-421.6, -337.3] | 0.0000 |
+| `:test` | 75.9초 [55.3~80.2] | 75.6초 [53.9~80.4] | -0.4초 [-13.0, +4.0] | 0.4343 |
+| 전체 | 879.2초 [720.6~930.9] | 498.4초 [370.4~532.1] | -378.0초 [-434.8, -316.3] | 0.0000 |
+
+- 테스트 일관성: `:integrationTest` 852건, `:test` 1,381건이 두 설정 모든 job에서 같고 실패·오류·건너뜀 0이다.
+- artifact 내부 지표(설정당 10개 job):
+
+| 지표 | base | head |
+| --- | --- | --- |
+| PostGIS 기동 횟수 / `started in` 합계 중앙값 | 110번 / 366.3초 | 1번 / 3.2초 |
+| LocalStack 기동 횟수 | 4번 | 1번 |
+| Flyway `Successfully applied` 횟수 / 시간 합계 중앙값 | 123번 / 66.4초 | 123번 / 63.1초 |
+| 컨텍스트 캐시 `missCount` | 110 | 110 |
+| heap 최고(상한 512MB) | 489~512MB | 511~512MB |
+| Full GC 직후 heap | 74~96MB | 73~88MB |
+| GC 멈춤 합계(비교 스크립트 중앙값) | 6.2초 | 6.9초 |
+
+줄어든 시간(-380초)은 PostGIS 기동 합계(366초)에 컨테이너 정지 시간이 더해진 정도다. Flyway 적용 횟수와 `missCount`가
+그대로라서 컨텍스트·Flyway 몫은 다음 단계에 남아 있다.
 
 ## 5. Failures and diagnostics
 
@@ -164,17 +194,18 @@ abstract class PostgisContainerIntegrationTestSupport {
 
 ## 7. Regression and residual risk
 
-- CI에서는 아직 실행하지 않았다. 로컬과 CI 모두 클래스를 알파벳순으로 실행했고(CI 기준 측정 결과 파일 2개로 확인), 무작위
-  순서 2회도 통과해 순서 의존 위험은 낮다고 본다.
-- 로컬에서 줄어든 시간(약 500초)이 PostGIS 기동 합계(414초)보다 크다. 컨테이너 정지·삭제 시간이 기동 로그에 안 잡히는
-  것으로 추정하며 확인하지 않았다.
+- 로컬과 CI 모두 클래스를 알파벳순으로 실행했고(CI 기준 측정 결과 파일 2개로 확인), 무작위 순서 2회도 통과해 순서 의존
+  위험은 낮다고 본다.
+- 줄어든 시간이 PostGIS 기동 합계보다 크다(로컬 약 450~500초 대 414초, CI 380초 대 366초). 컨테이너 정지·삭제 시간이 기동
+  로그에 안 잡히는 것으로 추정하며 확인하지 않았다.
+- heap은 두 설정 모두 상한 512MB에 닿는다. 이번 변경으로 달라지지 않았다.
 - 다음 단계에서 `@DirtiesContext`를 없애 컨텍스트를 공유하면 DB도 클래스 사이에 공유된다. 그때는 5.1의 문제를 다시 다뤄야
   한다.
 
 ## 8. Artifacts
 
 - Test plan: `docs/test-plans/gh-347-TEST-PLAN-GH-347-SHARE-TEST-CONTAINERS.md`
-- CI run: 미실행(CI Benchmark 예정)
+- CI run: CI Benchmark run 38023671076
 - Related ADR: 없음
 - PR: 미생성
 
