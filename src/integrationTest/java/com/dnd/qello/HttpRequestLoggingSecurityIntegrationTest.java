@@ -20,6 +20,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
@@ -131,7 +132,7 @@ class HttpRequestLoggingSecurityIntegrationTest extends PostgisContainerIntegrat
 	@DisplayName("도메인 오류와 완료 로그는 같은 request ID로 연결하고 기존 응답 계약을 유지한다")
 	void linksGlobalErrorAndCompletionWithoutChangingTheResponseContract() throws Exception {
 		mockMvc.perform(get("/api/v1/request-logging-probe/domain")
-				.with(jwt())
+				.with(jwt().authorities(new SimpleGrantedAuthority("ROLE_USER")))
 				.header(REQUEST_ID_HEADER, "domain-error-int003"))
 				.andExpect(status().isBadRequest())
 				.andExpect(header().string(REQUEST_ID_HEADER, "domain-error-int003"))

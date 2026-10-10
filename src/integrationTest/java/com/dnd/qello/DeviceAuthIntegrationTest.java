@@ -2,9 +2,14 @@
  * Created at: 2026-08-07T20:52:09+09:00
  * Source scenario: TEST-PLAN-GH-73-DEVICE-AUTH-INT-001 through INT-009,
  * TEST-PLAN-GH-88-COUNTRY-ONBOARDING-INT-001 through INT-002,
- * TEST-PLAN-GH-312-COUNTRY-ONLY-REGISTRATION-INT-001 through INT-003
+ * TEST-PLAN-GH-312-COUNTRY-ONLY-REGISTRATION-INT-001 through INT-003,
+ * TEST-PLAN-GH-349-HARDEN-JWT-VALIDATION-INT-001 through INT-005 (updated at 2026-10-10T15:00:12+09:00)
  */
 package com.dnd.qello;
+
+import java.time.Instant;
+import java.util.List;
+import java.util.function.Consumer;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -15,11 +20,17 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
+import org.springframework.security.oauth2.jwt.JwsHeader;
+import org.springframework.security.oauth2.jwt.JwtClaimsSet;
+import org.springframework.security.oauth2.jwt.JwtEncoder;
+import org.springframework.security.oauth2.jwt.JwtEncoderParameters;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 
+import com.dnd.qello.auth.token.AccessTokenProperties;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -36,6 +47,8 @@ class DeviceAuthIntegrationTest extends PostgisContainerIntegrationTestSupport {
 
 	private static final String COUNTRY_CODE = "KR";
 	private static final String INSTALLATION_ID = "installation-a";
+	// 매핑된 핸들러가 없는 인증 필요 경로. 보안 필터를 통과하면 404, 막히면 401·403이다.
+	private static final String PROTECTED_PATH = "/api/v1/anything";
 
 	@Autowired
 	private MockMvc mockMvc;
@@ -45,6 +58,12 @@ class DeviceAuthIntegrationTest extends PostgisContainerIntegrationTestSupport {
 
 	@Autowired
 	private ObjectMapper objectMapper;
+
+	@Autowired
+	private JwtEncoder jwtEncoder;
+
+	@Autowired
+	private AccessTokenProperties accessTokenProperties;
 
 	@BeforeEach
 	void setUp() {
@@ -137,7 +156,7 @@ class DeviceAuthIntegrationTest extends PostgisContainerIntegrationTestSupport {
 	}
 
 	@Test
-	@DisplayName("발급받은 액세스 토큰으로 보호된 /api/** 경로에 인증된 상태로 접근한다")
+	@DisplayName("GH-349 INT-005: 발급받은 USER 토큰은 보호된 /api/** 경로에서 401·403 없이 보안 필터를 통과한다")
 	void issuedAccessTokenAuthenticatesProtectedApiPath() throws Exception {
 		MvcResult registered = mockMvc.perform(register(INSTALLATION_ID))
 				.andExpect(status().isCreated())
@@ -145,15 +164,51 @@ class DeviceAuthIntegrationTest extends PostgisContainerIntegrationTestSupport {
 		String issuedToken = dataNode(registered).get("accessToken").asText();
 
 		// 매핑된 핸들러가 없어 404가 나더라도, Security 필터를 통과했다는 사실이 중요하다.
-		// 토큰 없이 호출하면(다른 테스트) 필터에서 401로 막힌다.
-		mockMvc.perform(get("/api/v1/anything").header(HttpHeaders.AUTHORIZATION, "Bearer " + issuedToken))
-				.andExpect(result -> assertThat(result.getResponse().getStatus()).isNotEqualTo(401));
+		// 토큰 없이 호출하면(다른 테스트) 필터에서 401로 막히고, role이 USER가 아니면 403이다.
+		mockMvc.perform(get(PROTECTED_PATH).header(HttpHeaders.AUTHORIZATION, "Bearer " + issuedToken))
+				.andExpect(result -> assertThat(result.getResponse().getStatus()).isNotIn(401, 403));
+	}
+
+	@Test
+	@DisplayName("GH-349 INT-001: 같은 키로 서명했어도 role이 OPERATOR인 토큰은 보호된 /api/** 경로에서 403을 받는다")
+	void rejectsOperatorRoleTokenOnAppApi() throws Exception {
+		String token = signedToken(claims -> claims.claim("role", "OPERATOR"));
+
+		mockMvc.perform(get(PROTECTED_PATH).header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+				.andExpect(status().isForbidden());
+	}
+
+	@Test
+	@DisplayName("GH-349 INT-002: role 클레임이 없는 토큰은 보호된 /api/** 경로에서 403을 받는다")
+	void rejectsTokenWithoutRoleOnAppApi() throws Exception {
+		String token = signedToken(claims -> claims.claims(values -> values.remove("role")));
+
+		mockMvc.perform(get(PROTECTED_PATH).header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+				.andExpect(status().isForbidden());
+	}
+
+	@Test
+	@DisplayName("GH-349 INT-003: iss가 다른 USER 토큰은 보호된 /api/** 경로에서 401을 받는다")
+	void rejectsTokenWithDifferentIssuerOnAppApi() throws Exception {
+		String token = signedToken(claims -> claims.issuer("another-service"));
+
+		mockMvc.perform(get(PROTECTED_PATH).header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+				.andExpect(status().isUnauthorized());
+	}
+
+	@Test
+	@DisplayName("GH-349 INT-004: aud가 다른 USER 토큰은 보호된 /api/** 경로에서 401을 받는다")
+	void rejectsTokenWithDifferentAudienceOnAppApi() throws Exception {
+		String token = signedToken(claims -> claims.audience(List.of("another-app")));
+
+		mockMvc.perform(get(PROTECTED_PATH).header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
+				.andExpect(status().isUnauthorized());
 	}
 
 	@Test
 	@DisplayName("유효하지 않은 토큰으로 보호된 /api/** 경로에 접근하면 401을 받는다")
 	void rejectsProtectedApiPathWithoutValidToken() throws Exception {
-		mockMvc.perform(get("/api/v1/anything")
+		mockMvc.perform(get(PROTECTED_PATH)
 				.header(HttpHeaders.AUTHORIZATION, "Bearer not-a-real-token"))
 				.andExpect(status().isUnauthorized());
 	}
@@ -250,6 +305,21 @@ class DeviceAuthIntegrationTest extends PostgisContainerIntegrationTestSupport {
 				.content("""
 						{"installationId": "%s", "deviceSecret": "%s"}
 						""".formatted(installationId, deviceSecret));
+	}
+
+	// 발급 코드(AccessTokenIssuer)는 USER·설정값만 만들므로, 클레임을 바꾼 토큰은 같은 서명 키의 인코더로 직접 만든다.
+	private String signedToken(Consumer<JwtClaimsSet.Builder> customizer) {
+		Instant issuedAt = Instant.now();
+		JwtClaimsSet.Builder claims = JwtClaimsSet.builder()
+				.issuer(accessTokenProperties.issuer())
+				.subject("1024")
+				.audience(List.of(accessTokenProperties.audience()))
+				.issuedAt(issuedAt)
+				.expiresAt(issuedAt.plusSeconds(accessTokenProperties.ttlSeconds()))
+				.claim("role", "USER");
+		customizer.accept(claims);
+		JwsHeader header = JwsHeader.with(MacAlgorithm.HS256).build();
+		return jwtEncoder.encode(JwtEncoderParameters.from(header, claims.build())).getTokenValue();
 	}
 
 	private JsonNode dataNode(MvcResult result) throws Exception {

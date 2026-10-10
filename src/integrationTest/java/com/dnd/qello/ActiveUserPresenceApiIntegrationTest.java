@@ -4,12 +4,6 @@
  */
 package com.dnd.qello;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
-
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -25,10 +19,17 @@ import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
 import com.dnd.qello.direction.config.DirectionPresenceProperties;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -54,13 +55,13 @@ class ActiveUserPresenceApiIntegrationTest extends PostgisContainerIntegrationTe
 		jdbc.update("DELETE FROM user_account WHERE coarse_region_code IN (?, ?)", REGION_A, REGION_B);
 		jdbc.update("DELETE FROM region_code WHERE code IN (?, ?)", REGION_A, REGION_B);
 		jdbc.update("""
-			INSERT INTO region_code (code, parent_code, display_name, level)
-			VALUES ('KR', NULL, 'Korea', 'COUNTRY') ON CONFLICT (code, level) DO NOTHING
-			""");
+				INSERT INTO region_code (code, parent_code, display_name, level)
+				VALUES ('KR', NULL, 'Korea', 'COUNTRY') ON CONFLICT (code, level) DO NOTHING
+				""");
 		jdbc.update("""
-			INSERT INTO region_code (code, parent_code, display_name, level)
-			VALUES (?, 'KR', 'Presence A', 'REGION'), (?, 'KR', 'Presence B', 'REGION')
-			""", REGION_A, REGION_B);
+				INSERT INTO region_code (code, parent_code, display_name, level)
+				VALUES (?, 'KR', 'Presence A', 'REGION'), (?, 'KR', 'Presence B', 'REGION')
+				""", REGION_A, REGION_B);
 	}
 
 	@Test
@@ -73,22 +74,23 @@ class ActiveUserPresenceApiIntegrationTest extends PostgisContainerIntegrationTe
 		String sentinelLongitude = "127.098765";
 
 		String response = mockMvc.perform(put("/api/v1/direction/presence")
-				.with(jwt().jwt(token -> token.subject(String.valueOf(userA))))
+				.with(jwt().authorities(new SimpleGrantedAuthority("ROLE_USER"))
+						.jwt(token -> token.subject(String.valueOf(userA))))
 				.contentType(MediaType.APPLICATION_JSON)
 				.content(request(sentinelLatitude, sentinelLongitude, "100", true, observedAt)
-					.replace("}", ",\"userId\":" + userB + ",\"coarseRegionCode\":\"" + REGION_B + "\"}")))
-			.andExpect(status().isOk())
-			.andExpect(jsonPath("$.data.applied").value(true))
-			.andReturn().getResponse().getContentAsString();
+						.replace("}", ",\"userId\":" + userB + ",\"coarseRegionCode\":\"" + REGION_B + "\"}")))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.data.applied").value(true))
+				.andReturn().getResponse().getContentAsString();
 
 		assertThat(response).doesNotContain(sentinelLatitude, sentinelLongitude, REGION_A, REGION_B,
-			"\"userId\"", "\"coarseRegionCode\"", "\"latitude\"", "\"longitude\"");
+				"\"userId\"", "\"coarseRegionCode\"", "\"latitude\"", "\"longitude\"");
 		assertThat(jdbc.queryForObject("SELECT coarse_region_code FROM active_user_presence WHERE user_id = ?",
-			String.class, userA)).isEqualTo(REGION_A);
+				String.class, userA)).isEqualTo(REGION_A);
 		assertThat(jdbc.queryForObject("SELECT count(*) FROM active_user_presence WHERE user_id = ?",
-			Integer.class, userB)).isZero();
+				Integer.class, userB)).isZero();
 		assertThat(jdbc.queryForObject("SELECT expires_at FROM active_user_presence WHERE user_id = ?",
-			Timestamp.class, userA).toInstant()).isEqualTo(observedAt.plus(presenceProperties.ttl()));
+				Timestamp.class, userA).toInstant()).isEqualTo(observedAt.plus(presenceProperties.ttl()));
 	}
 
 	@Test
@@ -98,14 +100,14 @@ class ActiveUserPresenceApiIntegrationTest extends PostgisContainerIntegrationTe
 		Instant observedAt = Instant.now().truncatedTo(ChronoUnit.SECONDS);
 
 		mockMvc.perform(update(userId, request("37.5000", "127.0000", "10", true, observedAt)))
-			.andExpect(status().isOk()).andExpect(jsonPath("$.data.applied").value(true));
+				.andExpect(status().isOk()).andExpect(jsonPath("$.data.applied").value(true));
 		mockMvc.perform(update(userId, request("37.6000", "127.1000", "10", false, observedAt)))
-			.andExpect(status().isOk()).andExpect(jsonPath("$.data.applied").value(false));
+				.andExpect(status().isOk()).andExpect(jsonPath("$.data.applied").value(false));
 
 		assertThat(jdbc.queryForObject("SELECT ST_Y(position::geometry) FROM active_user_presence WHERE user_id = ?",
-			Double.class, userId)).isEqualTo(37.5);
+				Double.class, userId)).isEqualTo(37.5);
 		assertThat(jdbc.queryForObject("SELECT receive_allowed FROM active_user_presence WHERE user_id = ?",
-			Boolean.class, userId)).isTrue();
+				Boolean.class, userId)).isTrue();
 	}
 
 	@Test
@@ -114,7 +116,7 @@ class ActiveUserPresenceApiIntegrationTest extends PostgisContainerIntegrationTe
 		mockMvc.perform(put("/api/v1/direction/presence")
 				.contentType(MediaType.APPLICATION_JSON)
 				.content(request("37.5", "127", "1", true, Instant.now())))
-			.andExpect(status().isUnauthorized());
+				.andExpect(status().isUnauthorized());
 
 		assertThat(jdbc.queryForObject("SELECT count(*) FROM active_user_presence", Integer.class)).isZero();
 	}
@@ -123,12 +125,13 @@ class ActiveUserPresenceApiIntegrationTest extends PostgisContainerIntegrationTe
 	@DisplayName("양수가 아닌 숫자·비숫자·빈 JWT subject는 401이고 service를 호출하지 않는다")
 	void rejectsInvalidJwtSubject() throws Exception {
 		String body = request("37.5", "127", "1", true, Instant.now());
-		for (String subject : new String[] {"0", "-1", "not-a-number", ""}) {
+		for (String subject : new String[]{"0", "-1", "not-a-number", ""}) {
 			mockMvc.perform(put("/api/v1/direction/presence")
-					.with(jwt().jwt(token -> token.subject(subject)))
+					.with(jwt().authorities(new SimpleGrantedAuthority("ROLE_USER"))
+							.jwt(token -> token.subject(subject)))
 					.contentType(MediaType.APPLICATION_JSON)
 					.content(body))
-				.andExpect(status().isUnauthorized());
+					.andExpect(status().isUnauthorized());
 		}
 		assertThat(jdbc.queryForObject("SELECT count(*) FROM active_user_presence", Integer.class)).isZero();
 	}
@@ -141,16 +144,16 @@ class ActiveUserPresenceApiIntegrationTest extends PostgisContainerIntegrationTe
 		String sentinelLatitude = "91.123456";
 
 		mockMvc.perform(update(userId, "{\"latitude\":37.5,\"longitude\":127,\"accuracyMeters\":1,\"observedAt\":\""
-			+ observedAt + "\"}"))
-			.andExpect(status().isBadRequest());
+				+ observedAt + "\"}"))
+				.andExpect(status().isBadRequest());
 		mockMvc.perform(update(userId, request("37.5", "127", "100.01", true, observedAt)))
-			.andExpect(status().isBadRequest())
-			.andExpect(jsonPath("$.errorDetail.code").value("DIR-VAL-008"));
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.errorDetail.code").value("DIR-VAL-008"));
 		String errorResponse = mockMvc.perform(update(userId,
 				request(sentinelLatitude, "127.098765", "1", true, observedAt)))
-			.andExpect(status().isBadRequest())
-			.andExpect(jsonPath("$.errorDetail.code").value("CMN-VAL-001"))
-			.andReturn().getResponse().getContentAsString();
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.errorDetail.code").value("CMN-VAL-001"))
+				.andReturn().getResponse().getContentAsString();
 
 		assertThat(jdbc.queryForObject("SELECT count(*) FROM active_user_presence", Integer.class)).isZero();
 		assertThat(errorResponse).doesNotContain(sentinelLatitude, "127.098765");
@@ -174,26 +177,28 @@ class ActiveUserPresenceApiIntegrationTest extends PostgisContainerIntegrationTe
 		assertThat(jdbc.queryForObject("SELECT count(*) FROM active_user_presence", Integer.class)).isZero();
 	}
 
-	private org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder update(long userId, String body) {
+	private org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder update(long userId,
+			String body) {
 		return put("/api/v1/direction/presence")
-			.with(jwt().jwt(token -> token.subject(String.valueOf(userId))))
-			.contentType(MediaType.APPLICATION_JSON)
-			.content(body);
+				.with(jwt().authorities(new SimpleGrantedAuthority("ROLE_USER"))
+						.jwt(token -> token.subject(String.valueOf(userId))))
+				.contentType(MediaType.APPLICATION_JSON)
+				.content(body);
 	}
 
 	private String request(String latitude, String longitude, String accuracy, boolean allowed, Instant observedAt) {
 		return """
-			{"latitude":%s,"longitude":%s,"accuracyMeters":%s,"receiveAllowed":%s,"observedAt":"%s"}
-			""".formatted(latitude, longitude, accuracy, allowed, observedAt);
+				{"latitude":%s,"longitude":%s,"accuracyMeters":%s,"receiveAllowed":%s,"observedAt":"%s"}
+				""".formatted(latitude, longitude, accuracy, allowed, observedAt);
 	}
 
 	private long createUser(String region, String nickname, String status, String role) {
 		return jdbc.queryForObject("""
-			INSERT INTO user_account
-				(role, country_code, status, coarse_region_code, locale, timezone, nickname, deleted_at)
-			VALUES (?, CASE WHEN ? = 'USER' THEN 'KR' ELSE NULL END, ?, ?, 'ko-KR', 'Asia/Seoul', ?,
-				CASE WHEN ? = 'DELETED' THEN clock_timestamp() ELSE NULL END)
-			RETURNING id
-			""", Long.class, role, role, status, region, nickname, status);
+				INSERT INTO user_account
+					(role, country_code, status, coarse_region_code, locale, timezone, nickname, deleted_at)
+				VALUES (?, CASE WHEN ? = 'USER' THEN 'KR' ELSE NULL END, ?, ?, 'ko-KR', 'Asia/Seoul', ?,
+					CASE WHEN ? = 'DELETED' THEN clock_timestamp() ELSE NULL END)
+				RETURNING id
+				""", Long.class, role, role, status, region, nickname, status);
 	}
 }

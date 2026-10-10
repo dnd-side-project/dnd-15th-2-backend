@@ -23,6 +23,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
@@ -275,7 +276,9 @@ class FeedMediaViewUrlIntegrationTest extends LocalStackContainerIntegrationTest
 	}
 
 	private JsonNode data(MockHttpServletRequestBuilder request, long userId) throws Exception {
-		String response = mockMvc.perform(request.with(jwt().jwt(token -> token.subject(String.valueOf(userId)))))
+		String response = mockMvc
+				.perform(request.with(jwt().authorities(new SimpleGrantedAuthority("ROLE_USER"))
+						.jwt(token -> token.subject(String.valueOf(userId)))))
 				.andExpect(status().isOk())
 				.andReturn().getResponse().getContentAsString();
 		return objectMapper.readTree(response).path("data");
