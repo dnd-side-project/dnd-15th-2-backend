@@ -1,11 +1,11 @@
 package com.dnd.qello;
 
 import org.junit.jupiter.api.BeforeAll;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.localstack.LocalStackContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.utility.DockerImageName;
-import org.springframework.test.context.DynamicPropertyRegistry;
-import org.springframework.test.context.DynamicPropertySource;
 
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
@@ -13,7 +13,7 @@ import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.CreateBucketRequest;
 
-/**
+/*
  * Created at: 2026-08-07T03:20:00+09:00
  * Source scenario: TEST-PLAN-GH-70-MEDIA-ASSET-SERVICE (LocalStack 지원 클래스)
  */
@@ -23,8 +23,8 @@ abstract class LocalStackContainerIntegrationTestSupport extends PostgisContaine
 
 	@Container
 	static final LocalStackContainer localstack = new LocalStackContainer(
-		DockerImageName.parse("localstack/localstack:3.8"))
-		.withServices(LocalStackContainer.Service.S3);
+			DockerImageName.parse("localstack/localstack:3.8"))
+			.withServices(LocalStackContainer.Service.S3);
 
 	@DynamicPropertySource
 	static void registerMediaProperties(DynamicPropertyRegistry registry) {
@@ -39,7 +39,7 @@ abstract class LocalStackContainerIntegrationTestSupport extends PostgisContaine
 	static void createTestBucket() {
 		try (S3Client client = testS3Client()) {
 			boolean exists = client.listBuckets().buckets().stream()
-				.anyMatch(bucket -> bucket.name().equals(TEST_BUCKET));
+					.anyMatch(bucket -> bucket.name().equals(TEST_BUCKET));
 			if (!exists) {
 				client.createBucket(CreateBucketRequest.builder().bucket(TEST_BUCKET).build());
 			}
@@ -48,11 +48,11 @@ abstract class LocalStackContainerIntegrationTestSupport extends PostgisContaine
 
 	static S3Client testS3Client() {
 		return S3Client.builder()
-			.endpointOverride(localstack.getEndpoint())
-			.region(Region.of(localstack.getRegion()))
-			.credentialsProvider(StaticCredentialsProvider.create(
-				AwsBasicCredentials.create(localstack.getAccessKey(), localstack.getSecretKey())))
-			.forcePathStyle(true)
-			.build();
+				.endpointOverride(localstack.getEndpoint())
+				.region(Region.of(localstack.getRegion()))
+				.credentialsProvider(StaticCredentialsProvider.create(
+						AwsBasicCredentials.create(localstack.getAccessKey(), localstack.getSecretKey())))
+				.forcePathStyle(true)
+				.build();
 	}
 }
