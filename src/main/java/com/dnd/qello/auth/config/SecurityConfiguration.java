@@ -14,6 +14,7 @@ import org.springframework.http.HttpMethod;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.context.SecurityContextHolderFilter;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
@@ -178,7 +179,9 @@ public class SecurityConfiguration {
 
 	@Bean
 	@Order(3)
-	SecurityFilterChain appApiSecurityFilterChain(HttpSecurity http) throws Exception {
+	SecurityFilterChain appApiSecurityFilterChain(
+			HttpSecurity http,
+			JwtAuthenticationConverter accessTokenAuthenticationConverter) throws Exception {
 		return http
 				.securityMatcher(API_PATH)
 				.sessionManagement(session -> session
@@ -193,12 +196,14 @@ public class SecurityConfiguration {
 						// 막히면 실제 요청 자체가 나가지 못하므로 OPTIONS는 전부 연다.
 						.requestMatchers(HttpMethod.OPTIONS, API_PATH).permitAll()
 						// 등록과 재발급은 액세스 토큰을 아직 갖지 못한 상태에서 호출해야 하므로
-						// 인증 없이 연다. 나머지 /api/**는 유효한 액세스 토큰이 있어야 한다.
+						// 인증 없이 연다. 나머지 /api/**는 USER role의 유효한 액세스 토큰이 있어야 한다.
+						// 서명·iss·aud가 맞아도 role이 USER가 아니면 403이다(#349).
 						.requestMatchers(HttpMethod.POST, DEVICE_REGISTRATION_PATH, DEVICE_TOKEN_PATH).permitAll()
-						.anyRequest().authenticated())
-				// NimbusJwtDecoder(HS256)로 액세스 토큰을 검증한다. role 클레임 기반 인가는
-				// 다음 앱 API 이슈에서 다룬다.
-				.oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults()))
+						.anyRequest().hasRole("USER"))
+				// NimbusJwtDecoder(HS256)가 서명·만료·iss·aud를 검증하고(AccessTokenConfiguration),
+				// role 클레임을 권한으로 바꾼다.
+				.oauth2ResourceServer(oauth2 -> oauth2.jwt(jwt -> jwt
+						.jwtAuthenticationConverter(accessTokenAuthenticationConverter)))
 				.exceptionHandling(handling -> handling
 						.authenticationEntryPoint(authEntryPoints.unauthorized())
 						.accessDeniedHandler(authEntryPoints.forbidden()))
