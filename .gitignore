@@ -52,6 +52,15 @@ agents/model-profiles.local.yml
 .harness-local/
 docs/reports/**/*.local.md
 
+### Harness Delta local artifacts ###
+# 측정용 로컬 산출물이다. 위 !/.agents/skills/** 예외보다 뒤에 있어야 한다.
+.harness-delta/
+.harness-delta-managed/
+/harness-config/
+/.agents/skills/harness-connect/
+/.claude/skills/harness-connect/
+/docs/harness/harness-delta/
+
 ### Terraform ###
 # State와 plan은 민감정보로 취급한다(AGENTS.md 4.6, 4.7). .terraform.lock.hcl은
 # 예외로 커밋한다.
