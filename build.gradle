@@ -10,6 +10,19 @@ group = 'com.dnd'
 version = '0.0.1-SNAPSHOT'
 description = 'Qello backend'
 
+// CVE-2026-68497·91776·89425·89407 외 보안 패치 고정.
+// Spring Boot BOM이 2.21.7 이상을 관리하면 삭제한다(#360).
+ext['jackson-bom.version'] = '2.21.7'
+// CVE-2026-54291 보안 패치 고정.
+// Spring Boot BOM이 42.7.12 이상을 관리하면 삭제한다(#360).
+ext['postgresql.version'] = '42.7.12'
+// CVE-2026-68525·65905·65182 보안 패치 고정.
+// Spring Boot BOM이 10.1.61 이상을 관리하면 삭제한다(#360).
+ext['tomcat.version'] = '10.1.61'
+// CVE-2026-75595·55831·59901 외 보안 패치 고정.
+// Spring Boot BOM이 4.1.137.Final 이상을 관리하면 삭제한다(#360).
+ext['netty.version'] = '4.1.137.Final'
+
 java {
 	toolchain {
 		languageVersion = JavaLanguageVersion.of(21)
