@@ -17,6 +17,13 @@ RUN ./gradlew clean bootJar --no-daemon
 
 FROM eclipse-temurin:21-jre-alpine AS runtime
 
+# CVE-2026-91403: 유출된 eMudhra CA를 신뢰하지 않도록 emSign 루트 4개를 제거한다.
+# Temurin 21.0.13 이상에서 blocked.certs에 eMudhra 차단이 반영되면 삭제한다(#359).
+RUN keytool -delete -cacerts -storepass changeit -alias "cn_emsign_root_ca__g1,o_emudhra_technologies_limited,ou_emsign_pki,c_in [jdk]" \
+    && keytool -delete -cacerts -storepass changeit -alias "cn_emsign_root_ca__c1,o_emudhra_inc,ou_emsign_pki,c_us [jdk]" \
+    && keytool -delete -cacerts -storepass changeit -alias "cn_emsign_ecc_root_ca__g3,o_emudhra_technologies_limited,ou_emsign_pki,c_in [jdk]" \
+    && keytool -delete -cacerts -storepass changeit -alias "cn_emsign_ecc_root_ca__c3,o_emudhra_inc,ou_emsign_pki,c_us [jdk]"
+
 RUN addgroup -S spring && adduser -S spring -G spring
 
 WORKDIR /app
