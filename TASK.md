@@ -1,32 +1,32 @@
-# GitHub Issue #359 Task Contract
+# GitHub Issue #360 Task Contract
 
-> Generated at: `2026-10-25T23:39:23+09:00`
+> Generated at: `2026-10-26T00:08:17+09:00`
 >
 > 이 파일은 현재 작업 브랜치의 계약이다. 저장소 전역 정책은 `AGENTS.md`를
 > 따른다.
 
 ## Work gate
 
-- Title: `2026-10 Java CPU·CVE-2026-91403 런타임 JDK 대응`
-- GitHub Issue: `#359`
-- Branch: `fix/gh-359-runtime-jdk-cpu-oct2026`
+- Title: `Tomcat·Jackson·pgjdbc·Netty 보안 패치 버전 고정`
+- GitHub Issue: `#360`
+- Branch: `fix/gh-360-dependency-cve-oct2026`
 - Base branch: `main`
 
 ## Objective
 
-- 운영 런타임 이미지(Temurin 21.0.12.1)가 2026-10 Oracle Java CPU 영향 버전이고 CVE-2026-91403의 유출된 eMudhra 중간 CA를 신뢰하는 상태를 해소한다.
+- Spring Boot 3.5.16 BOM이 관리하는 Tomcat·Jackson·PostgreSQL JDBC·Netty 버전에 남은 2026-10 Oracle CPU 관련 CVE를 BOM 버전 속성 고정으로 해소한다.
 
 ## Scope
 
-- 1단계: `Dockerfile` runtime 단계에서 `keytool -delete`로 emSign 루트 4개(`emsign_root_ca__g1`, `emsign_root_ca__c1`, `emsign_ecc_root_ca__g3`, `emsign_ecc_root_ca__c3`)를 cacerts에서 제거하고 CVE 번호와 제거 조건을 주석으로 남긴다.
-- 2단계(Temurin 21.0.13 이미지 출시 후): `Dockerfile` build/runtime base 이미지를 21.0.13 이상 버전 태그로 고정하고 `.github/workflows/*.yml`의 `setup-java`가 21.0.13 이상을 받는지 확인한다.
-- 3단계: 제거 단계 없이 빌드한 이미지의 `blocked.certs`에 eMudhra가 반영돼 있으면 1단계 제거 단계를 삭제하고, 없으면 유지한다.
+- `build.gradle`에 `jackson-bom.version`=2.21.7, `postgresql.version`=42.7.12, `tomcat.version`=10.1.61, `netty.version`=4.1.137.Final 속성을 지정한다.
+- 각 속성 위에 CVE 번호와 제거 조건(Spring Boot BOM이 같은 버전 이상을 관리하면 삭제)을 주석으로 남긴다.
+- 변경 후 런타임 classpath를 OSV로 다시 조회한다.
 
 ## Explicit exclusions
 
-- 라이브러리 의존성 취약점(Tomcat, Jackson, pgjdbc, Netty)은 #360에서 다룬다.
-- 로컬 개발 JDK 갱신, base 이미지 다이제스트 고정과 자동 갱신 도구 도입.
-- `infra/**` Terraform 변경.
+- httpcore5·httpclient5(AWS SDK 전이 의존성), log4j-api, commons-lang3 갱신.
+- spring-webmvc CVE-2026-47884, CVE-2026-47890(6.2.x 수정 버전 없음).
+- Spring Boot 메이저·마이너 버전 변경, JDK 런타임 변경(#359, #362).
 - 인프라 apply, 배포, 프로덕션 변경은 별도 승인 없이는 실행하지 않는다.
 - Secret, 계정 식별자, 토큰, `.env` 값은 기록하지 않는다.
 
@@ -34,12 +34,12 @@
 
 | Area | Owner | Required review |
 | --- | --- | --- |
-| `Dockerfile` 런타임 이미지 | 실행 에이전트 | 사용자 PR 리뷰 |
-| `.github/workflows/*.yml` `setup-java` 버전 확인(2단계, 변경 시) | 실행 에이전트 | 사용자 PR 리뷰 |
+| `build.gradle` 의존성 버전 속성 | 실행 에이전트 | 사용자 PR 리뷰 |
+| `docs/api/openapi.json` 재생성 diff(변경 시) | 실행 에이전트 | 사용자 PR 리뷰 |
 
 ## Existing user-owned changes
 
-- 작업 시작 시 `git status --short`는 깨끗했다. 최신 `origin/main`(`6aeccd03`)에서 분기했다.
+- 작업 시작 시 `git status --short`는 깨끗했다. 최신 `origin/main`(`6de8638d`, #361 병합) 위로 rebase했다.
 
 ## Validation
 
@@ -51,8 +51,7 @@ git diff --check
 
 ## Completion criteria
 
-- 1단계: 빌드 이미지에서 `keytool -list -cacerts -storepass changeit | grep -ci emsign` 결과가 0이다.
-- 1단계: 테스트 서버 배포 후 S3 presigned URL 발급과 FCM 토큰 발급이 TLS 오류 없이 성공한다.
-- 2단계: 빌드 이미지의 `java -version`이 21.0.13 이상이다.
-- 3단계: 최종 이미지가 eMudhra 중간 CA 체인을 거부한다(cacerts 제거 또는 `blocked.certs` 반영).
-- `./harness check`와 `git diff --check`가 통과한다.
+- `./gradlew dependencyInsight --configuration runtimeClasspath`에서 4개 라이브러리가 목표 버전으로 해석된다.
+- 변경 후 OSV 조회에서 이슈 #360 표의 CVE가 검출되지 않는다.
+- `./harness check`, `./harness pr-ready --project-tests`, `git diff --check`가 통과한다.
+- 기존 테스트와 `docs/api/openapi.json` 재생성 diff로 직렬화 변화가 없음을 확인한다.
