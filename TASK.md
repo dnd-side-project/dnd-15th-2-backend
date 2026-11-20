@@ -26,6 +26,7 @@
 - 추가 승인: 기존 ami와 함께 user_data·user_data_base64를 ignore_changes에 지정한다. 기존 호스트는 H-2 deploy workflow가 갱신하며 인스턴스 교체 별도 Issue에서 예외 제거를 재검토한다.
 - 테스트 실행 환경 승인: 단위 fixture는 외부 프로그램 없이, 통합 fixture는 환경변수 없이 PATH의 Compose로 실행하며 skip하지 않는다 — https://github.com/dnd-side-project/dnd-15th-2-backend/issues/364#issuecomment-7039501730
 - CI 도구 승인: `harness-policy.yml` test job과 `ci-benchmark.yml`에 고정 버전 Python·PyYAML·Terraform 설치 단계만 추가한다 — https://github.com/dnd-side-project/dnd-15th-2-backend/issues/364#issuecomment-7039900124
+- PR #367 리뷰 반영 승인(2026-11-21, @Byuntil): 테스트 경로만 바뀐 push의 자동 배포 제외, SSM 상태 조회 일시 오류 재시도(명령 재전송 금지), 강제 종료로 남은 `stage-*` 정리, 통합 테스트의 deploy step shell 실행. 첫 부팅 재시도·health 포트·previous/pending 교체 원자성은 후속 Issue로 분리한다.
 
 ## Scope
 
