@@ -21,7 +21,11 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  * Source scenario: TEST-PLAN-GH-364-PUSH-SECRET-DEPLOY-INT-006
  * Source scenario: TEST-PLAN-GH-364-PUSH-SECRET-DEPLOY-INT-007
  * Source scenario: TEST-PLAN-GH-364-PUSH-SECRET-DEPLOY-INT-008
-	 * Source scenario: TEST-PLAN-GH-364-PUSH-SECRET-DEPLOY-INT-009
+ * Source scenario: TEST-PLAN-GH-364-PUSH-SECRET-DEPLOY-INT-009
+ * Source scenario: TEST-PLAN-GH-364-PUSH-SECRET-DEPLOY-INT-010
+ * Source scenario: TEST-PLAN-GH-364-PUSH-SECRET-DEPLOY-INT-011
+ * Source scenario: TEST-PLAN-GH-364-PUSH-SECRET-DEPLOY-INT-012
+ * Source scenario: TEST-PLAN-GH-364-PUSH-SECRET-DEPLOY-INT-013
  * </pre>
  */
 class PushSecretDeploymentIntegrationTest {
@@ -59,12 +63,13 @@ class PushSecretDeploymentIntegrationTest {
 			step = next(step for step in workflow["jobs"]["deploy"]["steps"]
 			            if "SSM_PARAMETER_PATH_PREFIX" in step.get("env", {}))
 			workflow_shell = step["run"]
-			workflow_python = workflow_shell.split("<<'PY'\\n", 1)[1].rsplit("\\nPY", 1)[0]
 			sentinel = "FIXTURE_LEAK_364_DO_NOT_PRINT"
-			image_a = "fixture.invalid/app:" + "a" * 40
-			image_b = "fixture.invalid/app:" + "b" * 40
-			image_c = "fixture.invalid/app:" + "c" * 40
-			image_d = "fixture.invalid/app:" + "d" * 40
+			registry = "000000000000.dkr.ecr.fixture-region.amazonaws.com"
+			repository_url = registry + "/app"
+			image_a = repository_url + ":" + "a" * 40
+			image_b = repository_url + ":" + "b" * 40
+			image_c = repository_url + ":" + "c" * 40
+			image_d = repository_url + ":" + "d" * 40
 			base_env = ("APP_IMAGE='" + image_a + "'\\nSPRING_PROFILES_ACTIVE=test\\n"
 			            "QELLO_DB_NAME=qello\\nQELLO_DB_USERNAME=qello\\n"
 			            "QELLO_DB_PASSWORD=fixture-db\\nQELLO_MEDIA_BUCKET=fixture-bucket\\n"
@@ -108,6 +113,38 @@ class PushSecretDeploymentIntegrationTest {
 			exec(compile(ast.Module(body=[call], type_ignores=[]), "<actual-host-entrypoint>", "exec"), scope)
 			'''
 
+			workflow_runner = '''
+			import json, os, subprocess, sys, time
+			from pathlib import Path
+			root = Path(os.environ["QELLO_SANDBOX"])
+			control = json.loads((root / "fixture.json").read_text())
+			now = 0
+			queries = 0
+			def trace(event):
+			    with (root / "workflow-trace.jsonl").open("a") as stream:
+			        stream.write(json.dumps(event) + chr(10))
+			def sleep(seconds):
+			    global now
+			    assert seconds > 0
+			    trace(["sleep", seconds])
+			    now += seconds
+			time.monotonic = lambda: now
+			time.sleep = sleep
+			actual_run = subprocess.run
+			def run(args, **kwargs):
+			    global queries
+			    if "get-command-invocation" in args:
+			        outcomes = control.get("query_outcomes", [])
+			        outcome = outcomes[queries] if queries < len(outcomes) else control.get("query_default")
+			        queries += 1
+			        trace(["query", kwargs.get("timeout"), now, outcome])
+			        if outcome == "timeout":
+			            raise subprocess.TimeoutExpired(args, kwargs["timeout"])
+			    return actual_run(args, **kwargs)
+			subprocess.run = run
+			exec(compile(sys.stdin.read(), "<actual-workflow>", "exec"), {"__name__": "__main__"})
+			'''
+
 			# Compose 해석은 실제 바이너리에 맡기고 네트워크와 daemon 효과만 격리한다.
 			boundary = '''
 			import json, os, subprocess, sys
@@ -138,6 +175,7 @@ class PushSecretDeploymentIntegrationTest {
 			        print(control["sentinel"])
 			        sys.exit(0)
 			    if "send-command" in args:
+			        assert args[args.index("--instance-ids") + 1] == "fixture-instance"
 			        payload = args[args.index("--parameters") + 1]
 			        (root / "payload.json").write_text(payload)
 			        command = json.loads(payload)["commands"][0]
@@ -150,10 +188,19 @@ class PushSecretDeploymentIntegrationTest {
 			            "StandardOutputContent": result.stdout, "StandardErrorContent": result.stderr,
 			        }))
 			        finish({"Command": {"CommandId": "fixture-command"}})
-			    if "wait" in args:
-			        sys.exit(0)
 			    if "get-command-invocation" in args:
-			        finish(json.loads((root / "invocation.json").read_text()))
+			        assert args[args.index("--command-id") + 1] == "fixture-command"
+			        assert args[args.index("--instance-id") + 1] == "fixture-instance"
+			        trace = [json.loads(line) for line in
+			                 (root / "workflow-trace.jsonl").read_text().splitlines()]
+			        outcome = [event for event in trace if event[0] == "query"][-1][3]
+			        if outcome == "error":
+			            print("InvocationDoesNotExist: " + control["sentinel"], file=sys.stderr)
+			            sys.exit(24)
+			        invocation = json.loads((root / "invocation.json").read_text())
+			        if outcome is not None:
+			            invocation["Status"] = outcome
+			        finish(invocation)
 			    raise AssertionError("unexpected AWS operation")
 			if tool == "docker":
 			    if control.get("docker_failure") in args:
@@ -199,6 +246,9 @@ class PushSecretDeploymentIntegrationTest {
 			            executable.write_text("#!" + sys.executable + "\\n" + textwrap.dedent(boundary))
 			            executable.chmod(0o700)
 			        (self.root / "host.py").write_text(textwrap.dedent(host_runner))
+			        interpreter = self.bin / "python3"
+			        interpreter.write_text("#!" + sys.executable + "\\n" + textwrap.dedent(workflow_runner))
+			        interpreter.chmod(0o700)
 			        compose = template.split("<<'COMPOSEEOF'\\n", 1)[1].split("\\nCOMPOSEEOF", 1)[0]
 			        (self.root / "compose.yaml").write_text(
 			            compose.replace("$${", "${").replace("${app_port}", "8080"))
@@ -247,11 +297,13 @@ class PushSecretDeploymentIntegrationTest {
 			        self.safe_output(result)
 			        return result
 
-			    def workflow(self, image=image_b):
+			    def workflow(self, image=image_b, inputs=None):
 			        self.save()
 			        env = {**self.env, "AWS_REGION": "fixture-region", "INSTANCE_ID": "fixture-instance",
-			               "IMAGE_REF": image, "SSM_PARAMETER_PATH_PREFIX": "/fixture", "REQUESTED_IMAGE_SHA": ""}
-			        result = subprocess.run([sys.executable, "-c", workflow_python], cwd=repository,
+			               "ECR_REPOSITORY_URL": repository_url, "IMAGE_SHA": image.rsplit(":", 1)[1],
+			               "SSM_PARAMETER_PATH_PREFIX": "/fixture", "REQUESTED_IMAGE_SHA": "",
+			               **(inputs or {})}
+			        result = subprocess.run(["bash", "-c", workflow_shell], cwd=repository,
 			                                capture_output=True, text=True, env=env, timeout=60)
 			        self.safe_output(result)
 			        self.safe_files()
@@ -278,6 +330,10 @@ class PushSecretDeploymentIntegrationTest {
 			        path = self.root / "effects.jsonl"
 			        return [json.loads(line) for line in path.read_text().splitlines()] if path.exists() else []
 
+			    def trace(self):
+			        return [json.loads(line) for line in
+			                (self.root / "workflow-trace.jsonl").read_text().splitlines()]
+
 			    def safe_output(self, result):
 			        assert sentinel not in result.stdout + result.stderr
 
@@ -302,7 +358,7 @@ class PushSecretDeploymentIntegrationTest {
 
 			def boot_source(sandbox):
 			    variables = {
-			        "aws_region": "fixture-region", "ecr_registry": "fixture.invalid",
+			        "aws_region": "fixture-region", "ecr_registry": registry,
 			        "ecr_repository_name": "app", "app_image_tag": "b" * 40, "app_port": 8080,
 			        "media_bucket_name": "fixture-bucket", "spring_profiles_active": "test",
 			        "compose_version": "v2.29.7", "db_password_parameter_name": "/fixture/db-password",
@@ -616,6 +672,103 @@ class PushSecretDeploymentIntegrationTest {
 				boot_effects = [event for event in boot.events() if event[0] == "docker" and "up" in event]
 				assert [event[event.index("up"):] for event in boot_effects] == [
 				    ["up", "-d", "--wait", "db"], ["up", "-d", "--no-deps", "--force-recreate", "app"]]
+				""");
+	}
+
+	@Test
+	@DisplayName("INT010: 전체 배포 shell은 유효한 payload를 호스트에 전달하고 잘못된 prefix를 전송 전에 거부한다")
+	void wholeShellDeliveryAndInvalidPrefix() throws Exception {
+		run("""
+				host = Sandbox("whole-shell")
+				success(host.workflow())
+				host.assert_push()
+				assert host.effective()["services"]["app"]["image"] == image_b
+				assert len([event for event in host.events() if "send-command" in event]) == 1
+				payload = json.loads((host.root / "payload.json").read_text())
+				assert len(payload["commands"]) == 1
+				assert json.loads((host.root / "invocation.json").read_text())["Status"] == "Success"
+				for index, prefix in enumerate(("", "fixture", "/fixture/", "/fixture//nested", "/fixture;bad")):
+				    invalid = Sandbox("invalid-prefix-" + str(index))
+				    before = invalid.pair()
+				    result = invalid.workflow(inputs={"SSM_PARAMETER_PATH_PREFIX": prefix})
+				    assert result.returncode == 1, result.stdout + result.stderr
+				    assert not any("send-command" in event for event in invalid.events())
+				    assert not (invalid.root / "payload.json").exists()
+				    assert invalid.pair() == before
+				""");
+	}
+
+	@Test
+	@DisplayName("INT011: 조회 오류와 timeout 후 같은 명령을 백오프로 조회하여 한 번 전송으로 성공한다")
+	void transientInvocationFailuresThenSuccess() throws Exception {
+		run("""
+				host = Sandbox("transient-invocation")
+				outcomes = ["error", "timeout", "Pending", "Delayed", "InProgress", "Success"]
+				host.control["query_outcomes"] = outcomes
+				success(host.workflow(inputs={"QELLO_SSM_WAIT_TIMEOUT_SECONDS": "120",
+				                              "QELLO_SSM_WAIT_INTERVAL_SECONDS": "5"}))
+				host.assert_push()
+				assert len([event for event in host.events() if "send-command" in event]) == 1
+				queries = [event for event in host.trace() if event[0] == "query"]
+				assert [event[3] for event in queries] == outcomes
+				assert [event[1] for event in queries] == [30, 30, 30, 30, 30, 25]
+				assert [event[2] for event in queries] == [0, 5, 15, 35, 65, 95]
+				assert [event[1] for event in host.trace() if event[0] == "sleep"] == [5, 10, 20, 30, 30]
+				assert len([event for event in host.events() if "get-command-invocation" in event]) == 5
+				assert not any("wait" in event for event in host.events())
+				""");
+	}
+
+	@Test
+	@DisplayName("INT012: 종료 상태가 없는 조회는 가상 deadline에서 UNKNOWN으로 끝나고 명령을 재전송하지 않는다")
+	void unknownInvocationHasBoundedDeadline() throws Exception {
+		run("""
+				for outcome in ("InProgress", "error", "timeout"):
+				    host = Sandbox("unknown-" + outcome)
+				    host.control["query_default"] = outcome
+				    result = host.workflow(inputs={"QELLO_SSM_WAIT_TIMEOUT_SECONDS": "100",
+				                                   "QELLO_SSM_WAIT_INTERVAL_SECONDS": "5"})
+				    assert result.returncode == 1, result.stdout + result.stderr
+				    assert result.stderr.strip() == "[qello] deployment status UNKNOWN", result.stderr
+				    assert len([event for event in host.events() if "send-command" in event]) == 1
+				    assert not any("wait" in event for event in host.events())
+				    queries = [event for event in host.trace() if event[0] == "query"]
+				    assert [event[2] for event in queries] == [0, 5, 15, 35, 65, 95]
+				    assert [event[1] for event in queries] == [30, 30, 30, 30, 30, 5]
+				    assert all(event[3] == outcome for event in queries)
+				    assert [event[1] for event in host.trace() if event[0] == "sleep"] == [5, 10, 20, 30, 30, 5]
+				    host.assert_push()
+				""");
+	}
+
+	@Test
+	@DisplayName("INT013: 잠금 획득 뒤 잔여 stage 디렉터리만 정리하고 복구 JSON과 같은 lock을 보존한다")
+	void staleStagesPreserveRecoveryAndLock() throws Exception {
+		run("""
+				host = Sandbox("stale-stages")
+				success(host.deploy())
+				state = host.root / ".runtime"
+				pending = state / "pending.json"
+				pending.write_text(json.dumps(host.pair()))
+				preserved = {path: path.read_bytes() for path in (pending, state / "previous.json")}
+				lock_inode = (state / "lock").stat().st_ino
+				for name in ("stage-abandoned", "stage-interrupted"):
+				    nested = state / name / "next"
+				    nested.mkdir(parents=True)
+				    (nested / ".env").write_text(sentinel)
+				(state / "stage-file").write_text("preserve non-directory")
+				with (state / "lock").open("a") as lock:
+				    fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+				    failure(host.deploy(), "prepare")
+				    assert (state / "stage-abandoned/next/.env").exists()
+				failure(host.deploy(), "recovery")
+				assert not [path for path in state.glob("stage-*") if path.is_dir()]
+				assert all(path.read_bytes() == content for path, content in preserved.items())
+				assert (state / "stage-file").read_text() == "preserve non-directory"
+				assert (state / "lock").stat().st_ino == lock_inode
+				with (state / "lock").open("a") as lock:
+				    fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+				host.safe_files()
 				""");
 	}
 
