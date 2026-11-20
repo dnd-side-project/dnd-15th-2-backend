@@ -1,32 +1,33 @@
-# GitHub Issue #360 Task Contract
+# GitHub Issue #368 Task Contract
 
-> Generated at: `2026-10-26T00:08:17+09:00`
+> Generated at: `2026-11-20T23:38:40+09:00`
 >
 > 이 파일은 현재 작업 브랜치의 계약이다. 저장소 전역 정책은 `AGENTS.md`를
 > 따른다.
 
 ## Work gate
 
-- Title: `Tomcat·Jackson·pgjdbc·Netty 보안 패치 버전 고정`
-- GitHub Issue: `#360`
-- Branch: `fix/gh-360-dependency-cve-oct2026`
+- Title: `런타임 이미지 Temurin 21.0.13에서 emSign 루트 삭제 실패로 이미지 빌드 중단`
+- GitHub Issue: `#368`
+- Branch: `fix/gh-368-runtime-emsign-cacerts`
 - Base branch: `main`
 
 ## Objective
 
-- Spring Boot 3.5.16 BOM이 관리하는 Tomcat·Jackson·PostgreSQL JDBC·Netty 버전에 남은 2026-10 Oracle CPU 관련 CVE를 BOM 버전 속성 고정으로 해소한다.
+- `eclipse-temurin:21-jre-alpine` 태그가 Temurin 21.0.13으로 바뀐 뒤 `Dockerfile` runtime 단계의 emSign 루트 삭제(#359)가 없는 alias에서 실패해 이미지 빌드와 test-server 배포가 막힌 상태를 해소한다.
+- 21.0.13 cacerts에는 `cn_emsign_root_ca__g1,o_emudhra_technologies_limited,ou_emsign_pki,c_in [jdk]` 하나만 남아 있다(2026-11-20 로컬 확인). #359의 목표(emSign 루트 4개 미신뢰)는 유지한다.
 
 ## Scope
 
-- `build.gradle`에 `jackson-bom.version`=2.21.7, `postgresql.version`=42.7.12, `tomcat.version`=10.1.61, `netty.version`=4.1.137.Final 속성을 지정한다.
-- 각 속성 위에 CVE 번호와 제거 조건(Spring Boot BOM이 같은 버전 이상을 관리하면 삭제)을 주석으로 남긴다.
-- 변경 후 런타임 classpath를 OSV로 다시 조회한다.
+- `Dockerfile` runtime 단계: 4개 alias마다 cacerts에 있을 때만 삭제하고, 마지막에 4개 alias가 하나도 남지 않았음을 검사해 남아 있으면 빌드를 실패시킨다.
+- `Dockerfile` 주석: CVE-2026-91403과 #359 근거를 유지하고, 삭제 조건을 21.0.13 이후 실제 상태(3개는 JDK에서 제거, g1은 남음)와 재검토 조건에 맞게 고친다.
+- 검증 증거는 PR 본문에 기록한다.
 
 ## Explicit exclusions
 
-- httpcore5·httpclient5(AWS SDK 전이 의존성), log4j-api, commons-lang3 갱신.
-- spring-webmvc CVE-2026-47884, CVE-2026-47890(6.2.x 수정 버전 없음).
-- Spring Boot 메이저·마이너 버전 변경, JDK 런타임 변경(#359, #362).
+- base 이미지 버전·digest 고정, PR CI의 Docker 빌드 검사 추가, 다른 CA·JDK 보안 설정 변경.
+- `Dockerfile` 밖의 파일 변경(`TASK.md` 제외), `infra/**`, `.github/workflows/**`.
+- 커밋·push·PR은 사용자 승인 후에만 한다.
 - 인프라 apply, 배포, 프로덕션 변경은 별도 승인 없이는 실행하지 않는다.
 - Secret, 계정 식별자, 토큰, `.env` 값은 기록하지 않는다.
 
@@ -34,16 +35,19 @@
 
 | Area | Owner | Required review |
 | --- | --- | --- |
-| `build.gradle` 의존성 버전 속성 | 실행 에이전트 | 사용자 PR 리뷰 |
-| `docs/api/openapi.json` 재생성 diff(변경 시) | 실행 에이전트 | 사용자 PR 리뷰 |
+| `TASK.md` | 오케스트레이터 | 사용자 확인 |
+| `Dockerfile` runtime 단계와 주석 | 실행 에이전트 | 오케스트레이터 독립 검증 후 사용자 PR 리뷰 |
 
 ## Existing user-owned changes
 
-- 작업 시작 시 `git status --short`는 깨끗했다. 최신 `origin/main`(`6de8638d`, #361 병합) 위로 rebase했다.
+- 별도 worktree `dnd-15th-2-backend-gh368`에서 최신 `origin/main`으로 시작했고, 시작 시 `git status --short` 결과는 비어 있었다.
+- #364 작업 폴더(`infra/gh-364-test-server-push-secrets`)는 수정하지 않는다.
 
 ## Validation
 
 ```bash
+docker build -t qello-gh368-check .
+docker run --rm --entrypoint sh qello-gh368-check -c 'java -version; keytool -list -cacerts -storepass changeit | grep -ci emsign'
 ./harness check
 ./harness pr-ready --project-tests
 git diff --check
@@ -51,7 +55,8 @@ git diff --check
 
 ## Completion criteria
 
-- `./gradlew dependencyInsight --configuration runtimeClasspath`에서 4개 라이브러리가 목표 버전으로 해석된다.
-- 변경 후 OSV 조회에서 이슈 #360 표의 CVE가 검출되지 않는다.
+- Temurin 21.0.13 base 이미지로 `docker build`가 성공한다.
+- 빌드된 이미지의 `keytool -list -cacerts -storepass changeit | grep -ci emsign` 결과가 0이다.
+- 4개 중 하나라도 남으면 빌드가 실패함을 재현하거나 검사 로직을 PR에 기록한다.
+- 머지 후 main push의 `deploy-test-server` 실행에서 `build-and-push`가 통과한다.
 - `./harness check`, `./harness pr-ready --project-tests`, `git diff --check`가 통과한다.
-- 기존 테스트와 `docs/api/openapi.json` 재생성 diff로 직렬화 변화가 없음을 확인한다.
