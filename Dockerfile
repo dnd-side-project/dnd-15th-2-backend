@@ -17,12 +17,32 @@ RUN ./gradlew clean bootJar --no-daemon
 
 FROM eclipse-temurin:21-jre-alpine AS runtime
 
-# CVE-2026-91403: 유출된 eMudhra CA를 신뢰하지 않도록 emSign 루트 4개를 제거한다.
-# Temurin 21.0.13 이상에서 blocked.certs에 eMudhra 차단이 반영되면 삭제한다(#359).
-RUN keytool -delete -cacerts -storepass changeit -alias "cn_emsign_root_ca__g1,o_emudhra_technologies_limited,ou_emsign_pki,c_in [jdk]" \
-    && keytool -delete -cacerts -storepass changeit -alias "cn_emsign_root_ca__c1,o_emudhra_inc,ou_emsign_pki,c_us [jdk]" \
-    && keytool -delete -cacerts -storepass changeit -alias "cn_emsign_ecc_root_ca__g3,o_emudhra_technologies_limited,ou_emsign_pki,c_in [jdk]" \
-    && keytool -delete -cacerts -storepass changeit -alias "cn_emsign_ecc_root_ca__c3,o_emudhra_inc,ou_emsign_pki,c_us [jdk]"
+# CVE-2026-91403: 유출된 eMudhra CA를 신뢰하지 않도록 emSign 루트 4개를 제거한다(#359, #368).
+# Temurin 21.0.13은 3개를 이미 제거했지만 g1이 남아 있어 base 버전에 따른 alias 차이를 허용한다.
+# base cacerts에 4개가 모두 없고 eMudhra 차단이 JDK에 반영되면 이 RUN을 제거한다.
+# alias가 아니라 인증서 subject 기준으로 남은 eMudhra 인증서를 잡는다.
+RUN set -eu; \
+    set -- \
+        "cn_emsign_root_ca__g1,o_emudhra_technologies_limited,ou_emsign_pki,c_in [jdk]" \
+        "cn_emsign_root_ca__c1,o_emudhra_inc,ou_emsign_pki,c_us [jdk]" \
+        "cn_emsign_ecc_root_ca__g3,o_emudhra_technologies_limited,ou_emsign_pki,c_in [jdk]" \
+        "cn_emsign_ecc_root_ca__c3,o_emudhra_inc,ou_emsign_pki,c_us [jdk]"; \
+    for alias in "$@"; do \
+        if keytool -list -cacerts -storepass changeit -alias "$alias" >/dev/null 2>&1; then \
+            keytool -delete -cacerts -storepass changeit -alias "$alias"; \
+        fi; \
+    done; \
+    for alias in "$@"; do \
+        if keytool -list -cacerts -storepass changeit -alias "$alias" >/dev/null 2>&1; then \
+            echo "emSign root remains in cacerts" >&2; \
+            exit 1; \
+        fi; \
+    done; \
+    certs=$(keytool -list -v -cacerts -storepass changeit); \
+    if printf '%s\n' "$certs" | grep -qiE '^(Owner|Issuer):.*(emsign|emudhra)'; then \
+        echo "emSign certificate remains in cacerts" >&2; \
+        exit 1; \
+    fi
 
 RUN addgroup -S spring && adduser -S spring -G spring
 
