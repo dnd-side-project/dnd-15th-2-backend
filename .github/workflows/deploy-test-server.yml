@@ -1,8 +1,8 @@
 name: Deploy Test Server
 
 # dev 테스트 서버(#229)에만 배포한다. production 배포와 무중단 배포
-# 전략은 이 workflow의 범위가 아니다(#231 제외 항목). 롤백은 자동화하지
-# 않는다 — 이전 커밋 태그로 재배포하는 절차는 README.md에 문서화한다.
+# 전략은 이 workflow의 범위가 아니다(#231 제외 항목). 실패 후 app 롤백은
+# 사람이 이전 SHA와 보관한 구성 세트를 선택해 실행한다.
 #
 # 이미지에 영향을 주지 않는 변경(문서, 테스트 계획 등)까지 매번
 # 재배포하지 않도록 애플리케이션 빌드 산출물에 실제로 영향을 주는
@@ -112,6 +112,9 @@ jobs:
       contents: read
       id-token: write
     steps:
+      - name: Checkout runtime definition
+        uses: actions/checkout@v5
+
       - name: Configure short-lived AWS credentials
         uses: aws-actions/configure-aws-credentials@v5
         with:
@@ -128,6 +131,8 @@ jobs:
           INSTANCE_ID: ${{ vars.TEST_SERVER_INSTANCE_ID }}
           ECR_REPOSITORY_URL: ${{ vars.ECR_REPOSITORY_URL }}
           IMAGE_SHA: ${{ needs.build-and-push.outputs.image_sha }}
+          REQUESTED_IMAGE_SHA: ${{ inputs.image_sha }}
+          SSM_PARAMETER_PATH_PREFIX: ${{ vars.TEST_SERVER_SSM_PARAMETER_PATH_PREFIX }}
         run: |
           set -euo pipefail
 
@@ -137,70 +142,59 @@ jobs:
           if ! [[ "$IMAGE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
             echo "Invalid resolved image SHA" >&2; exit 1
           fi
+          if ! [[ "$SSM_PARAMETER_PATH_PREFIX" =~ ^/[a-zA-Z0-9_./-]+$ ]] || [[ "$SSM_PARAMETER_PATH_PREFIX" == */ || "$SSM_PARAMETER_PATH_PREFIX" == *//* ]]; then
+            echo "Invalid TEST_SERVER_SSM_PARAMETER_PATH_PREFIX" >&2; exit 1
+          fi
           export IMAGE_REF="$ECR_REPOSITORY_URL:$IMAGE_SHA"
 
           python3 - <<'PY'
-          import json, os, shlex
-          q = shlex.quote
-          region = os.environ["AWS_REGION"]
-          repository_url = os.environ["ECR_REPOSITORY_URL"]
-          image_ref = os.environ["IMAGE_REF"]
-          registry = repository_url.split("/", 1)[0]
-          commands = [
-              "set -euo pipefail",
-              "cd /opt/qello",
-              f"export AWS_REGION={q(region)}",
-              f"export ECR_REPOSITORY_URL={q(repository_url)}",
-              f"export APP_IMAGE={q(image_ref)}",
-              f"aws ecr get-login-password --region {q(region)} | docker login --username AWS --password-stdin {q(registry)}",
-              "env_file=/opt/qello/.env",
-              "tmp_file=$(mktemp \"${env_file}.tmp.XXXXXX\")",
-              "trap 'rm -f \"$tmp_file\"' EXIT",
-              "if [ -f \"$env_file\" ]; then",
-              "  awk -v image=\"$APP_IMAGE\" 'BEGIN { updated=0 } /^[[:space:]]*APP_IMAGE[[:space:]]*=/ { if (!updated) { print \"APP_IMAGE=\" image; updated=1 }; next } { print } END { if (!updated) print \"APP_IMAGE=\" image }' \"$env_file\" > \"$tmp_file\"",
-              "  chmod --reference=\"$env_file\" \"$tmp_file\"",
-              "  chown --reference=\"$env_file\" \"$tmp_file\"",
-              "else",
-              "  printf 'APP_IMAGE=%s\\n' \"$APP_IMAGE\" > \"$tmp_file\"",
-              "fi",
-              "mv \"$tmp_file\" \"$env_file\"",
-              "trap - EXIT",
-              "docker compose --env-file .env pull",
-              "docker compose --env-file .env up -d",
-              "for i in $(seq 1 30); do curl -fsS http://localhost:8080/actuator/health >/dev/null 2>&1 && exit 0; sleep 2; done",
-              "echo 'health check timed out' >&2",
-              "exit 1",
-          ]
-          with open("/tmp/ssm-params.json", "w", encoding="utf-8") as stream:
-              json.dump({"commands": commands}, stream)
+          import json, os, subprocess, sys
+          from pathlib import Path
+
+          def aws(arguments):
+              return subprocess.run(
+                  ["aws", "--region", os.environ["AWS_REGION"], *arguments],
+                  stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True,
+              ).stdout
+
+          stage = "payload"
+          try:
+              template = Path("infra/modules/app-server/user_data.sh.tftpl").read_text(encoding="utf-8")
+              runtime = template.split("# BEGIN QELLO RUNTIME\n", 1)[1].split("# END QELLO RUNTIME\n", 1)[0]
+              settings = {
+                  "region": os.environ["AWS_REGION"],
+                  "image": os.environ["IMAGE_REF"],
+                  "prefix": os.environ["SSM_PARAMETER_PATH_PREFIX"],
+                  "rollback": bool(os.environ["REQUESTED_IMAGE_SHA"]),
+              }
+              # metadata만 포함한다. 비밀값은 호스트의 EC2 identity로 조회한다.
+              script = runtime + "\nsys.exit(deploy(" + repr(settings) + "))\n"
+              parameters = json.dumps({"commands": ["python3 - <<'PY_HOST'\n" + script + "PY_HOST"]})
+              stage = "send"
+              command_id = json.loads(aws([
+                  "ssm", "send-command", "--instance-ids", os.environ["INSTANCE_ID"],
+                  "--document-name", "AWS-RunShellScript", "--comment", "deploy-test-server (#231)",
+                  "--parameters", parameters, "--output", "json",
+              ]))["Command"]["CommandId"]
+              while True:
+                  stage = "wait"
+                  subprocess.run([
+                      "aws", "ssm", "wait", "command-executed", "--region", os.environ["AWS_REGION"],
+                      "--command-id", command_id, "--instance-id", os.environ["INSTANCE_ID"],
+                  ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                  stage = "status"
+                  invocation = json.loads(aws([
+                      "ssm", "get-command-invocation", "--command-id", command_id,
+                      "--instance-id", os.environ["INSTANCE_ID"], "--output", "json",
+                  ]))
+                  # waiter 만료를 원격 배포 실패로 오인하지 않고 같은 명령의 종료를 기다린다.
+                  if invocation["Status"] not in ("Pending", "InProgress", "Delayed", "Cancelling"):
+                      break
+              if invocation["Status"] != "Success":
+                  print("[qello] deployment remote FAILED", file=sys.stderr)
+                  sys.exit(1)
+              print("[qello] deployment complete OK")
+          except Exception:
+              print("[qello] deployment " + stage + " FAILED", file=sys.stderr)
+              sys.exit(1)
           PY
-
-          COMMAND_ID=$(aws ssm send-command \
-            --region "$AWS_REGION" \
-            --instance-ids "$INSTANCE_ID" \
-            --document-name "AWS-RunShellScript" \
-            --comment "deploy-test-server (#231)" \
-            --parameters file:///tmp/ssm-params.json \
-            --query "Command.CommandId" --output text)
-
-          aws ssm wait command-executed \
-            --region "$AWS_REGION" \
-            --command-id "$COMMAND_ID" \
-            --instance-id "$INSTANCE_ID" || true
-
-          STATUS=$(aws ssm get-command-invocation \
-            --region "$AWS_REGION" \
-            --command-id "$COMMAND_ID" \
-            --instance-id "$INSTANCE_ID" \
-            --query "Status" --output text)
-          echo "SSM command status: $STATUS"
-
-          if [ "$STATUS" != "Success" ]; then
-            echo "--- stderr ---"
-            aws ssm get-command-invocation \
-              --region "$AWS_REGION" \
-              --command-id "$COMMAND_ID" \
-              --instance-id "$INSTANCE_ID" \
-              --query "StandardErrorContent" --output text
-            exit 1
-          fi
