@@ -6,6 +6,7 @@
 > Approval evidence: https://github.com/dnd-side-project/dnd-15th-2-backend/issues/364#issuecomment-7037762767
 > Environment correction approval: https://github.com/dnd-side-project/dnd-15th-2-backend/issues/364#issuecomment-7039501730
 > CI dependency approval: https://github.com/dnd-side-project/dnd-15th-2-backend/issues/364#issuecomment-7039900124
+> PR #367 review approval: 오케스트레이터 지시 `t364-review.md`와 `TASK.md`에 기록된 @Byuntil 승인(2026-11-21). 아래 INT-010~013 작성·실행 포함.
 
 ## 1. Objective
 
@@ -20,6 +21,7 @@ D-5 구현 승인과 별도로 위 코멘트에서 이 테스트 계획의 승�
 - 승인된 user_data 템플릿과 deploy workflow의 실제 Python·shell 경로를 실행 대상으로 한다.
 - JSON/dotenv round-trip, Compose 파일·환경 우선순위, staging/게시/복구, H-4a 백업 수명주기.
 - 신규 다섯 값의 필수·형식 계약과 오류 출력 비노출.
+- deploy step 전체 Bash 입력 검증·payload 전달, 동일 SSM 명령의 제한된 상태 재조회, 잔여 staging 정리.
 
 ### Excluded
 
@@ -68,6 +70,10 @@ D-5 구현 승인과 별도로 위 코멘트에서 이 테스트 계획의 승�
 | TEST-PLAN-GH-364-PUSH-SECRET-DEPLOY-INT-007 | 실제 복구 코드·pending·동일 SHA | 같은 이미지에서 secret만 바뀐 이전 성공 세트 | 수동 롤백과 복구 실패 주입 | pending 우선·이전 성공 세트 선택, SSM 재조회 없음, 실패 시 복구 정보 보존 | 임시 디렉터리 정리 |
 | TEST-PLAN-GH-364-PUSH-SECRET-DEPLOY-INT-008 | Terraform 렌더·gzip·신규/기존 호스트 전달 | 비밀 없는 메타데이터와 가짜 SSM 응답 | 렌더링 후 gzip payload 확인 및 두 전달 경로 실행 | EC2 한도 이하, 복원 정의와 effective 5개 값 일치 | 임시 디렉터리 정리 |
 | TEST-PLAN-GH-364-PUSH-SECRET-DEPLOY-INT-009 | 기존 단위의 검증·Compose 경계 | 잘못된 키/JSON, 부모 환경 오염, 특수문자 JSON | 입력 거부와 실제 Compose config 실행 | 게시 전 거부·기존 파일 보존·요청 이미지·JSON 필드 일치 | 임시 디렉터리 정리 |
+| TEST-PLAN-GH-364-PUSH-SECRET-DEPLOY-INT-010 | 실제 deploy Bash·AWS double | workflow 이름과 같은 입력 환경·명백한 가짜 계정 값 | 유효 prefix와 잘못된 prefix로 전체 run 실행 | 유효 입력의 payload 전달·배포 성공, 잘못된 입력은 send-command 없음 | 임시 디렉터리 정리 |
+| TEST-PLAN-GH-364-PUSH-SECRET-DEPLOY-INT-011 | 실제 상태 조회 루프·AWS double | InvocationDoesNotExist 및 일시 오류 후 성공 응답 | 가짜 clock으로 백오프 진행 | 같은 command ID 재조회, send-command 한 번, 성공 | 임시 디렉터리 정리 |
+| TEST-PLAN-GH-364-PUSH-SECRET-DEPLOY-INT-012 | 실제 대기 한도·AWS double | 종료 상태를 얻지 못하는 응답 | 가짜 clock으로 전체 한도 소진 | UNKNOWN으로 실패, 원격 실패와 구분, 재전송 없음 | 임시 디렉터리 정리 |
+| TEST-PLAN-GH-364-PUSH-SECRET-DEPLOY-INT-013 | 실제 호스트 lock·상태 디렉터리 | 잔여 stage-*와 pending·previous·lock | 잠금 후 다음 배포 실행 | 잔여 stage만 제거, 복구 JSON과 lock 보존 | 임시 디렉터리 정리 |
 
 ## 7. Cross-cutting scenarios
 
@@ -98,6 +104,9 @@ D-5 구현 승인과 별도로 위 코멘트에서 이 테스트 계획의 승�
 - Fixtures: 값은 테스트에서 생성하는 비밀이 아닌 고정 데이터만 사용한다. 실제 credential·주소·ARN은 사용하지 않는다.
 - Database isolation: DB 없음. 각 시나리오는 독립 임시 디렉터리와 자식 프로세스 환경을 사용한다.
 - Clock/randomness: 시각·난수·sleep에 의존하지 않는다. 파일 단계 완료 이벤트를 등록한 뒤 동작을 촉발한다.
+- SSM 대기 테스트는 실제 Bash와 Python을 실행하되 interpreter 경계에서 monotonic/sleep만 가짜 clock으로 대체한다.
+  운영 기본 한도는 900초, 초기 조회 간격은 5초이며 백오프 상한은 30초다.
+  `QELLO_SSM_WAIT_TIMEOUT_SECONDS`·`QELLO_SSM_WAIT_INTERVAL_SECONDS`로 양의 초 단위 값을 지정할 수 있다.
 - External API doubles: 실제 실행 경계만 치환하며 파일 게시·env 인코딩·Compose config는 실제 코드로 수행한다.
 - Cleanup: 생성한 임시 자원만 정리하고 저장소·사용자 파일은 건드리지 않는다.
 - 단위 Dependencies: Java 21/JUnit 5와 PATH의 python3만 필요하다. Docker·Compose·추가 환경변수는 필요하지 않다.
@@ -124,7 +133,7 @@ D-5 구현 승인과 별도로 위 코멘트에서 이 테스트 계획의 승�
 | Order | Executor | Owned files | Scenario IDs | Verification |
 | --- | --- | --- | --- | --- |
 | 1 | 별도 테스트 실행 에이전트 | src/test/java/com/dnd/qello/infrastructure/PushSecretEncodingTest.java (승인 후 신규) | UNIT-001~004 | JUnit 5 표적 실행 |
-| 2 | 별도 테스트 실행 에이전트 | src/integrationTest/java/com/dnd/qello/infrastructure/PushSecretDeploymentIntegrationTest.java (승인 후 신규) | INT-001~009 | JUnit 5 표적 실행, 실제 subprocess/Compose config |
+| 2 | 별도 테스트 실행 에이전트 | src/integrationTest/java/com/dnd/qello/infrastructure/PushSecretDeploymentIntegrationTest.java | INT-001~013 | JUnit 5 표적 실행, 실제 Bash/subprocess/Compose config |
 
 위 두 신규 테스트 경로의 작성·실행은 위 코멘트에서 승인되었다.
 production helper를 추가하지 않는다.
@@ -151,5 +160,7 @@ production helper를 추가하지 않는다.
 - Approved at: 2026-11-20T10:56:45Z
 - 환경 의존 제거·시나리오 재분류 승인: @Byuntil, 2026-11-20, 위 추가 코멘트 7039501730.
 - CI 도구 설치 승인: @Byuntil, 2026-11-20, 위 추가 코멘트 7039900124.
+- PR #367 리뷰 반영 승인: @Byuntil, 2026-11-21로 `TASK.md`와 `t364-review.md`에 기록됨.
+  테스트 경로 배포 제외, 상태 조회 재시도·UNKNOWN, stage 정리, 실제 deploy shell 실행 및 INT-010~013으로 한정한다.
 
 테스트 작성·실행 결과는 별도 테스트 보고서에 기록한다. 이 승인은 live 검증 승인이 아니다.
