@@ -167,6 +167,110 @@ variable "auth_token_secret_version" {
   default     = 1
 }
 
+# D-5: sensitive만으로는 plan 입력 보존을 막지 못하므로 새 비밀은 ephemeral로 제한한다.
+variable "push_token_current_key_id" {
+  description = "현재 push token 암호화 key ID. 보호된 입력 경로로만 제공한다."
+  type        = string
+  sensitive   = true
+  ephemeral   = true
+}
+
+variable "push_token_current_key_id_version" {
+  description = "push_token_current_key_id 갱신 시 증가시키는 value_wo_version."
+  type        = number
+  default     = 1
+
+  validation {
+    condition     = var.push_token_current_key_id_version > 0 && floor(var.push_token_current_key_id_version) == var.push_token_current_key_id_version
+    error_message = "push_token_current_key_id_version은 양의 정수여야 한다."
+  }
+}
+
+variable "push_token_current_encryption_key_base64" {
+  description = "현재 push token 암호화 key의 Base64 값. 보호된 입력 경로로만 제공한다."
+  type        = string
+  sensitive   = true
+  ephemeral   = true
+}
+
+variable "push_token_current_encryption_key_base64_version" {
+  description = "push_token_current_encryption_key_base64 갱신 시 증가시키는 value_wo_version."
+  type        = number
+  default     = 1
+
+  validation {
+    condition     = var.push_token_current_encryption_key_base64_version > 0 && floor(var.push_token_current_encryption_key_base64_version) == var.push_token_current_encryption_key_base64_version
+    error_message = "push_token_current_encryption_key_base64_version은 양의 정수여야 한다."
+  }
+}
+
+variable "push_token_fingerprint_key_base64" {
+  description = "Push token fingerprint key의 Base64 값. 보호된 입력 경로로만 제공한다."
+  type        = string
+  sensitive   = true
+  ephemeral   = true
+}
+
+variable "push_token_fingerprint_key_base64_version" {
+  description = "push_token_fingerprint_key_base64 갱신 시 증가시키는 value_wo_version."
+  type        = number
+  default     = 1
+
+  validation {
+    condition     = var.push_token_fingerprint_key_base64_version > 0 && floor(var.push_token_fingerprint_key_base64_version) == var.push_token_fingerprint_key_base64_version
+    error_message = "push_token_fingerprint_key_base64_version은 양의 정수여야 한다."
+  }
+}
+
+variable "push_fcm_project_id" {
+  description = "Dev FCM project ID. 보호된 입력 경로로만 제공한다."
+  type        = string
+  sensitive   = true
+  ephemeral   = true
+}
+
+variable "push_fcm_project_id_version" {
+  description = "push_fcm_project_id 갱신 시 증가시키는 value_wo_version."
+  type        = number
+  default     = 1
+
+  validation {
+    condition     = var.push_fcm_project_id_version > 0 && floor(var.push_fcm_project_id_version) == var.push_fcm_project_id_version
+    error_message = "push_fcm_project_id_version은 양의 정수여야 한다."
+  }
+}
+
+variable "push_fcm_credential_json" {
+  description = "Dev FCM 서비스 계정 credential JSON. 보호된 입력 경로로만 제공한다."
+  type        = string
+  sensitive   = true
+  ephemeral   = true
+}
+
+variable "push_fcm_credential_json_version" {
+  description = "push_fcm_credential_json 갱신 시 증가시키는 value_wo_version."
+  type        = number
+  default     = 1
+
+  validation {
+    condition     = var.push_fcm_credential_json_version > 0 && floor(var.push_fcm_credential_json_version) == var.push_fcm_credential_json_version
+    error_message = "push_fcm_credential_json_version은 양의 정수여야 한다."
+  }
+}
+
+# Credential 크기만으로 tier를 추론하면 ephemeral 값이 영속 속성으로 전파된다.
+# D-5 H-4에 따라 4 KiB 초과 시 credential만 검토된 구성에서 Advanced로 선택한다.
+variable "push_fcm_credential_json_tier" {
+  description = "FCM credential 파라미터 tier. Standard가 기본이며 4 KiB 초과 시 승인된 Advanced 구성을 사용한다."
+  type        = string
+  default     = "Standard"
+
+  validation {
+    condition     = contains(["Standard", "Advanced"], var.push_fcm_credential_json_tier)
+    error_message = "push_fcm_credential_json_tier는 Standard 또는 Advanced여야 한다."
+  }
+}
+
 variable "tags" {
   description = "이 스택이 생성하는 리소스에 공통으로 적용할 태그. infra-apply 역할의 IAM 권한 조건(aws:ResourceTag/Project)이 이 태그를 전제로 한다."
   type        = map(string)

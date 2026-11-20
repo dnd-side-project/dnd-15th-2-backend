@@ -1,9 +1,14 @@
 locals {
   media_bucket_arn = "arn:aws:s3:::${var.media_bucket_name}"
 
-  ssm_parameter_path_prefix        = "/${var.project_prefix}/${var.name}"
-  db_password_parameter_name       = "${local.ssm_parameter_path_prefix}/db-password"
-  auth_token_secret_parameter_name = "${local.ssm_parameter_path_prefix}/auth-token-secret"
+  ssm_parameter_path_prefix                        = "/${var.project_prefix}/${var.name}"
+  db_password_parameter_name                       = "${local.ssm_parameter_path_prefix}/db-password"
+  auth_token_secret_parameter_name                 = "${local.ssm_parameter_path_prefix}/auth-token-secret"
+  push_token_current_key_id_parameter_name         = "${local.ssm_parameter_path_prefix}/push-token-current-key-id"
+  push_token_current_encryption_key_parameter_name = "${local.ssm_parameter_path_prefix}/push-token-current-encryption-key"
+  push_token_fingerprint_key_parameter_name        = "${local.ssm_parameter_path_prefix}/push-token-fingerprint-key"
+  push_fcm_project_id_parameter_name               = "${local.ssm_parameter_path_prefix}/push-fcm-project-id"
+  push_fcm_credential_json_parameter_name          = "${local.ssm_parameter_path_prefix}/push-fcm-credential-json"
 }
 
 # --- 네트워크 -----------------------------------------------------------------
@@ -94,6 +99,62 @@ resource "aws_ssm_parameter" "auth_token_secret" {
   tags = var.tags
 }
 
+# D-5: 새 비밀 입력은 write-only로만 전달하고 기존 AWS 관리형 SSM key를 공유한다.
+resource "aws_ssm_parameter" "push_token_current_key_id" {
+  name             = local.push_token_current_key_id_parameter_name
+  type             = "SecureString"
+  tier             = "Standard"
+  key_id           = "alias/aws/ssm"
+  value_wo         = var.push_token_current_key_id
+  value_wo_version = var.push_token_current_key_id_version
+
+  tags = var.tags
+}
+
+resource "aws_ssm_parameter" "push_token_current_encryption_key" {
+  name             = local.push_token_current_encryption_key_parameter_name
+  type             = "SecureString"
+  tier             = "Standard"
+  key_id           = "alias/aws/ssm"
+  value_wo         = var.push_token_current_encryption_key_base64
+  value_wo_version = var.push_token_current_encryption_key_base64_version
+
+  tags = var.tags
+}
+
+resource "aws_ssm_parameter" "push_token_fingerprint_key" {
+  name             = local.push_token_fingerprint_key_parameter_name
+  type             = "SecureString"
+  tier             = "Standard"
+  key_id           = "alias/aws/ssm"
+  value_wo         = var.push_token_fingerprint_key_base64
+  value_wo_version = var.push_token_fingerprint_key_base64_version
+
+  tags = var.tags
+}
+
+resource "aws_ssm_parameter" "push_fcm_project_id" {
+  name             = local.push_fcm_project_id_parameter_name
+  type             = "SecureString"
+  tier             = "Standard"
+  key_id           = "alias/aws/ssm"
+  value_wo         = var.push_fcm_project_id
+  value_wo_version = var.push_fcm_project_id_version
+
+  tags = var.tags
+}
+
+resource "aws_ssm_parameter" "push_fcm_credential_json" {
+  name             = local.push_fcm_credential_json_parameter_name
+  type             = "SecureString"
+  tier             = var.push_fcm_credential_json_tier
+  key_id           = "alias/aws/ssm"
+  value_wo         = var.push_fcm_credential_json
+  value_wo_version = var.push_fcm_credential_json_version
+
+  tags = var.tags
+}
+
 # --- 컴퓨트 --------------------------------------------------------------------
 
 module "app_server" {
@@ -120,10 +181,20 @@ module "app_server" {
   ssm_parameter_arns = [
     aws_ssm_parameter.db_password.arn,
     aws_ssm_parameter.auth_token_secret.arn,
+    aws_ssm_parameter.push_token_current_key_id.arn,
+    aws_ssm_parameter.push_token_current_encryption_key.arn,
+    aws_ssm_parameter.push_token_fingerprint_key.arn,
+    aws_ssm_parameter.push_fcm_project_id.arn,
+    aws_ssm_parameter.push_fcm_credential_json.arn,
   ]
-  ssm_kms_key_arn                  = data.aws_kms_alias.ssm_default.target_key_arn
-  db_password_parameter_name       = local.db_password_parameter_name
-  auth_token_secret_parameter_name = local.auth_token_secret_parameter_name
+  ssm_kms_key_arn                                  = data.aws_kms_alias.ssm_default.target_key_arn
+  db_password_parameter_name                       = local.db_password_parameter_name
+  auth_token_secret_parameter_name                 = local.auth_token_secret_parameter_name
+  push_token_current_key_id_parameter_name         = local.push_token_current_key_id_parameter_name
+  push_token_current_encryption_key_parameter_name = local.push_token_current_encryption_key_parameter_name
+  push_token_fingerprint_key_parameter_name        = local.push_token_fingerprint_key_parameter_name
+  push_fcm_project_id_parameter_name               = local.push_fcm_project_id_parameter_name
+  push_fcm_credential_json_parameter_name          = local.push_fcm_credential_json_parameter_name
 
   image_bucket_arn         = local.media_bucket_arn
   image_bucket_kms_key_arn = var.media_bucket_kms_key_arn

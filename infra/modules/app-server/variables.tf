@@ -54,7 +54,7 @@ variable "ecr_repository_arn" {
 }
 
 variable "ssm_parameter_arns" {
-  description = "인스턴스 Role이 값을 읽을 SSM 파라미터 ARN 목록(DB 비밀번호, 인증 토큰 시크릿). 이 스택 소유 경로로만 한정한다."
+  description = "인스턴스 Role이 값을 읽을 SSM 파라미터의 정확한 ARN 목록(DB 비밀번호, 인증 토큰 시크릿, push 설정 5개)."
   type        = list(string)
 }
 
@@ -96,6 +96,31 @@ variable "db_password_parameter_name" {
 
 variable "auth_token_secret_parameter_name" {
   description = "QELLO_AUTH_ACCESS_TOKEN_SECRET을 담은 SSM 파라미터 이름. user_data가 부팅 시 조회한다."
+  type        = string
+}
+
+variable "push_token_current_key_id_parameter_name" {
+  description = "현재 push token 암호화 key ID를 담은 SSM 파라미터 이름."
+  type        = string
+}
+
+variable "push_token_current_encryption_key_parameter_name" {
+  description = "현재 push token 암호화 key의 Base64 값을 담은 SSM 파라미터 이름."
+  type        = string
+}
+
+variable "push_token_fingerprint_key_parameter_name" {
+  description = "Push token fingerprint key의 Base64 값을 담은 SSM 파라미터 이름."
+  type        = string
+}
+
+variable "push_fcm_project_id_parameter_name" {
+  description = "Dev FCM project ID를 담은 SSM 파라미터 이름."
+  type        = string
+}
+
+variable "push_fcm_credential_json_parameter_name" {
+  description = "Dev FCM 서비스 계정 credential JSON을 담은 SSM 파라미터 이름."
   type        = string
 }
 

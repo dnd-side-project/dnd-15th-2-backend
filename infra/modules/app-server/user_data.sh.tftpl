@@ -1,27 +1,12 @@
 #!/bin/bash
-# Amazon Linux 2023 전용. Docker와 compose plugin을 설치하고, 데이터
-# EBS 볼륨을 마운트한 뒤, ECR에서 이미지를 받아 백엔드 컨테이너와 PostGIS
-# 컨테이너를 기동한다(Issue #229/#233 범위).
-#
-# 재실행에 안전하게 만든다: 인스턴스 재기동·user_data 재실행 시에도 같은
-# 결과가 나오도록 각 단계를 멱등하게 작성한다(AGENTS.md 6절).
+# Amazon Linux 2023 전용. 데이터 EBS와 기존 DB를 보존한다.
 set -euo pipefail
+umask 077
 
 exec > >(tee -a /var/log/qello-user-data.log) 2>&1
 echo "[qello] user_data 시작: $(date -u +%FT%TZ)"
 
-# --- 아웃바운드 연결 대기 ------------------------------------------------------
-# Elastic IP는 인스턴스 생성과 별개의 Terraform 리소스(aws_eip_association)로
-# 연결된다. 인스턴스가 부팅해 user_data가 실행되는 시점과 실제 EIP 연결
-# 완료 시점 사이에 순서가 보장되지 않아, 이 시점에는 아직 아웃바운드
-# 인터넷 경로가 없을 수 있다(PR #236 리뷰).
-#
-# 이 확인은 실제 의존 대상이 아니라 진단용 probe다. aws_instance의
-# user_data는 최초 부팅에만 실행되고 cloud-init이 자동으로 재실행하지
-# 않으므로, probe 자체의 일시적 실패(외부 엔드포인트 문제 등)로 전체
-# 부팅을 막지 않는다 — 경고만 남기고 계속 진행한다. 실제로 네트워크가
-# 없다면 뒤따르는 dnf·curl·aws 호출이 각자의 오류로 명확히 실패한다
-# (PR #238 리뷰 반영).
+# EIP 연결은 부팅과 순서가 보장되지 않는다. 진단용 probe 실패만으로 부팅을 막지 않는다.
 NETWORK_READY=false
 for _ in $(seq 1 30); do
   if curl -fsS --max-time 5 -o /dev/null "https://checkip.amazonaws.com"; then
@@ -31,13 +16,13 @@ for _ in $(seq 1 30); do
   sleep 10
 done
 if [ "$NETWORK_READY" != "true" ]; then
-  echo "[qello] 5분 내 아웃바운드 연결 probe에 응답이 없었다. 계속 진행하되, 이후 단계가 실패하면 EIP 연결 상태를 확인해야 한다." >&2
+  echo "[qello] network probe unavailable; continuing" >&2
 else
   echo "[qello] 아웃바운드 연결 확인: $(date -u +%FT%TZ)"
 fi
 
 dnf -y update
-dnf -y install docker
+dnf -y install docker python3
 
 systemctl enable --now docker
 
@@ -49,16 +34,11 @@ if [ ! -x /usr/local/lib/docker/cli-plugins/docker-compose ]; then
   chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
 fi
 
-# --- 데이터 볼륨 마운트 -------------------------------------------------------
-# AWS 제약: Nitro 인스턴스는 EBS를 NVMe로 노출하지만 Amazon Linux 2023의
-# udev 규칙이 device_name(/dev/xvdf)으로 되돌려주는 심링크를 만든다
-# (모듈 main.tf의 aws_volume_attachment 주석 참고).
+# AL2023의 udev가 Nitro NVMe를 attachment의 device_name에 연결한다.
 DATA_DEVICE="/dev/xvdf"
 DATA_MOUNT="/data"
 
-# aws_volume_attachment도 인스턴스 생성과 별개의 API 호출이라 도착 순서가
-# 보장되지 않는다(위 네트워크 대기와 같은 이유, PR #236 리뷰). udev
-# 심링크가 생성될 때까지 최대 5분 대기한다.
+# 볼륨 attachment도 비동기이므로 udev 심링크를 최대 5분 기다린다.
 DEVICE_READY=false
 for _ in $(seq 1 30); do
   if [ -e "$DATA_DEVICE" ]; then
@@ -68,7 +48,7 @@ for _ in $(seq 1 30); do
   sleep 10
 done
 if [ "$DEVICE_READY" != "true" ]; then
-  echo "[qello] 5분 내 $DATA_DEVICE 가 나타나지 않았다. EBS 볼륨 연결 상태를 확인해야 한다." >&2
+  echo "[qello] data volume unavailable" >&2
   exit 1
 fi
 
@@ -85,39 +65,8 @@ mount -a
 
 mkdir -p "$DATA_MOUNT/postgres" "$DATA_MOUNT/app"
 
-# --- SSM 파라미터에서 비밀값 조회 ---------------------------------------------
-# 값 자체는 Terraform이 생성하지 않는다(D-3 §5 S-5). 인스턴스 Role의
-# ssm:GetParameter 권한 범위는 아래 두 파라미터 ARN으로만 한정되어 있다.
-REGION="${aws_region}"
-DB_PASSWORD=$(aws ssm get-parameter \
-  --region "$REGION" \
-  --name "${db_password_parameter_name}" \
-  --with-decryption \
-  --query "Parameter.Value" --output text)
-AUTH_TOKEN_SECRET=$(aws ssm get-parameter \
-  --region "$REGION" \
-  --name "${auth_token_secret_parameter_name}" \
-  --with-decryption \
-  --query "Parameter.Value" --output text)
-
-# --- ECR 로그인과 이미지 pull -------------------------------------------------
-aws ecr get-login-password --region "$REGION" |
-  docker login --username AWS --password-stdin "${ecr_registry}"
-
-# --- 애플리케이션 정의 --------------------------------------------------------
-# db 서비스는 로컬 개발용 compose.yaml(리포지토리 루트)과 동일한 이미지를
-# 사용해 dev/test 동등성을 유지한다(D-3 §4 CPU 아키텍처 비교).
-mkdir -p /opt/qello
-cat > /opt/qello/.env <<ENVEOF
-QELLO_DB_NAME=qello
-QELLO_DB_USERNAME=qello
-QELLO_DB_PASSWORD=$DB_PASSWORD
-QELLO_AUTH_ACCESS_TOKEN_SECRET=$AUTH_TOKEN_SECRET
-QELLO_MEDIA_BUCKET=${media_bucket_name}
-SPRING_PROFILES_ACTIVE=${spring_profiles_active}
-APP_IMAGE=${ecr_registry}/${ecr_repository_name}:${app_image_tag}
-ENVEOF
-chmod 600 /opt/qello/.env
+# 로컬 개발과 동일한 PostGIS 이미지를 유지한다.
+install -d -m 0700 -o root -g root /opt/qello
 
 cat > /opt/qello/compose.yaml <<'COMPOSEEOF'
 name: qello
@@ -172,8 +121,312 @@ services:
         max-file: "3"
 COMPOSEEOF
 
-cd /opt/qello
-docker compose --env-file .env pull
-docker compose --env-file .env up -d
+python3 - <<'PY_RUNTIME'
+# BEGIN QELLO RUNTIME
+import base64
+from contextlib import ExitStack
+import fcntl
+import json
+import os
+from pathlib import Path
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+import time
+
+ROOT = Path("/opt/qello")
+STATE = ROOT / ".runtime"
+CLEAN_ENV = {
+    "PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", "HOME": "/root",
+    "AWS_CONFIG_FILE": "/dev/null", "AWS_SHARED_CREDENTIALS_FILE": "/dev/null",
+}
+PUSH_KEYS = (
+    "QELLO_NOTIFICATION_PUSH_TOKEN_CURRENT_KEY_ID",
+    "QELLO_NOTIFICATION_PUSH_TOKEN_CURRENT_ENCRYPTION_KEY_BASE64",
+    "QELLO_NOTIFICATION_PUSH_TOKEN_FINGERPRINT_KEY_BASE64",
+    "QELLO_NOTIFICATION_PUSH_FCM_PROJECT_ID",
+    "QELLO_NOTIFICATION_PUSH_FCM_CREDENTIAL_JSON",
+)
+SUFFIXES = (
+    "push-token-current-key-id", "push-token-current-encryption-key",
+    "push-token-fingerprint-key", "push-fcm-project-id", "push-fcm-credential-json",
+)
+
+
+def run(args, data=None):
+    return subprocess.run(args, input=data, stdout=subprocess.PIPE,
+                          stderr=subprocess.PIPE, env=CLEAN_ENV, check=True).stdout
+
+
+def secure_write(path, data):
+    with path.open("x", encoding="utf-8", newline="") as stream:
+        os.fchmod(stream.fileno(), 0o600)
+        os.fchown(stream.fileno(), 0, 0)
+        stream.write(data)
+        stream.flush()
+        os.fsync(stream.fileno())
+
+
+def compose(directory):
+    args = ["docker", "compose", "--project-directory", str(ROOT),
+            "--env-file", str(directory / ".env"), "-f", str(ROOT / "compose.yaml")]
+    if (directory / "compose.push.yaml").exists():
+        args += ["-f", str(directory / "compose.push.yaml")]
+    return args
+
+
+def effective(directory):
+    run(compose(directory) + ["config", "--quiet"])
+    # 고정 Compose v2.29.7의 config 직렬화는 JSON에도 dollar를 두 번 기록한다.
+    return json.loads(run(compose(directory) + ["config", "--format", "json"])
+                      .decode("utf-8").replace("$$", "$"))
+
+
+def dotenv(value):
+    # single quote의 닫는 따옴표 앞 홀수 backslash는 literal로 표현할 수 없다.
+    if re.search(r"(?<!\\)(?:\\\\)*\\(?:'|$)", value):
+        return json.dumps(value, ensure_ascii=False).replace("$", "$$")
+    return "'" + value.replace("'", "\\'") + "'"
+
+
+def update_env(original, values):
+    # 무관한 multiline 값 내부의 KEY= 행까지 지우지 않도록 전체 할당을 읽는다.
+    assignment = re.compile(
+        r"""^[ \t]*(?:export[ \t]+)?([\w.\[\]]+)[ \t]*[=:][ \t]*"""
+        r"""(?:'(?:\\[\s\S]|[^'\\])*'|"(?:\\[\s\S]|[^"\\])*"|[^\r\n]*)[^\r\n]*(?:\r?\n|$)""",
+        re.MULTILINE,
+    )
+    preserved = assignment.sub(lambda match: "" if match[1] in values else match[0], original)
+    return preserved + ("\n" if preserved and not preserved.endswith("\n") else "") + "".join(
+        key + "=" + dotenv(value) + "\n" for key, value in values.items()
+    )
+
+
+def validate_push(values):
+    if any(not isinstance(values[key], str) or not values[key].strip() or "\0" in values[key]
+           for key in PUSH_KEYS):
+        raise ValueError()
+    decoded = []
+    for key in PUSH_KEYS[1:3]:
+        raw = base64.b64decode(values[key], validate=True)
+        if len(raw) != 32 or base64.b64encode(raw).decode("ascii") != values[key]:
+            raise ValueError()
+        decoded.append(raw)
+    if decoded[0] == decoded[1]:
+        raise ValueError()
+    credential = json.loads(values[PUSH_KEYS[4]])
+    if not isinstance(credential, dict) or credential.get("type") != "service_account":
+        raise ValueError()
+    if any(not isinstance(credential.get(key), str) or not credential[key].strip()
+           for key in ("project_id", "private_key_id", "private_key", "client_email", "token_uri")):
+        raise ValueError()
+    if credential["project_id"] != values[PUSH_KEYS[3]]:
+        raise ValueError()
+    values[PUSH_KEYS[4]] = json.dumps(credential, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
+
+
+def stage_pair(directory, pair):
+    directory.mkdir(mode=0o700)
+    for name in (".env", "compose.push.yaml"):
+        if pair[name] is not None:
+            secure_write(directory / name, pair[name])
+
+
+def publish(directory, pair):
+    for name in (".env", "compose.push.yaml"):
+        if pair[name] is None:
+            (ROOT / name).unlink(missing_ok=True)
+        else:
+            os.replace(directory / name, ROOT / name)
+
+
+def deploy(settings):
+    stage = "prepare"
+    work = None
+    before = None
+    published = False
+    committed = False
+    resources = ExitStack()
+    pending = STATE / "pending.json"
+    previous = STATE / "previous.json"
+    try:
+        if os.geteuid() != 0:
+            raise PermissionError()
+        os.umask(0o077)
+        for directory in (ROOT, STATE):
+            directory.mkdir(mode=0o700, exist_ok=True)
+            os.chown(directory, 0, 0)
+            directory.chmod(0o700)
+        lock = resources.enter_context((STATE / "lock").open("a"))
+        os.fchmod(lock.fileno(), 0o600)
+        os.fchown(lock.fileno(), 0, 0)
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        for leftover in STATE.glob("stage-*"):
+            if leftover.is_dir() and not leftover.is_symlink():
+                shutil.rmtree(leftover)
+        work = Path(tempfile.mkdtemp(prefix="stage-", dir=STATE))
+        for name in (".env", "compose.push.yaml"):
+            path = ROOT / name
+            if path.exists():
+                os.chown(path, 0, 0)
+                path.chmod(0o600)
+        before = {name: (ROOT / name).read_bytes().decode("utf-8") if (ROOT / name).exists() else None
+                  for name in (".env", "compose.push.yaml")}
+        rollback = settings.get("rollback", False)
+        stage = "recovery"
+        recovering = pending.exists()
+        if recovering:
+            if not rollback:
+                raise ValueError()
+            # 중단된 게시의 원본은 성공 백업과 별개이며, 최신 SSM 조회 없이 복구한다.
+            before = json.loads(pending.read_text(encoding="utf-8"))
+            stage_pair(work / "interrupted", before)
+            publish(work / "interrupted", before)
+        old_config = effective(ROOT) if before[".env"] is not None else None
+        if old_config is not None and any(not old_config["services"]["app"]["environment"].get(key)
+                                          for key in ("QELLO_DB_PASSWORD", "QELLO_AUTH_ACCESS_TOKEN_SECRET")):
+            raise ValueError()
+        image = settings["image"]
+        stage = "secrets"
+        if rollback:
+            candidates = [before]
+            if not recovering and previous.exists():
+                candidates.insert(0, json.loads(previous.read_text(encoding="utf-8")))
+            chosen = None
+            for index, candidate in enumerate(candidates):
+                if candidate[".env"] is None:
+                    continue
+                location = work / ("candidate-" + str(index))
+                stage_pair(location, candidate)
+                candidate_config = effective(location)
+                if candidate_config["services"]["app"]["image"] == image:
+                    chosen, expected = candidate, candidate_config
+                    break
+            if chosen is None:
+                raise ValueError()
+        else:
+            values = dict(settings.get("defaults", {}))
+            names = settings.get("parameters")
+            if names is None:
+                names = dict(zip(PUSH_KEYS, [settings["prefix"] + "/" + suffix for suffix in SUFFIXES]))
+            for key, name in names.items():
+                response = json.loads(run(["aws", "ssm", "get-parameter", "--region", settings["region"],
+                                           "--name", name, "--with-decryption", "--output", "json"]))
+                value = response["Parameter"]["Value"]
+                if not isinstance(value, str) or not value.strip() or "\0" in value:
+                    raise ValueError()
+                values[key] = value
+            validate_push(values)
+            values["APP_IMAGE"] = image
+            override = "services:\n  app:\n    environment:\n" + "".join(
+                "      " + key + ": $" + "{" + key + ":?required}\n" for key in PUSH_KEYS
+            )
+            chosen = {".env": update_env(before[".env"] or "", values), "compose.push.yaml": override}
+            expected = None
+        stage = "validate"
+        stage_pair(work / "next", chosen)
+        candidate_config = effective(work / "next")
+        app = candidate_config["services"]["app"]
+        if app["image"] != image:
+            raise ValueError()
+        if rollback:
+            if candidate_config != expected:
+                raise ValueError()
+        else:
+            if any(app["environment"].get(key) != values[key] for key in PUSH_KEYS):
+                raise ValueError()
+            if old_config is not None:
+                old_app = old_config["services"]["app"]["environment"]
+                if any(app["environment"].get(key) != value for key, value in old_app.items() if key not in PUSH_KEYS):
+                    raise ValueError()
+                if candidate_config["services"]["db"] != old_config["services"]["db"]:
+                    raise ValueError()
+            elif any(app["environment"].get(key) != values[key]
+                     for key in ("QELLO_DB_PASSWORD", "QELLO_AUTH_ACCESS_TOKEN_SECRET")):
+                raise ValueError()
+        stage = "pull"
+        password = run(["aws", "ecr", "get-login-password", "--region", settings["region"]])
+        run(["docker", "login", "--username", "AWS", "--password-stdin", image.split("/", 1)[0]], password)
+        run(compose(work / "next") + ["pull", "app"])
+        if settings.get("fresh", False):
+            run(compose(work / "next") + ["pull", "db"])
+        stage = "publish"
+        stage_pair(work / "restore", before)
+        secure_write(work / "pending.json", json.dumps(before, ensure_ascii=False))
+        os.replace(work / "pending.json", pending)
+        published = True
+        publish(work / "next", chosen)
+        if effective(ROOT) != candidate_config:
+            raise ValueError()
+        stage = "start"
+        if settings.get("fresh", False):
+            run(compose(ROOT) + ["up", "-d", "--wait", "db"])
+        run(compose(ROOT) + ["up", "-d", "--no-deps", "--force-recreate", "app"])
+        stage = "health"
+        for attempt in range(30):
+            health = subprocess.run(["curl", "-fsS", "--max-time", "5",
+                                     "http://localhost:8080/actuator/health"],
+                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=CLEAN_ENV)
+            if health.returncode == 0:
+                break
+            time.sleep(2)
+        else:
+            raise ValueError()
+        stage = "backup"
+        if before[".env"] is not None and chosen != before:
+            # 한 파일에 두 원본과 override 부재(null)를 묶어 백업 교체도 단일 rename으로 한다.
+            secure_write(work / "previous.json", json.dumps(before, ensure_ascii=False))
+            os.replace(work / "previous.json", previous)
+        committed = True
+        try:
+            pending.unlink()
+        except OSError:
+            print("[qello] runtime cleanup REQUIRED", file=sys.stderr)
+        print("[qello] runtime complete OK")
+    except Exception:
+        # AWS/JSON/Compose 예외에는 비밀값이 포함될 수 있어 원문을 로그에 남기지 않는다.
+        if published and not committed:
+            try:
+                publish(work / "restore", before)
+            except Exception:
+                print("[qello] runtime recovery REQUIRED", file=sys.stderr)
+        print("[qello] runtime " + stage + " FAILED", file=sys.stderr)
+        return 1
+    finally:
+        if work is not None:
+            try:
+                shutil.rmtree(work)
+            except OSError:
+                print("[qello] runtime cleanup FAILED", file=sys.stderr)
+        try:
+            resources.close()
+        except OSError:
+            print("[qello] runtime unlock FAILED", file=sys.stderr)
+    return 0
+# END QELLO RUNTIME
+
+sys.exit(deploy({
+    "fresh": True,
+    "region": ${jsonencode(aws_region)},
+    "image": ${jsonencode("${ecr_registry}/${ecr_repository_name}:${app_image_tag}")},
+    "defaults": {
+        "QELLO_DB_NAME": "qello",
+        "QELLO_DB_USERNAME": "qello",
+        "QELLO_MEDIA_BUCKET": ${jsonencode(media_bucket_name)},
+        "SPRING_PROFILES_ACTIVE": ${jsonencode(spring_profiles_active)},
+    },
+    "parameters": {
+        "QELLO_DB_PASSWORD": ${jsonencode(db_password_parameter_name)},
+        "QELLO_AUTH_ACCESS_TOKEN_SECRET": ${jsonencode(auth_token_secret_parameter_name)},
+        "QELLO_NOTIFICATION_PUSH_TOKEN_CURRENT_KEY_ID": ${jsonencode(push_token_current_key_id_parameter_name)},
+        "QELLO_NOTIFICATION_PUSH_TOKEN_CURRENT_ENCRYPTION_KEY_BASE64": ${jsonencode(push_token_current_encryption_key_parameter_name)},
+        "QELLO_NOTIFICATION_PUSH_TOKEN_FINGERPRINT_KEY_BASE64": ${jsonencode(push_token_fingerprint_key_parameter_name)},
+        "QELLO_NOTIFICATION_PUSH_FCM_PROJECT_ID": ${jsonencode(push_fcm_project_id_parameter_name)},
+        "QELLO_NOTIFICATION_PUSH_FCM_CREDENTIAL_JSON": ${jsonencode(push_fcm_credential_json_parameter_name)},
+    },
+}))
+PY_RUNTIME
 
 echo "[qello] user_data 완료: $(date -u +%FT%TZ)"

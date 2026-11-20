@@ -140,6 +140,15 @@ data "aws_iam_policy_document" "instance_permissions" {
     resources = var.ssm_parameter_arns
   }
 
+  # AmazonSSMManagedInstanceCore의 광역 조회 Allow를 유지하면서
+  # 런타임 비밀 조회를 승인된 ARN으로만 제한한다(D-5 H-6).
+  statement {
+    sid           = "DenyReadOtherSsmParameters"
+    effect        = "Deny"
+    actions       = ["ssm:GetParameter", "ssm:GetParameters"]
+    not_resources = var.ssm_parameter_arns
+  }
+
   # SSM SecureString은 계정 기본 KMS Key(alias/aws/ssm)를 공유해서 쓴다(D-3
   # §11 비용 판단). Key 자체는 공유해도 SSM이 GetParameter 호출 시 요청에
   # 자동으로 붙이는 encryption context(PARAMETER_ARN)를 조건으로 걸어, 이
@@ -159,6 +168,21 @@ data "aws_iam_policy_document" "instance_permissions" {
 
     condition {
       test     = "ForAnyValue:StringLike"
+      variable = "kms:EncryptionContext:PARAMETER_ARN"
+      values   = var.ssm_parameter_arns
+    }
+  }
+
+  # 공유 SSM key의 다른 Allow 경로도 제한한다. 부정 비교는 context가 없어도
+  # 거부하며, S3 전용 key의 복호화에는 영향을 주지 않는다(D-5 H-6).
+  statement {
+    sid       = "DenyDecryptOtherSsmParameters"
+    effect    = "Deny"
+    actions   = ["kms:Decrypt"]
+    resources = [var.ssm_kms_key_arn]
+
+    condition {
+      test     = "StringNotEquals"
       variable = "kms:EncryptionContext:PARAMETER_ARN"
       values   = var.ssm_parameter_arns
     }
@@ -214,18 +238,24 @@ resource "aws_instance" "this" {
   subnet_id              = var.subnet_id
   vpc_security_group_ids = [aws_security_group.this.id]
   iam_instance_profile   = aws_iam_instance_profile.instance.name
-  user_data = templatefile("${path.module}/user_data.sh.tftpl", {
-    aws_region                       = data.aws_region.current.region
-    ecr_registry                     = var.ecr_registry
-    ecr_repository_name              = var.ecr_repository_name
-    app_image_tag                    = var.app_image_tag
-    app_port                         = var.app_port
-    db_password_parameter_name       = var.db_password_parameter_name
-    auth_token_secret_parameter_name = var.auth_token_secret_parameter_name
-    media_bucket_name                = var.media_bucket_name
-    spring_profiles_active           = var.spring_profiles_active
-    compose_version                  = var.compose_version
-  })
+  # EC2 user data의 16 KiB 상한 때문에 gzip으로 압축해 전송한다.
+  user_data_base64 = base64gzip(templatefile("${path.module}/user_data.sh.tftpl", {
+    aws_region                                       = data.aws_region.current.region
+    ecr_registry                                     = var.ecr_registry
+    ecr_repository_name                              = var.ecr_repository_name
+    app_image_tag                                    = var.app_image_tag
+    app_port                                         = var.app_port
+    db_password_parameter_name                       = var.db_password_parameter_name
+    auth_token_secret_parameter_name                 = var.auth_token_secret_parameter_name
+    push_token_current_key_id_parameter_name         = var.push_token_current_key_id_parameter_name
+    push_token_current_encryption_key_parameter_name = var.push_token_current_encryption_key_parameter_name
+    push_token_fingerprint_key_parameter_name        = var.push_token_fingerprint_key_parameter_name
+    push_fcm_project_id_parameter_name               = var.push_fcm_project_id_parameter_name
+    push_fcm_credential_json_parameter_name          = var.push_fcm_credential_json_parameter_name
+    media_bucket_name                                = var.media_bucket_name
+    spring_profiles_active                           = var.spring_profiles_active
+    compose_version                                  = var.compose_version
+  }))
   user_data_replace_on_change = false
   # t3 계열을 포함한 현재 세대 인스턴스는 기본으로 EBS 최적화가 적용되지만
   # 정적 검사가 명시적 선언을 요구해 값을 그대로 적는다. 추가 비용은 없다.
@@ -259,7 +289,10 @@ resource "aws_instance" "this" {
     # 인스턴스를 교체하면 데이터 볼륨 재부착과 재기동이 필요해 의도치 않은
     # 다운타임이 생긴다. AMI 교체는 사람이 의도적으로 수행한다(D-3 §7
     # Patching).
-    ignore_changes = [ami]
+    # 최초 부팅에만 실행되는 user data의 gzip 전환으로 기존 서버를 stop/start하지 않는다.
+    # 기존 호스트 설정은 D-5 H-2의 deploy workflow가 관리한다.
+    # 인스턴스 교체를 다루는 별도 Issue에서 user_data와 user_data_base64 예외 제거를 재검토한다.
+    ignore_changes = [ami, user_data, user_data_base64]
   }
 }
 
