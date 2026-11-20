@@ -22,3 +22,33 @@ output "auth_token_secret_parameter_name" {
   description = "QELLO_AUTH_ACCESS_TOKEN_SECRET SSM 파라미터 이름. 값은 value_wo이므로 콘솔·CLI로 직접 수정하지 않는다. 갱신 시 TF_VAR_auth_token_secret과 auth_token_secret_version을 올려 terraform apply로 반영한다."
   value       = aws_ssm_parameter.auth_token_secret.name
 }
+
+output "push_token_current_key_id_parameter_name" {
+  description = "현재 push token 암호화 key ID의 SSM 파라미터 이름. 비밀값은 반환하지 않는다."
+  value       = aws_ssm_parameter.push_token_current_key_id.name
+}
+
+output "push_token_current_encryption_key_parameter_name" {
+  description = "현재 push token 암호화 key의 SSM 파라미터 이름. 비밀값은 반환하지 않는다."
+  value       = aws_ssm_parameter.push_token_current_encryption_key.name
+}
+
+output "push_token_fingerprint_key_parameter_name" {
+  description = "Push token fingerprint key의 SSM 파라미터 이름. 비밀값은 반환하지 않는다."
+  value       = aws_ssm_parameter.push_token_fingerprint_key.name
+}
+
+output "push_fcm_project_id_parameter_name" {
+  description = "Dev FCM project ID의 SSM 파라미터 이름. 비밀값은 반환하지 않는다."
+  value       = aws_ssm_parameter.push_fcm_project_id.name
+}
+
+output "push_fcm_credential_json_parameter_name" {
+  description = "Dev FCM credential JSON의 SSM 파라미터 이름. 비밀값은 반환하지 않는다."
+  value       = aws_ssm_parameter.push_fcm_credential_json.name
+}
+
+output "ssm_parameter_path_prefix" {
+  description = "배포 구성에 사용하는 SSM 파라미터 경로 접두사. 비밀값은 포함하지 않는다."
+  value       = local.ssm_parameter_path_prefix
+}
