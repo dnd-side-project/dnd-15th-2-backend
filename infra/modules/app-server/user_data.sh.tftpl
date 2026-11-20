@@ -263,6 +263,9 @@ def deploy(settings):
         os.fchmod(lock.fileno(), 0o600)
         os.fchown(lock.fileno(), 0, 0)
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        for leftover in STATE.glob("stage-*"):
+            if leftover.is_dir() and not leftover.is_symlink():
+                shutil.rmtree(leftover)
         work = Path(tempfile.mkdtemp(prefix="stage-", dir=STATE))
         for name in (".env", "compose.push.yaml"):
             path = ROOT / name
