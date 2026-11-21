@@ -27,6 +27,58 @@ springdoc:
     enabled: true
 
 qello:
+  worker:
+    scheduling:
+      # 실기기 확인 지연을 줄이기 위한 dev 전용 fixture다. 운영 권장값이 아니다.
+      # moderation과 sweep은 별도 활성화 범위이므로 제외한다.
+      enabled: true
+      pool-size: 5
+      direction-matching:
+        enabled: true
+        fixed-delay: PT5S
+        batch-size: 20
+        lease-duration: PT1M
+        retry:
+          max-attempts: 5
+          base-delay: PT5S
+          max-delay: PT5M
+      recipient-notification-fan-out:
+        enabled: true
+        fixed-delay: PT5S
+        batch-size: 20
+        lease-duration: PT1M
+        retry:
+          max-attempts: 5
+          base-delay: PT5S
+          max-delay: PT5M
+      notification-fan-out:
+        enabled: true
+        fixed-delay: PT5S
+        batch-size: 20
+        lease-duration: PT1M
+        retry:
+          max-attempts: 5
+          base-delay: PT5S
+          max-delay: PT5M
+      report-resolution-fan-out:
+        enabled: true
+        fixed-delay: PT5S
+        batch-size: 20
+        lease-duration: PT1M
+        retry:
+          max-attempts: 5
+          base-delay: PT5S
+          max-delay: PT5M
+      push-delivery-dispatch:
+        enabled: true
+        fixed-delay: PT5S
+        batch-size: 10
+        # connect 3s + read 5s 기준 10건의 80s보다 lease를 길게 둔다.
+        lease-duration: PT2M
+        retry:
+          max-attempts: 5
+          base-backoff: PT10S
+          backoff-cap: PT10M
   web:
     # 프론트 개발자 로컬 환경 origin. 실제 값은 배포 시점에 환경변수로 채운다.
     allowed-origins: ${QELLO_WEB_ALLOWED_ORIGINS:}
@@ -37,6 +89,7 @@ qello:
       secret: ${QELLO_AUTH_ACCESS_TOKEN_SECRET}
   notification:
     push:
+      provider: fcm
       policy:
         # dev 테스트 서버 전용 fixture 값이다. 운영 권장값이 아니다. 이 설정은
         # 프로필과 무관하게 항상 바인딩되므로(PushConfiguration) 값이 없으면

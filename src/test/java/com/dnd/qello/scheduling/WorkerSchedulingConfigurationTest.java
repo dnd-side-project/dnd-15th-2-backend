@@ -1,12 +1,18 @@
 /**
  * Created at: 2026-08-27T14:32:15+09:00
  * Extended at: 2026-08-27T15:28:15+09:00
+ * Extended at: 2026-11-21T12:06:21.291Z
  * Source scenario: TEST-PLAN-GH-182-CORE-WORKER-SCHEDULING-UNIT-006 through UNIT-008, INT-003
  * Source scenario: TEST-PLAN-GH-337-ACCOUNT-WITHDRAWAL-UNIT-025 (added 2026-10-09T18:14:46+09:00)
+ * Source scenario: TEST-PLAN-GH-366-DEV-WORKER-FCM-UNIT-004, UNIT-006
  */
 package com.dnd.qello.scheduling;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.util.Base64;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -18,9 +24,12 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.autoconfigure.context.ConfigurationPropertiesAutoConfiguration;
+import org.springframework.boot.test.context.ConfigDataApplicationContextInitializer;
+import org.springframework.boot.test.context.assertj.AssertableApplicationContext;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.env.StandardEnvironment;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 
 import com.dnd.qello.account.sweep.AccountWithdrawalSweepWorker;
@@ -30,10 +39,16 @@ import com.dnd.qello.direction.sweep.SkipConfirmationSweepWorker;
 import com.dnd.qello.filtering.moderation.AnswerModerationDeadlineWorker;
 import com.dnd.qello.filtering.moderation.AnswerModerationExecutionWorker;
 import com.dnd.qello.filtering.moderation.AnswerModerationVerdictWorker;
+import com.dnd.qello.notification.config.PushConfiguration;
 import com.dnd.qello.notification.fanout.NotificationFanOutWorker;
 import com.dnd.qello.notification.fanout.RecipientNotificationFanOutWorker;
 import com.dnd.qello.notification.fanout.ReportResolutionFanOutWorker;
+import com.dnd.qello.notification.push.PushDeliveryRetryPolicy;
+import com.dnd.qello.notification.push.PushProvider;
+import com.dnd.qello.notification.push.fcm.FcmHttpV1PushProvider;
+import com.dnd.qello.notification.push.security.AesGcmPushTokenProtector;
 import com.dnd.qello.notification.service.PushDeliveryDispatchWorker;
+import com.dnd.qello.notification.service.PushDispatchGroupPlanner;
 import com.dnd.qello.scheduling.adapter.AccountWithdrawalSweepScheduledAdapter;
 import com.dnd.qello.scheduling.adapter.AnswerModerationDeadlineScheduledAdapter;
 import com.dnd.qello.scheduling.adapter.AnswerModerationExecutionScheduledAdapter;
@@ -45,6 +60,7 @@ import com.dnd.qello.scheduling.adapter.RecipientExpirationSweepScheduledAdapter
 import com.dnd.qello.scheduling.adapter.RecipientNotificationFanOutScheduledAdapter;
 import com.dnd.qello.scheduling.adapter.ReportResolutionFanOutScheduledAdapter;
 import com.dnd.qello.scheduling.adapter.SkipConfirmationSweepScheduledAdapter;
+import com.dnd.qello.scheduling.config.WorkerSchedulingProperties;
 import com.dnd.qello.scheduling.observability.WorkerMetrics;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -59,6 +75,7 @@ import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 
 class WorkerSchedulingConfigurationTest {
 
+	private static final Instant DEV_WORKER_AT = Instant.parse("2026-11-21T12:00:00Z");
 	private static final String[] DIRECTION_MATCHING_ONLY = {
 			"qello.worker.scheduling.enabled=true",
 			"qello.worker.scheduling.pool-size=3",
@@ -75,6 +92,179 @@ class WorkerSchedulingConfigurationTest {
 			.withConfiguration(AutoConfigurations.of(ConfigurationPropertiesAutoConfiguration.class))
 			.withUserConfiguration(WorkerSchedulingConfiguration.class)
 			.withBean(MeterRegistry.class, SimpleMeterRegistry::new);
+
+	@Test
+	@DisplayName("GH-366 UNIT-004: 실제 dev 설정에서 global OFF는 scheduling과 모든 adapter를 제거한다")
+	void devGlobalOffRollsBackSchedulingWithoutChangingProvider() {
+		devConfigDataRunner()
+				.withUserConfiguration(PushConfiguration.class)
+				.withPropertyValues("qello.worker.scheduling.enabled=false")
+				.withPropertyValues(devRollbackCredentials())
+				.run(context -> {
+					assertThat(context).hasNotFailed();
+					assertThat(context.getEnvironment().getProperty("qello.worker.scheduling.enabled"))
+							.isEqualTo("false");
+					assertThat(context.getEnvironment().getProperty(
+							"qello.worker.scheduling.push-delivery-dispatch.enabled")).isEqualTo("true");
+					assertThat(context.getEnvironment().getProperty("qello.notification.push.provider"))
+							.isEqualTo("fcm");
+					assertThat(context).doesNotHaveBean(ThreadPoolTaskScheduler.class);
+					assertThat(context).doesNotHaveBean(WorkerInstanceIdentity.class);
+					assertThat(context).doesNotHaveBean(WorkerMetrics.class);
+					assertThat(context).doesNotHaveBean(DirectionMatchingScheduledAdapter.class);
+					assertThat(context).doesNotHaveBean(RecipientNotificationFanOutScheduledAdapter.class);
+					assertThat(context).doesNotHaveBean(NotificationFanOutScheduledAdapter.class);
+					assertThat(context).doesNotHaveBean(ReportResolutionFanOutScheduledAdapter.class);
+					assertThat(context).doesNotHaveBean(PushDeliveryDispatchScheduledAdapter.class);
+					assertThat(context).doesNotHaveBean(PushDeliveryDispatchWorker.class);
+					assertThat(context).doesNotHaveBean(PushDispatchGroupPlanner.class);
+					assertThat(context).doesNotHaveBean(PushDeliveryRetryPolicy.class);
+					assertThat(context).hasSingleBean(PushProvider.class);
+					assertThat(context.getBean(PushProvider.class)).isInstanceOf(FcmHttpV1PushProvider.class);
+					assertThat(context).hasSingleBean(AesGcmPushTokenProtector.class);
+					assertExcludedDevAdapters(context);
+				});
+	}
+
+	private static String[] devRollbackCredentials() {
+		return new String[]{
+				"qello.notification.push.token-protection.current-key-id=test-only-rollback",
+				"qello.notification.push.token-protection.current-encryption-key-base64="
+						+ Base64.getEncoder().encodeToString(new byte[32]),
+				"qello.notification.push.token-protection.fingerprint-key-base64="
+						+ Base64.getEncoder().encodeToString(
+								"11111111111111111111111111111111".getBytes(StandardCharsets.UTF_8)),
+				"qello.notification.push.fcm.project-id=test-only-rollback-project",
+				"qello.notification.push.fcm.credential-json={\"type\":\"authorized_user\","
+						+ "\"client_id\":\"test-client\",\"client_secret\":\"test-secret\","
+						+ "\"refresh_token\":\"test-refresh\"}"
+		};
+	}
+
+	@Test
+	@DisplayName("GH-366 UNIT-006: 실제 dev scheduler는 다섯 worker에 바인딩된 batch와 lease·retry를 전달한다")
+	void devSchedulerInvokesEachWorkerWithBoundCommandsAndShutsDown() {
+		DevWorkers workers = new DevWorkers();
+		AtomicReference<ThreadPoolTaskScheduler> schedulerReference = new AtomicReference<>();
+
+		devConfigDataRunner()
+				.withBean(Clock.class, () -> Clock.fixed(DEV_WORKER_AT, ZoneOffset.UTC))
+				.withBean(DirectionMatchingWorker.class, () -> workers.matching)
+				.withBean(RecipientNotificationFanOutWorker.class, () -> workers.recipient)
+				.withBean(NotificationFanOutWorker.class, () -> workers.notification)
+				.withBean(ReportResolutionFanOutWorker.class, () -> workers.report)
+				.withBean(PushDeliveryDispatchWorker.class, () -> workers.push)
+				.run(context -> {
+					assertThat(context).hasNotFailed();
+					ThreadPoolTaskScheduler scheduler = context.getBean(ThreadPoolTaskScheduler.class);
+					schedulerReference.set(scheduler);
+					WorkerSchedulingProperties properties = context.getBean(WorkerSchedulingProperties.class);
+					assertThat(scheduler.getScheduledThreadPoolExecutor().getCorePoolSize())
+							.isEqualTo(properties.poolSize());
+					assertThat(context).hasSingleBean(DirectionMatchingScheduledAdapter.class);
+					assertThat(context).hasSingleBean(RecipientNotificationFanOutScheduledAdapter.class);
+					assertThat(context).hasSingleBean(NotificationFanOutScheduledAdapter.class);
+					assertThat(context).hasSingleBean(ReportResolutionFanOutScheduledAdapter.class);
+					assertThat(context).hasSingleBean(PushDeliveryDispatchScheduledAdapter.class);
+					assertExcludedDevAdapters(context);
+					assertDevWorkerCommands(workers, properties, context.getBean(WorkerInstanceIdentity.class).owner());
+				});
+
+		assertThat(schedulerReference).hasValueSatisfying(
+				scheduler -> assertThat(scheduler.getScheduledThreadPoolExecutor().isShutdown()).isTrue());
+	}
+
+	private ApplicationContextRunner devConfigDataRunner() {
+		return runner.withUserConfiguration(ScheduledAdapterScanConfiguration.class)
+				.withInitializer(context -> {
+					context.getEnvironment().getPropertySources()
+							.remove(StandardEnvironment.SYSTEM_ENVIRONMENT_PROPERTY_SOURCE_NAME);
+					context.getEnvironment().getPropertySources()
+							.remove(StandardEnvironment.SYSTEM_PROPERTIES_PROPERTY_SOURCE_NAME);
+				})
+				.withPropertyValues("spring.profiles.active=dev",
+						"spring.config.location=classpath:/application.yml")
+				.withInitializer(new ConfigDataApplicationContextInitializer());
+	}
+
+	private static void assertExcludedDevAdapters(AssertableApplicationContext context) {
+		assertThat(context).doesNotHaveBean(RecipientExpirationSweepScheduledAdapter.class);
+		assertThat(context).doesNotHaveBean(SkipConfirmationSweepScheduledAdapter.class);
+		assertThat(context).doesNotHaveBean(AccountWithdrawalSweepScheduledAdapter.class);
+		assertThat(context).doesNotHaveBean(AnswerModerationExecutionScheduledAdapter.class);
+		assertThat(context).doesNotHaveBean(AnswerModerationDeadlineScheduledAdapter.class);
+		assertThat(context).doesNotHaveBean(AnswerModerationVerdictScheduledAdapter.class);
+	}
+
+	private static void assertDevWorkerCommands(DevWorkers workers, WorkerSchedulingProperties properties,
+			String owner) throws InterruptedException {
+		var matching = properties.directionMatching();
+		assertThat(workers.matchingCall.await()).usingRecursiveComparison()
+				.ignoringFields("retryPolicy.backoffStrategy.jitterSource")
+				.isEqualTo(new DirectionMatchingWorker.BatchCommand(matching.batchSize(), owner, DEV_WORKER_AT,
+						DEV_WORKER_AT.plus(matching.leaseDuration()), matching.retry().toPolicy()));
+		var recipient = properties.recipientNotificationFanOut();
+		assertThat(workers.recipientCall.await()).usingRecursiveComparison()
+				.ignoringFields("retryPolicy.backoffStrategy.jitterSource")
+				.isEqualTo(
+						new RecipientNotificationFanOutWorker.BatchCommand(recipient.batchSize(), owner, DEV_WORKER_AT,
+								DEV_WORKER_AT.plus(recipient.leaseDuration()), recipient.retry().toPolicy()));
+		var notification = properties.notificationFanOut();
+		assertThat(workers.notificationCall.await()).usingRecursiveComparison()
+				.ignoringFields("retryPolicy.backoffStrategy.jitterSource")
+				.isEqualTo(new NotificationFanOutWorker.BatchCommand(notification.batchSize(), owner, DEV_WORKER_AT,
+						DEV_WORKER_AT.plus(notification.leaseDuration()), notification.retry().toPolicy()));
+		var report = properties.reportResolutionFanOut();
+		assertThat(workers.reportCall.await()).usingRecursiveComparison()
+				.ignoringFields("retryPolicy.backoffStrategy.jitterSource")
+				.isEqualTo(new ReportResolutionFanOutWorker.BatchCommand(report.batchSize(), owner, DEV_WORKER_AT,
+						DEV_WORKER_AT.plus(report.leaseDuration()), report.retry().toPolicy()));
+		var push = properties.pushDeliveryDispatch();
+		assertThat(workers.pushCall.await()).isEqualTo(new PushDeliveryDispatchWorker.BatchCommand(
+				push.batchSize(), DEV_WORKER_AT, DEV_WORKER_AT.plus(push.leaseDuration())));
+	}
+
+	private static final class ObservedCommand<T> {
+		private final CountDownLatch invoked = new CountDownLatch(1);
+		private final AtomicReference<T> command = new AtomicReference<>();
+
+		private <R> R record(T value, R result) {
+			command.compareAndSet(null, value);
+			invoked.countDown();
+			return result;
+		}
+
+		private T await() throws InterruptedException {
+			assertThat(invoked.await(5, TimeUnit.SECONDS)).as("worker 최초 호출").isTrue();
+			return command.get();
+		}
+	}
+
+	private static final class DevWorkers {
+		private final DirectionMatchingWorker matching = mock(DirectionMatchingWorker.class);
+		private final RecipientNotificationFanOutWorker recipient = mock(RecipientNotificationFanOutWorker.class);
+		private final NotificationFanOutWorker notification = mock(NotificationFanOutWorker.class);
+		private final ReportResolutionFanOutWorker report = mock(ReportResolutionFanOutWorker.class);
+		private final PushDeliveryDispatchWorker push = mock(PushDeliveryDispatchWorker.class);
+		private final ObservedCommand<DirectionMatchingWorker.BatchCommand> matchingCall = new ObservedCommand<>();
+		private final ObservedCommand<RecipientNotificationFanOutWorker.BatchCommand> recipientCall = new ObservedCommand<>();
+		private final ObservedCommand<NotificationFanOutWorker.BatchCommand> notificationCall = new ObservedCommand<>();
+		private final ObservedCommand<ReportResolutionFanOutWorker.BatchCommand> reportCall = new ObservedCommand<>();
+		private final ObservedCommand<PushDeliveryDispatchWorker.BatchCommand> pushCall = new ObservedCommand<>();
+
+		private DevWorkers() {
+			when(matching.processBatch(any())).thenAnswer(invocation -> matchingCall.record(
+					invocation.getArgument(0), new DirectionMatchingWorker.BatchResult(0, List.of())));
+			when(recipient.processBatch(any())).thenAnswer(invocation -> recipientCall.record(
+					invocation.getArgument(0), new RecipientNotificationFanOutWorker.BatchResult(0, List.of())));
+			when(notification.processBatch(any())).thenAnswer(invocation -> notificationCall.record(
+					invocation.getArgument(0), new NotificationFanOutWorker.BatchResult(0, List.of())));
+			when(report.processBatch(any())).thenAnswer(invocation -> reportCall.record(
+					invocation.getArgument(0), new ReportResolutionFanOutWorker.BatchResult(0, List.of())));
+			when(push.dispatchBatch(any())).thenAnswer(invocation -> pushCall.record(
+					invocation.getArgument(0), new PushDeliveryDispatchWorker.BatchResult(0, List.of())));
+		}
+	}
 
 	@Test
 	@DisplayName("UNIT-007: global OFF는 scheduling infrastructure를 등록하지 않는다")

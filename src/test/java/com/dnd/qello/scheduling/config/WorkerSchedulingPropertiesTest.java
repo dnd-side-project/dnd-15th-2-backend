@@ -1,21 +1,26 @@
 /**
  * Created at: 2026-08-27T14:22:03+09:00
  * Extended at: 2026-09-07T10:20:00+09:00
+ * Extended at: 2026-11-21T12:06:21.291Z
  * Source scenario: TEST-PLAN-GH-182-CORE-WORKER-SCHEDULING-UNIT-001 through UNIT-004,
  * TEST-PLAN-GH-204-ANSWER-MODERATION-PRODUCTION-WIRING-UNIT-006
  * Source scenario: TEST-PLAN-GH-337-ACCOUNT-WITHDRAWAL-UNIT-025 (added 2026-10-09T18:14:46+09:00)
+ * Source scenario: TEST-PLAN-GH-366-DEV-WORKER-FCM-UNIT-001
  */
 package com.dnd.qello.scheduling.config;
 
 import java.time.Duration;
+import java.util.List;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.autoconfigure.context.ConfigurationPropertiesAutoConfiguration;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.boot.test.context.ConfigDataApplicationContextInitializer;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.env.StandardEnvironment;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -38,6 +43,49 @@ class WorkerSchedulingPropertiesTest {
 	private final ApplicationContextRunner runner = new ApplicationContextRunner()
 			.withConfiguration(AutoConfigurations.of(ConfigurationPropertiesAutoConfiguration.class))
 			.withUserConfiguration(WorkerSchedulingPropertiesConfiguration.class);
+
+	@Test
+	@DisplayName("GH-366 UNIT-001: 실제 dev 설정은 다섯 worker 수치를 바인딩하고 제외 worker는 끈다")
+	void devConfigDataBindsApprovedWorkerSettingsAndExclusions() {
+		runner.withInitializer(context -> {
+			context.getEnvironment().getPropertySources()
+					.remove(StandardEnvironment.SYSTEM_ENVIRONMENT_PROPERTY_SOURCE_NAME);
+			context.getEnvironment().getPropertySources()
+					.remove(StandardEnvironment.SYSTEM_PROPERTIES_PROPERTY_SOURCE_NAME);
+		})
+				.withPropertyValues("spring.profiles.active=dev",
+						"spring.config.location=classpath:/application.yml")
+				.withInitializer(new ConfigDataApplicationContextInitializer())
+				.run(context -> {
+					assertThat(context).hasNotFailed();
+					WorkerSchedulingProperties properties = context.getBean(WorkerSchedulingProperties.class);
+					assertThat(properties.enabled()).isTrue();
+					assertThat(properties.poolSize()).isEqualTo(5);
+					List<WorkerSchedulingProperties.OutboxSettings> outboxes = List.of(
+							properties.directionMatching(), properties.recipientNotificationFanOut(),
+							properties.notificationFanOut(), properties.reportResolutionFanOut());
+					assertThat(properties.poolSize()).isGreaterThanOrEqualTo(outboxes.size() + 1);
+					assertThat(outboxes).allSatisfy(settings -> assertThat(settings).isEqualTo(
+							new WorkerSchedulingProperties.OutboxSettings(true, Duration.ofSeconds(5), 20,
+									Duration.ofMinutes(1), new WorkerSchedulingProperties.OutboxRetrySettings(
+											5, Duration.ofSeconds(5), Duration.ofMinutes(5)))));
+					assertThat(properties.pushDeliveryDispatch()).isEqualTo(
+							new WorkerSchedulingProperties.PushSettings(true, Duration.ofSeconds(5), 10,
+									Duration.ofMinutes(2), new WorkerSchedulingProperties.PushRetrySettings(
+											5, Duration.ofSeconds(10), Duration.ofMinutes(10))));
+					assertThat(properties.recipientExpirationSweep() == null
+							|| !properties.recipientExpirationSweep().enabled())
+							.as("recipient-expiration-sweep 제외").isTrue();
+					assertThat(properties.skipConfirmationSweep() == null
+							|| !properties.skipConfirmationSweep().enabled())
+							.as("skip-confirmation-sweep 제외").isTrue();
+					assertThat(properties.accountWithdrawalSweep() == null
+							|| !properties.accountWithdrawalSweep().enabled())
+							.as("account-withdrawal-sweep 제외").isTrue();
+					assertThat(properties.answerModeration() == null || !properties.answerModeration().enabled())
+							.as("answer-moderation 제외").isTrue();
+				});
+	}
 
 	@Test
 	@DisplayName("UNIT-001: global OFF는 worker 수치가 없어도 안전하게 binding된다")
