@@ -9,7 +9,7 @@
 
 - Title: `test-server push token 보호 key와 FCM credential SSM 주입`
 - GitHub Issue: `#364`
-- Branch: `infra/gh-364-test-server-push-secrets`
+- Branch: `infra/gh-364-apply-evidence` (구현 브랜치 `infra/gh-364-test-server-push-secrets`는 PR #367로 머지)
 - Base branch: `main`
 
 ## Objective
@@ -27,6 +27,7 @@
 - 테스트 실행 환경 승인: 단위 fixture는 외부 프로그램 없이, 통합 fixture는 환경변수 없이 PATH의 Compose로 실행하며 skip하지 않는다 — https://github.com/dnd-side-project/dnd-15th-2-backend/issues/364#issuecomment-7039501730
 - CI 도구 승인: `harness-policy.yml` test job과 `ci-benchmark.yml`에 고정 버전 Python·PyYAML·Terraform 설치 단계만 추가한다 — https://github.com/dnd-side-project/dnd-15th-2-backend/issues/364#issuecomment-7039900124
 - PR #367 리뷰 반영 승인(2026-11-21, @Byuntil): 테스트 경로만 바뀐 push의 자동 배포 제외, SSM 상태 조회 일시 오류 재시도(명령 재전송 금지), 강제 종료로 남은 `stage-*` 정리, 통합 테스트의 deploy step shell 실행. 첫 부팅 재시도·health 포트·previous/pending 교체 원자성은 후속 Issue로 분리한다.
+- Apply 승인 경로 결정(2026-11-21, @Byuntil): #367이 작성자가 아닌 소유자의 GitHub 승인 없이 머지되어 #364를 다시 열고, plan 증거 문서(`docs/reports/infrastructure/gh-364-D-5-build.md`)를 추가하는 PR을 승인 경로로 쓴다. 이 PR은 `infra/`를 바꾸지 않고 승인 게이트·workflow·스크립트를 수정하지 않는다. 승인자는 이 PR과 #367의 인프라 변경을 함께 승인한다.
 
 ## Scope
 
