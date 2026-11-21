@@ -8,6 +8,8 @@
  * TEST-PLAN-GH-300-FEED-MEDIA-VIEW-URL-INT-008 (added 2026-10-02T17:07:28+09:00,
  * 상세 card 확장 2026-10-02T17:33:49+09:00),
  * TEST-PLAN-GH-315-AUTH-NICKNAME-RATE-LIMIT-INT-012 (added 2026-10-06T14:26:52+09:00)
+ * Extended at: 2026-11-21T08:52:10Z
+ * Source scenario: TEST-PLAN-GH-365-PUSH-FID-PROVIDER-INT-007
  */
 package com.dnd.qello;
 
@@ -306,22 +308,25 @@ class OpenApiSpecificationIntegrationTest extends PostgisContainerIntegrationTes
 	}
 
 	@Test
-	@DisplayName("INT-018: push device register와 revoke의 204 응답은 content schema를 노출하지 않는다")
+	@DisplayName("INT-007: 기기 등록·해지는 platform과 fid만 필수로 받고 인증과 빈 204 응답을 문서화한다")
 	void documentsPushDeviceNoContentResponsesWithoutSchema() throws Exception {
 		JsonNode specification = objectMapper.readTree(fetchSpecification());
-		JsonNode registerOperation = operation(specification, "/api/v1/notifications/devices", "post");
-		JsonNode revokeOperation = operation(specification, "/api/v1/notifications/devices/revoke", "post");
-		JsonNode registerResponse = registerOperation
-				.at("/responses/204");
-		JsonNode revokeResponse = revokeOperation
-				.at("/responses/204");
-
-		assertThat(registerOperation.at("/requestBody/required").asBoolean()).isTrue();
-		assertThat(revokeOperation.at("/requestBody/required").asBoolean()).isTrue();
-		assertThat(registerResponse.isMissingNode()).isFalse();
-		assertThat(registerResponse.has("content")).isFalse();
-		assertThat(revokeResponse.isMissingNode()).isFalse();
-		assertThat(revokeResponse.has("content")).isFalse();
+		for (String path : List.of("/api/v1/notifications/devices", "/api/v1/notifications/devices/revoke")) {
+			JsonNode operation = operation(specification, path, "post");
+			assertAppAuthentication(operation);
+			assertThat(operation.at("/requestBody/required").asBoolean()).isTrue();
+			JsonNode request = resolveSchema(specification,
+					operation.at("/requestBody/content/application~1json/schema"));
+			assertThat(fieldNames(request)).containsExactlyInAnyOrder("platform", "fid");
+			assertThat(requiredFields(request)).containsExactlyInAnyOrder("platform", "fid");
+			assertThat(request.at("/properties").has("token")).isFalse();
+			assertThat(request.at("/properties/fid/type").asText()).isEqualTo("string");
+			assertThat(enumValues(request.at("/properties/platform")))
+					.containsExactlyInAnyOrder("ANDROID", "IOS");
+			JsonNode response = operation.at("/responses/204");
+			assertThat(response.isMissingNode()).isFalse();
+			assertThat(response.has("content")).isFalse();
+		}
 	}
 
 	@Test
