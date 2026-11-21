@@ -116,24 +116,24 @@ public interface NotificationApiSpec {
 					"""))) @Valid @RequestBody(required = false) UpdateNotificationPreferencesRequest request,
 			@Parameter(hidden = true) Authentication authentication);
 
-	@Operation(summary = "푸시 기기 등록 또는 최신화", description = "사용자의 FCM registration token을 등록\n앱 로그인 필요(Authorization 헤더에 앱 액세스 토큰이 필요)")
+	@Operation(summary = "푸시 기기 등록 또는 최신화", description = "사용자의 Firebase Installation ID(FID)를 등록\n앱 로그인 필요(Authorization 헤더에 앱 액세스 토큰이 필요)")
 	@ApiResponses({
 			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "204", description = "기기 등록 또는 최신화가 완료되었습니다.", content = @Content),
-			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "platform 또는 token 값이 계약을 만족하지 않습니다.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
+			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "platform 또는 fid 값이 계약을 만족하지 않습니다.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
 			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "앱 액세스 토큰이 유효하지 않습니다.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
-			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "500", description = "푸시 token 보호 처리에 실패했습니다.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class)))
+			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "500", description = "푸시 FID 보호 처리에 실패했습니다.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class)))
 	})
 	@PostMapping("/notifications/devices")
 	ResponseEntity<ApiResponse<Void>> registerDevice(
 			@RequestBody(required = true) PushDeviceRequest request,
 			@Parameter(hidden = true) Authentication authentication);
 
-	@Operation(summary = "푸시 기기 해지", description = "사용자의 FCM registration token을 해지\n앱 로그인 필요(Authorization 헤더에 앱 액세스 토큰이 필요)")
+	@Operation(summary = "푸시 기기 해지", description = "사용자의 Firebase Installation ID(FID)를 해지\n앱 로그인 필요(Authorization 헤더에 앱 액세스 토큰이 필요)")
 	@ApiResponses({
 			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "204", description = "기기 해지가 완료되었습니다.", content = @Content),
-			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "platform 또는 token 값이 계약을 만족하지 않습니다.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
+			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "platform 또는 fid 값이 계약을 만족하지 않습니다.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
 			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "앱 액세스 토큰이 유효하지 않습니다.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
-			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "500", description = "푸시 token 보호 처리에 실패했습니다.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class)))
+			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "500", description = "푸시 FID 보호 처리에 실패했습니다.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class)))
 	})
 	@PostMapping("/notifications/devices/revoke")
 	ResponseEntity<ApiResponse<Void>> revokeDevice(

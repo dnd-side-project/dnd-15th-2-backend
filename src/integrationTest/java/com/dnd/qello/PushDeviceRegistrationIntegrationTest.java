@@ -3,11 +3,15 @@
  * Source scenario: TEST-PLAN-GH-179-PUSH-DELIVERY-INT-001, TEST-PLAN-GH-179-PUSH-DELIVERY-INT-002,
  * TEST-PLAN-GH-179-PUSH-DELIVERY-INT-003, TEST-PLAN-GH-179-PUSH-DELIVERY-INT-004,
  * TEST-PLAN-GH-179-PUSH-DELIVERY-INT-005, TEST-PLAN-GH-179-PUSH-DELIVERY-INT-018
+ * Extended at: 2026-11-21T08:52:10Z
+ * Source scenario: TEST-PLAN-GH-365-PUSH-FID-PROVIDER-INT-001..003,
+ * TEST-PLAN-GH-365-PUSH-FID-PROVIDER-INT-008
  */
 package com.dnd.qello;
 
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
+import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -68,6 +72,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest
@@ -123,23 +128,33 @@ class PushDeviceRegistrationIntegrationTest extends PostgisContainerIntegrationT
 	}
 
 	@Test
-	@DisplayName("INT-001: 인증된 사용자의 register POST는 204이고 ACTIVE row 1개만 남기며 sentinel token을 노출하지 않는다")
+	@DisplayName("INT-001: FID 등록·재등록은 암호화된 ACTIVE 1행만 남기고 원문을 노출하지 않는다")
 	void registersOwnPushTokenWithoutLeakingPlaintext(CapturedOutput output) throws Exception {
 		long userId = account("gh179-register-own");
 		String body = """
-				{"platform":"ANDROID","token":"%s"}
+				{"platform":"ANDROID","fid":"%s"}
 				""".formatted(TOKEN_SENTINEL);
 
-		mockMvc.perform(post("/api/v1/notifications/devices")
-				.with(userJwt(userId))
-				.contentType(MediaType.APPLICATION_JSON)
-				.content(body))
-				.andExpect(status().isNoContent())
-				.andExpect(content().string(""));
+		for (int attempt = 0; attempt < 2; attempt++) {
+			mockMvc.perform(post("/api/v1/notifications/devices")
+					.with(userJwt(userId))
+					.contentType(MediaType.APPLICATION_JSON)
+					.content(body))
+					.andExpect(status().isNoContent())
+					.andExpect(content().string(""));
+		}
 
 		assertThat(jdbc.queryForObject("""
 				SELECT count(*) FROM push_device WHERE user_id = ? AND device_status = 'ACTIVE'
 				""", Integer.class, userId)).isEqualTo(1);
+		byte[] ciphertext = jdbc.queryForObject("""
+				SELECT token_ciphertext FROM push_device WHERE user_id = ? AND device_status = 'ACTIVE'
+				""", byte[].class, userId);
+		assertThat(ciphertext).isNotEqualTo(TOKEN_SENTINEL.getBytes(StandardCharsets.UTF_8));
+		assertThat(protector().decrypt(ciphertext)).isEqualTo(PushToken.of(TOKEN_SENTINEL));
+		assertThat(jdbc.queryForObject("""
+				SELECT token_fingerprint FROM push_device WHERE user_id = ? AND device_status = 'ACTIVE'
+				""", String.class, userId)).isEqualTo(protector().fingerprint(PushToken.of(TOKEN_SENTINEL)));
 		assertThat(output.getOut()).doesNotContain(TOKEN_SENTINEL, OTHER_TOKEN_SENTINEL);
 		assertThat(output.getErr()).doesNotContain(TOKEN_SENTINEL, OTHER_TOKEN_SENTINEL);
 	}
@@ -162,7 +177,7 @@ class PushDeviceRegistrationIntegrationTest extends PostgisContainerIntegrationT
 				1, NOW, NOW, NOW, "provider-message"));
 
 		String body = """
-				{"platform":"ANDROID","token":"%s"}
+				{"platform":"ANDROID","fid":"%s"}
 				""".formatted(TOKEN_SENTINEL);
 
 		mockMvc.perform(post("/api/v1/notifications/devices/revoke")
@@ -208,7 +223,7 @@ class PushDeviceRegistrationIntegrationTest extends PostgisContainerIntegrationT
 				.with(userJwt(otherUserId))
 				.contentType(MediaType.APPLICATION_JSON)
 				.content("""
-						{"platform":"IOS","token":"%s"}
+						{"platform":"IOS","fid":"%s"}
 						""".formatted(OTHER_TOKEN_SENTINEL)))
 				.andExpect(status().isNoContent())
 				.andExpect(content().string(""));
@@ -342,58 +357,60 @@ class PushDeviceRegistrationIntegrationTest extends PostgisContainerIntegrationT
 	}
 
 	@Test
-	@DisplayName("INT-018: 인증·validation·204 계약은 register와 revoke 모두에서 토큰 원문을 노출하지 않아야 한다")
+	@DisplayName("INT-003: 두 endpoint는 잘못된 FID와 legacy token 요청을 거부하고 원문을 노출하지 않는다")
 	void validatesAuthenticationAndRedactsTokenAcrossBothEndpoints(CapturedOutput output) throws Exception {
 		rejectsUnauthenticatedRegisterAndRevoke();
-
 		long userId = account("gh179-validation");
-		mockMvc.perform(post("/api/v1/notifications/devices")
-				.with(userJwt(userId))
-				.contentType(MediaType.APPLICATION_JSON)
-				.content("{}"))
-				.andExpect(status().isBadRequest());
-		mockMvc.perform(post("/api/v1/notifications/devices")
-				.with(userJwt(userId))
-				.contentType(MediaType.APPLICATION_JSON))
-				.andExpect(status().isBadRequest());
-		mockMvc.perform(post("/api/v1/notifications/devices")
-				.with(userJwt(userId))
-				.contentType(MediaType.APPLICATION_JSON)
-				.content("""
-						{"platform":"INVALID","token":"%s"}
-						""".formatted(TOKEN_SENTINEL)))
-				.andExpect(status().isBadRequest());
-		mockMvc.perform(post("/api/v1/notifications/devices/revoke")
-				.with(userJwt(userId))
-				.contentType(MediaType.APPLICATION_JSON)
-				.content("""
-						{"platform":"ANDROID","token":"%s"}
-						""".formatted(" ".repeat(2))))
-				.andExpect(status().isBadRequest());
-		mockMvc.perform(post("/api/v1/notifications/devices/revoke")
-				.with(userJwt(userId))
-				.contentType(MediaType.APPLICATION_JSON))
-				.andExpect(status().isBadRequest());
-
-		String oversizeToken = "x".repeat(4097);
-		mockMvc.perform(post("/api/v1/notifications/devices")
-				.with(userJwt(userId))
-				.contentType(MediaType.APPLICATION_JSON)
-				.content("""
-						{"platform":"ANDROID","token":"%s"}
-						""".formatted(oversizeToken)))
-				.andExpect(status().isBadRequest());
+		List<String> invalidBodies = List.of(
+				"{}",
+				"{\"platform\":\"ANDROID\"}",
+				"{\"platform\":\"ANDROID\",\"fid\":null}",
+				"{\"platform\":\"ANDROID\",\"fid\":\"  \"}",
+				"{\"platform\":\"INVALID\",\"fid\":\"" + TOKEN_SENTINEL + "\"}",
+				"{\"platform\":\"ANDROID\",\"fid\":\"" + TOKEN_SENTINEL + "x".repeat(4097) + "\"}",
+				"{\"platform\":\"ANDROID\",\"token\":\"" + TOKEN_SENTINEL + "\"}");
+		for (String path : List.of("/api/v1/notifications/devices", "/api/v1/notifications/devices/revoke")) {
+			for (String body : invalidBodies) {
+				String response = mockMvc.perform(post(path).with(userJwt(userId))
+						.contentType(MediaType.APPLICATION_JSON).content(body))
+						.andExpect(status().isBadRequest())
+						.andExpect(jsonPath("$.errorDetail.code").value("NOT-VAL-009"))
+						.andReturn().getResponse().getContentAsString();
+				assertThat(response).doesNotContain(TOKEN_SENTINEL, OTHER_TOKEN_SENTINEL);
+			}
+			mockMvc.perform(post(path).with(userJwt(userId)).contentType(MediaType.APPLICATION_JSON))
+					.andExpect(status().isBadRequest());
+		}
 		assertThat(jdbc.queryForObject("""
 				SELECT count(*) FROM push_device WHERE user_id = ?
 				""", Integer.class, userId)).isZero();
-
+		for (String path : List.of("/api/v1/notifications/devices", "/api/v1/notifications/devices/revoke")) {
+			mockMvc.perform(post(path).with(userJwt(userId)).contentType(MediaType.APPLICATION_JSON)
+					.content("{\"platform\":\"ANDROID\",\"fid\":\"" + TOKEN_SENTINEL + "\"}"))
+					.andExpect(status().isNoContent()).andExpect(content().string(""));
+		}
 		assertThat(output.getOut()).doesNotContain(TOKEN_SENTINEL, OTHER_TOKEN_SENTINEL);
 		assertThat(output.getErr()).doesNotContain(TOKEN_SENTINEL, OTHER_TOKEN_SENTINEL);
 	}
 
+	@Test
+	@DisplayName("INT-002: 등록되지 않은 FID의 해지도 204이며 기기를 생성하지 않는다")
+	void revokesMissingFidWithoutCreatingDevice() throws Exception {
+		long userId = account("gh365-revoke-missing");
+
+		mockMvc.perform(post("/api/v1/notifications/devices/revoke").with(userJwt(userId))
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"platform\":\"ANDROID\",\"fid\":\"" + TOKEN_SENTINEL + "\"}"))
+				.andExpect(status().isNoContent())
+				.andExpect(content().string(""));
+
+		assertThat(jdbc.queryForObject("SELECT count(*) FROM push_device WHERE user_id = ?",
+				Integer.class, userId)).isZero();
+	}
+
 	private void rejectsUnauthenticatedRegisterAndRevoke() throws Exception {
 		String invalidBody = """
-				{"platform":"ANDROID","token":"%s"}
+				{"platform":"ANDROID","fid":"%s"}
 				""".formatted(TOKEN_SENTINEL);
 		mockMvc.perform(post("/api/v1/notifications/devices")
 				.contentType(MediaType.APPLICATION_JSON)

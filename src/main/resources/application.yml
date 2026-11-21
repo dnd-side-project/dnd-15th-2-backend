@@ -140,12 +140,13 @@ qello:
       # 행은 지우지 않고 조회에서만 제외하며, 알림에서 글로 넘어가는 판정(/target)에는 적용하지 않는다.
       retention: P30D
     push:
+      # 전역 provider 기본값은 운영의 설정 누락을 가린다. PushConfiguration이
+      # 미지정과 빈 값을 구별하고 test/local/integration/dev에만 noop을 기본으로 둔다.
+      # 명시적 선택은 QELLO_NOTIFICATION_PUSH_PROVIDER(noop 또는 fcm)로 주입한다.
       fcm:
-        # D-2 secret-backed FCM wiring. 실제 값은 ECS runtime identity가 읽는 SSM SecureString으로만 주입한다.
-        # local/test/integration에서는 NoOpPushProvider가 등록되어 아래 값이 없어도 기동한다.
-        # 그 외 프로필은 비어 있거나 형식이 틀리면 기동에 실패한다.
-        project-id: ${QELLO_NOTIFICATION_PUSH_FCM_PROJECT_ID}
-        credential-json: ${QELLO_NOTIFICATION_PUSH_FCM_CREDENTIAL_JSON}
+        # noop에서는 credential을 요구하지 않는다. fcm을 선택했을 때만 검증한다.
+        project-id: ${QELLO_NOTIFICATION_PUSH_FCM_PROJECT_ID:}
+        credential-json: ${QELLO_NOTIFICATION_PUSH_FCM_CREDENTIAL_JSON:}
         # timeout은 secret이 아니다. 운영 실험값이며 환경변수로 빼지 않는다.
         connect-timeout: PT3S
         read-timeout: PT5S

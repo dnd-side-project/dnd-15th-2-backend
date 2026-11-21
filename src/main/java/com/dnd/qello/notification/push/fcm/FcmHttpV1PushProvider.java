@@ -29,17 +29,17 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
- * FCM 오류 원문은 이 adapter에서 제한된 domain 의미로만 축소하고 즉시 폐기한다.
- * 호출자는 body/message/token 원문을 관찰할 수 없다.
+ * FCM 오류 원문은 이 adapter에서 제한된 domain 의미로만 축소하고 즉시 폐기한다. 호출자는 body/message/token
+ * 원문을 관찰할 수 없다.
  */
 public final class FcmHttpV1PushProvider implements PushProvider {
 
 	private static final Set<String> INVALID_TOKEN_CODES = Set.of("UNREGISTERED");
 	private static final Set<String> RETRYABLE_CODES = Set.of(
-		"RESOURCE_EXHAUSTED",
-		"UNAVAILABLE",
-		"INTERNAL",
-		"DEADLINE_EXCEEDED");
+			"RESOURCE_EXHAUSTED",
+			"UNAVAILABLE",
+			"INTERNAL",
+			"DEADLINE_EXCEEDED");
 	private static final Set<Integer> RETRYABLE_STATUS_CODES = Set.of(429, 500, 502, 503, 504);
 
 	private final RestClient restClient;
@@ -48,13 +48,12 @@ public final class FcmHttpV1PushProvider implements PushProvider {
 	private final String projectId;
 
 	public FcmHttpV1PushProvider(
-		RestClient restClient,
-		FcmAccessTokenProvider accessTokenProvider,
-		ObjectMapper objectMapper,
-		String projectId
-	) {
+			RestClient restClient,
+			FcmAccessTokenProvider accessTokenProvider,
+			ObjectMapper objectMapper,
+			String projectId) {
 		if (restClient == null || accessTokenProvider == null || objectMapper == null
-			|| projectId == null || projectId.isBlank()) {
+				|| projectId == null || projectId.isBlank()) {
 			throw new IllegalArgumentException("FCM provider 의존성이 올바르지 않습니다");
 		}
 		this.restClient = restClient;
@@ -70,13 +69,14 @@ public final class FcmHttpV1PushProvider implements PushProvider {
 		}
 		try {
 			return restClient.post()
-				.uri("/v1/projects/{projectId}/messages:send", projectId)
-				.contentType(MediaType.APPLICATION_JSON)
-				.header(HttpHeaders.AUTHORIZATION, "Bearer " + accessTokenProvider.accessToken())
-				.body(Map.of("message", Map.of(
-					"token", command.token().exposeForProvider(),
-					"data", command.payload().asData())))
-				.exchange((request, response) -> mapResponse(response, command));
+					.uri("/v1/projects/{projectId}/messages:send", projectId)
+					.contentType(MediaType.APPLICATION_JSON)
+					.header(HttpHeaders.AUTHORIZATION, "Bearer " + accessTokenProvider.accessToken())
+					.body(Map.of("message", Map.of(
+							"fid", command.token().exposeForProvider(),
+							"data", command.payload().asData(),
+							"android", Map.of("priority", "HIGH"))))
+					.exchange((request, response) -> mapResponse(response, command));
 		} catch (RestClientException exception) {
 			return new PushProviderResult.RetryableFailure(null);
 		}
@@ -145,9 +145,9 @@ public final class FcmHttpV1PushProvider implements PushProvider {
 			return List.of();
 		}
 		return StreamSupport.stream(details.spliterator(), false)
-			.map(detail -> upperOrDefault(detail.path("errorCode").asText(null), null))
-			.filter(code -> code != null && !code.isBlank())
-			.toList();
+				.map(detail -> upperOrDefault(detail.path("errorCode").asText(null), null))
+				.filter(code -> code != null && !code.isBlank())
+				.toList();
 	}
 
 	private boolean hasTokenFieldViolation(JsonNode details) {
@@ -155,34 +155,35 @@ public final class FcmHttpV1PushProvider implements PushProvider {
 			return false;
 		}
 		return StreamSupport.stream(details.spliterator(), false)
-			.map(detail -> detail.path("fieldViolations"))
-			.filter(JsonNode::isArray)
-			.flatMap(violations -> StreamSupport.stream(violations.spliterator(), false))
-			.anyMatch(violation -> "message.token".equals(violation.path("field").asText()));
+				.map(detail -> detail.path("fieldViolations"))
+				.filter(JsonNode::isArray)
+				.flatMap(violations -> StreamSupport.stream(violations.spliterator(), false))
+				.anyMatch(violation -> "message.token".equals(violation.path("field").asText())
+						|| "message.fid".equals(violation.path("field").asText()));
 	}
 
 	private boolean isInvalidToken(HttpStatusCode statusCode, ParsedError error,
-		PushPayload payload) {
+			PushPayload payload) {
 		if (INVALID_TOKEN_CODES.contains(error.reasonCode())
-			|| error.detailCodes().stream().anyMatch(INVALID_TOKEN_CODES::contains)) {
+				|| error.detailCodes().stream().anyMatch(INVALID_TOKEN_CODES::contains)) {
 			return true;
 		}
 		return statusCode.value() == 400
-			&& "INVALID_ARGUMENT".equals(error.reasonCode())
-			&& error.tokenFieldViolation()
-			&& hasAllowlistedPayload(payload);
+				&& "INVALID_ARGUMENT".equals(error.reasonCode())
+				&& error.tokenFieldViolation()
+				&& hasAllowlistedPayload(payload);
 	}
 
 	private static boolean hasAllowlistedPayload(PushPayload payload) {
 		Map<String, String> data = payload.asData();
 		return data.keySet().equals(Set.of("type", "count", "hasRemainingTime"))
-			&& PushPayload.isPositiveCount(data.get("count"))
-			&& ("true".equals(data.get("hasRemainingTime")) || "false".equals(data.get("hasRemainingTime")));
+				&& PushPayload.isPositiveCount(data.get("count"))
+				&& ("true".equals(data.get("hasRemainingTime")) || "false".equals(data.get("hasRemainingTime")));
 	}
 
 	private boolean isRetryable(HttpStatusCode statusCode, String reasonCode) {
 		return RETRYABLE_STATUS_CODES.contains(statusCode.value())
-			|| RETRYABLE_CODES.contains(reasonCode);
+				|| RETRYABLE_CODES.contains(reasonCode);
 	}
 
 	private Duration parseRetryAfter(HttpHeaders headers) {

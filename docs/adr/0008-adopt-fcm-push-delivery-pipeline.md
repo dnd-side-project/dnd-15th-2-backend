@@ -15,6 +15,7 @@ related:
   - "#179"
   - "#180"
   - "#182"
+  - "#365"
   - "ADR-0004"
 ---
 
@@ -236,3 +237,38 @@ delivery는 자동으로 성공 처리하지 않으며 at-least-once 재시도 �
 
 - 승인자: 사용자
 - 승인 시각: 2026-08-25
+
+## 갱신 이력
+
+### 2026-11-21 — Issue #365: FID와 명시적 provider 선택
+
+승인 근거는 Issue #365와 `TASK.md`의 사람 결정 1~3(@Byuntil, 2026-11-21) 및 승인된
+`TEST-PLAN-GH-365-PUSH-FID-PROVIDER`다. 위 본문은 #179·#180의 당시 결정 기록으로 보존하며,
+registration token 계약과 FID 전환을 후속으로 남긴 부분은 이번 갱신으로 대체한다.
+
+- 두 기기 등록·해지 endpoint의 요청 필드는 `platform`과 `fid`다. 기존 `token` JSON 필드는
+  대체한다. FID는 기존 AES-256-GCM/HMAC 경로와 `token_ciphertext`·`token_fingerprint`
+  컬럼에 저장하며 내부 타입·컬럼 이름과 migration은 변경하지 않는다.
+- FCM HTTP v1 body는 `message.fid`를 대상으로 하고 `message.token`을 보내지 않는다.
+  `message.android.priority`는 REST enum `HIGH`이며 data allowlist 세 값은 유지한다.
+- provider는 프로필에 고정하지 않고 `qello.notification.push.provider`(`noop` 또는 `fcm`)로
+  선택한다. `QELLO_NOTIFICATION_PUSH_PROVIDER`로 주입할 수 있다.
+  test/local/integration/dev에서만 미지정 시 noop이다. default/prod/production 등 그 밖의
+  프로필은 provider 미지정 시 기동 실패한다. 빈 값·공백을 포함한 다른 값도 기동 실패한다.
+- 전역 YAML 기본값 대신 `PushConfiguration`에서 미지정과 빈 값을 구별한다. 명시적 fcm일
+  때만 FCM 설정을 검증하고 client를 만든다. noop에는 FCM credential이 필요하지 않다.
+- AES token protector와 key 검증은 dev와 test/local/integration 외 프로필에 적용한다.
+  dev에도 current key ID와 standard Base64 32-byte AES/HMAC key가 필요하다.
+  test/local/integration의 자동 protector 부재와 명시적 테스트 fixture 방식은 유지한다.
+- 기존 `UNREGISTERED` 분류와 HTTP 400 `INVALID_ARGUMENT` + 유효 allowlist payload +
+  `message.token` field violation 분류를 보존한다. 같은 조건의 `message.fid`도 InvalidToken으로
+  처리한다. 그 밖의 INVALID_ARGUMENT는 PermanentFailure다. FID field path의 실제 반환
+  형태에 대한 공식 문서 근거는 UNKNOWN이며, 해당 처리는 승인된 애플리케이션 계약이다.
+
+noop의 Accepted/SENT는 실제 모바일 수신 증거가 아니다. 운영 provider 누락을 noop으로
+숨기지 않는 이유가 이 차이에 있다. dev의 실제 fcm 선택과 worker 활성화는 #366에서
+수행하며, #365는 인프라·배포·secret 조회·실기기 검증을 수행하지 않는다.
+
+#364 dev 주입 완료는 #365 TASK가 제공한 선행 상태다. 비테스트 프로필의 배포 전에는
+provider와 key를 명시적으로 확인하고, rollback 때도 기존 ciphertext를 읽을 key ring을
+유지한다. lease·fencing·예산·transaction과 알림 원장의 기존 계약은 변경하지 않는다.

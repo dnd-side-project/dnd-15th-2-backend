@@ -2,6 +2,8 @@
 qello:
   notification:
     push:
+      # 기본 프로필도 provider를 명시해야 하므로 통합 테스트는 실제 발송 없는 noop을 고른다.
+      provider: noop
       token-protection:
         current-key-id: integration-default-current
         current-encryption-key-base64: YmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmI=
