@@ -10,27 +10,43 @@ secret 취급은 `docs/harness/SECRET_HANDLING.md`와 `AGENTS.md` 4.10을 따른
 
 ## 1. 현재 상태
 
+Issue `#365` 갱신(2026-11-21): 등록·해지 입력은 `platform`과 `fid`다.
+FCM HTTP v1 body는 `message.fid`, `message.data`, `message.android.priority=HIGH`를 사용한다.
+기존 `PushToken` 타입과 `token_ciphertext`·`token_fingerprint` 컬럼 이름은 유지한다.
+
 | 구성 요소 | 상태 |
 | --- | --- |
 | Device 등록·해지 API | 구현됨 (`#179`) |
-| token 암호화·fingerprint | 구현됨 (`#179`) |
+| FID 암호화·fingerprint | 기존 token 보호 경로 재사용 (`#179`, `#365`) |
 | FCM HTTP v1 adapter | 구현됨 (`#179`) |
 | dispatch worker 로직 | 구현됨 (`#179`) |
 | dispatch worker·retry policy bean 등록 | 구현됨, 조건부 (`#182`) |
 | scheduler/poller 배선 | 구현됨, **기본 비활성** (`#182`) |
 | 운영 주기·batch·lease·retry 수치 | **미결정. 사람 작업** |
 | Firebase 프로젝트·credential | **미생성. 사람 작업** |
-| SSM SecureString·ECS 주입 | **미구현. 별도 설계 승인 필요** |
+| secret 주입 | 환경별 검증 필요. dev test-server의 #364 선행 완료는 #365 TASK에 기록됨 |
 
 `#182`이 주기 실행 기반을 붙였지만 `qello.worker.scheduling.enabled`의 기본값이
 `false`이므로 아무것도 자동 실행되지 않는다. 발송을 실제로 켜는 것은 8단계다.
 
-`local`, `test`, `integration` profile에서는 `PushConfiguration`의
-`NoOpPushProvider`가 등록되어 아래 설정이 하나도 없어도 애플리케이션이 기동한다.
-그 외 profile에서는 `PushProperties`와 `PushTokenProperties`가 기동 시점에
-값을 검증하고, 비어 있거나 형식이 틀리면 **기동에 실패한다.** 경고 로그만 남기고
-뜨지 않는다. 설정이 빠진 채 뜨면 사용자 기기 token이 보호되지 않은 상태로
-저장될 수 있기 때문이다.
+`qello.notification.push.provider`로 `noop` 또는 `fcm`을 선택한다.
+환경변수 이름은 `QELLO_NOTIFICATION_PUSH_PROVIDER`다.
+
+| 프로필 | provider 미지정 | token 보호 key |
+| --- | --- | --- |
+| `test`, `local`, `integration` | `noop` | 자동 protector 없음. 필요한 테스트가 가짜 protector 제공 |
+| `dev` | `noop` | current key ID·32-byte AES key·32-byte HMAC key 필수 |
+| 그 밖의 프로필(default/prod/production 등) | **기동 실패** | dev와 같은 key 필수 |
+
+명시적 빈 값·공백을 포함해 `noop`·`fcm` 외 provider 값은 모든 프로필에서 기동에
+실패한다. 전역 YAML 기본값은 설정 누락을 가리므로 두지 않고 `PushConfiguration`이
+프로필별 미지정을 판정한다. `noop`은 FCM 설정을 바인딩하거나 실제 client를 만들지 않으며,
+`fcm`일 때만 `PushProperties`와 credential을 검증한다. dev와 비테스트 프로필의
+`PushTokenProperties` 검증은 provider와 무관하므로 noop도 잘못된 key로 기동할 수 없다.
+
+noop의 `Accepted`/delivery `SENT`는 실제 발송 증거가 아니다. 실제 발송에는 명시적
+`provider=fcm`과 별도의 worker 활성화가 모두 필요하다. dev의 fcm 지정·worker 활성화는
+`#366` 범위이며 `#365`는 활성화하지 않는다.
 
 ## 2. 절차 개요
 
@@ -68,9 +84,10 @@ JSON key 파일은 저장소, Issue, PR, 대화, 로그 어디에도 붙여넣�
 
 1. Firebase 프로젝트에 Android 앱을 package name으로 등록한다.
 2. `google-services.json`을 앱에 배치한다.
-3. 앱은 FCM registration token을 획득·갱신할 때마다
-   `POST /api/v1/notifications/devices`를 `platform=ANDROID`로 호출하고,
-   로그아웃 시 `POST /api/v1/notifications/devices/revoke`를 호출한다.
+3. 앱은 Firebase Installation ID(FID)를 획득하면
+   `POST /api/v1/notifications/devices`에 `platform=ANDROID`와 `fid`를 보내고,
+   로그아웃 시 같은 필드로 `POST /api/v1/notifications/devices/revoke`를 호출한다.
+   이전 `token` JSON 필드는 사용하지 않는다.
 
 서버 쪽 추가 작업은 없다.
 
@@ -91,13 +108,13 @@ iOS 푸시는 Apple Developer Program **유료 멤버십이 있어야 한다.** 
 5. 앱에 Push Notifications capability를 추가하고 배포 채널별 APNs 환경
    (개발/운영)이 일치하는지 확인한다. 환경 불일치는 등록은 성공하고 발송만
    실패하는 형태로 나타난다.
-6. token 전달 계약은 Android와 동일하며 `platform=IOS`를 사용한다.
+6. FID 전달 계약은 Android와 동일하며 `platform=IOS`와 `fid`를 사용한다.
 
 `.p8` key 파일도 서비스 계정 key와 같은 취급을 받는다.
 
 ## 6. 단계 4 — 서버 token 보호 key 생성
 
-Firebase와 무관하게 서버가 자체적으로 생성하는 key다. 기기 token 원문을
+Firebase와 무관하게 서버가 자체적으로 생성하는 key다. 기기 FID 원문을
 암호화하고 fingerprint를 만드는 데 쓴다.
 
 필요한 값:
@@ -132,11 +149,11 @@ SSM SecureString에 사전 등록한다. 논리 prefix는
 
 | 환경변수 | 출처 | 필수 |
 | --- | --- | --- |
-| `QELLO_NOTIFICATION_PUSH_FCM_PROJECT_ID` | 단계 1 | 예 |
-| `QELLO_NOTIFICATION_PUSH_FCM_CREDENTIAL_JSON` | 단계 1 | 예 |
-| `QELLO_NOTIFICATION_PUSH_TOKEN_CURRENT_KEY_ID` | 단계 4 | 예 |
-| `QELLO_NOTIFICATION_PUSH_TOKEN_CURRENT_ENCRYPTION_KEY_BASE64` | 단계 4 | 예 |
-| `QELLO_NOTIFICATION_PUSH_TOKEN_FINGERPRINT_KEY_BASE64` | 단계 4 | 예 |
+| `QELLO_NOTIFICATION_PUSH_FCM_PROJECT_ID` | 단계 1 | provider=fcm일 때 |
+| `QELLO_NOTIFICATION_PUSH_FCM_CREDENTIAL_JSON` | 단계 1 | provider=fcm일 때 |
+| `QELLO_NOTIFICATION_PUSH_TOKEN_CURRENT_KEY_ID` | 단계 4 | dev 및 비테스트 프로필 |
+| `QELLO_NOTIFICATION_PUSH_TOKEN_CURRENT_ENCRYPTION_KEY_BASE64` | 단계 4 | dev 및 비테스트 프로필 |
+| `QELLO_NOTIFICATION_PUSH_TOKEN_FINGERPRINT_KEY_BASE64` | 단계 4 | dev 및 비테스트 프로필 |
 | `QELLO_NOTIFICATION_PUSH_TOKEN_PREVIOUS_KEY_ID` | 단계 4 | 회전 중에만 |
 | `QELLO_NOTIFICATION_PUSH_TOKEN_PREVIOUS_ENCRYPTION_KEY_BASE64` | 단계 4 | 회전 중에만 |
 
@@ -146,8 +163,10 @@ timeout(`connect-timeout`, `read-timeout`)은 secret이 아니며 `application.y
 
 ## 8. 단계 6 — runtime 주입 인프라
 
-현재 `infra/`에는 bootstrap과 S3 모듈만 있고, ECS 실행 환경과 SSM 파라미터
-리소스가 없다. 이 단계는 `#179` 범위 밖이며 다음 절차를 따른다.
+이 단계는 환경별 인프라 계약을 따른다. #365 TASK에는 dev test-server의 #364 apply와
+secret 주입 검증 완료가 선행 상태로 기록되어 있다. #365 애플리케이션 작업은
+인프라 변경이나 실제 secret·서버 상태의 재검증을 수행하지 않는다.
+새 환경의 주입 인프라는 별도 승인 하에 다음 절차를 따른다.
 
 ```text
 GitHub Issue
@@ -175,11 +194,11 @@ AI 에이전트는 apply를 실행하지 않는다.
 1. 배포 후 애플리케이션이 정상 기동하는지 확인한다. 기동 실패 시 예외 메시지가
    비어 있거나 형식이 틀린 항목을 가리킨다. 이때 값 원문은 로그에 남지 않는다
    (`PushProperties`, `PushTokenProperties` 모두 `toString`을 redaction한다).
-2. 실기기에서 `POST /api/v1/notifications/devices`를 호출해 등록이 성공하는지
-   확인한다. token은 4096 bytes를 넘으면 거절된다. 서버는 truncate하지 않는다.
-3. 재등록, 다른 사용자의 동일 token 등록, `POST .../devices/revoke` 멱등성을
+2. 실기기에서 `platform`과 `fid`로 `POST /api/v1/notifications/devices`를 호출해 등록이
+   성공하는지 확인한다. 기존 입력 상한인 UTF-8 4096 bytes를 넘으면 거절하고 truncate하지 않는다.
+3. 재등록, 다른 사용자의 동일 FID 등록, `POST .../devices/revoke` 멱등성을
    확인한다.
-4. DB, 응답, 로그, 예외 어디에도 token 원문이 없는지 확인한다.
+4. DB, 응답, 로그, 예외 어디에도 FID 원문이 없는지 확인한다.
 
 이 시점에는 `notification_delivery`가 쌓이기만 하고 발송은 일어나지 않는다.
 
@@ -221,6 +240,12 @@ fallback 기본값은 두지 않는다. 어떤 블록의 어떤 값이 왜 거�
 | `...push-delivery-dispatch.retry.backoff-cap` | `base-backoff` 이상 | 지수 backoff 상한 |
 
 provider가 `Retry-After`를 주면 그 값을 backoff보다 우선한다.
+
+`UNREGISTERED`의 무효 기기 처리는 유지한다. HTTP 400 `INVALID_ARGUMENT`는 유효한
+allowlist payload에서 `message.token` 또는 `message.fid` field violation이 있을 때만
+`InvalidToken`으로 분류한다. 그 밖의 `INVALID_ARGUMENT`는 `PermanentFailure`로 두어
+기기를 무효화하지 않는다. `message.fid` 오류 지원은 #365의 사람 결정이며, 실제 FCM이
+반환하는 field path의 공식 근거는 아직 UNKNOWN이다.
 
 `lease-duration`이 한 batch의 실제 처리 시간보다 짧으면 lease가 만료된 뒤
 다른 instance가 같은 group을 다시 claim한다. 이 경우에도 `STALE_CLAIM`
