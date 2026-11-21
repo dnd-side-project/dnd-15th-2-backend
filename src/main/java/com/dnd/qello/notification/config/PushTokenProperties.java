@@ -11,7 +11,7 @@ import com.dnd.qello.notification.push.security.PushTokenKeyRing;
 
 /** D-2 secret-backed push token AES/HMAC key ring 설정. */
 @ConfigurationProperties(prefix = "qello.notification.push.token-protection")
-@Profile("!test & !local & !integration & !dev")
+@Profile("!test & !local & !integration")
 public record PushTokenProperties(
 		String currentKeyId,
 		String currentEncryptionKeyBase64,

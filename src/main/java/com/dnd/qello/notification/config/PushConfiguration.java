@@ -8,6 +8,8 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Profile;
+import org.springframework.core.env.Environment;
+import org.springframework.core.env.Profiles;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -35,15 +37,25 @@ import com.dnd.qello.scheduling.config.WorkerSchedulingProperties;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 @Configuration(proxyBeanMethods = false)
-@Import(PushConfiguration.ProductionPushConfiguration.class)
+@Import({PushConfiguration.ProductionPushConfiguration.class, PushConfiguration.FcmPushConfiguration.class})
 @EnableConfigurationProperties(PushPolicyProperties.class)
 public class PushConfiguration {
 
-	// dev는 #229 EC2 테스트 서버 프로필이다(#230). 실제 FCM 자격 증명 없이
-	// 기동해야 하고, 테스트 서버가 우발적으로 실제 push를 보내서도 안 되므로
-	// local/test/integration과 같은 취급을 받는다.
+	public PushConfiguration(Environment environment) {
+		String provider = environment.getProperty("qello.notification.push.provider");
+		if (provider == null) {
+			if (environment.acceptsProfiles(Profiles.of("test", "local", "integration", "dev"))) {
+				return;
+			}
+			throw new IllegalArgumentException("qello.notification.push.provider must be configured");
+		}
+		if (!"noop".equals(provider) && !"fcm".equals(provider)) {
+			throw new IllegalArgumentException("qello.notification.push.provider must be noop or fcm");
+		}
+	}
+
 	@Bean
-	@Profile({"test", "local", "integration", "dev"})
+	@ConditionalOnProperty(prefix = "qello.notification.push", name = "provider", havingValue = "noop", matchIfMissing = true)
 	public PushProvider noOpPushProvider() {
 		return new NoOpPushProvider();
 	}
@@ -108,14 +120,21 @@ public class PushConfiguration {
 	}
 
 	@Configuration(proxyBeanMethods = false)
-	@Profile("!test & !local & !integration & !dev")
-	@EnableConfigurationProperties({PushProperties.class, PushTokenProperties.class})
+	@Profile("!test & !local & !integration")
+	@EnableConfigurationProperties(PushTokenProperties.class)
 	static class ProductionPushConfiguration {
 
 		@Bean
 		PushTokenProtector pushTokenProtector(PushTokenProperties properties) {
 			return new AesGcmPushTokenProtector(properties.keyRing());
 		}
+
+	}
+
+	@Configuration(proxyBeanMethods = false)
+	@ConditionalOnProperty(prefix = "qello.notification.push", name = "provider", havingValue = "fcm")
+	@EnableConfigurationProperties(PushProperties.class)
+	static class FcmPushConfiguration {
 
 		@Bean
 		RestClient fcmRestClient(PushProperties properties) {

@@ -2,16 +2,17 @@ package com.dnd.qello.notification.config;
 
 import java.time.Duration;
 
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /** D-2 secret-backed FCM 전송 설정. 실제 값은 SSM SecureString을 통해서만 주입한다. */
 @ConfigurationProperties(prefix = "qello.notification.push.fcm")
+@ConditionalOnProperty(prefix = "qello.notification.push", name = "provider", havingValue = "fcm")
 public record PushProperties(
-	String projectId,
-	String credentialJson,
-	Duration connectTimeout,
-	Duration readTimeout
-) {
+		String projectId,
+		String credentialJson,
+		Duration connectTimeout,
+		Duration readTimeout) {
 
 	public PushProperties {
 		if (projectId == null || projectId.isBlank()) {
