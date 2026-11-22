@@ -3,6 +3,7 @@
  * Source scenario: TEST-PLAN-GH-36-FLYWAY-BASELINE-UNIT-001 through UNIT-002, TEST-PLAN-GH-78-SCHEMA-REVISION-V7-UNIT-001, TEST-PLAN-GH-88-COUNTRY-ONBOARDING-UNIT-004, TEST-PLAN-GH-115-DIRECTION-MATCHING-CONTRACT-INT-001
  * Source scenario: TEST-PLAN-GH-137-DIRECTION-POST-MODERATION-UNIT-020 (added 2026-10-07T22:12:28+09:00)
  * Source scenario: TEST-PLAN-GH-337-ACCOUNT-WITHDRAWAL-UNIT-026 (added 2026-10-09T18:14:46+09:00)
+ * Source scenario: TEST-PLAN-GH-375-OPERATOR-ACCESS-LOG-INT-001 (V34 latest migration, added 2026-11-22T22:02:56+09:00)
  */
 package com.dnd.qello;
 
@@ -75,6 +76,7 @@ class FlywayMigrationContractTest {
 				"V31__add_user_account_nickname_changed_at.sql",
 				"V32__allow_direction_post_moderation_target.sql",
 				"V33__add_user_account_withdrawal.sql",
+				"V34__add_operator_access_log.sql",
 				"V3__add_user_account_password_hash.sql",
 				"V4__add_user_account_optimistic_lock.sql",
 				"V5__add_operator_credential.sql",
@@ -85,20 +87,32 @@ class FlywayMigrationContractTest {
 	}
 
 	@Test
-	@DisplayName("TEST-PLAN-GH-337-ACCOUNT-WITHDRAWAL-UNIT-026: V33은 마지막 migration이고 유예 상태 값, 요청 시각 CHECK, sweep 부분 인덱스를 함께 추가한다")
+	@DisplayName("TEST-PLAN-GH-337-ACCOUNT-WITHDRAWAL-UNIT-026: V33은 유예 상태 값, 요청 시각 CHECK, sweep 부분 인덱스를 함께 추가한다")
 	void v33AddsWithdrawalStateContract() throws IOException {
-		List<Integer> versions = sqlMigrationNames().stream()
-				.map(name -> Integer.parseInt(name.substring(1, name.indexOf("__"))))
-				.sorted()
-				.toList();
 		String v33 = Files.readString(Path.of("src/main/resources/db/migration/V33__add_user_account_withdrawal.sql"));
 
-		assertThat(versions.get(versions.size() - 1)).isEqualTo(33);
 		assertThat(v33)
 				.contains("CHECK (status IN ('ACTIVE', 'WITHDRAWAL_PENDING', 'BLOCKED', 'DELETED'))")
 				.contains("ADD COLUMN withdrawal_requested_at TIMESTAMPTZ")
 				.contains("CHECK ((status = 'WITHDRAWAL_PENDING') = (withdrawal_requested_at IS NOT NULL))")
 				.contains("WHERE status = 'WITHDRAWAL_PENDING'");
+	}
+
+	@Test
+	@DisplayName("TEST-PLAN-GH-375-OPERATOR-ACCESS-LOG-INT-001: V34는 마지막 migration이고 FK 없는 접근 기록 테이블과 이벤트 CHECK를 추가한다")
+	void v34AddsOperatorAccessLogContract() throws IOException {
+		List<Integer> versions = sqlMigrationNames().stream()
+				.map(name -> Integer.parseInt(name.substring(1, name.indexOf("__"))))
+				.sorted()
+				.toList();
+		String v34 = Files.readString(Path.of("src/main/resources/db/migration/V34__add_operator_access_log.sql"));
+
+		assertThat(versions.get(versions.size() - 1)).isEqualTo(34);
+		assertThat(v34)
+				.contains("CREATE TABLE operator_access_log")
+				.contains("CHECK (event_type IN ('LOGIN_SUCCEEDED', 'LOGIN_FAILED', 'LOGOUT', 'API_CALL'))")
+				.contains("CHECK (event_type = 'LOGIN_FAILED' OR operator_user_id IS NOT NULL)")
+				.doesNotContain("REFERENCES");
 	}
 
 	@Test
