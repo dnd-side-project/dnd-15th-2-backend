@@ -5,6 +5,9 @@
  * TEST-PLAN-GH-122-DIRECTION-PREVIEW-SUBMISSION-API-UNIT-013
  * Updated at: 2026-11-23T16:43:12+09:00
  * Source scenario: TEST-PLAN-GH-379-LOCATION-GATE-UNIT-006
+ * Source scenario: TEST-PLAN-GH-381-LOCATION-CONSENT-UNIT-005
+ * Source scenario: TEST-PLAN-GH-381-LOCATION-CONSENT-UNIT-006
+ * Source scenario: TEST-PLAN-GH-381-LOCATION-CONSENT-UNIT-007
  */
 package com.dnd.qello.direction.service;
 
@@ -25,9 +28,15 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.core.env.StandardEnvironment;
 
 import com.dnd.qello.account.domain.Account;
+import com.dnd.qello.account.repository.AccountLockRepository;
 import com.dnd.qello.account.repository.AccountRepository;
 import com.dnd.qello.direction.config.DirectionPostProperties;
 import com.dnd.qello.direction.config.DirectionSchemeProperties;
+import com.dnd.qello.direction.consent.LocationConsent;
+import com.dnd.qello.direction.consent.LocationConsentAction;
+import com.dnd.qello.direction.consent.LocationConsentProperties;
+import com.dnd.qello.direction.consent.LocationConsentRepository;
+import com.dnd.qello.direction.consent.LocationConsentService;
 import com.dnd.qello.direction.domain.ActiveUserPresence;
 import com.dnd.qello.direction.domain.DirectionPost;
 import com.dnd.qello.direction.domain.DirectionPostModerationStatus;
@@ -70,6 +79,8 @@ class DirectionPostApplicationServiceTest {
 	private DirectionSchemeRepository schemeRepository;
 	@Mock
 	private DirectionPostService postService;
+	@Mock
+	private LocationConsentRepository consentRepository;
 
 	private DirectionPostApplicationService service;
 	private DirectionScheme scheme;
@@ -77,6 +88,8 @@ class DirectionPostApplicationServiceTest {
 
 	@BeforeEach
 	void setUp() {
+		org.mockito.Mockito.lenient().when(consentRepository.findLatestByUserId(USER_ID)).thenReturn(Optional.of(
+				new LocationConsent(1L, USER_ID, "test-v1", LocationConsentAction.CONSENT, NOW)));
 		service = serviceWithGate(true);
 		scheme = DirectionScheme.restore(SCHEME_ID, "OCTANT", 1, DirectionSchemeType.EQUAL_SEGMENTS,
 				8, BigDecimal.ZERO, DirectionSchemeStatus.ACTIVE);
@@ -186,11 +199,15 @@ class DirectionPostApplicationServiceTest {
 	private DirectionPostApplicationService serviceWithGate(boolean enabled) {
 		DirectionPostProperties properties = new DirectionPostProperties(
 				DirectionPostProperties.DeliveryScope.GLOBAL, 0, 20_100_000L, Duration.ofHours(12), 300, 1);
+		LocationCollectionGate gate = new LocationCollectionGate(
+				new LocationCollectionGateProperties(enabled, null), new StandardEnvironment());
+		LocationConsentService consent = new LocationConsentService(consentRepository, accountRepository,
+				mock(AccountLockRepository.class), presenceRepository, new LocationConsentProperties("test-v1"),
+				gate, Clock.fixed(NOW, ZoneOffset.UTC));
 		return new DirectionPostApplicationService(accountRepository, presenceRepository, schemeRepository,
 				new DirectionSchemeProperties("OCTANT"), new DirectionPostPolicy(properties), postService,
 				Clock.fixed(NOW, ZoneOffset.UTC),
-				new LocationCollectionGate(new LocationCollectionGateProperties(enabled, null),
-						new StandardEnvironment()));
+				gate, consent);
 	}
 
 	@Test
@@ -201,7 +218,7 @@ class DirectionPostApplicationServiceTest {
 		assertThatThrownBy(() -> disabled.preview(USER_ID))
 				.isInstanceOf(DirectionException.class)
 				.hasFieldOrPropertyWithValue("errorCode", DirectionErrorCode.LOCATION_COLLECTION_DISABLED);
-		verifyNoInteractions(accountRepository, presenceRepository, schemeRepository, postService);
+		verifyNoInteractions(consentRepository, accountRepository, presenceRepository, schemeRepository, postService);
 	}
 
 	@Test
@@ -219,6 +236,32 @@ class DirectionPostApplicationServiceTest {
 		// 빈 command와 잘못된 멱등키도 게이트가 먼저 거부한다.
 		assertThatThrownBy(() -> disabled.submit(USER_ID, " ", null))
 				.hasFieldOrPropertyWithValue("errorCode", DirectionErrorCode.LOCATION_COLLECTION_DISABLED);
+		verifyNoInteractions(consentRepository, accountRepository, presenceRepository, schemeRepository, postService);
+	}
+
+	@Test
+	@DisplayName("B1 on의 무동의 preview는 계정·위치·구획·후속 서비스 조회 전에 거부한다")
+	void previewRejectsMissingConsentBeforeAnyDataAccess() {
+		when(consentRepository.findLatestByUserId(USER_ID)).thenReturn(Optional.empty());
+
+		assertThatThrownBy(() -> service.preview(USER_ID))
+				.isInstanceOf(DirectionException.class)
+				.hasFieldOrPropertyWithValue("errorCode", DirectionErrorCode.LOCATION_CONSENT_REQUIRED);
+		verifyNoInteractions(accountRepository, presenceRepository, schemeRepository, postService);
+	}
+
+	@Test
+	@DisplayName("B1 on의 무동의 submit은 기존 멱등 replay와 발송보다 먼저 거부한다")
+	void submitRejectsMissingConsentBeforeReplayOrSend() {
+		when(consentRepository.findLatestByUserId(USER_ID)).thenReturn(Optional.empty());
+		DirectionPostApplicationService.SubmitCommand command = new DirectionPostApplicationService.SubmitCommand(
+				101L, SCHEME_ID, "N", "본문", List.of());
+		org.mockito.Mockito.lenient().when(postService.replayIfExists(USER_ID, "request-key", 101L, SCHEME_ID,
+				"N", "본문", List.of())).thenReturn(Optional.of(new DirectionPostService.SendResult(null, null, List.of())));
+
+		assertThatThrownBy(() -> service.submit(USER_ID, "request-key", command))
+				.isInstanceOf(DirectionException.class)
+				.hasFieldOrPropertyWithValue("errorCode", DirectionErrorCode.LOCATION_CONSENT_REQUIRED);
 		verifyNoInteractions(accountRepository, presenceRepository, schemeRepository, postService);
 	}
 }

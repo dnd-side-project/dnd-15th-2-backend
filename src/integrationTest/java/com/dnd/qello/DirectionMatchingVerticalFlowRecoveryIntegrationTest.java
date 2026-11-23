@@ -86,6 +86,10 @@ class DirectionMatchingVerticalFlowRecoveryIntegrationTest extends PostgisContai
 		jdbc.update("DELETE FROM recipient_receive_state");
 		jdbc.update("DELETE FROM active_user_presence");
 		jdbc.update("DELETE FROM approved_question");
+		jdbc.update("""
+				DELETE FROM location_consent_history WHERE user_id IN
+				(SELECT id FROM user_account WHERE coarse_region_code = ?)
+				""", REGION);
 		jdbc.update("DELETE FROM user_account WHERE coarse_region_code = ?", REGION);
 		jdbc.update("DELETE FROM region_code WHERE code = ?", REGION);
 		jdbc.update(
@@ -243,6 +247,10 @@ class DirectionMatchingVerticalFlowRecoveryIntegrationTest extends PostgisContai
 	}
 
 	private void updatePresence(long userId, double latitude, double longitude) {
+		jdbc.update("""
+				INSERT INTO location_consent_history (user_id, terms_version, action, recorded_at)
+				VALUES (?, 'test-v1', 'CONSENT', ?)
+				""", userId, Timestamp.from(NOW));
 		presenceService.update(userId, new DirectionPresenceService.UpdateCommand(
 				BigDecimal.valueOf(latitude), BigDecimal.valueOf(longitude), BigDecimal.ONE, true, NOW));
 	}

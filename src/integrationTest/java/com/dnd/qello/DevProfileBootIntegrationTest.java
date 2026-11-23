@@ -260,6 +260,16 @@ class DevProfileBootIntegrationTest extends PostgisContainerIntegrationTestSuppo
 					.with(jwt().authorities(new SimpleGrantedAuthority("ROLE_USER"))
 							.jwt(token -> token.subject(Long.toString(userId))))
 					.contentType(MediaType.APPLICATION_JSON).content(body))
+					.andExpect(status().isForbidden())
+					.andExpect(jsonPath("$.errorDetail.code").value("DIR-APP-009"));
+			jdbc.update("""
+					INSERT INTO location_consent_history (user_id, terms_version, action, recorded_at)
+					VALUES (?, 'dev-v1', 'CONSENT', now())
+					""", userId);
+			mockMvc.perform(put("/api/v1/direction/presence")
+					.with(jwt().authorities(new SimpleGrantedAuthority("ROLE_USER"))
+							.jwt(token -> token.subject(Long.toString(userId))))
+					.contentType(MediaType.APPLICATION_JSON).content(body))
 					.andExpect(status().isOk())
 					.andExpect(jsonPath("$.data.applied").value(true));
 
@@ -267,6 +277,7 @@ class DevProfileBootIntegrationTest extends PostgisContainerIntegrationTestSuppo
 					Integer.class, userId)).isEqualTo(1);
 		} finally {
 			jdbc.update("DELETE FROM active_user_presence WHERE user_id = ?", userId);
+			jdbc.update("DELETE FROM location_consent_history WHERE user_id = ?", userId);
 			jdbc.update("DELETE FROM user_account WHERE id = ?", userId);
 		}
 	}

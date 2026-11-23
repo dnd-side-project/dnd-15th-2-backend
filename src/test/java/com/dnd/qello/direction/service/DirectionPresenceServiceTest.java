@@ -3,6 +3,9 @@
  * Source scenario: TEST-PLAN-GH-121-ACTIVE-USER-PRESENCE-API-UNIT-002, UNIT-003, UNIT-006
  * Updated at: 2026-11-23T16:43:12+09:00
  * Source scenario: TEST-PLAN-GH-379-LOCATION-GATE-UNIT-005
+ * Source scenario: TEST-PLAN-GH-381-LOCATION-CONSENT-UNIT-005
+ * Source scenario: TEST-PLAN-GH-381-LOCATION-CONSENT-UNIT-006
+ * Source scenario: TEST-PLAN-GH-381-LOCATION-CONSENT-UNIT-007
  */
 package com.dnd.qello.direction.service;
 
@@ -23,6 +26,11 @@ import com.dnd.qello.account.domain.AccountRole;
 import com.dnd.qello.account.domain.AccountStatus;
 import com.dnd.qello.account.repository.AccountRepository;
 import com.dnd.qello.direction.config.DirectionPresenceProperties;
+import com.dnd.qello.direction.consent.LocationConsent;
+import com.dnd.qello.direction.consent.LocationConsentAction;
+import com.dnd.qello.direction.consent.LocationConsentProperties;
+import com.dnd.qello.direction.consent.LocationConsentRepository;
+import com.dnd.qello.direction.consent.LocationConsentService;
 import com.dnd.qello.direction.domain.ActiveUserPresence;
 import com.dnd.qello.direction.error.DirectionErrorCode;
 import com.dnd.qello.direction.error.DirectionException;
@@ -32,6 +40,9 @@ import com.dnd.qello.direction.repository.ActiveUserPresenceRepository;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 
 class DirectionPresenceServiceTest {
 
@@ -40,21 +51,29 @@ class DirectionPresenceServiceTest {
 	private FakeAccountRepository accountRepository;
 	private FakePresenceRepository presenceRepository;
 	private DirectionPresenceService service;
+	private LocationConsentRepository consentRepository;
 
 	@BeforeEach
 	void setUp() {
 		accountRepository = new FakeAccountRepository(activeUser(1L, "SERVER-REGION"));
 		presenceRepository = new FakePresenceRepository();
+		consentRepository = mock(LocationConsentRepository.class);
+		when(consentRepository.findLatestByUserId(1L)).thenReturn(Optional.of(
+				new LocationConsent(1L, 1L, "test-v1", LocationConsentAction.CONSENT, NOW)));
 		service = serviceWithGate(true);
 	}
 
 	private DirectionPresenceService serviceWithGate(boolean enabled) {
-		return new DirectionPresenceService(accountRepository, presenceRepository,
+		LocationCollectionGate gate = new LocationCollectionGate(
+				new LocationCollectionGateProperties(enabled, null), new StandardEnvironment());
+		LocationConsentService consent = new LocationConsentService(consentRepository, accountRepository,
+				accountRepository::findById, presenceRepository, new LocationConsentProperties("test-v1"),
+				gate, Clock.fixed(NOW, ZoneOffset.UTC));
+		return new DirectionPresenceService(accountRepository::findById, presenceRepository,
 				new DirectionPresenceProperties(TTL, BigDecimal.valueOf(100), Duration.ofSeconds(30),
 						Duration.ofMinutes(5)),
 				Clock.fixed(NOW, ZoneOffset.UTC),
-				new LocationCollectionGate(new LocationCollectionGateProperties(enabled, null),
-						new StandardEnvironment()));
+				gate, consent);
 	}
 
 	@Test
@@ -70,6 +89,19 @@ class DirectionPresenceServiceTest {
 				.isInstanceOf(DirectionException.class)
 				.hasFieldOrPropertyWithValue("errorCode", DirectionErrorCode.LOCATION_COLLECTION_DISABLED);
 		assertThat(presenceRepository.saved).isNull();
+		assertThat(accountRepository.reads).isZero();
+		verifyNoInteractions(consentRepository);
+	}
+
+	@Test
+	@DisplayName("B1이 켜져도 미동의 요청은 요청 검증과 presence 접근 전에 거부한다")
+	void rejectsMissingConsentBeforePresenceAccess() {
+		when(consentRepository.findLatestByUserId(1L)).thenReturn(Optional.empty());
+
+		assertThatThrownBy(() -> service.update(1L, null))
+				.isInstanceOf(DirectionException.class)
+				.hasFieldOrPropertyWithValue("errorCode", DirectionErrorCode.LOCATION_CONSENT_REQUIRED);
+		assertThat(presenceRepository.accesses).isZero();
 	}
 
 	@Test
@@ -147,6 +179,7 @@ class DirectionPresenceServiceTest {
 
 	private static final class FakeAccountRepository implements AccountRepository {
 		private Account account;
+		private int reads;
 
 		private FakeAccountRepository(Account account) {
 			this.account = account;
@@ -174,6 +207,7 @@ class DirectionPresenceServiceTest {
 		}
 		@Override
 		public Optional<Account> findById(long id) {
+			reads++;
 			return Optional.ofNullable(account);
 		}
 		@Override
@@ -188,35 +222,42 @@ class DirectionPresenceServiceTest {
 
 	private static final class FakePresenceRepository implements ActiveUserPresenceRepository {
 		private ActiveUserPresence saved;
+		private int accesses;
 
 		@Override
 		public ActiveUserPresence save(ActiveUserPresence presence) {
+			accesses++;
 			saved = presence;
 			return presence;
 		}
 		@Override
 		public boolean saveIfNewer(ActiveUserPresence presence) {
+			accesses++;
 			saved = presence;
 			return true;
 		}
 		@Override
 		public Optional<ActiveUserPresence> findByUserId(long userId) {
+			accesses++;
 			return Optional.empty();
 		}
 		@Override
 		public boolean deleteByUserId(long userId) {
+			accesses++;
 			throw new UnsupportedOperationException();
 		}
 		@Override
 		public java.util.List<com.dnd.qello.direction.domain.DirectionCandidate> findCandidates(long excludedUserId,
 				double originLatitude, double originLongitude, long minDistanceMeters, long maxDistanceMeters,
 				double sectorStartDegrees, double sectorEndDegrees, Instant at, String regionCode) {
+			accesses++;
 			return java.util.List.of();
 		}
 		@Override
 		public java.util.List<DirectionSegmentCandidateCount> findCandidateCountsBySegment(long schemeId,
 				long excludedUserId, double originLatitude, double originLongitude, long minDistanceMeters,
 				long maxDistanceMeters, Instant at, String regionCode) {
+			accesses++;
 			return java.util.List.of();
 		}
 	}

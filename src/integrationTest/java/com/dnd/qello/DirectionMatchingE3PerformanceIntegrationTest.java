@@ -630,6 +630,10 @@ class DirectionMatchingE3PerformanceIntegrationTest extends PostgisContainerInte
 				DELETE FROM active_user_presence
 				WHERE user_id IN (SELECT id FROM user_account WHERE coarse_region_code = :region)
 				""", region);
+		namedJdbc.update("""
+				DELETE FROM location_consent_history WHERE user_id IN
+				(SELECT id FROM user_account WHERE coarse_region_code = :region)
+				""", region);
 		namedJdbc.update("DELETE FROM user_account WHERE coarse_region_code = :region", region);
 		namedJdbc.update("DELETE FROM region_code WHERE code = :region", region);
 	}
@@ -905,6 +909,10 @@ class DirectionMatchingE3PerformanceIntegrationTest extends PostgisContainerInte
 				EXCLUDED_NICKNAME);
 		applyReceiveStateBaseline(SEED_RECEIVE_STATE_SQL, new MapSqlParameterSource("region", REGION));
 		// 제외 사용자는 후보 SQL에서 식별자로 빠지지만 방향 글을 제출하려면 현재 presence가 필요하다.
+		jdbc.update("""
+				INSERT INTO location_consent_history (user_id, terms_version, action, recorded_at)
+				VALUES (?, 'test-v1', 'CONSENT', ?)
+				""", excludedUserId(), Timestamp.from(NOW));
 		presenceService.update(excludedUserId(), new DirectionPresenceService.UpdateCommand(
 				BigDecimal.valueOf(ORIGIN_LATITUDE), BigDecimal.valueOf(ORIGIN_LONGITUDE), BigDecimal.ONE, true,
 				NOW));

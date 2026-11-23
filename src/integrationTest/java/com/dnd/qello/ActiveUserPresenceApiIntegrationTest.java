@@ -52,6 +52,10 @@ class ActiveUserPresenceApiIntegrationTest extends PostgisContainerIntegrationTe
 	@BeforeEach
 	void setUp() {
 		jdbc.update("DELETE FROM active_user_presence");
+		jdbc.update("""
+				DELETE FROM location_consent_history WHERE user_id IN
+				(SELECT id FROM user_account WHERE coarse_region_code IN (?, ?))
+				""", REGION_A, REGION_B);
 		jdbc.update("DELETE FROM user_account WHERE coarse_region_code IN (?, ?)", REGION_A, REGION_B);
 		jdbc.update("DELETE FROM region_code WHERE code IN (?, ?)", REGION_A, REGION_B);
 		jdbc.update("""
@@ -161,7 +165,7 @@ class ActiveUserPresenceApiIntegrationTest extends PostgisContainerIntegrationTe
 	}
 
 	@Test
-	@DisplayName("없는 계정은 404이고 차단·삭제·운영자 계정은 403이다")
+	@DisplayName("이력이 없는 계정은 동의 오류이고 현재 동의한 차단·삭제·운영자 계정은 자격 오류다")
 	void rejectsMissingOrIneligibleAccount() throws Exception {
 		Instant observedAt = Instant.now().truncatedTo(ChronoUnit.SECONDS);
 		String request = request("37.5", "127", "1", true, observedAt);
@@ -170,10 +174,12 @@ class ActiveUserPresenceApiIntegrationTest extends PostgisContainerIntegrationTe
 		long deletedId = createUser(REGION_A, "deleted", "DELETED", "USER");
 		long operatorId = createUser(REGION_A, "operator", "ACTIVE", "OPERATOR");
 
-		mockMvc.perform(update(missingId, request)).andExpect(status().isNotFound());
-		mockMvc.perform(update(blockedId, request)).andExpect(status().isForbidden());
-		mockMvc.perform(update(deletedId, request)).andExpect(status().isForbidden());
-		mockMvc.perform(update(operatorId, request)).andExpect(status().isForbidden());
+		mockMvc.perform(update(missingId, request)).andExpect(status().isForbidden())
+				.andExpect(jsonPath("$.errorDetail.code").value("DIR-APP-009"));
+		for (long userId : new long[]{blockedId, deletedId, operatorId}) {
+			mockMvc.perform(update(userId, request)).andExpect(status().isForbidden())
+					.andExpect(jsonPath("$.errorDetail.code").value("DIR-APP-007"));
+		}
 		assertThat(jdbc.queryForObject("SELECT count(*) FROM active_user_presence", Integer.class)).isZero();
 	}
 
@@ -193,12 +199,17 @@ class ActiveUserPresenceApiIntegrationTest extends PostgisContainerIntegrationTe
 	}
 
 	private long createUser(String region, String nickname, String status, String role) {
-		return jdbc.queryForObject("""
+		long userId = jdbc.queryForObject("""
 				INSERT INTO user_account
 					(role, country_code, status, coarse_region_code, locale, timezone, nickname, deleted_at)
 				VALUES (?, CASE WHEN ? = 'USER' THEN 'KR' ELSE NULL END, ?, ?, 'ko-KR', 'Asia/Seoul', ?,
 					CASE WHEN ? = 'DELETED' THEN clock_timestamp() ELSE NULL END)
 				RETURNING id
 				""", Long.class, role, role, status, region, nickname, status);
+		jdbc.update("""
+				INSERT INTO location_consent_history (user_id, terms_version, action, recorded_at)
+				VALUES (?, 'test-v1', 'CONSENT', now())
+				""", userId);
+		return userId;
 	}
 }
