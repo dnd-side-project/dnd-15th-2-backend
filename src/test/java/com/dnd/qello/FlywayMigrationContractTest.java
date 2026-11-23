@@ -76,6 +76,7 @@ class FlywayMigrationContractTest {
 				"V31__add_user_account_nickname_changed_at.sql",
 				"V32__allow_direction_post_moderation_target.sql",
 				"V33__add_user_account_withdrawal.sql",
+				"V34__add_location_consent_history.sql",
 				"V34__add_operator_access_log.sql",
 				"V3__add_user_account_password_hash.sql",
 				"V4__add_user_account_optimistic_lock.sql",
@@ -87,10 +88,15 @@ class FlywayMigrationContractTest {
 	}
 
 	@Test
-	@DisplayName("TEST-PLAN-GH-337-ACCOUNT-WITHDRAWAL-UNIT-026: V33은 유예 상태 값, 요청 시각 CHECK, sweep 부분 인덱스를 함께 추가한다")
+	@DisplayName("TEST-PLAN-GH-337-ACCOUNT-WITHDRAWAL-UNIT-026: V34까지 존재하며 V33은 유예 상태 값, 요청 시각 CHECK, sweep 부분 인덱스를 함께 추가한다")
 	void v33AddsWithdrawalStateContract() throws IOException {
+		List<Integer> versions = sqlMigrationNames().stream()
+				.map(name -> Integer.parseInt(name.substring(1, name.indexOf("__"))))
+				.sorted()
+				.toList();
 		String v33 = Files.readString(Path.of("src/main/resources/db/migration/V33__add_user_account_withdrawal.sql"));
 
+		assertThat(versions.get(versions.size() - 1)).isEqualTo(34);
 		assertThat(v33)
 				.contains("CHECK (status IN ('ACTIVE', 'WITHDRAWAL_PENDING', 'BLOCKED', 'DELETED'))")
 				.contains("ADD COLUMN withdrawal_requested_at TIMESTAMPTZ")
