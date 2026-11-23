@@ -10,6 +10,7 @@
  * TEST-PLAN-GH-315-AUTH-NICKNAME-RATE-LIMIT-INT-012 (added 2026-10-06T14:26:52+09:00)
  * Extended at: 2026-11-21T08:52:10Z
  * Source scenario: TEST-PLAN-GH-365-PUSH-FID-PROVIDER-INT-007
+ * Source scenario: TEST-PLAN-GH-381-LOCATION-CONSENT-INT-013
  */
 package com.dnd.qello;
 
@@ -122,6 +123,41 @@ class OpenApiSpecificationIntegrationTest extends PostgisContainerIntegrationTes
 				operation.at("/responses/200/content/application~1json/schema"));
 		JsonNode responseData = resolveSchema(specification, successEnvelope.at("/properties/data"));
 		assertThat(fieldNames(responseData)).containsExactly("applied");
+	}
+
+	@Test
+	@DisplayName("위치 동의 세 API는 본인 인증과 현재 상태 응답, 버전 충돌 및 위치 차단 오류를 문서화한다")
+	void documentsLocationConsentContract() throws Exception {
+		JsonNode specification = objectMapper.readTree(fetchSpecification());
+		JsonNode consent = operation(specification, "/api/v1/location-consents", "post");
+		JsonNode withdrawal = operation(specification, "/api/v1/location-consents/withdrawals", "post");
+		JsonNode current = operation(specification, "/api/v1/location-consents/current", "get");
+
+		for (JsonNode operation : List.of(consent, withdrawal, current)) {
+			assertThat(operation.isMissingNode()).isFalse();
+			assertAppAuthentication(operation);
+			assertResponses(operation, "200", "401", "403", "404", "500");
+			JsonNode envelope = resolveSchema(specification,
+					operation.at("/responses/200/content/application~1json/schema"));
+			JsonNode data = resolveSchema(specification, envelope.at("/properties/data"));
+			assertThat(fieldNames(data)).containsExactlyInAnyOrder("currentTermsVersion", "consented",
+					"lastAction", "lastTermsVersion", "recordedAt");
+			assertThat(data.at("/properties/consented/type").asText()).isEqualTo("boolean");
+			assertThat(data.at("/properties/recordedAt/format").asText()).isEqualTo("date-time");
+			assertNoPrivateFields(operation);
+		}
+		assertResponses(consent, "400", "409");
+		JsonNode request = resolveSchema(specification,
+				consent.at("/requestBody/content/application~1json/schema"));
+		assertThat(fieldNames(request)).containsExactly("termsVersion");
+		assertThat(requiredFields(request)).containsExactly("termsVersion");
+		assertThat(withdrawal.has("requestBody")).isFalse();
+		for (JsonNode operation : List.of(
+				operation(specification, "/api/v1/direction/presence", "put"),
+				operation(specification, "/api/v1/direction/preview", "get"),
+				operation(specification, "/api/v1/direction/posts", "post"))) {
+			assertResponses(operation, "403", "503");
+		}
 	}
 
 	@Test

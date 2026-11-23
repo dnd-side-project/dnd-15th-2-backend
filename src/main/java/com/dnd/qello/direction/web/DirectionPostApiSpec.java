@@ -30,13 +30,13 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 public interface DirectionPostApiSpec {
 
 	@Operation(summary = "방향별로 받을 수 있는 사람 수 조회", description = """
-			사용자의 위치를 기준으로 모든 방향별 질문을 받을 수 있는 사람이 몇 명인지 조회합니다.
+			현재 위치정보 이용 약관에 동의한 사용자의 위치를 기준으로 모든 방향별 질문 수신 후보 수를 조회합니다.
 
 			앱 로그인이 필요합니다. Authorization 헤더에 앱 액세스 토큰이 필요합니다.""")
 	@ApiResponses({
 			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "방향별 후보 수를 반환합니다."),
 			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "앱 액세스 토큰이 유효하지 않습니다.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
-			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "현재 계정은 방향 기능을 사용할 수 없습니다.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
+			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "현재 약관에 대한 위치정보 동의가 없거나(DIR-APP-009) 현재 계정은 방향 기능을 사용할 수 없습니다.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
 			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "인증 사용자 계정 또는 현재 활성 방향 구획 체계를 찾을 수 없습니다.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
 			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "409", description = "저장된 위치가 없거나 너무 오래됐습니다.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
 			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "503", description = "위치 기능이 아직 열리지 않아 조회하지 않았습니다. (DIR-APP-008)", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class)))
@@ -50,12 +50,14 @@ public interface DirectionPostApiSpec {
 
 			앱 로그인이 필요합니다. Authorization 헤더에 앱 액세스 토큰이 필요합니다.
 
-			새 요청과 재시도를 구분하기 위해 Idempotency-Key 헤더가 필요합니다.""")
+			새 요청과 재시도를 구분하기 위해 Idempotency-Key 헤더가 필요합니다.
+			현재 위치정보 이용 약관에 대한 동의를 재시도 결과 조회보다 먼저 확인합니다.
+			동의 확인 후 시작된 발송은 동의를 철회해도 완료될 수 있습니다.""")
 	@ApiResponses({
 			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "202", description = "질문글 제출을 접수했습니다."),
 			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "본문, 미디어 또는 Idempotency-Key가 정책에 맞지 않습니다.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
 			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "앱 액세스 토큰이 유효하지 않습니다.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
-			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "본인 소유가 아닌 미디어를 첨부했거나 방향 기능을 쓸 수 없는 계정입니다.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
+			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "현재 약관에 대한 위치정보 동의가 없거나(DIR-APP-009), 본인 소유가 아닌 미디어를 첨부했거나 방향 기능을 쓸 수 없는 계정입니다.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
 			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "404", description = "질문, 방향 구획 체계 또는 인증 사용자 계정을 찾을 수 없습니다.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
 			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "409", description = "같은 Idempotency-Key를 다른 요청에 썼거나 저장된 위치가 없거나 너무 오래됐습니다.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
 			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "503", description = "본문 안전 검사를 접수할 수 없거나(FLT-DOM-006) 위치 기능이 아직 열리지 않아(DIR-APP-008) 질문글을 보내지 않았습니다.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class)))

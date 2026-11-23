@@ -637,6 +637,25 @@
         },
         "type" : "object"
       },
+      "ApiResponseLocationConsentResponse" : {
+        "properties" : {
+          "data" : {
+            "$ref" : "#/components/schemas/LocationConsentResponse"
+          },
+          "status" : {
+            "enum" : [
+              "success",
+              "error"
+            ],
+            "type" : "string"
+          },
+          "timestamp" : {
+            "format" : "date-time",
+            "type" : "string"
+          }
+        },
+        "type" : "object"
+      },
       "ApiResponseManualReviewCaseResponse" : {
         "properties" : {
           "data" : {
@@ -1835,6 +1854,64 @@
               "$ref" : "#/components/schemas/DirectionChip"
             },
             "type" : "array"
+          }
+        },
+        "type" : "object"
+      },
+      "LocationConsentRequest" : {
+        "properties" : {
+          "termsVersion" : {
+            "description" : "서버의 현재 위치정보 이용 약관 버전",
+            "example" : "dev-v1",
+            "maxLength" : 100,
+            "minLength" : 0,
+            "pattern" : "\\S(?:[\\s\\S]*\\S)?",
+            "type" : "string"
+          }
+        },
+        "required" : [
+          "termsVersion"
+        ],
+        "type" : "object"
+      },
+      "LocationConsentResponse" : {
+        "properties" : {
+          "consented" : {
+            "description" : "최신 이력이 현재 버전에 대한 동의인지 여부",
+            "type" : "boolean"
+          },
+          "currentTermsVersion" : {
+            "description" : "현재 위치정보 이용 약관 버전. 미게시 상태에서는 null입니다.",
+            "type" : [
+              "string",
+              "null"
+            ]
+          },
+          "lastAction" : {
+            "description" : "마지막 동의 또는 철회. 이력이 없으면 null입니다.",
+            "enum" : [
+              "CONSENT",
+              "WITHDRAW"
+            ],
+            "type" : [
+              "string",
+              "null"
+            ]
+          },
+          "lastTermsVersion" : {
+            "description" : "마지막 이력의 약관 버전. 이력이 없으면 null입니다.",
+            "type" : [
+              "string",
+              "null"
+            ]
+          },
+          "recordedAt" : {
+            "description" : "마지막 이력의 서버 기록 시각. 이력이 없으면 null입니다.",
+            "format" : "date-time",
+            "type" : [
+              "string",
+              "null"
+            ]
           }
         },
         "type" : "object"
@@ -6389,7 +6466,7 @@
         ]
       },
       "post" : {
-        "description" : "사용자가 고른 방향에 있는 사람들에게 질문글을 전송합니다.\n\n앱 로그인이 필요합니다. Authorization 헤더에 앱 액세스 토큰이 필요합니다.\n\n새 요청과 재시도를 구분하기 위해 Idempotency-Key 헤더가 필요합니다.",
+        "description" : "사용자가 고른 방향에 있는 사람들에게 질문글을 전송합니다.\n\n앱 로그인이 필요합니다. Authorization 헤더에 앱 액세스 토큰이 필요합니다.\n\n새 요청과 재시도를 구분하기 위해 Idempotency-Key 헤더가 필요합니다.\n현재 위치정보 이용 약관에 대한 동의를 재시도 결과 조회보다 먼저 확인합니다.\n동의 확인 후 시작된 발송은 동의를 철회해도 완료될 수 있습니다.",
         "operationId" : "submit_1",
         "parameters" : [
           {
@@ -6451,7 +6528,7 @@
                 }
               }
             },
-            "description" : "본인 소유가 아닌 미디어를 첨부했거나 방향 기능을 쓸 수 없는 계정입니다."
+            "description" : "현재 약관에 대한 위치정보 동의가 없거나(DIR-APP-009), 본인 소유가 아닌 미디어를 첨부했거나 방향 기능을 쓸 수 없는 계정입니다."
           },
           "404" : {
             "content" : {
@@ -6956,7 +7033,7 @@
     },
     "/api/v1/direction/presence" : {
       "put" : {
-        "description" : "사용자의 최신 위치와 질문 수신 여부를 저장합니다.\n\n앱 로그인이 필요합니다. Authorization 헤더에 앱 액세스 토큰을 보내세요.\n\n가장 최근 위치로 업데이트합니다. applied가 false이면 업데이트할 필요가 없다는 뜻이며,\n이 경우에도 200을 반환합니다.",
+        "description" : "현재 위치정보 이용 약관에 동의한 사용자의 최신 위치와 질문 수신 여부를 저장합니다.\n\n앱 로그인이 필요합니다. Authorization 헤더에 앱 액세스 토큰을 보내세요.\n\n가장 최근 위치로 업데이트합니다. applied가 false이면 업데이트할 필요가 없다는 뜻이며,\n이 경우에도 200을 반환합니다.",
         "operationId" : "update",
         "requestBody" : {
           "content" : {
@@ -7007,7 +7084,7 @@
                 }
               }
             },
-            "description" : "현재 계정은 위치를 갱신할 수 없습니다."
+            "description" : "현재 약관에 대한 위치정보 동의가 없거나(DIR-APP-009) 현재 계정은 위치를 갱신할 수 없습니다."
           },
           "404" : {
             "content" : {
@@ -7053,7 +7130,7 @@
     },
     "/api/v1/direction/preview" : {
       "get" : {
-        "description" : "사용자의 위치를 기준으로 모든 방향별 질문을 받을 수 있는 사람이 몇 명인지 조회합니다.\n\n앱 로그인이 필요합니다. Authorization 헤더에 앱 액세스 토큰이 필요합니다.",
+        "description" : "현재 위치정보 이용 약관에 동의한 사용자의 위치를 기준으로 모든 방향별 질문 수신 후보 수를 조회합니다.\n\n앱 로그인이 필요합니다. Authorization 헤더에 앱 액세스 토큰이 필요합니다.",
         "operationId" : "preview",
         "responses" : {
           "200" : {
@@ -7094,7 +7171,7 @@
                 }
               }
             },
-            "description" : "현재 계정은 방향 기능을 사용할 수 없습니다."
+            "description" : "현재 약관에 대한 위치정보 동의가 없거나(DIR-APP-009) 현재 계정은 방향 기능을 사용할 수 없습니다."
           },
           "404" : {
             "content" : {
@@ -7297,6 +7374,257 @@
         "summary" : "이의제기 접수",
         "tags" : [
           "콘텐츠 이의제기"
+        ]
+      }
+    },
+    "/api/v1/location-consents" : {
+      "post" : {
+        "description" : "현재 약관 버전에 대한 동의를 서버 시각으로 기록합니다.\n\n앱 액세스 토큰이 필요합니다. 같은 버전으로 다시 동의해도 요청마다 이력이 한 건 추가됩니다.",
+        "operationId" : "consent",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/LocationConsentRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiResponseLocationConsentResponse"
+                }
+              }
+            },
+            "description" : "동의를 기록하고 현재 상태를 반환합니다."
+          },
+          "400" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "요청 값이 올바르지 않습니다."
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "앱 액세스 토큰이 유효하지 않습니다."
+          },
+          "403" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "위치정보 동의 기능을 사용할 수 없는 계정입니다. (DIR-APP-007)"
+          },
+          "404" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "계정을 찾을 수 없습니다."
+          },
+          "409" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "현재 약관 버전과 일치하지 않습니다. (DIR-APP-010)"
+          },
+          "500" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "서버 내부 오류가 발생했습니다."
+          }
+        },
+        "security" : [
+          {
+            "appAccessToken" : [ ]
+          }
+        ],
+        "summary" : "위치정보 이용 동의",
+        "tags" : [
+          "위치정보 동의"
+        ]
+      }
+    },
+    "/api/v1/location-consents/current" : {
+      "get" : {
+        "description" : "사용자 전체 이력 중 가장 최근에 추가된 한 건과 현재 약관 버전으로 상태를 판단합니다.\n\n앱 액세스 토큰이 필요합니다. 조회는 이력을 추가하지 않습니다.",
+        "operationId" : "current",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiResponseLocationConsentResponse"
+                }
+              }
+            },
+            "description" : "현재 동의 상태를 반환합니다."
+          },
+          "400" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "요청 값이 올바르지 않습니다."
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "앱 액세스 토큰이 유효하지 않습니다."
+          },
+          "403" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "위치정보 동의 기능을 사용할 수 없는 계정입니다. (DIR-APP-007)"
+          },
+          "404" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "계정을 찾을 수 없습니다."
+          },
+          "500" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "서버 내부 오류가 발생했습니다."
+          }
+        },
+        "security" : [
+          {
+            "appAccessToken" : [ ]
+          }
+        ],
+        "summary" : "현재 위치정보 동의 상태 조회",
+        "tags" : [
+          "위치정보 동의"
+        ]
+      }
+    },
+    "/api/v1/location-consents/withdrawals" : {
+      "post" : {
+        "description" : "모든 약관 버전의 동의를 철회하고 저장된 현재 위치를 같은 트랜잭션에서 삭제합니다.\n\n앱 액세스 토큰이 필요합니다. 반복 요청도 성공마다 이력이 한 건 추가됩니다.\n철회 전에 동의를 확인한 미리보기와 발송 요청은 완료될 수 있습니다.",
+        "operationId" : "withdraw",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiResponseLocationConsentResponse"
+                }
+              }
+            },
+            "description" : "철회를 기록하고 현재 위치를 삭제했습니다."
+          },
+          "400" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "요청 값이 올바르지 않습니다."
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "앱 액세스 토큰이 유효하지 않습니다."
+          },
+          "403" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "위치정보 동의 기능을 사용할 수 없는 계정입니다. (DIR-APP-007)"
+          },
+          "404" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "계정을 찾을 수 없습니다."
+          },
+          "500" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "서버 내부 오류가 발생했습니다."
+          }
+        },
+        "security" : [
+          {
+            "appAccessToken" : [ ]
+          }
+        ],
+        "summary" : "위치정보 이용 동의 철회",
+        "tags" : [
+          "위치정보 동의"
         ]
       }
     },
@@ -10064,6 +10392,10 @@
     {
       "description" : "질문자 자신이 보낸 질문글 목록·상세 조회",
       "name" : "내가 보낸 질문"
+    },
+    {
+      "description" : "인증 사용자 본인의 위치정보 이용 동의와 철회",
+      "name" : "위치정보 동의"
     },
     {
       "description" : "방향별 후보 미리보기와 비동기 질문글 제출",
