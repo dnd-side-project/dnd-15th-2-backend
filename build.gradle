@@ -22,6 +22,15 @@ ext['tomcat.version'] = '10.1.61'
 // CVE-2026-75595·55831·59901 외 보안 패치 고정.
 // Spring Boot BOM이 4.1.137.Final 이상을 관리하면 삭제한다(#360).
 ext['netty.version'] = '4.1.137.Final'
+// CVE-2026-54399·54428 보안 패치. Spring Boot BOM이 5.4.3 이상을 관리하면 제거한다.
+ext['httpcore5.version'] = '5.4.3'
+
+dependencyManagement {
+	dependencies {
+		// CVE-2026-102554 보안 패치. 상위 의존성이 33.7.2-jre 이상을 선택하면 제거한다.
+		dependency 'com.google.guava:guava:33.7.2-jre'
+	}
+}
 
 java {
 	toolchain {
