@@ -1,0 +1,18 @@
+[
+  {
+    "advisory": "GHSA-j9f9-w8pj-32f8",
+    "package": "org.springframework:spring-webmvc",
+    "version": "6.2.19",
+    "reason": "No public 6.2 fix is published; the advisory fixes 7.0.9, which requires a separate Spring Boot 4 migration. Review mitigation and supported upgrade before expiry.",
+    "issue": 382,
+    "expires_at": "2026-12-07"
+  },
+  {
+    "advisory": "GHSA-pc63-qcmh-9cmg",
+    "package": "org.springframework:spring-webmvc",
+    "version": "6.2.19",
+    "reason": "No public 6.2 fix is published; the advisory fixes 7.0.9, which requires a separate Spring Boot 4 migration. Review mitigation and supported upgrade before expiry.",
+    "issue": 382,
+    "expires_at": "2026-12-07"
+  }
+]
