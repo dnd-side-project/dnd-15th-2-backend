@@ -38,6 +38,8 @@ qello:
       attempt-rate-limit:
         max-requests: 100000
   location:
+    consent:
+      current-terms-version: test-v1
     collection:
       # test 프로필은 dev·local 예외가 아니므로 운영과 같은 참조 검사를 거쳐 게이트를 켠다(#379 D6).
       # 테스트 전용 참조 값이다. 실제 신고 수리 번호가 아니다.

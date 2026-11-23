@@ -29,6 +29,8 @@ qello:
     access-token:
       secret: ${QELLO_AUTH_ACCESS_TOKEN_SECRET}
   location:
+    consent:
+      current-terms-version: dev-v1
     collection:
       # 로컬 개발은 비운영 환경이라 게이트를 켠다. 신고 수리 참조 검사를 생략한다(#379).
       enabled: true
