@@ -2,6 +2,7 @@
  * Created at: 2026-08-24T20:10:00+09:00
  * Extended at: 2026-08-27T15:13:23+09:00
  * Extended at: 2026-11-21T08:43:08.515Z
+ * Extended at: 2026-11-21T12:06:06.923Z
  * Source scenario: TEST-PLAN-GH-179-PUSH-DELIVERY-UNIT-015,
  * TEST-PLAN-GH-180-PUSH-BUNDLING-BUDGET-UNIT-001,
  * TEST-PLAN-GH-182-CORE-WORKER-SCHEDULING-UNIT-018, UNIT-019
@@ -17,10 +18,17 @@
  * TEST-PLAN-GH-365-PUSH-FID-PROVIDER-UNIT-015,
  * TEST-PLAN-GH-365-PUSH-FID-PROVIDER-UNIT-017,
  * TEST-PLAN-GH-365-PUSH-FID-PROVIDER-UNIT-018
+ * Source scenario: TEST-PLAN-GH-366-DEV-WORKER-FCM-UNIT-002,
+ * TEST-PLAN-GH-366-DEV-WORKER-FCM-UNIT-003,
+ * TEST-PLAN-GH-366-DEV-WORKER-FCM-UNIT-005
  */
 package com.dnd.qello.notification.config;
 
+import java.io.IOException;
+import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.security.GeneralSecurityException;
+import java.security.KeyPairGenerator;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -28,14 +36,17 @@ import java.util.Arrays;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.springframework.beans.factory.config.BeanPostProcessor;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
 import org.springframework.boot.autoconfigure.context.ConfigurationPropertiesAutoConfiguration;
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -43,6 +54,8 @@ import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
 import org.springframework.boot.test.context.ConfigDataApplicationContextInitializer;
 import org.springframework.boot.test.context.assertj.AssertableApplicationContext;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.NestedExceptionUtils;
 import org.springframework.core.env.MapPropertySource;
@@ -73,11 +86,16 @@ import com.dnd.qello.notification.repository.PushDispatchGroupRepository;
 import com.dnd.qello.notification.service.PushDeliveryDispatchWorker;
 import com.dnd.qello.notification.service.PushDispatchGroupClaimService;
 import com.dnd.qello.notification.service.PushDispatchGroupPlanner;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sun.net.httpserver.HttpServer;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.spy;
 
+@ExtendWith(OutputCaptureExtension.class)
 class PushConfigurationTest {
 
 	private static final String CURRENT_KEY_ID = "test-current";
@@ -191,19 +209,89 @@ class PushConfigurationTest {
 	}
 
 	@Test
-	@DisplayName("UNIT-006: dev 기본 noop은 실제 AES 단일 bean으로 FID를 보호하고 복호화한다")
-	void devDefaultsToNoOpAndWiresRealTokenProtector() {
-		applicationConfigContext("dev")
-				.withPropertyValues(tokenKeyFixtures())
-				.run(context -> {
-					assertNoOpProvider(context);
-					assertThat(context).hasSingleBean(AesGcmPushTokenProtector.class);
-					assertThat(context).hasSingleBean(PushTokenProtector.class);
-					PushToken token = PushToken.of("test-only-dev-fid");
-					PushTokenProtector protector = context.getBean(PushTokenProtector.class);
+	@DisplayName("UNIT-002: dev YAML 기본 FCM은 실제 service account와 AES를 만들고 외부 요청하지 않는다")
+	void devDefaultsToFcmAndWiresRealTokenProtector() throws GeneralSecurityException, IOException {
+		try (FcmCallBoundary boundary = new FcmCallBoundary()) {
+			String privateKey = generatedPrivateKey();
+			String credentialJson = serviceAccountCredential(boundary.tokenUri(), privateKey);
+			guardedDevContext(boundary)
+					.withPropertyValues(tokenKeyFixtures())
+					.withPropertyValues(serviceAccountEnvironmentFixtures(credentialJson))
+					.run(context -> {
+						assertThat(context).hasNotFailed();
+						assertThat(context.getEnvironment().getProperty(PROVIDER_PROPERTY)).isEqualTo("fcm");
+						assertThat(context).hasSingleBean(PushProvider.class);
+						assertThat(context).hasSingleBean(FcmHttpV1PushProvider.class);
+						assertThat(context).hasSingleBean(FcmAccessTokenProvider.class);
+						assertThat(context).hasSingleBean(GoogleCredentialsFcmAccessTokenProvider.class);
+						assertThat(context).hasSingleBean(PushProperties.class);
+						assertThat(context).hasBean("fcmRestClient");
+						assertThat(context).doesNotHaveBean("noOpPushProvider");
+						assertThat(context).hasSingleBean(AesGcmPushTokenProtector.class);
+						assertThat(context).hasSingleBean(PushTokenProtector.class);
+						PushToken token = PushToken.of("test-only-dev-fid");
+						PushTokenProtector protector = context.getBean(PushTokenProtector.class);
 
-					assertThat(protector.decrypt(protector.protect(token).envelope())).isEqualTo(token);
-				});
+						assertThat(protector.decrypt(protector.protect(token).envelope())).isEqualTo(token);
+					});
+		}
+	}
+
+	@ParameterizedTest
+	@MethodSource("missingOrBlankDevFcmSettings")
+	@DisplayName("UNIT-003: dev FCM은 다른 설정이 유효해도 project나 credential 누락·빈 값·공백을 거부한다")
+	void devRejectsMissingOrBlankFcmSettings(String setting, String value, String failureMarker, CapturedOutput output)
+			throws GeneralSecurityException, IOException {
+		try (FcmCallBoundary boundary = new FcmCallBoundary()) {
+			String privateKey = generatedPrivateKey();
+			String credentialJson = serviceAccountCredential(boundary.tokenUri(), privateKey);
+			List<String> values = new ArrayList<>(Arrays.asList(serviceAccountEnvironmentFixtures(credentialJson)));
+			values.removeIf(property -> property.startsWith(setting + "="));
+			if (value != null) {
+				values.add(setting + "=" + value);
+			}
+
+			guardedDevContext(boundary)
+					.withPropertyValues(tokenKeyFixtures())
+					.withPropertyValues(values.toArray(String[]::new))
+					.run(context -> {
+						assertThat(context).hasFailed();
+						assertThat(context.getStartupFailure())
+								.withFailMessage("dev FCM 필수 설정 오류가 지정한 binding 경계에서 발생해야 한다")
+								.hasRootCauseInstanceOf(IllegalArgumentException.class)
+								.hasStackTraceContaining(PushProperties.class.getName())
+								.hasStackTraceContaining(failureMarker)
+								.hasMessageNotContaining(credentialJson);
+					});
+			assertThat(output).doesNotContain(credentialJson, privateKey, "test-service-account@example.invalid");
+		}
+	}
+
+	@ParameterizedTest
+	@ValueSource(strings = {"json", "key"})
+	@DisplayName("UNIT-003: dev FCM은 잘못된 JSON이나 PKCS8 key를 실제 credential 생성자에서 거부한다")
+	void devRejectsMalformedServiceAccountCredentials(String malformedPart, CapturedOutput output) throws IOException {
+		try (FcmCallBoundary boundary = new FcmCallBoundary()) {
+			String credentialJson = "json".equals(malformedPart)
+					? "not-json-test-service-account"
+					: serviceAccountCredential(boundary.tokenUri(), pemPrivateKey("AQID"));
+			guardedDevContext(boundary)
+					.withPropertyValues(tokenKeyFixtures())
+					.withPropertyValues(serviceAccountEnvironmentFixtures(credentialJson))
+					.run(context -> {
+						assertThat(context).hasFailed();
+						Throwable failure = context.getStartupFailure();
+						assertThat(failure)
+								.withFailMessage("실제 FCM credential 생성자의 파싱 오류로 실패해야 한다")
+								.hasStackTraceContaining(GoogleCredentialsFcmAccessTokenProvider.class.getName());
+						assertThat(Stream.iterate(failure, cause -> cause != null, Throwable::getCause).toList())
+								.withFailMessage("FCM credential 파싱 오류 유형이 원인에 포함되어야 한다")
+								.anySatisfy(cause -> assertThat(cause)
+										.isInstanceOf(IllegalStateException.class)
+										.hasMessageContaining("FCM credential"));
+					});
+			assertThat(output).doesNotContain(credentialJson, pemPrivateKey("AQID"));
+		}
 	}
 
 	@ParameterizedTest
@@ -235,15 +323,20 @@ class PushConfigurationTest {
 
 	@ParameterizedTest
 	@ValueSource(strings = {"dev", "default", "prod", "production"})
-	@DisplayName("UNIT-009: 명시적 noop은 실제 config data에서 FCM 값 없이 AES와 provider 하나만 등록한다")
+	@DisplayName("UNIT-009·UNIT-005: 명시적 noop 롤백은 FCM 값 없이 실제 AES와 noop 하나만 등록한다")
 	void explicitNoOpStartsWithoutFcmPlaceholders(String profile) {
 		applicationConfigContext(profile)
 				.withPropertyValues(PROVIDER_PROPERTY + "=noop")
 				.withPropertyValues(tokenKeyFixtures())
 				.run(context -> {
 					assertNoOpProvider(context);
+					assertThat(context).hasBean("noOpPushProvider");
 					assertThat(context).hasSingleBean(AesGcmPushTokenProtector.class);
 					assertThat(context).hasSingleBean(PushTokenProperties.class);
+					PushToken token = PushToken.of("test-only-noop-rollback-fid");
+					PushTokenProtector protector = context.getBean(PushTokenProtector.class);
+
+					assertThat(protector.decrypt(protector.protect(token).envelope())).isEqualTo(token);
 				});
 	}
 
@@ -481,7 +574,52 @@ class PushConfigurationTest {
 		// local YAML은 .env를 import하므로 config data 검증은 dev/default/운영 프로필로 한정한다.
 		return pushContext(profile)
 				.withPropertyValues("spring.config.location=classpath:/application.yml")
+				.withPropertyValues("qello.worker.scheduling.enabled=false")
 				.withInitializer(new ConfigDataApplicationContextInitializer());
+	}
+
+	private static ApplicationContextRunner guardedDevContext(FcmCallBoundary boundary) {
+		return applicationConfigContext("dev")
+				.withInitializer(context -> context.getBeanFactory().addBeanPostProcessor(boundary));
+	}
+
+	private static String generatedPrivateKey() throws GeneralSecurityException {
+		KeyPairGenerator generator = KeyPairGenerator.getInstance("RSA");
+		generator.initialize(2048);
+		byte[] encoded = generator.generateKeyPair().getPrivate().getEncoded();
+		return pemPrivateKey(Base64.getMimeEncoder(64, new byte[]{'\n'}).encodeToString(encoded));
+	}
+
+	private static String pemPrivateKey(String encoded) {
+		return "-----BEGIN %1$s-----\n%2$s\n-----END %1$s-----\n".formatted("PRIVATE KEY", encoded);
+	}
+
+	private static String serviceAccountCredential(String tokenUri, String privateKey) throws IOException {
+		return new ObjectMapper().writeValueAsString(Map.of(
+				"type", "service_account",
+				"project_id", "test-project",
+				"client_email", "test-service-account@example.invalid",
+				"private_key_id", "test-key-id",
+				"client_id", "test-client-id",
+				"private_key", privateKey,
+				"token_uri", tokenUri));
+	}
+
+	private static String[] serviceAccountEnvironmentFixtures(String credentialJson) {
+		List<String> values = new ArrayList<>(Arrays.asList(fcmEnvironmentFixtures()));
+		values.removeIf(property -> property.startsWith("QELLO_NOTIFICATION_PUSH_FCM_CREDENTIAL_JSON="));
+		values.add("QELLO_NOTIFICATION_PUSH_FCM_CREDENTIAL_JSON=" + credentialJson);
+		return values.toArray(String[]::new);
+	}
+
+	private static Stream<Arguments> missingOrBlankDevFcmSettings() {
+		return Stream.of(
+				Arguments.of("QELLO_NOTIFICATION_PUSH_FCM_PROJECT_ID", null, "projectId"),
+				Arguments.of("QELLO_NOTIFICATION_PUSH_FCM_PROJECT_ID", "", "projectId"),
+				Arguments.of("QELLO_NOTIFICATION_PUSH_FCM_PROJECT_ID", " ", "projectId"),
+				Arguments.of("QELLO_NOTIFICATION_PUSH_FCM_CREDENTIAL_JSON", null, "credentialJson"),
+				Arguments.of("QELLO_NOTIFICATION_PUSH_FCM_CREDENTIAL_JSON", "", "credentialJson"),
+				Arguments.of("QELLO_NOTIFICATION_PUSH_FCM_CREDENTIAL_JSON", " ", "credentialJson"));
 	}
 
 	private static void assertNoOpProvider(AssertableApplicationContext context) {
@@ -641,6 +779,54 @@ class PushConfigurationTest {
 	@Configuration(proxyBeanMethods = false)
 	@ConfigurationPropertiesScan(basePackageClasses = PushProperties.class)
 	static class ScannedPushPropertiesConfiguration {
+	}
+
+	private static final class FcmCallBoundary implements BeanPostProcessor, AutoCloseable {
+		private final HttpServer server;
+		private final AtomicInteger tokenRequests = new AtomicInteger();
+		private final AtomicInteger blockedCalls = new AtomicInteger();
+
+		private FcmCallBoundary() throws IOException {
+			server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+			server.createContext("/", exchange -> {
+				tokenRequests.incrementAndGet();
+				exchange.sendResponseHeaders(503, -1);
+				exchange.close();
+			});
+			server.start();
+		}
+
+		private String tokenUri() {
+			return "http://127.0.0.1:" + server.getAddress().getPort() + "/token";
+		}
+
+		@Override
+		public Object postProcessAfterInitialization(Object bean, String beanName) {
+			if (bean instanceof GoogleCredentialsFcmAccessTokenProvider tokenProvider) {
+				GoogleCredentialsFcmAccessTokenProvider guarded = spy(tokenProvider);
+				doAnswer(invocation -> {
+					blockedCalls.incrementAndGet();
+					throw new AssertionError("기동 중 OAuth token 갱신은 허용하지 않는다");
+				}).when(guarded).accessToken();
+				return guarded;
+			}
+			if ("fcmRestClient".equals(beanName) && bean instanceof RestClient client) {
+				RestClient guarded = spy(client);
+				doAnswer(invocation -> {
+					blockedCalls.incrementAndGet();
+					throw new AssertionError("기동 중 FCM 요청은 허용하지 않는다");
+				}).when(guarded).post();
+				return guarded;
+			}
+			return bean;
+		}
+
+		@Override
+		public void close() {
+			server.stop(0);
+			assertThat(tokenRequests).withFailMessage("생성자에서 token endpoint를 호출하면 안 된다").hasValue(0);
+			assertThat(blockedCalls).withFailMessage("기동 중 OAuth/FCM 호출을 시도하면 안 된다").hasValue(0);
+		}
 	}
 
 }

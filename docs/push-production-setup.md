@@ -217,11 +217,29 @@ dispatch 경로가 존재하지 않는다.
 
 | 키 | 기본값 | 의미 |
 | --- | --- | --- |
-| `qello.worker.scheduling.enabled` | `false` (`QELLO_WORKER_SCHEDULING_ENABLED`) | 전체 worker scheduling |
-| `qello.worker.scheduling.push-delivery-dispatch.enabled` | 없음 | push dispatch worker |
+| `qello.worker.scheduling.enabled` | 기본 `false` (`QELLO_WORKER_SCHEDULING_ENABLED`), dev `true` | core worker scheduling |
+| `qello.worker.scheduling.push-delivery-dispatch.enabled` | 기본 없음, dev `true` | push dispatch worker |
 
 global gate가 꺼져 있으면 scheduler thread pool, lease owner, metrics bean까지
 전부 등록되지 않는다. 롤백은 이 값을 `false`로 되돌리고 재배포하는 것이다.
+
+dev는 `application-dev.yml`에 global gate와 다섯 worker의 `enabled: true`,
+`qello.notification.push.provider: fcm`을 명시한다. dev 프로필로 기동하고 FCM
+project ID·credential JSON과 token 보호 key를 주입해야 한다. `direction-matching`이
+수신자를 확정하고 `recipient-notification-fan-out`이 `DIRECTION_POST_RECEIVED`를
+만들며, notification/report-resolution fan-out과 push dispatch가 이어서 실행된다.
+moderation과 sweep은 별도 활성화 범위이므로 켜지 않는다. `AnswerModerationIntake`
+미등록으로 답변 제출이 실패하므로 `ANSWER_*` 생성·수신은 이 dev 활성화 검증에서 제외한다.
+
+dev YAML이 기본 YAML의 placeholder보다 우선하므로
+`QELLO_WORKER_SCHEDULING_ENABLED=false` 환경변수만 바꿔서는 끌 수 없다.
+발송 중지는 `application-dev.yml`의 `qello.worker.scheduling.enabled: false`로
+변경 후 재배포하는 경로를 우선 권고한다. FCM provider를 유지하면 자격 증명도 계속 필요하다.
+
+`provider: noop` 변경 후 재배포는 FCM 자격 증명 문제일 때만 사용한다. 이 경우 FCM
+설정 검증은 생략하지만 token 보호 key는 계속 필요하다. **worker가 계속 돌아 대기 중
+delivery를 실제 발송 없이 SENT로 처리하므로**, 발송 중지와 같은 동작으로 취급하지 않는다.
+기존 delivery 원장을 수동으로 고치거나 일괄 재발송하지 않는다.
 
 ### 10.2 결정해야 하는 값
 
@@ -241,6 +259,20 @@ fallback 기본값은 두지 않는다. 어떤 블록의 어떤 값이 왜 거�
 
 provider가 `Retry-After`를 주면 그 값을 backoff보다 우선한다.
 
+dev 전용 fixture는 다음과 같다(2026-11-21 결정). 운영 권장값이 아니며 운영 수치
+결정을 대체하지 않는다. pool-size는 활성 worker 다섯 개에 맞춘 `5`다.
+
+| worker 블록 | fixed-delay | batch-size | lease-duration | retry.max-attempts | retry 기본 지연 | retry 상한 |
+| --- | --- | --- | --- | --- | --- | --- |
+| `direction-matching` | PT5S | 20 | PT1M | 5 | base-delay: PT5S | max-delay: PT5M |
+| `recipient-notification-fan-out` | PT5S | 20 | PT1M | 5 | base-delay: PT5S | max-delay: PT5M |
+| `notification-fan-out` | PT5S | 20 | PT1M | 5 | base-delay: PT5S | max-delay: PT5M |
+| `report-resolution-fan-out` | PT5S | 20 | PT1M | 5 | base-delay: PT5S | max-delay: PT5M |
+| `push-delivery-dispatch` | PT5S | 10 | PT2M | 5 | base-backoff: PT10S | backoff-cap: PT10M |
+
+5초 주기는 실기기 확인 지연을 줄이기 위한 값이다. push lease는 connect 3s + read 5s로
+계산한 1건 8s, batch 10건의 80s보다 긴 PT2M으로 정했다.
+
 `UNREGISTERED`의 무효 기기 처리는 유지한다. HTTP 400 `INVALID_ARGUMENT`는 유효한
 allowlist payload에서 `message.token` 또는 `message.fid` field violation이 있을 때만
 `InvalidToken`으로 분류한다. 그 밖의 `INVALID_ARGUMENT`는 `PermanentFailure`로 두어
@@ -248,8 +280,9 @@ allowlist payload에서 `message.token` 또는 `message.fid` field violation이 
 반환하는 field path의 공식 근거는 아직 UNKNOWN이다.
 
 `lease-duration`이 한 batch의 실제 처리 시간보다 짧으면 lease가 만료된 뒤
-다른 instance가 같은 group을 다시 claim한다. 이 경우에도 `STALE_CLAIM`
-fencing이 중복 발송을 막지만, 처리량이 낭비되므로 `batch-size`와 함께 정한다.
+다른 instance가 같은 group을 다시 claim한다. `STALE_CLAIM` fencing은 늦게 도착한
+결과의 저장을 막지만 이미 발생한 provider 요청의 중복까지 보장하지는 않는다.
+lease는 처리량 낭비와 재전송 위험을 줄이도록 `batch-size`와 함께 정한다.
 
 ### 10.3 활성화 후 확인
 
