@@ -1,6 +1,8 @@
 /**
  * Created at: 2026-08-14T00:51:11+09:00
  * Source scenario: TEST-PLAN-GH-121-ACTIVE-USER-PRESENCE-API-UNIT-002, UNIT-003, UNIT-006
+ * Updated at: 2026-11-23T16:43:12+09:00
+ * Source scenario: TEST-PLAN-GH-379-LOCATION-GATE-UNIT-005
  */
 package com.dnd.qello.direction.service;
 
@@ -14,6 +16,7 @@ import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.core.env.StandardEnvironment;
 
 import com.dnd.qello.account.domain.Account;
 import com.dnd.qello.account.domain.AccountRole;
@@ -23,6 +26,8 @@ import com.dnd.qello.direction.config.DirectionPresenceProperties;
 import com.dnd.qello.direction.domain.ActiveUserPresence;
 import com.dnd.qello.direction.error.DirectionErrorCode;
 import com.dnd.qello.direction.error.DirectionException;
+import com.dnd.qello.direction.gate.LocationCollectionGate;
+import com.dnd.qello.direction.gate.LocationCollectionGateProperties;
 import com.dnd.qello.direction.repository.ActiveUserPresenceRepository;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -40,10 +45,31 @@ class DirectionPresenceServiceTest {
 	void setUp() {
 		accountRepository = new FakeAccountRepository(activeUser(1L, "SERVER-REGION"));
 		presenceRepository = new FakePresenceRepository();
-		service = new DirectionPresenceService(accountRepository, presenceRepository,
+		service = serviceWithGate(true);
+	}
+
+	private DirectionPresenceService serviceWithGate(boolean enabled) {
+		return new DirectionPresenceService(accountRepository, presenceRepository,
 				new DirectionPresenceProperties(TTL, BigDecimal.valueOf(100), Duration.ofSeconds(30),
 						Duration.ofMinutes(5)),
-				Clock.fixed(NOW, ZoneOffset.UTC));
+				Clock.fixed(NOW, ZoneOffset.UTC),
+				new LocationCollectionGate(new LocationCollectionGateProperties(enabled, null),
+						new StandardEnvironment()));
+	}
+
+	@Test
+	@DisplayName("위치 수집 게이트가 꺼져 있으면 계정 조회와 요청 검증보다 먼저 거부하고 위치를 저장하지 않는다")
+	void rejectsBeforeAccountLookupWhenLocationCollectionGateIsDisabled() {
+		DirectionPresenceService disabled = serviceWithGate(false);
+
+		// 계정이 없는 사용자와 빈 요청을 보낸다. 게이트가 첫 줄이 아니면 다른 오류 코드가 먼저 나온다.
+		assertThatThrownBy(() -> disabled.update(99L, null))
+				.isInstanceOf(DirectionException.class)
+				.hasFieldOrPropertyWithValue("errorCode", DirectionErrorCode.LOCATION_COLLECTION_DISABLED);
+		assertThatThrownBy(() -> disabled.update(1L, command(NOW.minusSeconds(60), BigDecimal.valueOf(100), true)))
+				.isInstanceOf(DirectionException.class)
+				.hasFieldOrPropertyWithValue("errorCode", DirectionErrorCode.LOCATION_COLLECTION_DISABLED);
+		assertThat(presenceRepository.saved).isNull();
 	}
 
 	@Test
