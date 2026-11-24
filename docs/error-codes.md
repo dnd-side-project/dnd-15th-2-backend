@@ -180,6 +180,7 @@
 | `DIR-APP-005` | IDEMPOTENCY_KEY_REUSED | 409 | APP | 같은 멱등키로 다른 요청을 재사용할 수 없습니다. |
 | `DIR-APP-006` | PRESENCE_ACCOUNT_NOT_FOUND | 404 | APP | 위치 정보를 갱신할 계정을 찾을 수 없습니다. |
 | `DIR-APP-007` | PRESENCE_ACCOUNT_NOT_ELIGIBLE | 403 | APP | 위치 정보를 갱신할 수 없는 계정입니다. |
+| `DIR-APP-008` | LOCATION_COLLECTION_DISABLED | 503 | APP | 현재 위치 기능을 사용할 수 없습니다. |
 | `DIR-INFRA-001` | DUPLICATED_POST | 409 | INFRA | 이미 전송된 게시글입니다. |
 | `DIR-INFRA-002` | DUPLICATED_RECIPIENT | 409 | INFRA | 이미 등록된 수신자입니다. |
 

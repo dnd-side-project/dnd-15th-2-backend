@@ -83,15 +83,20 @@ public enum DirectionErrorCode implements ErrorCode {
 
 	// 같은 sender와 멱등키에 다른 사용자 의도 fingerprint를 재사용한 요청
 	IDEMPOTENCY_KEY_REUSED(HttpStatus.CONFLICT, "DIR-APP-005", ErrorCategory.APP,
-		"같은 멱등키로 다른 요청을 재사용할 수 없습니다."),
+			"같은 멱등키로 다른 요청을 재사용할 수 없습니다."),
 
 	// presence 갱신 대상 계정 부재. Account 예외를 기능 경계 밖으로 노출하지 않는다.
 	PRESENCE_ACCOUNT_NOT_FOUND(HttpStatus.NOT_FOUND, "DIR-APP-006", ErrorCategory.APP,
-		"위치 정보를 갱신할 계정을 찾을 수 없습니다."),
+			"위치 정보를 갱신할 계정을 찾을 수 없습니다."),
 
 	// 차단·삭제 계정 또는 일반 사용자가 아닌 계정의 presence 갱신 시도
 	PRESENCE_ACCOUNT_NOT_ELIGIBLE(HttpStatus.FORBIDDEN, "DIR-APP-007", ErrorCategory.APP,
-		"위치 정보를 갱신할 수 없는 계정입니다.");
+			"위치 정보를 갱신할 수 없는 계정입니다."),
+
+	// 위치기반서비스사업 신고 수리 참조 전이라 위치 수집 게이트가 꺼져 있다(#379).
+	// 계정 부적격(403)과 구분하고, 설정 전이라 쓸 수 없는 기능은 503으로 낸다(ANS-APP-004와 같다).
+	LOCATION_COLLECTION_DISABLED(HttpStatus.SERVICE_UNAVAILABLE, "DIR-APP-008", ErrorCategory.APP,
+			"현재 위치 기능을 사용할 수 없습니다.");
 
 	private final HttpStatus httpStatus;
 	private final String code;

@@ -115,6 +115,12 @@ qello:
       max-future-skew: PT30S
       # API가 받아들이는 과거 위치 관측값의 최대 나이.
       max-observation-age: PT5M
+  location:
+    collection:
+      # 위치 수집 게이트(#379). 기본은 꺼짐이며, 꺼져 있으면 위치 갱신·미리보기·발송을 503으로 거부한다.
+      # 켜려면 위치기반서비스사업 신고 수리 참조가 있어야 한다(docs/location-collection-gate.md).
+      # 환경변수로 열지 않고 코드 리뷰를 거친 설정 변경으로만 켠다.
+      enabled: false
   feed:
     # 정확 거리 노출의 근거리 하한. 이 미만은 distance_band만 나간다.
     near-distance-floor-m: 10000

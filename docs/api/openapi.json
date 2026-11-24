@@ -6491,7 +6491,7 @@
                 }
               }
             },
-            "description" : "본문 안전 검사를 접수할 수 없어 질문글을 보내지 않았습니다. (FLT-DOM-006)"
+            "description" : "본문 안전 검사를 접수할 수 없거나(FLT-DOM-006) 위치 기능이 아직 열리지 않아(DIR-APP-008) 질문글을 보내지 않았습니다."
           }
         },
         "security" : [
@@ -7028,6 +7028,16 @@
               }
             },
             "description" : "서버 내부 오류가 발생했습니다."
+          },
+          "503" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "위치 기능이 아직 열리지 않아 위치를 저장하지 않았습니다. (DIR-APP-008)"
           }
         },
         "security" : [
@@ -7115,6 +7125,16 @@
               }
             },
             "description" : "서버 내부 오류가 발생했습니다."
+          },
+          "503" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "위치 기능이 아직 열리지 않아 조회하지 않았습니다. (DIR-APP-008)"
           }
         },
         "security" : [

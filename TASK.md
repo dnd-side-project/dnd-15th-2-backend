@@ -52,6 +52,7 @@
 
 - 작업 시작 시 `git status --short` 출력은 `TASK.md`(task-init) 하나였다.
 - `gh`와 `harness`는 `env -u SSL_CERT_FILE -u SSL_CERT_DIR`로 시스템 CA를 사용한다.
+- C1(tkv00)·C6·C9가 같은 위치 처리 경로를 고치므로 착수 순서를 tkv00과 맞춘다.
 
 ## Validation
 
