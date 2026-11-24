@@ -4,16 +4,18 @@
 > GitHub Issue: `#382`
 > Branch: `ci/gh-382-vulnerability-scan`
 > Commit: `15bae1e2`
+> CI measurement commit: `e14a2d37adb2b851046d33f3f34ec4c0fcd488e6` (2026-11-23)
 
 ## 1. Executive summary
 
-- Result: `PARTIAL`; repository status: `BLOCKED` (CI-only evidence and human review remain).
-- Tested scope: 승인된 E1 파일 구현, runtimeClasspath 전체 좌표 대조, 실제 OSV main baseline/취약 fixture/처리 후 재스캔, 정책 단위 검사와 애플리케이션 회귀 검사.
-- Unverified scope: 일반/fork PR 실행, 실패 artifact/취소의 실제 CI 동작, cold/warm 각 3회 성능 및 required check 등록.
-- Release recommendation: 로컬 검증은 통과했다. Spring MVC CRITICAL 2건의 임시 예외는 사람의 위험 수용·완화책 리뷰 전 승인으로 취급하지 않는다. 실제 CI 증거 전 전체 PASS를 선언하지 않는다.
+- Result: `PARTIAL`; repository status: `BLOCKED` (fork PR, 일부 장애 증거와 사람 리뷰가 남음).
+- Tested scope: 승인된 E1 구현과 로컬 회귀 검사, 일반 PR의 실제 scan 성공·읽기 token 권한·artifact 보존, 동일 commit의 cold/warm 순차 3회씩 측정, 별도 중복 dispatch의 선행 취소·후속 성공.
+- Unverified scope: fork PR, 검출 실패 artifact의 실제 CI 보존, required check 등록. INT-005 손상 DB/강제 signal 종료와 Spring 예외 사람 리뷰도 미확인이다.
+- Release recommendation: INT-008 시간 목표는 충족했다(warm job 중앙값 29초, cold 최대 53초). 일반 PR에서 43초에 통과했다. Spring MVC CRITICAL 2건의 예외를 사람 승인 완료로 간주하거나, 남은 시나리오를 전체 PASS로 바꾸지는 않는다.
 - issue_number: `382`; task_id: `TEST-PLAN-GH-382-DEPENDENCY-SCAN`; design_id: 해당 없음.
 - changed_files: `.github/workflows/dependency-scan.yml`, `config/security/dependency-lock.init.gradle`, `config/security/dependency-exceptions.json`, `scripts/check-dependency-scan.py`, `scripts/test-dependency-scan.py`, `docs/security/dependency-scan.md`, `build.gradle`, 본 보고서.
 - `TASK.md`와 승인된 계획의 기존 변경은 보존했다. commit/push/PR/설정 변경은 하지 않았다.
+- 추가 측정은 2026-11-23 @Byuntil 승인 인계에 따라 수행했다. 이번 수정 파일은 본 보고서 하나이며, 오케스트레이터가 연 PR #383과 push된 동일 commit을 사용했다.
 
 ## 2. Environment
 
@@ -58,6 +60,109 @@
 Gradle 실행에는 Java 21 JAVA_HOME을 지정했다. 위 로컬 시간은 PR CI 추가 시간이나
 cold/warm 측정의 대체 증거가 아니다.
 
+### INT-008: actual CI measurements
+
+2026-11-23, `ci/gh-382-vulnerability-scan`의 동일 commit
+`e14a2d37adb2b851046d33f3f34ec4c0fcd488e6`에서 `Dependency Scan`을
+`workflow_dispatch`로 순차 실행했다. 각 실행의 job 종료 후 다음 실행을 생성했다.
+runner label은 모두 `ubuntu-latest`이며, 실제 물리 호스트가 같다는 의미는 아니다.
+
+다음 명령은 모두 `env -u SSL_CERT_FILE -u SSL_CERT_DIR` prefix로 실행했다.
+
+- 실행: `gh workflow run "Dependency Scan" --ref ci/gh-382-vulnerability-scan`.
+- cold 직전: `gh cache list --ref refs/heads/ci/gh-382-vulnerability-scan --limit 100 --json id,key,ref`.
+- 삭제: `gh cache delete --all --ref refs/heads/ci/gh-382-vulnerability-scan --succeed-on-no-caches`.
+  첫 회는 해당 ref cache 0개였고, 둘째·셋째 회 직전에는 각각 해당 ref cache 1개를 삭제했다.
+  `main`, PR merge ref 등 다른 ref의 cache는 삭제하지 않았다.
+- warm 세 번은 cache 삭제 없이 cold 3회 종료 후 순차 실행했다.
+- 시간 출처: 각 `gh run view --json jobs,createdAt,startedAt`의 job/step timestamps.
+  단위는 초이며 1초 해상도다. 0초는 해당 timestamp 사이의 초 경계가 같다는 뜻으로,
+  단계가 실행되지 않았다는 뜻이 아니다.
+- queue는 `job.startedAt - run.createdAt`로 정의하여 runner 할당·시작 대기를 포함한다.
+  별도로 `run.startedAt - run.createdAt`도 확인했으며 여섯 번 모두 0초였다.
+  생성→job 종료는 queue+job 시간이다. step 합과 job 시간의 차이에는 단계 사이 간격과
+  setup/post 작업이 포함되므로 step 합으로 job 시간을 대체하지 않았다.
+- 실행 생성 직후 `gh run watch`에서 run/jobs API가 일시적으로 404를 반환했다.
+  해당 실행을 재생성하지 않고 기존 실행의 완료 상태를 구독했다. 표본 교체나 중복 측정은 없다.
+
+| 표본 | job UTC 시작–종료 (2026-11-23) | queue | job | 생성→job 종료 | 실제 Gradle cache | 근거 |
+| --- | --- | ---: | ---: | ---: | --- | --- |
+| cold 1 | 14:29:27–14:30:15 | 4 | 48 | 52 | miss, fallback 복원 없음 | [실행 기록](https://github.com/dnd-side-project/dnd-15th-2-backend/actions/runs/45194743270) |
+| cold 2 | 14:30:39–14:31:21 | 4 | 42 | 46 | miss, fallback 복원 없음 | [실행 기록](https://github.com/dnd-side-project/dnd-15th-2-backend/actions/runs/45194960136) |
+| cold 3 | 14:31:39–14:32:32 | 4 | 53 | 57 | miss, fallback 복원 없음 | [실행 기록](https://github.com/dnd-side-project/dnd-15th-2-backend/actions/runs/45195142932) |
+| warm 1 | 14:32:46–14:33:15 | 5 | 29 | 34 | exact-key hit, 복원 성공 | [실행 기록](https://github.com/dnd-side-project/dnd-15th-2-backend/actions/runs/45195339918) |
+| warm 2 | 14:33:29–14:33:58 | 3 | 29 | 32 | exact-key hit, 복원 성공 | [실행 기록](https://github.com/dnd-side-project/dnd-15th-2-backend/actions/runs/45195470762) |
+| warm 3 | 14:34:14–14:34:35 | 4 | 21 | 25 | exact-key hit, 복원 성공 | [실행 기록](https://github.com/dnd-side-project/dnd-15th-2-backend/actions/runs/45195601699) |
+
+여섯 실행 모두 `success`다. cold의 setup-java 로그는 모두
+`gradle cache is not found`였고 이후 cache를 저장했다.
+warm은 모두 `Cache hit for`와 `Cache restored successfully`를 기록했다.
+따라서 cold는 단순히 브랜치 cache만 지운 명목상 cold가 아니라 실제 Actions Gradle
+cache 미복원 실행이다. 기본 브랜치 fallback으로 복원된 실행은 없었다.
+다만 runner image에 미리 있는 Java/tool cache나 Maven/CDN의 외부 cache까지
+비어 있었다는 의미는 아니다. OSV DB는 매회 live API이며 불변 snapshot 시각은 제공되지 않는다.
+조회 구간은 각 실행의 scan step timestamps로 구분할 수 있다.
+
+| 단계 / 지표 (초) | cold 1 / 2 / 3 | cold 중앙값 / 최대 | warm 1 / 2 / 3 | warm 중앙값 / 최대 |
+| --- | --- | --- | --- | --- |
+| Set up Java | 1 / 0 / 0 | 0 / 1 | 5 / 2 / 3 | 3 / 5 |
+| Test scan policy | 0 / 0 / 1 | 0 / 1 | 0 / 0 / 0 | 0 / 0 |
+| Prepare OSV-Scanner | 0 / 1 / 0 | 0 / 1 | 0 / 1 / 0 | 0 / 1 |
+| Resolve runtime dependencies | 35 / 31 / 39 | 35 / 39 | 12 / 16 / 12 | 12 / 16 |
+| Scan resolved runtime dependencies | 1 / 1 / 1 | 1 / 1 | 1 / 1 / 1 | 1 / 1 |
+| Preserve dependency scan evidence | 1 / 1 / 2 | 1 / 2 | 1 / 0 / 1 | 1 / 1 |
+| Post Set up Java (cache 저장/확인) | 4 / 3 / 3 | 3 / 4 | 1 / 1 / 0 | 1 / 1 |
+| job 전체 | 48 / 42 / 53 | 48 / 53 | 29 / 29 / 21 | 29 / 29 |
+| queue (생성→job 시작) | 4 / 4 / 4 | 4 / 4 | 5 / 3 / 4 | 4 / 5 |
+| 생성→job 종료 | 52 / 46 / 57 | 52 / 57 | 34 / 32 / 25 | 32 / 34 |
+
+초기 목표와 비교하면 warm job 중앙값 29초는 180초 이내이고, cold job 최대 53초는
+600초 이내다. queue를 포함해도 warm 중앙값 32초·cold 최대 57초로 두 목표를 충족한다.
+warm job 중앙값은 cold보다 19초 짧다. 여섯 측정 job의 runner 점유 시간 합은
+222초이며, 이는 과금 분 단위 올림이나 queue·취소 실험을 포함한 비용 산정이 아니다.
+
+### INT-006: normal PR and critical path
+
+첫 일반 PR 실행에서 `Dependency Scan / dependency-scan`은 43초에 성공했다
+([실행 기록](https://github.com/dnd-side-project/dnd-15th-2-backend/actions/runs/45188663749)).
+job queue는 3초, 생성→job 종료는 46초였다. 실제 job 로그에서
+`GITHUB_TOKEN Permissions`의 `Contents: read`, `Metadata: read`를 확인했다.
+workflow는 secret 참조 없이 실행됐다. fork PR은 실행하지 않았고 여전히 미확인이다.
+
+같은 PR의 기존 Harness Policy에서 가장 긴 `test` job은 303초, queue 3초였다
+([실행 기록](https://github.com/dnd-side-project/dnd-15th-2-backend/actions/runs/45188663868)).
+두 workflow의 job이 병렬로 시작했으므로 이 PR의 비교에서는
+`max(303, 43) - 303 = 0초`로 scan이 critical path를 늘리지 않았다.
+별도 측정의 가장 느린 cold job 53초(생성→종료 57초)도 해당 test보다 짧다.
+대신 독립 scan job의 runner 점유 시간은 추가되며, 관측한 첫 PR에서는 43초다.
+이는 scan 유무를 바꾼 동일 환경 A/B 실험이나 향후 runner 경합에 대한 보장은 아니다.
+
+첫 PR의 `dependency-scan-attempt-1` artifact는 API에서 만료되지 않은 상태로 확인했고,
+생성 2026-11-23T13:55:39Z, 만료 2026-12-23T13:55:38Z로 약 30일 보존을 확인했다.
+검출 실패 run에서의 artifact 보존은 아직 실제 CI로 재현하지 않았다.
+
+### INT-009: separate cancellation experiment
+
+cold/warm 여섯 측정이 모두 종료된 다음, 같은 ref와 commit으로 dispatch 두 개를
+연달아 생성했다. 이 두 실행은 INT-008 표본·통계에 포함하지 않았다.
+사람이 승인한 concurrency 검증이며 별도의 수동 run 취소 명령은 실행하지 않았다.
+
+| 순서 | 생성 시각 UTC (2026-11-23) | job 시작–종료 UTC | 실제 결론 | artifact | 근거 |
+| --- | --- | --- | --- | --- | --- |
+| 선행 dispatch | 14:35:07 | 14:35:11–14:40:11 | `cancelled` | API 목록 비어 있음 | [실행 기록](https://github.com/dnd-side-project/dnd-15th-2-backend/actions/runs/45195769438) |
+| 후속 dispatch | 14:35:09 | 14:40:14–14:40:36 | `success` | `dependency-scan-attempt-1`, 30일 보존 | [실행 기록](https://github.com/dnd-side-project/dnd-15th-2-backend/actions/runs/45195776092) |
+
+동일 ref의 새 실행으로 이전 실행이 취소되고, 취소가 성공으로 바뀌지 않는 것을
+실제 결론으로 확인했다. 선행 실행에는 artifact 업로드 step 기록이나 artifact가 없었고,
+후속 실행은 업로드 step이 성공했으며 artifact 만료 시각은
+2026-12-23T14:40:33Z였다. 취소 실행에서 업로드하지 않는 workflow 조건과 일치한다.
+
+다만 취소가 즉시 완료된 것은 아니다. 선행 job timestamps의 간격은 300초였고
+후속 실행의 생성→job 시작 대기는 305초, job 자체는 22초였다.
+따라서 정상 cold/warm의 queue 최대 5초와 이 취소 상황을 혼합하지 않는다.
+취소 반영 지연의 원인은 확인하지 않았으며, 즉시 취소나 후속 run의 즉시 시작을
+보장한다고 해석하지 않는다. 검출 실패 run의 artifact 보존은 이번 실험으로 검증되지 않는다.
+
 ## 4. Scenario results
 
 | Scenario ID | Result | Test class / method | Notes |
@@ -73,10 +178,10 @@ cold/warm 측정의 대체 증거가 아니다.
 | INT-003 | PASS, local | 실제 scanner + 한정 예외 | Log4Shell 하나만 제외, 별도 기준 초과 2건은 계속 실패 |
 | INT-004 | PASS, local | 실제 scanner + 연결 거부 proxy | 빈 HOME, 외부 접근 거부, 22.758s에 scanner 127 / 정책 2 |
 | INT-005 | PARTIAL | 손상 JSON double + 실제 scanner 손상 config | 양쪽 모두 정책 2. 손상 DB 자체와 강제 signal 종료는 별도로 실행하지 않음 |
-| INT-006 | NOT_RUN / BLOCKED | 실제 일반/fork PR | 새 PR/push 권한 범위가 아니므로 미실행. YAML 파싱으로 trigger/권한/checkout 설정만 확인 |
+| INT-006 | PARTIAL | 실제 일반 PR 성공, fork PR 미확인 | 일반 PR 43초 성공·읽기 token 권한·artifact 보존을 위 실행 링크로 확인. fork 동작은 추정하지 않음 |
 | INT-007 | PASS, local | 동일 CI init script + 선언 변경 | core 2.14.1→2.14.0이 새 lock·해석 좌표·OSV 결과에 반영됨. 빈/불일치 입력은 UNIT-005와 독립 검증에서 실패 확인 |
-| INT-008 | NOT_RUN / BLOCKED | 동일 SHA cold/warm 각 3회 | 실제 CI runner 접근·실행 없음. 중앙값·최댓값·critical path 증가 미확인 |
-| INT-009 | NOT_RUN / BLOCKED | 실제 artifact 업로드·동시 run 취소 | concurrency, !cancelled 업로드, 30일 보존, 미완료 JSON은 정적으로 확인. 실제 CI 미실행 |
+| INT-008 | PASS | 동일 SHA cold/warm 각 3회 실제 CI | cold 실제 miss 3회, warm hit 3회. job cold 최대 53초·warm 중앙값 29초로 목표 충족. 단계·queue·critical path 비교는 §3 |
+| INT-009 | PARTIAL | 일반 PR artifact + 별도 중복 dispatch | 선행 cancelled·후속 success, 취소 artifact 없음·후속 artifact 30일 보존 확인. 후속 시작 대기 305초 관찰. 검출 실패 artifact는 미확인 |
 | INT-010 | PASS, local; human review pending | main remediation | 업그레이드 3건 + 만료 예외 2건 후 미처리 0. 예외는 승인 완료로 간주하지 않음 |
 
 Scenario ID의 공통 prefix는 `TEST-PLAN-GH-382-DEPENDENCY-SCAN-`이다.
@@ -107,7 +212,8 @@ Boot 4/Framework 7 전환을 이번 CI 작업에 섞지 않고 한정 예외를 
 
 ### Fixed release contract and official evidence
 
-출처는 인계 조건에 따라 URL 대신 공식 프로젝트·tag·파일 경로로 식별한다.
+공식 기술 출처는 초기 인계 조건에 따라 프로젝트·tag·파일 경로로 식별한다.
+추가 측정의 CI 실행 증거는 이번 인계 요청대로 실행 기록 링크를 사용한다.
 
 - OSV-Scanner `v2.7.1`, `cmd/osv-scanner/scan/source/command.go` 및 로컬 바이너리
   `scan source --help`: `scan source`, `-L`, `--format=json`, `--config`,
@@ -138,8 +244,10 @@ Boot 4/Framework 7 전환을 이번 CI 작업에 섞지 않고 한정 예외를 
   인계된 시스템 CA prefix로 재실행하여 다운로드와 digest 검증을 통과했다.
 - Python/JSON/YAML LSP 서버가 설치되지 않아 LSP 진단은 실행할 수 없었다.
   임의 설치 없이 Python 실제 실행, JSON 파싱, YAML 의미 파싱, workflow 정적 검사로 검증했다.
-- 필수 로컬 검사에서 실패한 항목은 없다. INT-005의 손상 DB/강제 signal 케이스 및
-  CI 전용 시나리오는 실행한 것으로 보고하지 않는다.
+- 필수 로컬 검사에서 실패한 항목은 없다. 추가 CI 시간 측정 6회도 모두 성공했다.
+  INT-005의 손상 DB/강제 signal, fork PR, 실패 artifact 보존은 실행한 것으로 보고하지 않는다.
+- 별도 취소 실험의 선행 run은 예상대로 cancelled, 후속 run은 success였다.
+  다만 후속 job 시작 대기 305초를 관찰했다. 원인을 추정하거나 즉시 취소로 보고하지 않는다.
 
 ## 6. Potential issues
 
@@ -152,7 +260,8 @@ Boot 4/Framework 7 전환을 이번 CI 작업에 섞지 않고 한정 예외를 
 ### Infrastructure and resource limits
 
 - Terraform/배포 변경 없음. scanner 300s, 다운로드 120s, job 전체 10분 제한.
-  cold runner 전체 시간이 목표 이내인지는 INT-008에서 확인해야 한다(#382).
+  실제 cold job 최대 53초·warm 중앙값 29초로 초기 목표를 충족했다.
+  향후 runner 경합이나 공급자 지연까지 보장하는 수치는 아니다(#382).
 
 ### Database and migrations
 
@@ -162,7 +271,9 @@ Boot 4/Framework 7 전환을 이번 CI 작업에 섞지 않고 한정 예외를 
 ### Concurrency and idempotency
 
 - workflow/ref별 concurrency 취소와 실행 attempt별 artifact 이름을 사용한다.
-  취소/실패 artifact 보존의 실제 동작과 required check 의미는 CI에서 확인해야 한다(#382).
+  동일 ref의 별도 두 dispatch에서 선행 cancelled·후속 success를 확인했으나,
+  후속 시작까지 305초 대기가 있었다. 검출 실패 artifact 보존과 required check 등록은
+  미확인이며, 이 취소 지연을 정상 warm queue 통계에 넣지 않는다(#382).
 
 ### Transactions and event ordering
 
@@ -185,13 +296,14 @@ Boot 4/Framework 7 전환을 이번 CI 작업에 섞지 않고 한정 예외를 
 
 - executed_checks / passed_checks: §3의 모든 필수 로컬 명령 exit 0.
 - failed_checks: 필수 로컬 검사 없음; 취약/장애 fixture의 비영 종료는 예상 결과다.
-- blocked_checks: INT-005 일부, INT-006/008/009, 실제 required check 등록 및 예외 사람 리뷰.
+- blocked_checks: INT-005 일부, INT-006 fork PR, INT-009 검출 실패 artifact, 실제 required check 등록 및 예외 사람 리뷰. INT-008과 INT-009의 이전 실행 취소 부분은 실제 CI로 확인했다.
 - assumptions: 단일 Java root project의 runtimeClasspath 범위이며 test/compileOnly/annotationProcessor는 제외.
-- risks (주요 3개): Spring CRITICAL 예외 잔존, 외부 API 장애·데이터 오탐/미탐, CI 시간·권한·취소 실증 부재.
+- risks (주요 3개): Spring CRITICAL 예외 잔존, 외부 API 장애·데이터 오탐/미탐, fork PR·실패 artifact·required check 실증 잔여와 취소 반영 지연.
 - required_human_decisions: Spring 2건의 위험 수용·완화책/지원 버전 전환, 첫 실제 CI 결과 확인 후 Ruleset 등록.
 - 계획과 차이: D1 수정 승인대로 CI 전용 lock 생성, 저장소 lock/build locking 없음.
   Python 표준 라이브러리 unittest를 사용했다. INT-005는 손상 DB 대신 손상 config의 실제
-  scanner 실패와 손상 JSON double로 부분 검증했다. CI 전용 수행·시간 수치는 추정하지 않았다.
+  scanner 실패와 손상 JSON double로 부분 검증했다. 추가 승인으로 INT-008은 동일 SHA의
+  실제 cold/warm 3회씩 측정하여 완료했고, 미확인 fork 동작 등은 추정하지 않았다.
 - 독립 검증: 별도 read-only reviewer가 실제 schema/pin/로컬 결과와 추가 실패 주입을 확인했다.
   CRITICAL/HIGH 코드 결함 없음, 조건부 APPROVE이며 사람 승인이나 CI 완료를 대신하지 않는다.
   낮은 수준 잔여 사항은 group-name 기반 입력 필터가 동일 group 외부 모듈을 제외할 경우
@@ -201,16 +313,16 @@ Boot 4/Framework 7 전환을 이번 CI 작업에 섞지 않고 한정 예외를 
 ## 8. Artifacts
 
 - Test plan: `docs/test-plans/gh-382-TEST-PLAN-GH-382-DEPENDENCY-SCAN.md` (APPROVED, §12 최종 결정).
-- CI run: 없음; 이번 권한에는 push/PR 생성/CI dispatch가 포함되지 않았다.
+- CI run: 일반 PR [실행 기록](https://github.com/dnd-side-project/dnd-15th-2-backend/actions/runs/45188663749), 측정 6회와 별도 취소 실험 2회의 개별 링크는 §3. 추가 인계에서 CI dispatch와 대상 ref cache 삭제가 승인됐다.
 - Related ADR: 없음.
-- PR: 생성하지 않음.
+- PR: 오케스트레이터가 생성한 [PR #383](https://github.com/dnd-side-project/dnd-15th-2-backend/pull/383). 이 실행 에이전트는 PR 생성·수정·댓글·push를 하지 않았다.
 - Local evidence: `/private/tmp/gh382.h1Na7C/`의 baseline, vulnerable,
   fixture-excepted, network-failure, corrupt-results, invalid-config, changed-declaration,
   remediated 디렉터리의 안전한 summary JSON. 임시 경로라 영구 CI 증거가 아니다.
 - JUnit XML: `build/test-results/test/`, `build/test-results/integrationTest/`.
 - 독립 검토 기록: git-excluded `.omo/evidence/gh-382-code-review.md`.
-- 향후 CI artifact: `dependency-scan-attempt-<attempt>`의 raw JSON, summary JSON,
-  runtime 좌표 및 생성 lockfile. 아직 업로드된 artifact는 없다.
+- CI artifact: `dependency-scan-attempt-<attempt>`의 raw JSON, summary JSON,
+  runtime 좌표 및 생성 lockfile. 첫 PR의 실제 artifact 존재와 약 30일 보존을 확인했다.
 
 ## 9. Reviewer checklist
 
