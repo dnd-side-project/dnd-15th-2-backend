@@ -1,0 +1,72 @@
+name: Dependency Scan
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dependency-scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          persist-credentials: false
+
+      - name: Initialize scan evidence
+        run: |
+          mkdir -p build/dependency-scan
+          printf '{"result":"incomplete","phase":"setup"}\n' > build/dependency-scan/summary.json
+
+      - name: Set up Java
+        uses: actions/setup-java@dded0888837ed1f317902acf8a20df0ad188d165 # v5.0.0
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+
+      - name: Test scan policy
+        run: python3 scripts/test-dependency-scan.py
+
+      - name: Prepare OSV-Scanner
+        run: |
+          set -euo pipefail
+          curl -fL --connect-timeout 15 --max-time 120 \
+            https://github.com/google/osv-scanner/releases/download/v2.7.1/osv-scanner_linux_amd64 \
+            -o "$RUNNER_TEMP/osv-scanner"
+          echo "fb7dab19a8bd9bbe5c3189f09d4b7ee1820c9553a23bac202648a56efd2f6ee8  $RUNNER_TEMP/osv-scanner" | sha256sum -c -
+          chmod +x "$RUNNER_TEMP/osv-scanner"
+
+      - name: Resolve runtime dependencies
+        run: |
+          bash ./gradlew --no-daemon --init-script config/security/dependency-lock.init.gradle \
+            dependencyScanLock --write-locks
+
+      - name: Scan resolved runtime dependencies
+        run: |
+          python3 scripts/check-dependency-scan.py \
+            --scanner "$RUNNER_TEMP/osv-scanner" \
+            --lockfile gradle.lockfile \
+            --modules build/dependency-scan/runtime-modules.txt \
+            --exceptions config/security/dependency-exceptions.json \
+            --output-dir build/dependency-scan
+
+      - name: Preserve dependency scan evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: dependency-scan-attempt-${{ github.run_attempt }}
+          path: |
+            build/dependency-scan/
+            gradle.lockfile
+          if-no-files-found: error
+          retention-days: 30

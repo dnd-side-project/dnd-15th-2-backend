@@ -1,0 +1,25 @@
+allprojects {
+    plugins.withId('java') {
+        configurations.named('runtimeClasspath') {
+            resolutionStrategy.activateDependencyLocking()
+        }
+        tasks.register('dependencyScanLock') {
+            doLast {
+                def runtime = configurations.getByName('runtimeClasspath')
+                def modules = runtime.incoming.resolutionResult.allComponents
+                    .collect { it.moduleVersion }
+                    .findAll { it != null && it.group != project.group.toString() }
+                    .collect { "${it.group}:${it.name}:${it.version}" }
+                    .toSet()
+                if (modules.isEmpty()) {
+                    throw new GradleException('runtimeClasspath has no external modules')
+                }
+                // ResolutionResult is lenient; force artifact resolution so missing modules fail.
+                runtime.resolve()
+                def output = layout.buildDirectory.file('dependency-scan/runtime-modules.txt').get().asFile
+                output.parentFile.mkdirs()
+                output.text = modules.sort().join('\n') + '\n'
+            }
+        }
+    }
+}

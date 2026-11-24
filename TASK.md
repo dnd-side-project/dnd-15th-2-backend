@@ -1,45 +1,42 @@
-# GitHub Issue #379 Task Contract
+# GitHub Issue #382 Task Contract
 
-> Generated at: `2026-11-23T16:31:34+09:00`
+> Generated at: `2026-11-23T22:10:18+09:00`
 >
 > 이 파일은 현재 작업 브랜치의 계약이다. 저장소 전역 정책은 `AGENTS.md`를
 > 따른다.
 
 ## Work gate
 
-- Title: `위치기반서비스 신고 수리 전 실제 좌표 수집 차단 게이트`
-- GitHub Issue: `#379`
-- Branch: `feat/gh-379-location-collection-gate`
+- Title: `PR 검사에 Gradle 의존성 취약점 스캔 추가`
+- GitHub Issue: `#382`
+- Branch: `ci/gh-382-vulnerability-scan`
 - Base branch: `main`
 
 ## Objective
 
-- 위치기반서비스 운영 배포 전 점검표의 작업 B1. 위치기반서비스사업 신고 수리 참조가 설정되기 전에는 정확 좌표를 받거나 읽는 API를 서버에서 거부한다.
+- 위치기반서비스 운영 배포 전 점검표의 작업 I8. 점검표의 이미지·의존성 취약점 점검 항목은 `일부`이며, 의존성 취약점은 OSV 수동 조회(#360)뿐이고 PR 검사에는 스캔 단계가 없다. Gradle 의존성 취약점 스캔을 PR 검사에 추가해 점검이 PR마다 실행되고 결과가 기록으로 남게 한다.
 - 확인된 사실(2026-11-23):
-  - 정확 좌표는 `PUT /api/v1/direction/presence`(`ActiveUserPresenceController`)로만 들어와 `active_user_presence`에 저장된다.
-  - `GET /api/v1/direction/preview`와 `POST /api/v1/direction/posts`는 `DirectionPostService.activeSender`로 발신자 presence 좌표를 읽고, 발송은 `post_audience.origin_position`에 원점을 복사한다.
-  - 참고 구현은 `filtering/gate/FilteringProductionGate`(fail-closed, placeholder 거부, 8자 이상 참조)다.
+  - `.github/workflows/`에 취약점 스캔 단계가 없다.
+  - 기존 workflow: `branch-policy`, `ci-benchmark`, `deploy-api-docs`, `deploy-test-server`, `gradle-cache`, `harness-policy`, `infrastructure-apply`, `infrastructure-static`, `label-policy`, `pull-request-policy`.
 - 결정(2026-11-23, @Byuntil):
-  - 유형 기능 작업, Priority P0.
-  - dev·local은 게이트를 켜 둔다. 신고 참조 검사 생략은 활성 프로필이 dev 또는 local일 때만 허용한다. `application.yml` 기본값은 꺼짐이다.
-  - 거부 응답은 `DirectionErrorCode.LOCATION_COLLECTION_DISABLED`(`DIR-APP-008`), HTTP 503.
-- Test plan: `docs/test-plans/gh-379-TEST-PLAN-GH-379-LOCATION-GATE.md` — `APPROVED` — 단위 8개 + 통합 5개, 설계 결정 D1~D6 제안대로 확정, 승인자 @Byuntil, 2026-11-23. 승인 증거: https://github.com/dnd-side-project/dnd-15th-2-backend/issues/379#issuecomment-7094564968
+  - 유형 CI 작업(`ci/` 브랜치, `type: chore`), Priority P1.
+  - 범위는 Gradle 의존성 스캔만이다. 컨테이너 이미지 스캔은 운영 ECR push 스캔(I2)에 맡긴다.
+- Test plan: `docs/test-plans/gh-382-TEST-PLAN-GH-382-DEPENDENCY-SCAN.md` — `APPROVED` — 시나리오 16개, D1 수정안(OSV-Scanner, CI 전용 lockfile 생성, 저장소 lockfile·build locking 없음), D2~D7 추천안대로. 승인자 @Byuntil, 2026-11-23. 승인 증거: https://github.com/dnd-side-project/dnd-15th-2-backend/issues/382#issuecomment-7102598858
 
 ## Scope
 
-- 게이트 설정: `qello.location.collection.enabled`(기본 `false`), `qello.location.collection.lbs-registration-reference`. `enabled: true`인데 참조가 비었거나 placeholder면 dev·local이 아닌 프로필에서 기동 실패.
-- `src/main/resources/application.yml`, `application-dev.yml`, `application-local.yml`.
-- 거부 대상 API 세 개와 `DirectionErrorCode` 새 코드. 거부 시 `active_user_presence`, `direction_post`, `post_audience`에 행을 쓰지 않는다.
-- `ActiveUserPresenceApiSpec`, `DirectionPostApiSpec`의 오류 응답 문서.
-- `docs/location-collection-gate.md`.
-- 승인된 테스트 계획에 따른 단위·통합 테스트. 기존 위치·발송·미리보기 통합 테스트는 게이트를 켠 설정으로 통과시킨다.
+- PR 검사에 Gradle 의존성(런타임 클래스패스 포함) 취약점 스캔 job 추가.
+- 실패 기준(심각도)과 예외 등록 방법 문서. 예외에는 사유, 추적 Issue, 만료일 필수.
+- 외부 action 버전 고정, workflow 권한 `contents: read` 이하.
+- 현재 `main`의 기준 초과 항목은 업그레이드 또는 만료일이 있는 예외로 처리.
 
 ## Explicit exclusions
 
-- 위치정보 이용 동의 확인과 동의 이력 저장(C9).
-- 저장된 좌표의 파기(C6).
-- `DirectionMatchingWorker` 차단.
-- 운영 프로필 추가(C7).
+- 컨테이너 이미지 스캔(I2의 ECR push 스캔).
+- 레지스트리 스캔 설정 등 Terraform 인프라 변경.
+- 이미 배포된 이미지의 재스캔.
+- 소스 정적 분석(SAST).
+- `.github/workflows/*apply*`, `CODEOWNERS`, `scripts/guard-*` 변경.
 - 인프라 apply, 배포, 프로덕션 변경은 별도 승인 없이는 실행하지 않는다.
 - Secret, 계정 식별자, 토큰, `.env` 값은 기록하지 않는다.
 
@@ -48,8 +45,8 @@
 | Area | Owner | Required review |
 | --- | --- | --- |
 | `TASK.md`, 범위 | @Byuntil | 사람의 범위 승인 |
-| 테스트 계획 | 실행 에이전트(`/harness-test-plan`) | 사람의 계획 승인 |
-| 게이트 코드, 설정, 문서, 테스트 | 실행 에이전트 | PR에서 작성자가 아닌 백엔드 한 명 승인 |
+| 스캔 설계·테스트 계획 | 계획 에이전트(omo) | 사람의 계획 승인 |
+| workflow, 예외 파일, 문서, 의존성 업그레이드 | 실행 에이전트(omo) | PR에서 작성자가 아닌 백엔드 한 명 승인 |
 
 ## Existing user-owned changes
 
@@ -68,8 +65,8 @@ git diff --check
 
 ## Completion criteria
 
-- 게이트가 꺼진 상태에서 세 API가 `LOCATION_COLLECTION_DISABLED`를 반환하고 관련 테이블 행 수가 변하지 않는다(통합 테스트).
-- `enabled: true`이고 신고 참조가 비었거나 placeholder면 dev·local이 아닌 프로필에서 context 기동이 실패한다(통합 테스트).
-- dev 프로필에서 게이트가 켜져 있고 위치 갱신이 성공한다(`DevProfileBootIntegrationTest`).
-- 기존 위치·발송·미리보기 통합 테스트가 게이트를 켠 설정으로 통과한다.
+- 실패 기준을 넘는 취약 버전 의존성을 넣은 재현 조건에서 검사가 실패한다.
+- 현재 `main` 기준 스캔 결과와 기준 초과 항목의 처리 결과(업그레이드 또는 예외)를 기록한다.
+- 새 job의 권한이 `contents: read` 이하이고 외부 action 버전이 고정돼 있다.
+- 새 검사가 PR CI 시간에 더하는 소요 시간을 기록한다.
 - `./harness check`, `./harness pr-ready --project-tests`, `npm run hooks:validate`, `git diff --check`가 통과한다.
