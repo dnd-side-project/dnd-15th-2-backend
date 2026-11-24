@@ -100,7 +100,7 @@ erDiagram
   report ||--o{ moderation_review : reviews
 ```
 
-`report`는 사용자·질문글·답변 중 한 대상을 가리키는 신고이고, `report_case`는 같은 대상의 열린 신고를 묶는 운영 처리 단위다. `report.case_id`는 legacy 행을 위해 nullable이다. `report_content_snapshot`은 신고 시점 증거이며 DB는 신고당 최대 한 행을 허용한다. `report_case_event`는 사건 이력, `moderation_review`는 신고별 운영 판정 기록이다. 증거·이력의 제한된 변경은 DB 트리거가 강제한다. `user_block`은 사용자 간 활성 차단을 별도 보관한다. `operator_action_audit`은 filtering 권한 변경·수동 결정의 운영 감사 원장으로, 일반 `moderation_review`와 역할이 다르다. 이 감사 행의 운영자 ID에는 사용자 FK가 없다.
+`report`는 사용자·질문글·답변 중 한 대상을 가리키는 신고이고, `report_case`는 같은 대상의 열린 신고를 묶는 운영 처리 단위다. `report.case_id`는 legacy 행을 위해 nullable이다. `report_content_snapshot`은 신고 시점 증거이며 DB는 신고당 최대 한 행을 허용한다. `report_case_event`는 사건 이력, `moderation_review`는 신고별 운영 판정 기록이다. 증거·이력의 제한된 변경은 DB 트리거가 강제한다. `user_block`은 사용자 간 활성 차단을 별도 보관한다. `operator_action_audit`은 filtering 권한 변경·수동 결정의 운영 감사 원장으로, 일반 `moderation_review`와 역할이 다르다. 이 감사 행의 운영자 ID에는 사용자 FK가 없다. `operator_access_log`(V34, #375)는 운영자 로그인 결과·로그아웃·운영자 API 호출의 append-only 접근 기록이다. 운영자 ID에 사용자 FK가 없고, 계정을 특정하지 못한 로그인 실패만 운영자 ID가 NULL이다.
 
 [SafetyReportService](../../../src/main/java/com/dnd/qello/safety/service/SafetyReportService.java)는 신고자 잠금, 열린 신고/종결 중복 검사, 사건 병합, 증거 스냅샷을 한 접수 흐름에서 처리한다. 새 접수에서는 case를 연결하고 snapshot을 생성한다. [OperatorReportCaseService](../../../src/main/java/com/dnd/qello/safety/service/OperatorReportCaseService.java)는 사건 잠금·판정과 소속 신고별 review를 기록한다. `report_case`와 filtering의 `manual_review_case`는 서로 다른 대기열이다. [V25 migration](../../../src/main/resources/db/migration/V25__add_report_case_sla_and_manual_review_link.sql)의 `report_case.linked_manual_review_case_id`는 둘을 합치거나 FK로 묶지 않는 nullable opaque ID다. 접수 후 [ReportCaseAutoSuppressionEvaluator](../../../src/main/java/com/dnd/qello/safety/service/ReportCaseAutoSuppressionEvaluator.java)는 설정된 긴급 신고·서로 다른 신고자 임계 경로를 먼저 평가하고, 답변 신고일 때만 해당 답변 대상의 최신 수동 검토 case를 조회한 뒤, 그 항목이 OPEN 또는 RESOLVED+BLOCK인지 확인한다. 해당 항목이 있고 신고 사건이 아직 열려 있으면 ID를 기록하고 사건을 ACTIONED로 종결할 수 있다. RESOLVED+ALLOW는 해당하지 않으며, 모든 신고가 수동 검토 case를 만들거나 연결하는 것은 아니다. [제품 신고 설계](../ANSWER_REPORT_DESIGN.md)는 작성 당시의 계획·미결 판단도 포함하므로 현행 동작은 서비스/SQL과 migration으로 확인한다.
 
@@ -142,6 +142,8 @@ erDiagram
 | 운영 감사 | `operator_action_audit` (9) | 1 / 9 |
 | 알림·푸시·Outbox | `push_device` (8), `notification_user_setting` (6), `notification_preference` (4), `outbox_event` (15), `notification` (11), `notification_seen_state` (2), `notification_event` (11), `notification_delivery` (9), `push_dispatch_group` (15), `push_dispatch_group_member` (3), `push_daily_budget` (5) | 11 / 89 |
 | 프레임워크 (DBML 밖) | `spring_session` (7), `spring_session_attributes` (3) | 2 / 10 |
+
+V28 스냅샷 이후 V34(#375)가 운영 감사 그룹에 `operator_access_log` (9)를 추가했다. 위 표와 총합은 V1~V28 스냅샷 기준이라 이 테이블을 포함하지 않는다.
 
 ## DBML 표현 경계와 검증
 

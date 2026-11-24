@@ -3,6 +3,7 @@
  * Source scenario: TEST-PLAN-GH-178-NOTIFICATION-PREFERENCES-INT-001 through INT-003
  * Source scenario: TEST-PLAN-GH-137-DIRECTION-POST-MODERATION (V32 migration count, added 2026-10-07T22:38:41+09:00)
  * Source scenario: TEST-PLAN-GH-337-ACCOUNT-WITHDRAWAL-INT-001 (V33 migration count, added 2026-10-09T18:47:28+09:00)
+ * Source scenario: TEST-PLAN-GH-375-OPERATOR-ACCESS-LOG-INT-001 (V34 migration count, added 2026-11-22T22:24:10+09:00)
  */
 package com.dnd.qello;
 
@@ -66,7 +67,8 @@ class NotificationPreferenceMigrationIntegrationTest extends PostgisContainerInt
 
 		MigrateResult result = migrateToLatest();
 
-		assertThat(result.migrationsExecuted).isEqualTo(9);
+		// V25~V34 10개가 적용된다. 새 migration을 추가하면 이 수를 함께 올린다.
+		assertThat(result.migrationsExecuted).isEqualTo(10);
 		for (Map.Entry<String, Boolean> entry : ENABLED_BY_TYPE.entrySet()) {
 			assertThat(enabled(userId, entry.getKey())).isEqualTo(entry.getValue());
 		}

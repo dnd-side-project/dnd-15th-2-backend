@@ -2,6 +2,7 @@
  * Created at: 2026-08-04T12:00:00+09:00
  * Source scenario: TEST-PLAN-GH-48-ACCOUNT-PASSWORD-INT-001
  * Source scenario: TEST-PLAN-GH-337-ACCOUNT-WITHDRAWAL-INT-001 (V33 CHECK and repository round trip, added 2026-10-09T18:47:28+09:00)
+ * Source scenario: TEST-PLAN-GH-375-OPERATOR-ACCESS-LOG-INT-001 (V34 table count, added 2026-11-22T22:24:10+09:00)
  */
 package com.dnd.qello;
 
@@ -125,7 +126,8 @@ class AccountPersistenceIntegrationTest extends PostgisContainerIntegrationTestS
 		// + notification_seen_state(V24, #176 — 알림함 열람 기준선)
 		// + notification_user_setting(V26, #178 — 사용자 공통 알림 설정)
 		// + push_dispatch_group/push_dispatch_group_member/push_daily_budget(V28, #180)
-		assertThat(applicationTableCount).isEqualTo(54);
+		// + operator_access_log(V34, #375 — 운영자 접근 기록)
+		assertThat(applicationTableCount).isEqualTo(55);
 	}
 
 	@Test
