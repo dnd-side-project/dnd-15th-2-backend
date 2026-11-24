@@ -27,7 +27,7 @@
   - 컬럼 단위 저장 암호화가 필요하다(점검표 Q1 답변, 2026-11-23). RDS 디스크 암호화만으로는 인정받지 못한다고 판단했다.
 - 결정(2026-11-25, @Byuntil): ADR D1~D6·D8~D10은 추천안대로 승인했다. D7은 기존 평문 좌표 폐기와 단일 Flyway migration으로 수정 승인했다(운영 DB 없음, dev는 점검표 대상 제외, B1 수집 게이트 전제).
 - ADR: `docs/adr/0009-encrypt-coordinate-storage-and-replace-spatial-matching.md`, `accepted`. 승인자 @Byuntil, 2026-11-25, `https://github.com/dnd-side-project/dnd-15th-2-backend/issues/388#issuecomment-7138508452`. 테스트 계획 승인은 별도다.
-- Test plan: 미작성. ADR 승인 뒤 `/harness-test-plan`으로 작성한다.
+- Test plan: `docs/test-plans/gh-388-TEST-PLAN-GH-388-COORDINATE-ENCRYPTION.md` — `APPROVED`, 단위 14·통합 24·성능 3. D1~D5 추천안·D6 수정안(개인 OCI arm64 2코어·11GB에서 동일 arm64 PostGIS 이미지/digest·고정 CPU/메모리로 main과 #388 교대 측정, 상대 비교로 판정·절대 지연은 참고값, Docker 설치 별도 승인). 승인자 @Byuntil, 2026-11-25, `https://github.com/dnd-side-project/dnd-15th-2-backend/issues/388#issuecomment-7139174419`.
 
 ## Scope
 
