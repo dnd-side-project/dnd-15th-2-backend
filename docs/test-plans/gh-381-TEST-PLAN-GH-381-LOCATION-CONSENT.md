@@ -4,7 +4,7 @@
 > GitHub Issue: `#381`
 > Status: APPROVED — 2026-11-23, @Byuntil (D5 수정 승인, 나머지 추천안 승인)
 > Task: `TASK.md`, `feat/gh-381-location-consent-history`
-> Base: `feat/gh-379-location-collection-gate` (#380 미병합)
+> Base: `main` (2026-11-24 rebase 반영)
 > 단위 10개 / 통합 15개. 표의 축약 ID 앞에는 `TEST-PLAN-GH-381-LOCATION-CONSENT-`를 붙인다.
 > 설계 제안은 아직 승인되지 않았다. 이번 산출물은 계획 하나이며 구현·테스트 실행은 하지 않는다.
 
@@ -53,7 +53,7 @@
 - V33은 WITHDRAWAL_PENDING과 요청 시각을 추가한다. completion은 계정을 물리 삭제하지
   않고 DELETED 및 닉네임 정리를 수행한다. 기존 낙관적 잠금만으로 위치 UPSERT 경합은 막지 못한다.
 - 현재 `AccountRepository`에는 잠금 조회가 없다. 새 공통 잠금 경로가 필요하다(D7).
-- V33까지 존재한다. V34 번호는 실행 직전에 stacked base와 다른 작업의 migration을 재확인한다.
+- main의 V34는 operator_access_log(#375)가 사용한다. 위치정보 동의 이력은 승인에 따라 V35를 사용한다.
 
 ### 사람 승인이 필요한 설계 결정 (2026-11-23 승인, D5는 아래 수정안으로 승인)
 
@@ -112,7 +112,7 @@ UNKNOWN: 실제 게시 약관 버전/시행일, 보존 정책의 근거와 기�
 
 | Scenario ID | Components | Setup | Action | Expected result | Cleanup |
 | --- | --- | --- | --- | --- | --- |
-| INT-001 | Flyway, 실제 PostGIS | 빈 DB 및 V33 DB 각각 | 새 migration·제약 위반 insert | 기존 checksum 불변, FK/NOT NULL/action/version 제약, 인덱스 존재, 사용자 물리 삭제 RESTRICT | 전용 DB 폐기 |
+| INT-001 | Flyway, 실제 PostGIS | 빈 DB 및 V34 DB 각각 | 새 migration·제약 위반 insert | 기존 checksum 불변, FK/NOT NULL/action/version 제약, 인덱스 존재, 사용자 물리 삭제 RESTRICT | 전용 DB 폐기 |
 | INT-002 | MVC, 이력 저장소 | 두 사용자, 합성 버전 | 동의 2회·철회 2회·GET | 성공 요청마다 1행, 기존 행 모든 값 불변, 타인 이력 불변, GET 쓰기 없음 | fixture 역순 삭제 |
 | INT-003 | 실제 DB 상태 조회 | 동일 시각 및 역행 시각 이벤트 | 구버전 동의→현재 동의→구버전 기준 철회 이력 조회 | 사용자 전체 최신 id로 판단, 과거 현재버전 동의를 찾아 부활시키지 않음 | fixture 삭제 |
 | INT-004 | MVC, presence | 무기록/철회/구버전별 기존 presence 있음·없음 | 유효한 PUT | 403 DIR-APP-009, 행 수와 전체 내용 불변 | fixture 삭제 |
@@ -203,7 +203,9 @@ Production 생성:
   `LocationConsentEntity.java`, `SpringDataLocationConsentRepository.java`.
 - `direction/web/LocationConsentController.java`, `LocationConsentApiSpec.java`,
   `request/LocationConsentRequest.java`, `response/LocationConsentResponse.java`.
-- `src/main/resources/db/migration/V34__add_location_consent_history.sql`(번호 충돌 시 승인 갱신).
+- `src/main/resources/db/migration/V35__add_location_consent_history.sql`(번호 변경 승인 반영).
+
+번호 변경 승인(2026-11-24 @Byuntil): main의 V34(#375)와 충돌해 V35로 변경.
 
 Production 수정:
 - `direction/service/DirectionPresenceService.java`, `DirectionPostApplicationService.java`,

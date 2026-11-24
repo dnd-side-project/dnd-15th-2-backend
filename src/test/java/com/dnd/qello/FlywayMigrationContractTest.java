@@ -76,8 +76,8 @@ class FlywayMigrationContractTest {
 				"V31__add_user_account_nickname_changed_at.sql",
 				"V32__allow_direction_post_moderation_target.sql",
 				"V33__add_user_account_withdrawal.sql",
-				"V34__add_location_consent_history.sql",
 				"V34__add_operator_access_log.sql",
+				"V35__add_location_consent_history.sql",
 				"V3__add_user_account_password_hash.sql",
 				"V4__add_user_account_optimistic_lock.sql",
 				"V5__add_operator_credential.sql",
@@ -88,7 +88,7 @@ class FlywayMigrationContractTest {
 	}
 
 	@Test
-	@DisplayName("TEST-PLAN-GH-337-ACCOUNT-WITHDRAWAL-UNIT-026: V34까지 존재하며 V33은 유예 상태 값, 요청 시각 CHECK, sweep 부분 인덱스를 함께 추가한다")
+	@DisplayName("TEST-PLAN-GH-337-ACCOUNT-WITHDRAWAL-UNIT-026: V35까지 존재하며 V33은 유예 상태 값, 요청 시각 CHECK, sweep 부분 인덱스를 함께 추가한다")
 	void v33AddsWithdrawalStateContract() throws IOException {
 		List<Integer> versions = sqlMigrationNames().stream()
 				.map(name -> Integer.parseInt(name.substring(1, name.indexOf("__"))))
@@ -96,7 +96,7 @@ class FlywayMigrationContractTest {
 				.toList();
 		String v33 = Files.readString(Path.of("src/main/resources/db/migration/V33__add_user_account_withdrawal.sql"));
 
-		assertThat(versions.get(versions.size() - 1)).isEqualTo(34);
+		assertThat(versions.get(versions.size() - 1)).isEqualTo(35);
 		assertThat(v33)
 				.contains("CHECK (status IN ('ACTIVE', 'WITHDRAWAL_PENDING', 'BLOCKED', 'DELETED'))")
 				.contains("ADD COLUMN withdrawal_requested_at TIMESTAMPTZ")
@@ -105,7 +105,7 @@ class FlywayMigrationContractTest {
 	}
 
 	@Test
-	@DisplayName("TEST-PLAN-GH-375-OPERATOR-ACCESS-LOG-INT-001: V34는 마지막 migration이고 FK 없는 접근 기록 테이블과 이벤트 CHECK를 추가한다")
+	@DisplayName("TEST-PLAN-GH-375-OPERATOR-ACCESS-LOG-INT-001: V35까지 존재하며 V34는 FK 없는 접근 기록 테이블과 이벤트 CHECK를 추가한다")
 	void v34AddsOperatorAccessLogContract() throws IOException {
 		List<Integer> versions = sqlMigrationNames().stream()
 				.map(name -> Integer.parseInt(name.substring(1, name.indexOf("__"))))
@@ -113,7 +113,7 @@ class FlywayMigrationContractTest {
 				.toList();
 		String v34 = Files.readString(Path.of("src/main/resources/db/migration/V34__add_operator_access_log.sql"));
 
-		assertThat(versions.get(versions.size() - 1)).isEqualTo(34);
+		assertThat(versions.get(versions.size() - 1)).isEqualTo(35);
 		assertThat(v34)
 				.contains("CREATE TABLE operator_access_log")
 				.contains("CHECK (event_type IN ('LOGIN_SUCCEEDED', 'LOGIN_FAILED', 'LOGOUT', 'API_CALL'))")

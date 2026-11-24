@@ -82,21 +82,21 @@ class LocationConsentPersistenceIntegrationTest extends PostgisContainerIntegrat
 
 	@ParameterizedTest
 	@ValueSource(booleans = {false, true})
-	@DisplayName("INT-001: 빈 schema와 V33 schema 모두 V34를 적용하고 이전 checksum을 보존한다")
-	void migratesFreshAndV33WithoutChangingHistory(boolean upgrade) {
+	@DisplayName("INT-001: 빈 schema와 V34 schema 모두 V35를 적용하고 이전 checksum을 보존한다")
+	void migratesFreshAndV34WithoutChangingHistory(boolean upgrade) {
 		schema = "consent381_" + SEQUENCE.incrementAndGet();
 		List<Map<String, Object>> before = List.of();
 		if (upgrade) {
-			migration("33").migrate();
+			migration("34").migrate();
 			before = jdbc.queryForList("SELECT version, checksum FROM " + schema
 					+ ".flyway_schema_history WHERE success AND version IS NOT NULL ORDER BY installed_rank");
 		}
-		assertThat(migration(null).migrate().migrationsExecuted).isEqualTo(upgrade ? 1 : 34);
+		assertThat(migration(null).migrate().migrationsExecuted).isEqualTo(upgrade ? 1 : 35);
 		assertThat(migration(null).validateWithResult().validationSuccessful).isTrue();
 		assertThat(migration(null).migrate().migrationsExecuted).isZero();
 		if (upgrade) {
 			assertThat(jdbc.queryForList("SELECT version, checksum FROM " + schema
-					+ ".flyway_schema_history WHERE success AND version::int <= 33 ORDER BY installed_rank"))
+					+ ".flyway_schema_history WHERE success AND version::int <= 34 ORDER BY installed_rank"))
 					.isEqualTo(before);
 		}
 		String index = jdbc.queryForObject(

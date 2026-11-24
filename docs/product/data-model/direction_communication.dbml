@@ -4,7 +4,7 @@ Project direction_connected_communication {
   Note: '''
     # 방향으로 연결되는 소통
 
-    이 문서는 Flyway V1~V28의 제품·백엔드 테이블 52개와 V34의 위치정보 동의 이력을 설명한다.
+    이 문서는 Flyway V1~V28의 제품·백엔드 테이블 52개와 V35의 위치정보 동의 이력을 설명한다.
     실행 스키마의 권위는 Flyway versioned migration이다(ADR-0001). 이 DBML은
     설계·검토용 표현이며 PostgreSQL의 일부 기능은 각 테이블/인덱스 Note에 SQL
     원문과 함께 보충한다. Enum은 별도 PostgreSQL enum 타입이 아니라 VARCHAR와
@@ -27,7 +27,7 @@ Project direction_connected_communication {
 }
 
 // -----------------------------------------------------------------------------
-// V34 위치정보 동의 이력
+// V35 위치정보 동의 이력
 // -----------------------------------------------------------------------------
 
 Enum location_consent_action {

@@ -127,7 +127,7 @@ class AccountPersistenceIntegrationTest extends PostgisContainerIntegrationTestS
 		// + notification_user_setting(V26, #178 — 사용자 공통 알림 설정)
 		// + push_dispatch_group/push_dispatch_group_member/push_daily_budget(V28, #180)
 		// + operator_access_log(V34, #375 — 운영자 접근 기록)
-		assertThat(applicationTableCount).isEqualTo(55);
+		assertThat(applicationTableCount).isEqualTo(56);
 	}
 
 	@Test

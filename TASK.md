@@ -10,7 +10,7 @@
 - Title: `위치정보 이용 동의·철회 이력 저장과 미동의 사용자 위치 수집 거부`
 - GitHub Issue: `#381`
 - Branch: `feat/gh-381-location-consent-history`
-- Base branch: `feat/gh-379-location-collection-gate` (stacked). #380 병합 후 `main` 기준으로 옮긴다.
+- Base branch: `main` (2026-11-24 rebase 반영).
 
 ## Objective
 
@@ -18,7 +18,7 @@
 - 확인된 사실(2026-11-23):
   - 저장소에 위치정보 동의·약관 관련 코드와 테이블이 없다.
   - 정확 좌표 API는 `PUT /api/v1/direction/presence`, `GET /api/v1/direction/preview`, `POST /api/v1/direction/posts` 세 개이며, #379에서 각 진입 메서드 첫 줄에 `LocationCollectionGate.ensureEnabled()`를 넣었다.
-  - 최신 마이그레이션은 `V33__add_user_account_withdrawal.sql`이다.
+  - 최신 마이그레이션은 `V35__add_location_consent_history.sql`이다(2026-11-24 rebase 후). main의 V34 operator_access_log는 보존한다.
 - 결정(2026-11-23, @Byuntil):
   - 유형 기능 작업, Priority P0.
   - 위치정보 이용 동의는 앱 안에서 받고, 약관은 별도 Qello 홈페이지에 게시한다(점검표 Q5 답변).

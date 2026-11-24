@@ -6,9 +6,9 @@
 
 [ADR-0001](../../adr/0001-database-schema-ownership.md)에 따라 실행 DB 변경의 권위는 [Flyway V1~V28 migration](../../../src/main/resources/db/migration/)이다. [DBML](direction_communication.dbml)은 현재 백엔드의 논리 설계이고 [ERD 설명](DIRECTION_COMMUNICATION_ERD.md)은 관계·동작의 해설이다. 과거 외부 vault/독립 DDL snapshot은 아래 접힌 이력에만 둔다. 이 manifest의 전체 집계는 `public`의 제품·백엔드 52개와 Spring Session 2개를 포함하고, PostGIS extension 소유 객체와 `flyway_schema_history`를 제외한다.
 
-## V34 위치정보 동의 이력 추가 (#381)
+## V35 위치정보 동의 이력 추가 (#381)
 
-아래는 V34 migration의 정적 변경 목록이며 DB에 적용해 검증한 카탈로그 집계가 아니다.
+아래는 V35 migration의 정적 변경 목록이며 DB에 적용해 검증한 카탈로그 집계가 아니다.
 V1~V28 스냅샷 집계와 과거 checksum은 해당 시점의 기록으로 보존한다.
 
 | 객체 | 계약 |

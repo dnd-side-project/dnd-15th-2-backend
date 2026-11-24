@@ -45,6 +45,8 @@ erDiagram
 
 `region_code`는 계층 지역 코드와 국가 복합 FK의 기준이다. `user_account`는 공개 계정 상태, `user_private_attribute`는 분리된 민감 속성, `active_user_presence`는 만료 시각을 가진 위치 후보, `recipient_receive_state`는 활성 수신 수를 담는다. 운영자 로그인과 앱 기기 인증은 각각 `operator_credential`, `device_credential`에 분리된다. 제안·검토·승인 질문·배정 cycle은 질문 공급의 연속 단계다. 승인 질문 문구와 제출된 제안 문구의 불변성은 트리거로 보강된다.
 
+V35(#381)의 `location_consent_history`는 사용자별 위치정보 이용 동의·철회 이력을 보관한다. V34(#375)의 `operator_access_log`와는 별도 migration이다.
+
 ## 방향 발송·수신·답변
 
 ```mermaid
