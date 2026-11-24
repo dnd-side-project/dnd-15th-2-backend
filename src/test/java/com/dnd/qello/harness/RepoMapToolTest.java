@@ -1,8 +1,16 @@
+/**
+ * Created at: 2026-11-24T19:04:51+09:00
+ * Source scenario: TEST-PLAN-GH-386-TEST-GIT-ENV-UNIT-003, TEST-PLAN-GH-386-TEST-GIT-ENV-UNIT-004
+ */
 package com.dnd.qello.harness;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.MessageDigest;
+import java.util.HexFormat;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -28,6 +36,7 @@ class RepoMapToolTest {
 	private static final ObjectMapper JSON = new ObjectMapper();
 	private Path executableTool = TOOL;
 	private String javaHome = System.getProperty("java.home");
+	private Map<String, String> inheritedEnvironment = Map.of();
 	@TempDir
 	Path root;
 
@@ -349,6 +358,133 @@ class RepoMapToolTest {
 		assertThat(classes("find", 10).get("total").asInt()).isEqualTo(1);
 	}
 
+	@Test
+	@DisplayName("GH-386 UNIT-003 foreign Git environments never redirect fixture writes")
+	void foreignGitEnvironment() throws Exception {
+		Path fixtures = root.toRealPath();
+		Map<String, String> config = Map.of("HOME", fixtures.toString(), "GIT_CONFIG_NOSYSTEM", "1",
+				"GIT_CONFIG_GLOBAL", fixtures.resolve("global.config").toString(),
+				"GIT_CONFIG_SYSTEM", fixtures.resolve("system.config").toString());
+		inheritedEnvironment = config;
+		Path sentinel = sentinel(fixtures);
+		Map<String, String> before = gitState(sentinel);
+		Map<String, String> poison = foreignEnvironment(sentinel);
+		List<Map<String, String>> cases = new java.util.ArrayList<>();
+		poison.forEach((key, value) -> cases.add(Map.of(key, value)));
+		cases.add(poison);
+		for (int i = 0; i < cases.size(); i++) {
+			root = Files.createDirectory(fixtures.resolve("target-" + i));
+			inheritedEnvironment = new TreeMap<>(config);
+			inheritedEnvironment.putAll(cases.get(i));
+			init();
+			assertThat(command("git", "rev-parse", "--show-toplevel").text().strip())
+					.isEqualTo(root.toString());
+			assertThat(command("git", "log", "-1", "--format=%s").text().strip()).isEqualTo("fixture");
+			assertThat(gitState(sentinel)).as("sentinel hashes for case %s", i).isEqualTo(before);
+		}
+	}
+
+	@Test
+	@DisplayName("GH-386 UNIT-004 Python uses fixture HEAD and preserves user config and authentication environment")
+	void foreignPythonEnvironment() throws Exception {
+		Path fixtures = root.toRealPath();
+		inheritedEnvironment = Map.of("HOME", fixtures.toString(), "GIT_CONFIG_NOSYSTEM", "1",
+				"GIT_CONFIG_GLOBAL", fixtures.resolve("global.config").toString(),
+				"GIT_CONFIG_SYSTEM", fixtures.resolve("system.config").toString());
+		Path sentinel = sentinel(fixtures);
+		Map<String, String> before = gitState(sentinel);
+		Path global = Files.writeString(fixtures.resolve("global.config"), "[fixture]\n\tmarker = user-config\n");
+		Path system = Files.writeString(fixtures.resolve("system.config"), "");
+		Map<String, String> inherited = new TreeMap<>(foreignEnvironment(sentinel));
+		inherited.putAll(Map.of("GIT_CONFIG_GLOBAL", global.toString(), "GIT_CONFIG_SYSTEM", system.toString(),
+				"GIT_CONFIG_NOSYSTEM", "1", "GIT_SSH_COMMAND", "fixture-ssh", "GIT_ASKPASS", "fixture-askpass",
+				"GIT_TERMINAL_PROMPT", "0", "FIXTURE_MARKER", "non-git"));
+		inherited.put("HOME", fixtures.toString());
+		root = Files.createDirectory(fixtures.resolve("target"));
+		init();
+		inheritedEnvironment = inherited;
+		source("Fixture.java", "class Fixture {}");
+		generate();
+		assertThat(run("check").code()).isZero();
+		JsonNode query = JSON.readTree(run("query", "--symbol", "Fixture").text());
+		assertThat(query.get("total").asInt()).isEqualTo(2);
+		assertThat(JSON.readTree(Files.readString(index())).get("head").asText())
+				.isEqualTo(command("git", "rev-parse", "HEAD").text().strip());
+		assertPythonEnvironment(sentinel, inherited);
+		String valid = Files.readString(index());
+		source("Fixture.java", "class Fixture { PRIVATE_LITERAL broken = ; }");
+		Result failed = run("generate");
+		assertThat(failed.code()).isNotZero();
+		assertThat(failed.text()).doesNotContain("PRIVATE_LITERAL");
+		assertThat(Files.readString(index())).isEqualTo(valid);
+		assertThat(gitState(sentinel)).isEqualTo(before);
+	}
+
+	private void assertPythonEnvironment(Path sentinel, Map<String, String> inherited) throws Exception {
+		String probe = """
+				import json, os, sys
+				keys = ['GIT_CONFIG_GLOBAL', 'GIT_CONFIG_SYSTEM', 'GIT_CONFIG_NOSYSTEM',
+				        'GIT_SSH_COMMAND', 'GIT_ASKPASS', 'GIT_TERMINAL_PROMPT', 'FIXTURE_MARKER', 'JAVA_HOME', 'HOME']
+				keys.extend(sys.argv[1:])
+				print(json.dumps({key: os.environ.get(key) for key in keys}))
+				""";
+		List<String> probeCommand = PlatformCommands.python("-c", probe);
+		probeCommand.addAll(foreignEnvironment(sentinel).keySet());
+		Result observed = command(probeCommand.toArray(String[]::new));
+		assertThat(observed.code()).isZero();
+		JsonNode environment = JSON.readTree(observed.text());
+		for (String key : List.of("GIT_CONFIG_GLOBAL", "GIT_CONFIG_SYSTEM", "GIT_CONFIG_NOSYSTEM",
+				"GIT_SSH_COMMAND", "GIT_ASKPASS", "GIT_TERMINAL_PROMPT", "FIXTURE_MARKER", "HOME")) {
+			assertThat(environment.get(key).asText()).as(key).isEqualTo(inherited.get(key));
+		}
+		assertThat(environment.get("JAVA_HOME").asText()).isEqualTo(javaHome);
+		for (String key : foreignEnvironment(sentinel).keySet()) {
+			assertThat(environment.get(key).isNull()).as(key).isTrue();
+		}
+		assertThat(command("git", "config", "fixture.marker").text().strip()).isEqualTo("user-config");
+	}
+
+	private Path sentinel(Path fixtures) throws Exception {
+		root = Files.createDirectory(fixtures.resolve("sentinel"));
+		init();
+		Files.writeString(root.resolve("sentinel.txt"), "sentinel");
+		assertThat(command("git", "add", "sentinel.txt").code()).isZero();
+		assertThat(command("git", "-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid",
+				"-c", "maintenance.auto=false", "-c", "gc.auto=0",
+				"commit", "-qm", "sentinel").code()).isZero();
+		return root;
+	}
+
+	private Map<String, String> foreignEnvironment(Path sentinel) {
+		Path git = sentinel.resolve(".git");
+		return Map.ofEntries(
+				Map.entry("GIT_DIR", git.toString()), Map.entry("GIT_WORK_TREE", sentinel.toString()),
+				Map.entry("GIT_COMMON_DIR", git.toString()),
+				Map.entry("GIT_INDEX_FILE", git.resolve("index").toString()),
+				Map.entry("GIT_OBJECT_DIRECTORY", git.resolve("objects").toString()),
+				Map.entry("GIT_ALTERNATE_OBJECT_DIRECTORIES", git.resolve("objects").toString()),
+				Map.entry("GIT_IMPLICIT_WORK_TREE", "0"), Map.entry("GIT_GRAFT_FILE", git.resolve("grafts").toString()),
+				Map.entry("GIT_NO_REPLACE_OBJECTS", "1"), Map.entry("GIT_REPLACE_REF_BASE", "refs/fixture/"),
+				Map.entry("GIT_PREFIX", "foreign/"), Map.entry("GIT_SHALLOW_FILE", git.resolve("shallow").toString()),
+				Map.entry("GIT_CONFIG", git.resolve("config").toString()),
+				Map.entry("GIT_CONFIG_PARAMETERS", "'core.bare=true'"), Map.entry("GIT_CONFIG_COUNT", "1"),
+				Map.entry("GIT_CONFIG_KEY_0", "core.bare"), Map.entry("GIT_CONFIG_VALUE_0", "true"),
+				Map.entry("GIT_CEILING_DIRECTORIES", sentinel.getParent().toString()),
+				Map.entry("GIT_DISCOVERY_ACROSS_FILESYSTEM", "0"));
+	}
+
+	private Map<String, String> gitState(Path repository) throws Exception {
+		Map<String, String> hashes = new TreeMap<>();
+		try (var files = Files.walk(repository.resolve(".git"))) {
+			for (Path file : files.filter(Files::isRegularFile).sorted().toList()) {
+				hashes.put(repository.relativize(file).toString(),
+						HexFormat.of()
+								.formatHex(MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(file))));
+			}
+		}
+		return hashes;
+	}
+
 	private JsonNode classes(String symbol, int limit) throws Exception {
 		Result result = run("query", "--format", "classes", "--symbol", symbol, "--limit", Integer.toString(limit));
 		assertThat(result.code()).as(result.text()).isZero();
@@ -361,6 +497,7 @@ class RepoMapToolTest {
 		Files.writeString(root.resolve(".gitignore"), "build/\n");
 		assertThat(command("git", "add", ".gitignore").code()).isZero();
 		assertThat(command("git", "-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid",
+				"-c", "maintenance.auto=false", "-c", "gc.auto=0",
 				"commit", "-qm", "fixture").code()).isZero();
 	}
 
@@ -388,10 +525,28 @@ class RepoMapToolTest {
 
 	private Result command(String... args) throws Exception {
 		ProcessBuilder builder = new ProcessBuilder(args).directory(root.toFile()).redirectErrorStream(true);
+		builder.environment().putAll(inheritedEnvironment);
+		builder.environment().keySet().removeIf(key -> List.of(
+				"GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_INDEX_FILE",
+				"GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_IMPLICIT_WORK_TREE",
+				"GIT_GRAFT_FILE", "GIT_NO_REPLACE_OBJECTS", "GIT_REPLACE_REF_BASE", "GIT_PREFIX",
+				"GIT_SHALLOW_FILE", "GIT_CONFIG", "GIT_CONFIG_PARAMETERS", "GIT_CONFIG_COUNT",
+				"GIT_CEILING_DIRECTORIES", "GIT_DISCOVERY_ACROSS_FILESYSTEM").contains(key)
+				|| key.matches("GIT_CONFIG_(KEY|VALUE)_\\d+"));
 		builder.environment().put("JAVA_HOME", javaHome);
-		Process process = builder.start();
-		String output = new String(process.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
-		return new Result(process.waitFor(), output);
+		Path output = Files.createTempFile(root, ".command-", ".log");
+		try {
+			Process process = builder.redirectOutput(output.toFile()).start();
+			boolean exited = process.waitFor(60, java.util.concurrent.TimeUnit.SECONDS);
+			if (!exited) {
+				process.descendants().forEach(ProcessHandle::destroyForcibly);
+				process.destroyForcibly().waitFor();
+			}
+			assertThat(exited).as("fixture command completed within timeout").isTrue();
+			return new Result(process.exitValue(), Files.readString(output));
+		} finally {
+			Files.delete(output);
+		}
 	}
 
 	private record Result(int code, String text) {

@@ -11,19 +11,19 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
-from typing import Sequence
+from typing import Mapping, Sequence
 
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def run(command: Sequence[str]) -> None:
+def run(command: Sequence[str], *, env: Mapping[str, str] | None = None) -> None:
     print(f"[hook] {' '.join(command)}")
     resolved = list(command)
     # Windows는 셸 스크립트인 ./gradlew를 직접 실행하지 못한다. harness.py의 run과 같은 규칙이다.
     if os.name == "nt" and resolved and resolved[0] == "./gradlew":
         resolved[0] = str(ROOT / "gradlew.bat")
-    result = subprocess.run(resolved, cwd=ROOT, check=False)
+    result = subprocess.run(resolved, cwd=ROOT, env=env, check=False)
     if result.returncode != 0:
         raise SystemExit(result.returncode)
 
@@ -157,13 +157,18 @@ def commit_msg(path: str) -> None:
 
 
 def pre_push() -> None:
+    env = os.environ.copy()
+    # 다른 worktree나 임시 저장소를 쓰는 검사는 ROOT에서 저장소를 다시 탐색해야 한다.
+    for key in ("GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_INDEX_FILE"):
+        env.pop(key, None)
     run(
         [
             sys.executable,
             "scripts/harness.py",
             "pr-ready",
             "--project-tests",
-        ]
+        ],
+        env=env,
     )
     print("[hook] Pre-push checks passed.")
 

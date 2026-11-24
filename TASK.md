@@ -1,38 +1,43 @@
-# GitHub Issue #375 Task Contract
+# GitHub Issue #386 Task Contract
 
-> Generated at: `2026-11-22T21:06:48+09:00`
+> Generated at: `2026-11-24T18:08:34+09:00`
 >
 > 이 파일은 현재 작업 브랜치의 계약이다. 저장소 전역 정책은 `AGENTS.md`를
 > 따른다.
 
 ## Work gate
 
-- Title: `운영자 로그인·로그아웃·운영자 API 호출 접근 기록`
-- GitHub Issue: `#375`
-- Branch: `feat/gh-375-operator-access-log`
+- Title: `[harness] worktree에서 push하면 RepoMapToolTest가 저장소를 bare로 바꾼다`
+- GitHub Issue: `#386`
+- Branch: `fix/gh-386-test-git-env-isolation`
 - Base branch: `main`
 - Test plan: `docs/test-plans/gh-375-TEST-PLAN-GH-375-OPERATOR-ACCESS-LOG.md` (2026-11-22T21:56:28+09:00 tkv00 승인, D1~D4 권장안)
 
 ## Objective
 
-- 운영자 로그인 결과 5종, 로그아웃, 운영자 API 호출을 append-only `operator_access_log`에 한 행씩 남긴다. 위치기반서비스 운영 배포 전 점검표 첨부 2 3항의 운영자 접근 기록(C3)이다.
+- linked worktree에서 `git push`하면 pre-push hook의 `./harness pr-ready --project-tests` 안에서 `RepoMapToolTest`가 hook이 넘긴 절대경로 `GIT_DIR`을 물려받는다. 그 결과 임시 디렉터리의 `git init`이 실제 저장소를 재초기화하고 공통 `.git/config`에 `core.bare=true`를 쓴다. 테스트와 hook 하위 검사가 개발 환경의 저장소를 바꾸지 않게 한다.
+- 확인된 사실(2026-11-24):
+  - `GIT_DIR="$(git rev-parse --git-dir)"`를 설정하고 `RepoMapToolTest`를 실행하면 14개 모두 `expected: 0 but was: 128`로 실패하고 `core.bare=true`가 기록된다. 환경 변수가 없으면 14개 모두 통과한다.
+  - `RepoMapToolTest.command`의 `ProcessBuilder`는 `JAVA_HOME`만 덮어쓰고 나머지 부모 환경을 그대로 물려준다.
+  - 설정이 바뀐 뒤에는 `ProductionConventionRatchetTest`의 `git diff --name-only origin/main`도 `must be run in a work tree`로 실패한다.
+  - 복구는 `git config --file <저장소>/.git/config core.bare false`다.
+- 결정(2026-11-24, @Byuntil): 유형 버그(`fix/` 브랜치, `type: bug`), Priority P1.
+- Test plan: `docs/test-plans/gh-386-TEST-PLAN-GH-386-TEST-GIT-ENV.md` — `APPROVED` — D1·D3 테스트와 pre-push 이중 방어, D2·D5 추천안, D4 가벼운 상시 테스트 + 1회 증거, `scripts/test-run-hook.py`를 `harness check`와 CI policy job에 등록. 승인자 @Byuntil, 2026-11-24. 승인 증거: https://github.com/dnd-side-project/dnd-15th-2-backend/issues/386#issuecomment-7128148671
 
 ## Scope
 
-- V34 migration으로 `operator_access_log` 테이블을 추가한다. FK는 두지 않는다.
-- `OperatorLoginService.login`에서 성공, `AUT-APP-001`, `AUT-APP-002`, `AUT-APP-003`을 로그인 트랜잭션 안에서 기록한다.
-- `/admin/login`의 요청 제한 거절(`AUT-APP-007`)과 `/admin/logout`을 기록한다.
-- `/admin/**`, `/api/v1/operator/**` 세션 체인에 운영자 API 호출 기록 필터를 추가한다. `/admin/login`, `/admin/logout`, `/admin/csrf`는 제외한다.
-- 클라이언트 주소는 `remoteAddr`에서 얻고 `X-Forwarded-For`는 무시한다.
-- ERD, DBML, schema manifest와 `FlywayMigrationIntegrationTest`를 갱신한다.
+- `RepoMapToolTest`가 띄우는 git·Python 프로세스 환경에서 저장소를 가리키는 `GIT_*` 변수를 제거한다.
+- 임시 저장소에 git 명령을 실행하는 다른 테스트(`src/test/**`, `src/integrationTest/**`)와 `scripts/`의 테스트를 찾아 같은 위험이 있으면 같은 방식으로 막는다.
+- hook 실행기(`scripts/run-hook.py`)의 pre-push 경로에서 저장소 위치 변수 네 개를 제거한다(승인된 D3).
+- 회귀 `scripts/test-run-hook.py`를 `scripts/harness.py`의 `validation_commands()`와 `.github/workflows/harness-policy.yml`의 policy job 단계 하나에 등록한다.
+- 재발 방지 회귀 테스트.
 
 ## Explicit exclusions
 
-- 보존 기간이 지난 행의 파기와 보존 기간 결정.
-- DB 수준의 위·변조 방지와 RDS 감사 로그(I4).
-- 프록시 헤더 신뢰 설정(C7).
-- 앱 사용자(`/api/**` JWT) API의 접근 기록, 접근 기록 조회 API.
-- 비밀번호 변경(#376)과 OTP(#377) 이벤트.
+- 애플리케이션 production 코드 변경.
+- CI workflow 변경. 단, `harness-policy.yml` policy job에 `scripts/test-run-hook.py` 실행 단계 하나를 추가하는 것은 승인된 예외다. `.github/workflows/*apply*`는 바꾸지 않는다.
+- `.husky/*` hook 진입 스크립트, `CLAUDE.md`, `AGENTS.md`, `.claude/**`, `agents/**`, `scripts/guard-*` 변경은 별도 승인 없이 하지 않는다.
+- 실제 저장소의 `GIT_DIR`을 설정한 재현 실행. 재현은 일회용 clone이나 임시 저장소의 git dir로만 한다.
 - 인프라 apply, 배포, 프로덕션 변경은 별도 승인 없이는 실행하지 않는다.
 - Secret, 계정 식별자, 토큰, `.env` 값은 기록하지 않는다.
 
@@ -40,15 +45,14 @@
 
 | Area | Owner | Required review |
 | --- | --- | --- |
-| 테스트 계획과 이 계약 | 부모 오케스트레이터 | tkv00 계획 승인 |
-| migration, 도메인 값, 저장소, 스키마 문서 | persistence-executor | 독립 verifier, PR 승인 1명(작성자 제외) |
-| 로그인 서비스·컨트롤러, 기록 필터, 보안 설정 | auth-flow-executor | 독립 verifier, PR 승인 1명(작성자 제외) |
-
-파일 단위 소유는 테스트 계획 9절을 따른다.
+| `TASK.md`, 범위 | @Byuntil | 사람의 범위 승인 |
+| 수정 설계·테스트 계획 | 계획 에이전트(omo) | 사람의 계획 승인 |
+| 테스트·hook 보조 코드 수정 | 실행 에이전트(omo) | PR에서 작성자가 아닌 백엔드 한 명 승인 |
 
 ## Existing user-owned changes
 
-- 2026-11-22 작업 시작 시 `git status --short`는 비어 있었다. 이후 `./harness task-init`으로 갱신한 이 파일과 테스트 계획 문서만 추가했다.
+- 작업 시작 시 `git status --short` 출력은 `TASK.md`(task-init) 하나였다.
+- `gh`와 `harness`는 `env -u SSL_CERT_FILE -u SSL_CERT_DIR`로 시스템 CA를 사용한다.
 
 ## Validation
 
@@ -62,10 +66,6 @@ git diff --check
 
 ## Completion criteria
 
-- 로그인 성공, 자격증명 불일치, 잠금, 비활성 계정, 요청 제한 결과가 각각 `operator_access_log` 한 행으로 남는다.
-- 미존재 login_id로 실패한 행은 운영자 id가 NULL이고, 기존 계정 열거 방지 테스트가 수정 없이 통과한다.
-- 로그아웃과 운영자 API 호출이 운영자 id, IP, 시각, 결과와 함께 기록된다.
-- 기록 행에 비밀번호, 세션 ID, CSRF 토큰, 요청 본문, query string이 없다.
-- 애플리케이션 코드에 `operator_access_log`를 수정·삭제하는 경로가 없다.
-- 테스트 계획의 P0 시나리오가 모두 구현되고 통과한다. 테스트 보고서가 있다.
-- `./harness pr-ready --project-tests`가 통과한다.
+- 일회용 저장소의 git dir을 절대경로 `GIT_DIR`로 설정한 채 `RepoMapToolTest`를 실행해도 14개가 통과하고, 그 저장소의 `core.bare`와 HEAD가 바뀌지 않는다.
+- linked worktree에서 `--no-verify` 없이 `git push`할 때 pre-push hook이 통과하고 `.git/config`가 바뀌지 않는다(사람 승인 후 PR push에서 확인).
+- `./harness check`, `./harness pr-ready --project-tests`, `npm run hooks:validate`, `git diff --check`가 통과한다.

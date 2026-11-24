@@ -47,6 +47,9 @@ jobs:
       - name: Validate Husky contract
         run: python scripts/validate-husky.py
 
+      - name: Test hook environment isolation
+        run: python scripts/test-run-hook.py
+
   test:
     runs-on: ubuntu-latest
     steps:
