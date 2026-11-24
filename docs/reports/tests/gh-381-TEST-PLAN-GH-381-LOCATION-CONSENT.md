@@ -4,6 +4,7 @@
 > GitHub Issue: `#381`
 > Branch: `feat/gh-381-location-consent-history`
 > Commit: `c1d00f82`
+> 2026-11-24 rebase 및 V35 재검증 결과는 §10에 기록한다. 위 commit과 §3은 최초 구현 검증 이력이다.
 
 ## 1. Executive summary
 
@@ -36,7 +37,7 @@
 `gh`와 `harness`는 SSL_CERT_FILE·SSL_CERT_DIR을 해제한 환경으로 실행했다.
 공유 build 산출물 충돌을 피하기 위한 focused 실행만 별도 임시 buildDir을 사용했다.
 
-## 3. Execution results
+## 3. Execution results (2026-11-23 최초 구현)
 
 | Command / suite | Result | Tests | Duration | Evidence |
 | --- | --- | --- | --- | --- |
@@ -73,7 +74,7 @@ pr-ready에서 로컬 stacked base가 다른 worktree에 checkout되어 fast-for
 | UNIT-008 | PASS | `LocationConsentPropertiesTest.acceptsValidConfiguration`, `rejectsInvalidConfigurationWithoutExposingValue` | B1 on/off와 1~100자 경계 |
 | UNIT-009 | PASS | `LocationConsentErrorCodeTest.exposesApprovedConsentErrorMappings`, `directionErrorCodesAreUnique` | 403 DIR-APP-009 / 409 DIR-APP-010, wire code 유일성 |
 | UNIT-010 | PASS | `LocationConsentControllerMockMvcTest.consentUsesAuthenticatedSubjectAndServerTime`, `withdrawalIgnoresExternalTarget`, `currentReadsOnlyAuthenticatedSubjectWithoutAppend`, `rejectsUnauthenticatedRequestsAcrossAllRoutes` | 본인 subject·공통 200·401 |
-| INT-001 | PASS | `LocationConsentPersistenceIntegrationTest.migratesFreshAndV33WithoutChangingHistory` | 빈 DB/V33, checksum·FK·NOT NULL·CHECK·인덱스·RESTRICT |
+| INT-001 | PASS | `LocationConsentPersistenceIntegrationTest.migratesFreshAndV34WithoutChangingHistory` | 빈 DB/V34→V35, checksum·FK·NOT NULL·CHECK·인덱스·RESTRICT |
 | INT-002 | PASS | `LocationConsentPersistenceIntegrationTest.appendsEverySuccessfulRequestAndKeepsEarlierRows`, `withdrawalChoosesLatestVersionOrCurrentWhenEmpty` | 요청별 행 추가, 이전/타인 행 불변, GET 무쓰기 |
 | INT-003 | PASS | `LocationConsentPersistenceIntegrationTest.latestIdWinsOverVersionAndRecordedTime` | 전체 최신 id 우선, 과거 동의 부활 방지 |
 | INT-004 | PASS | `LocationConsentApiIntegrationTest.rejectsPresenceWithoutCurrentConsent` | 세 미동의 상태 × 기존 presence 유무, 전체 snapshot 불변 |
@@ -212,7 +213,7 @@ src/main/java/com/dnd/qello/direction/web/ActiveUserPresenceApiSpec.java
 src/main/java/com/dnd/qello/direction/web/DirectionPostApiSpec.java
 src/main/java/com/dnd/qello/direction/web/request/LocationConsentRequest.java
 src/main/java/com/dnd/qello/direction/web/response/LocationConsentResponse.java
-src/main/resources/db/migration/V34__add_location_consent_history.sql
+src/main/resources/db/migration/V35__add_location_consent_history.sql
 src/main/resources/application.yml
 src/main/resources/application-dev.yml
 src/main/resources/application-local.yml
@@ -251,3 +252,28 @@ src/integrationTest/resources/application-test.yml
 - [x] 미실행 테스트가 명시됨
 - [ ] 잠재 문제의 후속 GitHub Issue 생성은 미실행: 외부 쓰기 금지. D2/D6은 #381의 출시 조건으로 추적한다.
 - [ ] PR 설명 대조는 해당 없음: PR을 생성하지 않았다.
+
+## 10. 2026-11-24 main rebase 및 V35 재검증
+
+- 상태: PASS. 기준 `origin/main`은 `dae144f8`, rebase 직후 HEAD는 `f90097ae`다.
+- V35 번호·참조 변경 커밋: `e033723d` (정상 pre-commit·commit-msg hook 통과).
+- `./harness sync` 후 충돌을 해결하고 `git rebase --continue`로 완료했다. main이 다른 worktree에 checkout되어 로컬 main fetch 경고가 있었으나 원격 main 반영과 ancestor 확인은 통과했다.
+- 충돌 해결: `TASK.md`는 #381 계약을 유지했다. `FlywayMigrationContractTest`는 main의 V34 operator 검증과 동의 migration 목록을 모두 보존했다. `AccountPersistenceIntegrationTest`와 `NotificationPreferenceMigrationIntegrationTest`는 main의 설명·검증을 보존한 후 두 테이블의 최종 개수로 갱신했다. production 코드 충돌은 없었다.
+- `V35__add_location_consent_history.sql`은 원본 V34에서 git mv만 수행했다. 전후 Git blob은 `a6d0683700179cbb91e24733903bd5854d0a318f`로 동일하다. main의 V34 operator SQL과 production 로직은 변경하지 않았다.
+- 최신 migration 35, 전체 테이블 56, V24 이후 적용 수 11을 검증한다. INT-001은 빈 DB 및 V34→V35 upgrade를 검증하며 기존 checksum·제약 검증은 유지했다.
+- DBML·manifest의 동의 버전을 V35로 바꾸고 ERD에 V35 참조를 명시했다. main의 V34 설명은 보존했다. TASK의 base/최신 migration과 계획의 경로·승인 기록도 갱신했다.
+
+| 명령 | 결과 | 실제 실행 수 |
+| --- | --- | --- |
+| `./gradlew test --console=plain` | exit 0, 46초 | 1,654 |
+| `./gradlew integrationTest --console=plain` 최초 | exit 1, 1분 26초 | 133, 초기화 실패 118 |
+| `./gradlew clean test integrationTest --console=plain` | exit 0, 3분 54초 | 단위 1,654 / 통합 950 |
+| `./harness check` | exit 0 | JUnit 정책 369개 파일 |
+| `./harness pr-ready --project-tests` | exit 0, Gradle 10초 | 저장소 전체 check 통과 |
+| `npm run hooks:validate` | exit 0 | Husky 검증 |
+| `git diff --check` | exit 0 | 전체 변경 |
+
+최종 XML은 `build/test-results/test/`의 216 suites 및 `build/test-results/integrationTest/`의 120 suites다. 두 suite 모두 실패·오류·skip 0이다.
+최초 통합 실패는 `build/resources`에 남은 이전 V34 동의 SQL과 main V34 operator SQL의 중복 때문이었다. 소스가 아닌 stale 빌드 리소스를 Gradle clean으로 재생성한 후 통과했다. 검사나 SQL을 우회·수정하지 않았다.
+이번 재실행 결과가 §3의 최초 실행 수보다 최신이며, 별도 성능 태그·운영 배포는 여전히 미실행이다.
+이미 V34 동의 migration을 적용한 기존 DB의 자동 변경은 수행하지 않았다. 해당 DB가 있다면 별도 승인된 이력 정합성 확인이 필요하다. push는 수행하지 않는다.
