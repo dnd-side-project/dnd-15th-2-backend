@@ -15,6 +15,7 @@ import com.dnd.qello.account.domain.AccountStatus;
 import com.dnd.qello.account.repository.AccountRepository;
 import com.dnd.qello.direction.config.DirectionPostProperties;
 import com.dnd.qello.direction.config.DirectionSchemeProperties;
+import com.dnd.qello.direction.consent.LocationConsentService;
 import com.dnd.qello.direction.domain.ActiveUserPresence;
 import com.dnd.qello.direction.domain.DirectionPost;
 import com.dnd.qello.direction.domain.DirectionScheme;
@@ -48,9 +49,11 @@ public class DirectionPostApplicationService {
 	private final DirectionPostService postService;
 	private final Clock clock;
 	private final LocationCollectionGate locationCollectionGate;
+	private final LocationConsentService locationConsentService;
 
 	public DirectionPreviewResult preview(long senderId) {
 		locationCollectionGate.ensureEnabled();
+		locationConsentService.ensureConsented(senderId);
 		Instant at = clock.instant();
 		ensureActiveUser(senderId);
 		currentPresence(senderId, at);
@@ -65,6 +68,7 @@ public class DirectionPostApplicationService {
 	public DirectionPostService.SendResult submit(long senderId, String idempotencyKey, SubmitCommand command) {
 		// 멱등 replay보다 먼저 거부한다. 게이트가 꺼진 뒤 같은 키 재요청에도 기존 결과를 돌려주지 않는다(D2).
 		locationCollectionGate.ensureEnabled();
+		locationConsentService.ensureConsented(senderId);
 		if (command == null) {
 			throw new DirectionException(DirectionErrorCode.REQUIRED_VALUE_MISSING, "command",
 					"질문글 제출 요청은 필수입니다");

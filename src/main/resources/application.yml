@@ -116,6 +116,8 @@ qello:
       # API가 받아들이는 과거 위치 관측값의 최대 나이.
       max-observation-age: PT5M
   location:
+    # 게시 약관 버전은 게시 시 consent.current-terms-version에 리뷰된 YAML 리터럴로 추가한다.
+    # 기본 프로필은 아직 미게시이므로 값을 두지 않는다. collection.enabled=true이면 값이 필수다.
     collection:
       # 위치 수집 게이트(#379). 기본은 꺼짐이며, 꺼져 있으면 위치 갱신·미리보기·발송을 503으로 거부한다.
       # 켜려면 위치기반서비스사업 신고 수리 참조가 있어야 한다(docs/location-collection-gate.md).

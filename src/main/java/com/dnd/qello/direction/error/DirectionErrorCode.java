@@ -96,7 +96,13 @@ public enum DirectionErrorCode implements ErrorCode {
 	// 위치기반서비스사업 신고 수리 참조 전이라 위치 수집 게이트가 꺼져 있다(#379).
 	// 계정 부적격(403)과 구분하고, 설정 전이라 쓸 수 없는 기능은 503으로 낸다(ANS-APP-004와 같다).
 	LOCATION_COLLECTION_DISABLED(HttpStatus.SERVICE_UNAVAILABLE, "DIR-APP-008", ErrorCategory.APP,
-			"현재 위치 기능을 사용할 수 없습니다.");
+			"현재 위치 기능을 사용할 수 없습니다."),
+
+	LOCATION_CONSENT_REQUIRED(HttpStatus.FORBIDDEN, "DIR-APP-009", ErrorCategory.APP,
+			"현재 약관에 대한 위치정보 이용 동의가 필요합니다."),
+
+	LOCATION_CONSENT_VERSION_MISMATCH(HttpStatus.CONFLICT, "DIR-APP-010", ErrorCategory.APP,
+			"현재 약관 버전과 일치하지 않습니다.");
 
 	private final HttpStatus httpStatus;
 	private final String code;

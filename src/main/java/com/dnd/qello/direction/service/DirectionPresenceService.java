@@ -10,8 +10,9 @@ import org.springframework.transaction.annotation.Transactional;
 import com.dnd.qello.account.domain.Account;
 import com.dnd.qello.account.domain.AccountRole;
 import com.dnd.qello.account.domain.AccountStatus;
-import com.dnd.qello.account.repository.AccountRepository;
+import com.dnd.qello.account.repository.AccountLockRepository;
 import com.dnd.qello.direction.config.DirectionPresenceProperties;
+import com.dnd.qello.direction.consent.LocationConsentService;
 import com.dnd.qello.direction.domain.ActiveUserPresence;
 import com.dnd.qello.direction.error.DirectionErrorCode;
 import com.dnd.qello.direction.error.DirectionException;
@@ -25,15 +26,18 @@ import lombok.RequiredArgsConstructor;
 @Transactional(readOnly = true)
 public class DirectionPresenceService {
 
-	private final AccountRepository accountRepository;
+	private final AccountLockRepository accountLockRepository;
 	private final ActiveUserPresenceRepository presenceRepository;
 	private final DirectionPresenceProperties properties;
 	private final Clock clock;
 	private final LocationCollectionGate locationCollectionGate;
+	private final LocationConsentService locationConsentService;
 
 	@Transactional
 	public boolean update(long userId, UpdateCommand command) {
 		locationCollectionGate.ensureEnabled();
+		var lockedAccount = accountLockRepository.findByIdForUpdate(userId);
+		locationConsentService.ensureConsented(userId);
 		if (userId <= 0) {
 			throw new DirectionException(DirectionErrorCode.INVALID_ID, "userId", "인증 사용자 식별자가 유효하지 않습니다");
 		}
@@ -41,7 +45,7 @@ public class DirectionPresenceService {
 			throw new DirectionException(DirectionErrorCode.REQUIRED_VALUE_MISSING, "command", "presence 요청은 필수입니다");
 		}
 
-		Account account = accountRepository.findById(userId)
+		Account account = lockedAccount
 				.orElseThrow(() -> new DirectionException(DirectionErrorCode.PRESENCE_ACCOUNT_NOT_FOUND, "userId",
 						"위치 정보를 갱신할 계정을 찾을 수 없습니다"));
 		if (account.getRole() != AccountRole.USER || account.getStatus() != AccountStatus.ACTIVE) {

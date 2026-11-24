@@ -123,6 +123,10 @@ class DirectionMatchingPerformanceIntegrationTest extends PostgisContainerIntegr
 				"DELETE FROM approved_question WHERE approved_by IN (SELECT id FROM user_account WHERE coarse_region_code = ?)",
 				REGION);
 		jdbc.update("DELETE FROM active_user_presence WHERE coarse_region_code = ?", REGION);
+		jdbc.update("""
+				DELETE FROM location_consent_history WHERE user_id IN
+				(SELECT id FROM user_account WHERE coarse_region_code = ?)
+				""", REGION);
 		jdbc.update("DELETE FROM user_account WHERE coarse_region_code = ?", REGION);
 		jdbc.update("DELETE FROM region_code WHERE code = ?", REGION);
 	}
@@ -291,11 +295,19 @@ class DirectionMatchingPerformanceIntegrationTest extends PostgisContainerIntegr
 	}
 
 	private long seedSender() {
+		jdbc.update("""
+				DELETE FROM location_consent_history WHERE user_id IN
+				(SELECT id FROM user_account WHERE coarse_region_code = ? AND nickname = 'perf-sender')
+				""", REGION);
 		jdbc.update("DELETE FROM user_account WHERE coarse_region_code = ? AND nickname = 'perf-sender'", REGION);
 		long senderId = jdbc.queryForObject("""
 				INSERT INTO user_account (role, country_code, status, coarse_region_code, locale, timezone, nickname)
 				VALUES ('USER', 'KR', 'ACTIVE', ?, 'ko-KR', 'Asia/Seoul', 'perf-sender') RETURNING id
 				""", Long.class, REGION);
+		jdbc.update("""
+				INSERT INTO location_consent_history (user_id, terms_version, action, recorded_at)
+				VALUES (?, 'test-v1', 'CONSENT', ?)
+				""", senderId, Timestamp.from(NOW));
 		presenceService.update(senderId, new DirectionPresenceService.UpdateCommand(
 				BigDecimal.valueOf(SENDER_LAT), BigDecimal.valueOf(SENDER_LON), BigDecimal.ONE, true, NOW));
 		return senderId;

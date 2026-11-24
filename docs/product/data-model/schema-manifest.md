@@ -6,7 +6,27 @@
 
 [ADR-0001](../../adr/0001-database-schema-ownership.md)에 따라 실행 DB 변경의 권위는 [Flyway V1~V28 migration](../../../src/main/resources/db/migration/)이다. [DBML](direction_communication.dbml)은 현재 백엔드의 논리 설계이고 [ERD 설명](DIRECTION_COMMUNICATION_ERD.md)은 관계·동작의 해설이다. 과거 외부 vault/독립 DDL snapshot은 아래 접힌 이력에만 둔다. 이 manifest의 전체 집계는 `public`의 제품·백엔드 52개와 Spring Session 2개를 포함하고, PostGIS extension 소유 객체와 `flyway_schema_history`를 제외한다.
 
-## 현재 파일 체크섬
+## V35 위치정보 동의 이력 추가 (#381)
+
+아래는 V35 migration의 정적 변경 목록이며 DB에 적용해 검증한 카탈로그 집계가 아니다.
+V1~V28 스냅샷 집계와 과거 checksum은 해당 시점의 기록으로 보존한다.
+
+| 객체 | 계약 |
+| --- | --- |
+| `location_consent_history` | 5열: `id BIGINT identity PK`, `user_id BIGINT NOT NULL`, `terms_version VARCHAR(100) NOT NULL`, `action VARCHAR(16) NOT NULL`, `recorded_at TIMESTAMPTZ NOT NULL` |
+| `fk_location_consent_history_user` | `user_id` → `user_account(id)`, `ON DELETE RESTRICT` |
+| `ck_location_consent_history_terms_version` | 길이 1~100자, 빈 값·앞뒤 공백 거부 |
+| `ck_location_consent_history_action` | `CONSENT`, `WITHDRAW`만 허용 |
+| `ix_location_consent_history_user_latest` | `(user_id, id DESC)` |
+
+현재 상태는 사용자 전체 최신 id 한 행으로 판단한다. 요청마다 이력을 추가하며
+이전 행은 수정하지 않는다. 철회 이력 추가와 presence 삭제는 같은 트랜잭션이다.
+동의·철회·presence 갱신은 JDBC 계정 행 잠금 이후 최신 상태를 조회하고 commit까지
+잠금을 유지한다. 계정 탈퇴 상태 UPDATE도 이 잠금에 참여하고 cleanup 전에 flush한다.
+계정 soft-delete는 동의 이력을 지우지 않는다. 보존 목적·기간·파기 정책은 운영 출시 전
+별도 승인 대상이며, 이 구조가 무기한 보존의 승인을 뜻하지 않는다.
+
+## V1~V28 스냅샷 파일 체크섬
 
 | Artifact | SHA-256 | 검증 시점·의미 |
 | --- | --- | --- |

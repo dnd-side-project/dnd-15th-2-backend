@@ -181,6 +181,8 @@
 | `DIR-APP-006` | PRESENCE_ACCOUNT_NOT_FOUND | 404 | APP | 위치 정보를 갱신할 계정을 찾을 수 없습니다. |
 | `DIR-APP-007` | PRESENCE_ACCOUNT_NOT_ELIGIBLE | 403 | APP | 위치 정보를 갱신할 수 없는 계정입니다. |
 | `DIR-APP-008` | LOCATION_COLLECTION_DISABLED | 503 | APP | 현재 위치 기능을 사용할 수 없습니다. |
+| `DIR-APP-009` | LOCATION_CONSENT_REQUIRED | 403 | APP | 현재 약관에 대한 위치정보 이용 동의가 필요합니다. |
+| `DIR-APP-010` | LOCATION_CONSENT_VERSION_MISMATCH | 409 | APP | 현재 약관 버전과 일치하지 않습니다. |
 | `DIR-INFRA-001` | DUPLICATED_POST | 409 | INFRA | 이미 전송된 게시글입니다. |
 | `DIR-INFRA-002` | DUPLICATED_RECIPIENT | 409 | INFRA | 이미 등록된 수신자입니다. |
 

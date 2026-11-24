@@ -120,6 +120,7 @@ class AccountWithdrawalIntegrationTest extends PostgisContainerIntegrationTestSu
 		jdbc.update("DELETE FROM push_device");
 		jdbc.update("DELETE FROM active_user_presence");
 		jdbc.update("DELETE FROM device_credential");
+		jdbc.update("DELETE FROM location_consent_history");
 		jdbc.update("DELETE FROM user_account");
 		jdbc.update("""
 				INSERT INTO region_code (code, parent_code, display_name, level)
@@ -132,6 +133,10 @@ class AccountWithdrawalIntegrationTest extends PostgisContainerIntegrationTestSu
 	@DisplayName("TEST-PLAN-GH-337-ACCOUNT-WITHDRAWAL-INT-002: 탈퇴 요청은 계정을 유예 중으로 바꾸고 푸시 기기 전부 해지, 미발송 전달 취소, 위치 삭제를 한 번에 하며 자격증명과 닉네임은 남긴다")
 	void requestWithdrawalCleansUpPushAndPresenceButKeepsCredentials() throws Exception {
 		Registered user = register("탈퇴요청");
+		jdbc.update("""
+				INSERT INTO location_consent_history (user_id, terms_version, action, recorded_at)
+				VALUES (?, 'test-v1', 'CONSENT', ?)
+				""", user.userId(), java.sql.Timestamp.from(clock.instant()));
 		mockMvc.perform(updatePresence(user.accessToken())).andExpect(status().isOk());
 		PushDevice ios = pushDevice(user.userId(), PushPlatform.IOS, "gh337-int002-ios");
 		PushDevice android = pushDevice(user.userId(), PushPlatform.ANDROID, "gh337-int002-android");
@@ -167,6 +172,10 @@ class AccountWithdrawalIntegrationTest extends PostgisContainerIntegrationTestSu
 	@DisplayName("TEST-PLAN-GH-337-ACCOUNT-WITHDRAWAL-INT-003: 탈퇴 요청 후 같은 액세스 토큰의 질문글 제출·답변 제출·위치 갱신은 403이고 행을 만들지 않는다")
 	void pendingAccountCannotWriteWithExistingAccessToken() throws Exception {
 		Registered user = register("쓰기차단");
+		jdbc.update("""
+				INSERT INTO location_consent_history (user_id, terms_version, action, recorded_at)
+				VALUES (?, 'test-v1', 'CONSENT', ?)
+				""", user.userId(), java.sql.Timestamp.from(clock.instant()));
 		mockMvc.perform(requestWithdrawal(user.accessToken())).andExpect(status().isOk());
 
 		mockMvc.perform(post("/api/v1/direction/posts")
@@ -215,6 +224,10 @@ class AccountWithdrawalIntegrationTest extends PostgisContainerIntegrationTestSu
 	@DisplayName("TEST-PLAN-GH-337-ACCOUNT-WITHDRAWAL-INT-007: 유예 중 재발급한 토큰으로 철회하면 ACTIVE와 같은 닉네임으로 돌아오고 다음 재발급은 ACTIVE, 위치 갱신은 200이다")
 	void cancelsWithdrawalWithReissuedTokenAndRestoresWrites() throws Exception {
 		Registered user = register("철회복귀");
+		jdbc.update("""
+				INSERT INTO location_consent_history (user_id, terms_version, action, recorded_at)
+				VALUES (?, 'test-v1', 'CONSENT', ?)
+				""", user.userId(), java.sql.Timestamp.from(clock.instant()));
 		mockMvc.perform(requestWithdrawal(user.accessToken())).andExpect(status().isOk());
 		String pendingToken = accessToken(mockMvc.perform(reissue(user))
 				.andExpect(status().isOk())

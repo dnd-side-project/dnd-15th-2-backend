@@ -4,7 +4,7 @@ Project direction_connected_communication {
   Note: '''
     # 방향으로 연결되는 소통
 
-    이 문서는 Flyway V1~V28을 적용한 실행 스키마의 제품·백엔드 테이블 52개를 설명한다.
+    이 문서는 Flyway V1~V28의 제품·백엔드 테이블 52개와 V35의 위치정보 동의 이력을 설명한다.
     실행 스키마의 권위는 Flyway versioned migration이다(ADR-0001). 이 DBML은
     설계·검토용 표현이며 PostgreSQL의 일부 기능은 각 테이블/인덱스 Note에 SQL
     원문과 함께 보충한다. Enum은 별도 PostgreSQL enum 타입이 아니라 VARCHAR와
@@ -25,6 +25,38 @@ Project direction_connected_communication {
     별도 설계 문서에서 확인한다.
   '''
 }
+
+// -----------------------------------------------------------------------------
+// V35 위치정보 동의 이력
+// -----------------------------------------------------------------------------
+
+Enum location_consent_action {
+  CONSENT
+  WITHDRAW
+}
+
+Table location_consent_history {
+  id bigint [pk, increment]
+  user_id bigint [not null]
+  terms_version varchar(100) [not null]
+  action location_consent_action [not null]
+  recorded_at timestamptz [not null]
+
+  indexes {
+    (user_id, id) [name: 'ix_location_consent_history_user_latest', note: 'SQL: (user_id, id DESC)']
+  }
+
+  Note: '''
+    요청마다 새 행을 추가하고 기존 행은 수정하지 않는다. 사용자 전체 최신 id 한 행만으로
+    현재 동의 상태를 판정하며 recorded_at이나 약관 버전으로 먼저 필터링하지 않는다.
+    terms_version은 1~100자이며 비어 있거나 앞뒤 공백이 있으면 거부한다.
+    SQL CHECK action IN ('CONSENT', 'WITHDRAW'); FK는 ON DELETE RESTRICT다.
+    동의·철회·위치 갱신은 같은 사용자 계정 행을 잠근 뒤 최신 이력을 조회한다.
+    계정 soft-delete 후에도 원장을 보존한다. 보존 기간·파기 정책은 운영 출시 전 별도 결정한다.
+  '''
+}
+
+Ref: location_consent_history.user_id > user_account.id [delete: restrict]
 
 // -----------------------------------------------------------------------------
 // 값 집합

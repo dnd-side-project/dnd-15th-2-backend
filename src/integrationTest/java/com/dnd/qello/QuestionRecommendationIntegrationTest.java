@@ -69,6 +69,10 @@ class QuestionRecommendationIntegrationTest extends PostgisContainerIntegrationT
 		jdbc.update("DELETE FROM recipient_receive_state");
 		jdbc.update("DELETE FROM active_user_presence");
 		jdbc.update("DELETE FROM approved_question");
+		jdbc.update("""
+				DELETE FROM location_consent_history WHERE user_id IN
+				(SELECT id FROM user_account WHERE coarse_region_code = ?)
+				""", REGION);
 		jdbc.update("DELETE FROM user_account WHERE coarse_region_code = ?", REGION);
 		jdbc.update("DELETE FROM region_code WHERE code = ?", REGION);
 		jdbc.update("INSERT INTO region_code (code, parent_code, display_name, level) "
@@ -98,6 +102,10 @@ class QuestionRecommendationIntegrationTest extends PostgisContainerIntegrationT
 	@Test
 	@DisplayName("INT-002: 추천 목록의 질문으로는 전송이 되고 목록에 없는 INACTIVE 질문은 QUESTION_NOT_ACTIVE로 거부된다")
 	void recommendedQuestionIsAcceptedBySubmission() {
+		jdbc.update("""
+				INSERT INTO location_consent_history (user_id, terms_version, action, recorded_at)
+				VALUES (?, 'test-v1', 'CONSENT', ?)
+				""", userId, Timestamp.from(NOW));
 		presenceService.update(userId, new DirectionPresenceService.UpdateCommand(
 				BigDecimal.valueOf(37.5), BigDecimal.valueOf(127.0), BigDecimal.ONE, true, NOW));
 		long schemeId = jdbc.queryForObject(
