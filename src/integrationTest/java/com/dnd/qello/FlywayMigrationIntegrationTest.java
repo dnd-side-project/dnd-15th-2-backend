@@ -12,6 +12,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 
@@ -27,7 +28,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * TEST-PLAN-GH-115-DIRECTION-MATCHING-CONTRACT-INT-001,
  * TEST-PLAN-GH-294-COUNTRY-SEED-INT-006,
  * TEST-PLAN-GH-137-DIRECTION-POST-MODERATION (V32 latest version, added 2026-10-07T22:38:41+09:00),
- * TEST-PLAN-GH-337-ACCOUNT-WITHDRAWAL-INT-001 (V33 latest version and catalog, added 2026-10-09T18:47:28+09:00)
+ * TEST-PLAN-GH-337-ACCOUNT-WITHDRAWAL-INT-001 (V33 latest version and catalog, added 2026-10-09T18:47:28+09:00),
+ * TEST-PLAN-GH-375-OPERATOR-ACCESS-LOG-INT-001 (V34 latest version and catalog, added 2026-11-22T22:02:56+09:00)
  */
 @SpringBootTest
 @ActiveProfiles({"test", "flyway-migration"})
@@ -68,6 +70,7 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 			"spring_session_attributes",
 			"device_credential",
 			"operator_action_audit",
+			"operator_access_log",
 			"push_dispatch_group",
 			"push_dispatch_group_member",
 			"push_daily_budget");
@@ -143,7 +146,8 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 			"push_dispatch_group_due_idx",
 			"push_dispatch_group_recommendation_history_idx",
 			"uq_push_dispatch_group_member_notification",
-			"user_account_withdrawal_due_idx");
+			"user_account_withdrawal_due_idx",
+			"operator_access_log_occurred_at_idx");
 
 	private static final Set<String> EXPECTED_FUNCTIONS = Set.of(
 			"enforce_question_text_immutability",
@@ -170,7 +174,7 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 			"ct_media_status_preserves_content",
 			"ct_answer_reaction_reactor_can_view");
 
-	private static final int LATEST_MIGRATION_VERSION = 33;
+	private static final int LATEST_MIGRATION_VERSION = 34;
 
 	@Autowired
 	private Flyway flyway;
@@ -258,7 +262,11 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 		// V28(#180)이 group CHECK 7개와 budget count CHECK 1개를 추가해 133이 됐다.
 		// V33(#337)이 ck_user_account_withdrawal_requested_at 1개를 추가해 134가 됐다
 		// (ck_user_account_status는 같은 이름으로 교체돼 순증가는 없다).
-		assertThat(countConstraints(constraints, "c")).isEqualTo(134);
+		// V34(#375)가 operator_access_log의 CHECK 8개(event_type, operator,
+		// operator_required,
+		// client_address, http_method, request_path, http_status, result_code)를 추가해
+		// 142가 됐다.
+		assertThat(countConstraints(constraints, "c")).isEqualTo(142);
 		// V20(#113)이 operator_action_audit의 조회 인덱스 2개를 추가해 62에서 64가 됐다.
 		// V21(#168)이 uq_user_account_nickname_ci 1개를 추가해 64에서 65가 됐다.
 		// CREATE UNIQUE INDEX로 만든 부분 인덱스라 pg_constraint에는 잡히지 않는다 —
@@ -267,7 +275,9 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 		// V28(#180)이 group/member 조회·멱등성 인덱스 4개를 추가해 70이 됐다.
 		// V33(#337)이 탈퇴 유예 만료 조회용 부분 인덱스 user_account_withdrawal_due_idx 1개를 추가해 71이
 		// 됐다.
-		assertThat(EXPECTED_INDEXES).hasSize(71);
+		// V34(#375)가 접근 기록 기간 조회·파기용 operator_access_log_occurred_at_idx 1개를 추가해 72가
+		// 됐다.
+		assertThat(EXPECTED_INDEXES).hasSize(72);
 		assertThat(EXPECTED_FUNCTIONS).hasSize(11);
 		assertThat(EXPECTED_TRIGGERS).hasSize(10);
 
@@ -573,6 +583,67 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 		assertThat(withdrawalConstraint).contains("WITHDRAWAL_PENDING", "withdrawal_requested_at IS NOT NULL");
 		assertThat(column).containsEntry("data_type", "timestamp with time zone").containsEntry("is_nullable", "YES");
 		assertThat(dueIndex).contains("(withdrawal_requested_at, id)", "WHERE", "WITHDRAWAL_PENDING");
+	}
+
+	@Test
+	@DisplayName("TEST-PLAN-GH-375-OPERATOR-ACCESS-LOG-INT-001: V34는 FK 없는 append-only 접근 기록 테이블과 CHECK·발생 시각 인덱스를 만든다")
+	void v34AddsOperatorAccessLogCatalog() {
+		List<String> columns = jdbcTemplate.queryForList("""
+				SELECT column_name
+				FROM information_schema.columns
+				WHERE table_schema = 'public' AND table_name = 'operator_access_log'
+				ORDER BY ordinal_position
+				""", String.class);
+		List<String> checkNames = jdbcTemplate.queryForList("""
+				SELECT conname
+				FROM pg_constraint
+				WHERE conrelid = 'operator_access_log'::regclass AND contype = 'c'
+				""", String.class);
+		Integer foreignKeys = jdbcTemplate.queryForObject("""
+				SELECT count(*)
+				FROM pg_constraint
+				WHERE conrelid = 'operator_access_log'::regclass AND contype = 'f'
+				""", Integer.class);
+		String occurredAtIndex = jdbcTemplate.queryForObject(
+				"SELECT indexdef FROM pg_indexes WHERE indexname = 'operator_access_log_occurred_at_idx'",
+				String.class);
+
+		assertThat(columns).containsExactly("id", "event_type", "operator_user_id", "client_address",
+				"http_method", "request_path", "http_status", "result_code", "occurred_at");
+		assertThat(checkNames).containsExactlyInAnyOrder(
+				"ck_operator_access_log_event_type",
+				"ck_operator_access_log_operator",
+				"ck_operator_access_log_operator_required",
+				"ck_operator_access_log_client_address",
+				"ck_operator_access_log_http_method",
+				"ck_operator_access_log_request_path",
+				"ck_operator_access_log_http_status",
+				"ck_operator_access_log_result_code");
+		// 계정이 삭제·탈퇴해도 기록이 남아야 하므로 user_account FK를 두지 않는다.
+		assertThat(foreignKeys).isZero();
+		assertThat(occurredAtIndex).contains("(occurred_at)");
+	}
+
+	@Test
+	@DisplayName("TEST-PLAN-GH-375-OPERATOR-ACCESS-LOG-INT-001: V34의 CHECK가 정의되지 않은 이벤트, 운영자 없는 성공, 범위 밖 상태를 거절한다")
+	void v34RejectsInvalidAccessLogRows() {
+		assertThat(jdbcTemplate.update(accessLogInsert(), "LOGIN_FAILED", null, 401)).isEqualTo(1);
+
+		assertThatThrownBy(() -> jdbcTemplate.update(accessLogInsert(), "NOT_A_REAL_EVENT", 1L, 200))
+				.isInstanceOf(DataIntegrityViolationException.class);
+		assertThatThrownBy(() -> jdbcTemplate.update(accessLogInsert(), "LOGIN_SUCCEEDED", null, 200))
+				.isInstanceOf(DataIntegrityViolationException.class);
+		assertThatThrownBy(() -> jdbcTemplate.update(accessLogInsert(), "API_CALL", 1L, 600))
+				.isInstanceOf(DataIntegrityViolationException.class);
+		jdbcTemplate.update("DELETE FROM operator_access_log");
+	}
+
+	private static String accessLogInsert() {
+		return """
+				INSERT INTO operator_access_log
+					(event_type, operator_user_id, client_address, http_method, request_path, http_status, occurred_at)
+				VALUES (?, ?, '192.0.2.10', 'GET', '/admin/questions', ?, now())
+				""";
 	}
 
 	@Test

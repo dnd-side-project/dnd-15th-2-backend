@@ -1,6 +1,7 @@
 /**
  * Created at: 2026-10-06T14:26:52+09:00
  * Source scenario: TEST-PLAN-GH-315-AUTH-NICKNAME-RATE-LIMIT-INT-001 through INT-005
+ * Source scenario: TEST-PLAN-GH-375-OPERATOR-ACCESS-LOG-INT-007 (added 2026-11-22T22:14:54+09:00)
  */
 package com.dnd.qello;
 
@@ -11,6 +12,8 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 
 import jakarta.servlet.http.Cookie;
@@ -171,6 +174,34 @@ class AuthRateLimitIntegrationTest extends PostgisContainerIntegrationTestSuppor
 		clock.advance(Duration.ofHours(1));
 
 		mockMvc.perform(register("install-w3").with(from("192.0.2.7"))).andExpect(status().isCreated());
+	}
+
+	@Test
+	@DisplayName("TEST-PLAN-GH-375-OPERATOR-ACCESS-LOG-INT-007: 한도를 넘겨 거절된 운영자 로그인은 운영자 id 없이 429·AUT-APP-007로 접근 기록에 남는다")
+	void recordsRateLimitedOperatorLoginInAccessLog() throws Exception {
+		operatorSeedService.seedIfAbsent(
+				LoginId.of(LOGIN_ID), new RawPassword(PASSWORD), "rate-admin", COUNTRY_CODE, "ko-KR", "Asia/Seoul");
+		Csrf csrf = issueCsrf();
+		mockMvc.perform(login(csrf, "wrong-password").with(from("192.0.2.8"))).andExpect(status().isUnauthorized());
+		mockMvc.perform(login(csrf, PASSWORD).with(from("192.0.2.8"))).andExpect(status().isOk());
+		mockMvc.perform(login(csrf, PASSWORD).with(from("192.0.2.8")))
+				.andExpect(status().isTooManyRequests())
+				.andExpect(jsonPath("$.errorDetail.code").value("AUT-APP-007"));
+
+		List<Map<String, Object>> rows = jdbcTemplate.queryForList("""
+				SELECT event_type, operator_user_id, http_status, result_code
+				FROM operator_access_log
+				WHERE client_address = '192.0.2.8'
+				ORDER BY id
+				""");
+
+		assertThat(rows).extracting(row -> row.get("event_type"))
+				.containsExactly("LOGIN_FAILED", "LOGIN_SUCCEEDED", "LOGIN_FAILED");
+		assertThat(rows.get(0)).containsEntry("http_status", 401).containsEntry("result_code", "AUT-APP-001");
+		assertThat(rows.get(0).get("operator_user_id")).isNotNull();
+		assertThat(rows.get(2)).containsEntry("operator_user_id", null)
+				.containsEntry("http_status", 429)
+				.containsEntry("result_code", "AUT-APP-007");
 	}
 
 	private MockHttpServletRequestBuilder register(String installationId) {

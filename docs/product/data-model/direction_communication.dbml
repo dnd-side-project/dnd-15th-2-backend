@@ -1415,6 +1415,37 @@ ck_operator_action_audit_target_type: CHECK (target_type::text = ANY (ARRAY['FIL
 '''
 }
 
+Table operator_access_log [headercolor: #9C755F] {
+  id bigint [pk, increment, not null]
+  event_type varchar(30) [not null, note: 'LOGIN_SUCCEEDED, LOGIN_FAILED, LOGOUT, API_CALL']
+  operator_user_id bigint [note: '운영자 계정 id. 계정을 특정하지 못한 로그인 실패만 NULL']
+  client_address varchar(64) [not null, note: '연결 주소(remoteAddr). X-Forwarded-For는 쓰지 않는다']
+  http_method varchar(16) [not null]
+  request_path varchar(512) [not null, note: 'query string을 뺀 요청 URI']
+  http_status smallint [not null]
+  result_code varchar(30) [note: '로그인 실패의 오류 코드(AUT-APP-xxx). 그 밖의 이벤트는 NULL']
+  occurred_at timestamptz [not null]
+
+  indexes {
+    occurred_at [name: 'operator_access_log_occurred_at_idx']
+  }
+
+
+  Note: '''
+운영자 로그인 결과·로그아웃·운영자 API 호출의 append-only 접근 기록이다(V34, #375). 운영자 식별자는 FK 없이 보존해 계정 삭제·탈퇴 뒤에도 남는다. 비밀번호, 세션 ID, CSRF 토큰, 요청 본문, query string은 담지 않는다. V1~V28 스냅샷 집계에는 포함하지 않는다.
+
+Flyway CHECK constraints (SQL):
+ck_operator_access_log_event_type: CHECK (event_type IN ('LOGIN_SUCCEEDED', 'LOGIN_FAILED', 'LOGOUT', 'API_CALL'))
+ck_operator_access_log_operator: CHECK (operator_user_id IS NULL OR operator_user_id > 0)
+ck_operator_access_log_operator_required: CHECK (event_type = 'LOGIN_FAILED' OR operator_user_id IS NOT NULL)
+ck_operator_access_log_client_address: CHECK (btrim(client_address) <> '')
+ck_operator_access_log_http_method: CHECK (btrim(http_method) <> '')
+ck_operator_access_log_request_path: CHECK (btrim(request_path) <> '')
+ck_operator_access_log_http_status: CHECK (http_status BETWEEN 100 AND 599)
+ck_operator_access_log_result_code: CHECK (result_code IS NULL OR btrim(result_code) <> '')
+'''
+}
+
 Table push_daily_budget [headercolor: #B07AA1] {
   user_id bigint [not null]
   budget_date date [not null]
@@ -1808,9 +1839,10 @@ TableGroup safety_and_moderation {
   moderation_review
 }
 
-// 그룹 색상 #E8D8C9. 운영자의 filtering authority 변경 감사 원장
+// 그룹 색상 #E8D8C9. 운영자의 filtering authority 변경 감사 원장과 운영자 접근 기록
 TableGroup operational_audit {
   operator_action_audit
+  operator_access_log
 }
 
 // 그룹 색상 #EADCF0. 앱 내 알림, 푸시 기기·전달, 트랜잭셔널 Outbox

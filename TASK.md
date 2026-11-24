@@ -11,6 +11,7 @@
 - GitHub Issue: `#386`
 - Branch: `fix/gh-386-test-git-env-isolation`
 - Base branch: `main`
+- Test plan: `docs/test-plans/gh-375-TEST-PLAN-GH-375-OPERATOR-ACCESS-LOG.md` (2026-11-22T21:56:28+09:00 tkv00 승인, D1~D4 권장안)
 
 ## Objective
 
@@ -57,8 +58,9 @@
 
 ```bash
 ./harness check
+./gradlew test
+./gradlew integrationTest
 ./harness pr-ready --project-tests
-npm run hooks:validate
 git diff --check
 ```
 
