@@ -56,6 +56,31 @@
 | ADR, 테스트 계획 | 계획 에이전트(omo) | 사람의 ADR·계획 승인 |
 | 마이그레이션, 조회·암호화 코드, 테스트 | 실행 에이전트(omo) | PR에서 작성자가 아닌 백엔드 한 명 승인 |
 
+## Implementation file ownership
+
+승인자 @Byuntil, 2026-11-25 (Issue #388 댓글에 같은 목록 기록). Java 경로 접두사는 `src/main/java/com/dnd/qello/`다. 테스트 파일은 승인된 테스트 계획의 소유 범위를 따른다.
+
+| 구분 | 파일 | 용도 |
+| --- | --- | --- |
+| 수정 | `build.gradle` | GeographicLib-Java 2.1(MIT) 의존성, 성능 전용 PostGIS 이미지를 `performanceTest`에만 전달하는 설정 |
+| 수정 | `direction/domain/PostAudience.java` | D7: 원점·셀 모두 NULL인 과거 행 복원 허용, 신규 생성 검증 유지 |
+| 수정 | `direction/repository/jdbc/JdbcActiveUserPresenceRepository.java`, `direction/repository/jdbc/JdbcPostAudienceRepository.java` | 암호화 저장·복호화 읽기, 앱 측 거리·방위 계산 연결 |
+| 수정 | `direction/repository/jdbc/sql/ActiveUserPresenceSql.java`, `direction/repository/jdbc/sql/PostAudienceSql.java` | 평문 PostGIS 연산 제거, 암호문 컬럼 사용 |
+| 신규 | `direction/security/**` | 좌표 전용 key ring, AES-GCM envelope(행 결합 AAD), 보호 오류 |
+| 신규 | `direction/geo/**` | GeographicLib 기반 거리·방위·역방위 계산, 섹터 판정 |
+| 신규 | `direction/config/CoordinateProtectionProperties.java` | 좌표 key 설정 |
+| 신규 | `src/main/resources/db/migration/V35__encrypt_exact_coordinates.sql` | D7 단일 migration |
+| 수정 | `src/main/resources/application.yml`, `application-local.yml`, `application-dev.yml` | key 설정 자리. local은 fixture 값, dev는 환경변수 이름만 둔다 |
+| 수정 | `docs/product/data-model/DIRECTION_COMMUNICATION_ERD.md`, `direction_communication.dbml`, `schema-manifest.md`, `docs/error-codes.md`(새 오류 코드가 있을 때만) | 스키마·오류 문서 |
+| 신규·수정 | `docs/reports/tests/gh-388-TEST-PLAN-GH-388-COORDINATE-ENCRYPTION.md` | 테스트 실행 보고 |
+
+허용하지 않는다. 필요하면 멈추고 보고한다.
+
+- `direction/repository/ActiveUserPresenceRepository.java`, `direction/repository/PostAudienceRepository.java`의 메서드 시그니처 변경.
+- `direction/matching/DirectionMatchingWorker.java`, `direction/service/**`, `direction/web/**`.
+- `notification/push/security/**`(구조 참고만 하고 공통화하지 않는다).
+- `config/java-conventions/baseline.json`, `.github/workflows/**`, 다른 도메인 코드.
+
 ## Existing user-owned changes
 
 - 작업 시작 시 `git status --short` 출력은 `TASK.md`(task-init) 하나였다.
