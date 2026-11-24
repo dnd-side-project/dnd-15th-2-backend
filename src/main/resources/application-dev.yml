@@ -87,6 +87,11 @@ qello:
   auth:
     access-token:
       secret: ${QELLO_AUTH_ACCESS_TOKEN_SECRET}
+  location:
+    collection:
+      # dev 테스트 서버는 테스트 기기 좌표로 기능을 검증하는 비운영 환경이라 게이트를 켠다.
+      # dev·local 프로필은 신고 수리 참조 검사를 생략한다(#379, docs/location-collection-gate.md).
+      enabled: true
   notification:
     push:
       provider: fcm

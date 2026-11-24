@@ -5,6 +5,8 @@
  * Source scenario: TEST-PLAN-GH-365-PUSH-FID-PROVIDER-INT-006
  * Extended at: 2026-11-21T12:05:43.793Z
  * Source scenario: TEST-PLAN-GH-366-DEV-WORKER-FCM-INT-001 through INT-003
+ * Extended at: 2026-11-23T16:43:12+09:00
+ * Source scenario: TEST-PLAN-GH-379-LOCATION-GATE-INT-004
  */
 package com.dnd.qello;
 
@@ -52,6 +54,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.client.RestClient;
 
+import com.dnd.qello.direction.gate.LocationCollectionGate;
 import com.dnd.qello.direction.matching.DirectionMatchingWorker;
 import com.dnd.qello.notification.config.PushProperties;
 import com.dnd.qello.notification.fanout.NotificationFanOutWorker;
@@ -90,6 +93,7 @@ import static org.mockito.Mockito.spy;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -235,6 +239,34 @@ class DevProfileBootIntegrationTest extends PostgisContainerIntegrationTestSuppo
 					String.class, userId)).isEqualTo("REVOKED");
 		} finally {
 			jdbc.update("DELETE FROM push_device WHERE user_id = ?", userId);
+			jdbc.update("DELETE FROM user_account WHERE id = ?", userId);
+		}
+	}
+
+	@Test
+	@DisplayName("GH-379 INT-004: dev는 신고 수리 참조 없이 위치 수집 게이트를 켜고 위치 갱신을 저장한다")
+	void devProfileOpensLocationCollectionGate() throws Exception {
+		assertThat(context.getBean(LocationCollectionGate.class).isEnabled()).isTrue();
+		long userId = jdbc.queryForObject("""
+				INSERT INTO user_account (role, country_code, coarse_region_code, status, locale, timezone, nickname)
+				VALUES ('USER', 'KR', 'KR', 'ACTIVE', 'ko-KR', 'Asia/Seoul', 'gh379-dev-gate')
+				RETURNING id
+				""", Long.class);
+		String body = """
+				{"latitude":37.5,"longitude":127.0,"accuracyMeters":10,"receiveAllowed":false,"observedAt":"%s"}
+				""".formatted(Instant.now().truncatedTo(java.time.temporal.ChronoUnit.SECONDS));
+		try {
+			mockMvc.perform(put("/api/v1/direction/presence")
+					.with(jwt().authorities(new SimpleGrantedAuthority("ROLE_USER"))
+							.jwt(token -> token.subject(Long.toString(userId))))
+					.contentType(MediaType.APPLICATION_JSON).content(body))
+					.andExpect(status().isOk())
+					.andExpect(jsonPath("$.data.applied").value(true));
+
+			assertThat(jdbc.queryForObject("SELECT count(*) FROM active_user_presence WHERE user_id = ?",
+					Integer.class, userId)).isEqualTo(1);
+		} finally {
+			jdbc.update("DELETE FROM active_user_presence WHERE user_id = ?", userId);
 			jdbc.update("DELETE FROM user_account WHERE id = ?", userId);
 		}
 	}

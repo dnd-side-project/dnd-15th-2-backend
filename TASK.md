@@ -1,63 +1,61 @@
-# GitHub Issue #366 Task Contract
+# GitHub Issue #379 Task Contract
 
-> Generated at: `2026-11-21T20:35:49+09:00`
+> Generated at: `2026-11-23T16:31:34+09:00`
 >
 > 이 파일은 현재 작업 브랜치의 계약이다. 저장소 전역 정책은 `AGENTS.md`를
 > 따른다.
 
 ## Work gate
 
-- Title: `dev 테스트 서버 알림 worker scheduling 활성화와 FCM 실발송 전환`
-- GitHub Issue: `#366`
-- Branch: `chore/gh-366-dev-worker-fcm`
+- Title: `위치기반서비스 신고 수리 전 실제 좌표 수집 차단 게이트`
+- GitHub Issue: `#379`
+- Branch: `feat/gh-379-location-collection-gate`
 - Base branch: `main`
 
 ## Objective
 
-- Issue #366에 따라 dev 프로필에서 worker scheduling과 알림 생성·발송 worker를 켜고 push provider를 `fcm`으로 지정해, dev 테스트 서버에서 알림 생성부터 FCM 실발송까지 이어지게 한다.
-- 선행 조건 충족(2026-11-21): #365 병합(PR #373, merge `32ab7b59`, test-server 배포 run #35 성공), #364 apply(run #15). test-server 컨테이너에는 `QELLO_NOTIFICATION_PUSH_FCM_PROJECT_ID`, `QELLO_NOTIFICATION_PUSH_FCM_CREDENTIAL_JSON`과 token 보호 key 3개가 주입돼 있다.
-- 확인된 사실(오케스트레이터, 2026-11-21):
-  - `AnswerModerationIntake` bean이 현재 등록되지 않아 답변 제출은 `MODERATION_INTAKE_NOT_CONFIGURED`로 실패한다. `ANSWER_*` 알림은 moderation verdict 이후에만 생성되며, `answer-moderation` worker는 이 Issue의 제외 범위다. 따라서 이번 작업 후 dev에서 실발송을 검증할 수 있는 알림 경로는 `direction-matching` → `recipient-notification-fan-out`(`DIRECTION_POST_RECEIVED`)과 `notification-fan-out`·`report-resolution-fan-out`이 처리하는 유형이다.
-  - `application-dev.yml`의 `qello.worker.scheduling.enabled` 값은 `application.yml`의 `QELLO_WORKER_SCHEDULING_ENABLED` placeholder보다 우선한다. 롤백은 설정 변경 후 재배포다.
-- Test plan: `docs/test-plans/gh-366-TEST-PLAN-GH-366-DEV-WORKER-FCM.md` — `APPROVED` — 단위 6개 + 통합 3개 + 병합 후 수동 3개, 승인자 @Byuntil, 2026-11-21. 승인 증거: https://github.com/dnd-side-project/dnd-15th-2-backend/issues/366#issuecomment-7062302661
-- 결정(2026-11-21, @Byuntil):
-  - dev fixture 값(dev 전용, 운영 권장값 아님): `pool-size: 5`. outbox 네 개는 `fixed-delay: PT5S`, `batch-size: 20`, `lease-duration: PT1M`, `retry.max-attempts: 5`, `retry.base-delay: PT5S`, `retry.max-delay: PT5M`. `push-delivery-dispatch`는 `fixed-delay: PT5S`, `batch-size: 10`, `lease-duration: PT2M`, `retry.max-attempts: 5`, `retry.base-backoff: PT10S`, `retry.backoff-cap: PT10M`. FCM 1건 최악 8s(connect 3s + read 5s) × 10건보다 push lease를 길게 둔다.
-  - 롤백 권고: 발송 중지는 `qello.worker.scheduling.enabled: false`를 우선한다. `provider: noop`은 FCM 자격 증명 문제일 때만 쓰며, 대기 중 delivery가 실제 발송 없이 SENT로 처리된다는 경고를 문서에 적는다.
+- 위치기반서비스 운영 배포 전 점검표의 작업 B1. 위치기반서비스사업 신고 수리 참조가 설정되기 전에는 정확 좌표를 받거나 읽는 API를 서버에서 거부한다.
+- 확인된 사실(2026-11-23):
+  - 정확 좌표는 `PUT /api/v1/direction/presence`(`ActiveUserPresenceController`)로만 들어와 `active_user_presence`에 저장된다.
+  - `GET /api/v1/direction/preview`와 `POST /api/v1/direction/posts`는 `DirectionPostService.activeSender`로 발신자 presence 좌표를 읽고, 발송은 `post_audience.origin_position`에 원점을 복사한다.
+  - 참고 구현은 `filtering/gate/FilteringProductionGate`(fail-closed, placeholder 거부, 8자 이상 참조)다.
+- 결정(2026-11-23, @Byuntil):
+  - 유형 기능 작업, Priority P0.
+  - dev·local은 게이트를 켜 둔다. 신고 참조 검사 생략은 활성 프로필이 dev 또는 local일 때만 허용한다. `application.yml` 기본값은 꺼짐이다.
+  - 거부 응답은 `DirectionErrorCode.LOCATION_COLLECTION_DISABLED`(`DIR-APP-008`), HTTP 503.
+- Test plan: `docs/test-plans/gh-379-TEST-PLAN-GH-379-LOCATION-GATE.md` — `APPROVED` — 단위 8개 + 통합 5개, 설계 결정 D1~D6 제안대로 확정, 승인자 @Byuntil, 2026-11-23. 승인 증거: https://github.com/dnd-side-project/dnd-15th-2-backend/issues/379#issuecomment-7094564968
 
 ## Scope
 
-- `src/main/resources/application-dev.yml`
-  - `qello.worker.scheduling.enabled: true`와 활성 worker 수에 맞춘 `pool-size`.
-  - `direction-matching`, `recipient-notification-fan-out`, `notification-fan-out`, `report-resolution-fan-out`: `enabled`, `fixed-delay`, `batch-size`, `lease-duration`, `retry.max-attempts`, `retry.base-delay`, `retry.max-delay`.
-  - `push-delivery-dispatch`: `enabled`, `fixed-delay`, `batch-size`, `lease-duration`, `retry.max-attempts`, `retry.base-backoff`, `retry.backoff-cap`.
-  - `qello.notification.push.provider: fcm`.
-  - 값은 dev 전용 fixture이며 운영 권장값이 아니라는 주석을 남긴다.
-- `docs/push-production-setup.md` 10절: dev fixture 값, 활성화 방법, 롤백 방법(`enabled: false` 또는 `provider: noop` 후 재배포).
-- 승인된 테스트 계획에 따라 dev 프로필 기동·바인딩을 검증하는 테스트를 수정·추가한다. `DevProfileBootIntegrationTest`의 dev = `noop` 기대(#365 INT-006)는 `fcm` 기준으로 바뀐다.
+- 게이트 설정: `qello.location.collection.enabled`(기본 `false`), `qello.location.collection.lbs-registration-reference`. `enabled: true`인데 참조가 비었거나 placeholder면 dev·local이 아닌 프로필에서 기동 실패.
+- `src/main/resources/application.yml`, `application-dev.yml`, `application-local.yml`.
+- 거부 대상 API 세 개와 `DirectionErrorCode` 새 코드. 거부 시 `active_user_presence`, `direction_post`, `post_audience`에 행을 쓰지 않는다.
+- `ActiveUserPresenceApiSpec`, `DirectionPostApiSpec`의 오류 응답 문서.
+- `docs/location-collection-gate.md`.
+- 승인된 테스트 계획에 따른 단위·통합 테스트. 기존 위치·발송·미리보기 통합 테스트는 게이트를 켠 설정으로 통과시킨다.
 
 ## Explicit exclusions
 
-- sweep 계열(`recipient-expiration-sweep`, `skip-confirmation-sweep`, `account-withdrawal-sweep`)과 `answer-moderation` worker 활성화.
-- 운영 worker 수치 결정과 prod 활성화, metric exporter, 발송 실패 경보, 다중 instance lease owner 검증.
-- production Java 코드 변경. 설정만으로 목표를 달성할 수 없으면 구현하지 않고 BLOCKED로 보고한다.
-- `infra/**`, `.github/**`, secret 주입 경로 변경.
-- 커밋, push, PR 생성은 실행 에이전트가 하지 않는다. 오케스트레이터가 사용자 승인 후 수행한다.
+- 위치정보 이용 동의 확인과 동의 이력 저장(C9).
+- 저장된 좌표의 파기(C6).
+- `DirectionMatchingWorker` 차단.
+- 운영 프로필 추가(C7).
 - 인프라 apply, 배포, 프로덕션 변경은 별도 승인 없이는 실행하지 않는다.
-- Secret, 계정 식별자, 토큰, `.env` 값, 실기기 FID는 기록하지 않는다.
+- Secret, 계정 식별자, 토큰, `.env` 값은 기록하지 않는다.
 
 ## Ownership
 
 | Area | Owner | Required review |
 | --- | --- | --- |
-| `TASK.md`, 실행 지시, 독립 검증, 배포 후 DB 확인 | 오케스트레이터 | 사람의 범위 승인 |
+| `TASK.md`, 범위 | @Byuntil | 사람의 범위 승인 |
 | 테스트 계획 | 실행 에이전트(`/harness-test-plan`) | 사람의 계획 승인 |
-| `application-dev.yml`, 문서, 테스트 | 실행 에이전트 | 오케스트레이터의 독립 검증 후 사람의 PR 승인 |
-| Android 실기기 수신 확인 | 모바일 담당자 | 결과를 PR 또는 Issue에 기록 |
+| 게이트 코드, 설정, 문서, 테스트 | 실행 에이전트 | PR에서 작성자가 아닌 백엔드 한 명 승인 |
 
 ## Existing user-owned changes
 
 - 작업 시작 시 `git status --short` 출력은 `TASK.md`(task-init) 하나였다.
 - `gh`와 `harness`는 `env -u SSL_CERT_FILE -u SSL_CERT_DIR`로 시스템 CA를 사용한다.
+- C1(tkv00)·C6·C9가 같은 위치 처리 경로를 고치므로 착수 순서를 tkv00과 맞춘다.
 
 ## Validation
 
@@ -70,9 +68,8 @@ git diff --check
 
 ## Completion criteria
 
-- dev 프로필 설정으로 application context가 기동하고 `WorkerSchedulingProperties` 검증 예외가 없다.
-- dev 프로필에서 지정한 다섯 worker의 bean이 등록되고, 제외한 sweep·`answer-moderation` worker bean은 등록되지 않는다.
-- dev 프로필에서 provider가 `fcm`이고 `FcmHttpV1PushProvider`가 등록된다.
-- 롤백 방법이 `docs/push-production-setup.md`에 있다.
+- 게이트가 꺼진 상태에서 세 API가 `LOCATION_COLLECTION_DISABLED`를 반환하고 관련 테이블 행 수가 변하지 않는다(통합 테스트).
+- `enabled: true`이고 신고 참조가 비었거나 placeholder면 dev·local이 아닌 프로필에서 context 기동이 실패한다(통합 테스트).
+- dev 프로필에서 게이트가 켜져 있고 위치 갱신이 성공한다(`DevProfileBootIntegrationTest`).
+- 기존 위치·발송·미리보기 통합 테스트가 게이트를 켠 설정으로 통과한다.
 - `./harness check`, `./harness pr-ready --project-tests`, `npm run hooks:validate`, `git diff --check`가 통과한다.
-- 병합 후(test-server 자동 배포): 배포 run 성공, 실기기 FID에 대한 `notification_delivery`가 `SENT`이고 `provider_message_id`가 저장됨, 같은 notification·기기 조합의 중복 발송 없음, Android foreground·background·앱 종료 수신 결과를 PR 또는 Issue 코멘트에 기록한다.
