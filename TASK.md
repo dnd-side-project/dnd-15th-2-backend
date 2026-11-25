@@ -26,6 +26,7 @@
   - D-5는 SSM SecureString + `value_wo`, `ssm_parameter_arns`로 한정한 EC2 role, 허용 목록 밖 파라미터 조회·복호화 명시적 Deny(`infra/modules/app-server/main.tf`), 배포 SSM 명령에서 `.env` 갱신(H-2 I안), `infrastructure-apply.yml`의 TF_VAR 입력 binding(H-3)을 사용했다.
   - 좌표 key는 push token key와 공유하지 않는다(ADR-0009 D4).
 - 결정(2026-11-25, @Byuntil): 유형 인프라, Priority P0. #389보다 먼저 apply한다.
+- Test plan: `docs/test-plans/gh-390-TEST-PLAN-GH-390-COORDINATE-KEY-DEPLOY.md` — `APPROVED`, 단위 5·통합 9, D1~D5 추천안. 승인자 @Byuntil, 2026-11-25, `https://github.com/dnd-side-project/dnd-15th-2-backend/issues/390#issuecomment-7155537194`.
 
 ## Scope
 
