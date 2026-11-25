@@ -30,6 +30,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * TEST-PLAN-GH-137-DIRECTION-POST-MODERATION (V32 latest version, added 2026-10-07T22:38:41+09:00),
  * TEST-PLAN-GH-337-ACCOUNT-WITHDRAWAL-INT-001 (V33 latest version and catalog, added 2026-10-09T18:47:28+09:00),
  * TEST-PLAN-GH-375-OPERATOR-ACCESS-LOG-INT-001 (V34 latest version and catalog, added 2026-11-22T22:02:56+09:00)
+ * Source scenario: TEST-PLAN-GH-388-COORDINATE-ENCRYPTION-INT-001 (V35 catalog, added 2026-11-24T17:42:01.738Z)
  */
 @SpringBootTest
 @ActiveProfiles({"test", "flyway-migration"})
@@ -79,7 +80,6 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 			"uq_media_attachment_post_order",
 			"uq_media_attachment_answer_order",
 			"region_code_parent_idx",
-			"active_user_presence_position_gix",
 			"active_user_presence_expiry_idx",
 			"approved_question_active_idx",
 			"uq_direction_scheme_active",
@@ -174,7 +174,7 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 			"ct_media_status_preserves_content",
 			"ct_answer_reaction_reactor_can_view");
 
-	private static final int LATEST_MIGRATION_VERSION = 34;
+	private static final int LATEST_MIGRATION_VERSION = 35;
 
 	@Autowired
 	private Flyway flyway;
@@ -266,7 +266,7 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 		// operator_required,
 		// client_address, http_method, request_path, http_status, result_code)를 추가해
 		// 142가 됐다.
-		assertThat(countConstraints(constraints, "c")).isEqualTo(142);
+		assertThat(countConstraints(constraints, "c")).isEqualTo(141);
 		// V20(#113)이 operator_action_audit의 조회 인덱스 2개를 추가해 62에서 64가 됐다.
 		// V21(#168)이 uq_user_account_nickname_ci 1개를 추가해 64에서 65가 됐다.
 		// CREATE UNIQUE INDEX로 만든 부분 인덱스라 pg_constraint에는 잡히지 않는다 —
@@ -277,7 +277,7 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 		// 됐다.
 		// V34(#375)가 접근 기록 기간 조회·파기용 operator_access_log_occurred_at_idx 1개를 추가해 72가
 		// 됐다.
-		assertThat(EXPECTED_INDEXES).hasSize(72);
+		assertThat(EXPECTED_INDEXES).hasSize(71);
 		assertThat(EXPECTED_FUNCTIONS).hasSize(11);
 		assertThat(EXPECTED_TRIGGERS).hasSize(10);
 

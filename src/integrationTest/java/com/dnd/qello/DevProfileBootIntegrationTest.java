@@ -113,6 +113,8 @@ class DevProfileBootIntegrationTest extends PostgisContainerIntegrationTestSuppo
 	static void devProfileRequiredProperties(DynamicPropertyRegistry registry) {
 		registry.add("qello.media.bucket", () -> "qello-dev-boot-test-placeholder");
 		registry.add("qello.auth.access-token.secret", () -> "dev-profile-boot-test-signing-key-32-bytes-min");
+		registry.add("qello.direction.coordinate-protection.current-key-id", () -> "coordinate-dev-boot-fixture");
+		registry.add("qello.direction.coordinate-protection.current-key-base64", () -> fakeKey((byte) 0x44));
 		registry.add("qello.notification.push.token-protection.current-key-id", () -> "test-only-gh365-current");
 		registry.add("qello.notification.push.token-protection.current-encryption-key-base64",
 				() -> fakeKey((byte) 0x11));

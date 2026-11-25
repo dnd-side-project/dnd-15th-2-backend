@@ -1,6 +1,7 @@
 /**
  * Created at: 2026-08-14T00:51:11+09:00
  * Source scenario: TEST-PLAN-GH-121-ACTIVE-USER-PRESENCE-API-INT-001 through INT-005, INT-009
+ * Source scenario: TEST-PLAN-GH-388-COORDINATE-ENCRYPTION-INT-005, INT-017 (added 2026-11-24T17:42:01.738Z)
  */
 package com.dnd.qello;
 
@@ -24,9 +25,14 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
 import com.dnd.qello.direction.config.DirectionPresenceProperties;
+import com.dnd.qello.direction.repository.ActiveUserPresenceRepository;
+import com.dnd.qello.direction.security.Coordinate;
+import com.dnd.qello.direction.security.CoordinateProtector;
+import com.dnd.qello.direction.security.CoordinatePurpose;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -48,6 +54,12 @@ class ActiveUserPresenceApiIntegrationTest extends PostgisContainerIntegrationTe
 
 	@Autowired
 	private DirectionPresenceProperties presenceProperties;
+
+	@Autowired
+	private ActiveUserPresenceRepository presenceRepository;
+
+	@Autowired
+	private CoordinateProtector coordinateProtector;
 
 	@BeforeEach
 	void setUp() {
@@ -73,6 +85,12 @@ class ActiveUserPresenceApiIntegrationTest extends PostgisContainerIntegrationTe
 		String sentinelLatitude = "37.512345";
 		String sentinelLongitude = "127.098765";
 
+		mockMvc.perform(get("/api/v1/direction/preview")
+				.with(jwt().authorities(new SimpleGrantedAuthority("ROLE_USER"))
+						.jwt(token -> token.subject(String.valueOf(userA)))))
+				.andExpect(status().isConflict())
+				.andExpect(jsonPath("$.errorDetail.code").value("DIR-APP-004"));
+
 		String response = mockMvc.perform(put("/api/v1/direction/presence")
 				.with(jwt().authorities(new SimpleGrantedAuthority("ROLE_USER"))
 						.jwt(token -> token.subject(String.valueOf(userA))))
@@ -91,6 +109,11 @@ class ActiveUserPresenceApiIntegrationTest extends PostgisContainerIntegrationTe
 				Integer.class, userB)).isZero();
 		assertThat(jdbc.queryForObject("SELECT expires_at FROM active_user_presence WHERE user_id = ?",
 				Timestamp.class, userA).toInstant()).isEqualTo(observedAt.plus(presenceProperties.ttl()));
+		byte[] ciphertext = jdbc.queryForObject(
+				"SELECT position_ciphertext FROM active_user_presence WHERE user_id = ?", byte[].class, userA);
+		Coordinate restored = coordinateProtector.decrypt(ciphertext, CoordinatePurpose.ACTIVE_USER_PRESENCE, userA);
+		assertThat(restored.latitude()).isEqualByComparingTo(sentinelLatitude);
+		assertThat(restored.longitude()).isEqualByComparingTo(sentinelLongitude);
 	}
 
 	@Test
@@ -104,8 +127,8 @@ class ActiveUserPresenceApiIntegrationTest extends PostgisContainerIntegrationTe
 		mockMvc.perform(update(userId, request("37.6000", "127.1000", "10", false, observedAt)))
 				.andExpect(status().isOk()).andExpect(jsonPath("$.data.applied").value(false));
 
-		assertThat(jdbc.queryForObject("SELECT ST_Y(position::geometry) FROM active_user_presence WHERE user_id = ?",
-				Double.class, userId)).isEqualTo(37.5);
+		assertThat(presenceRepository.findByUserId(userId).orElseThrow().getLatitude())
+				.isEqualByComparingTo("37.5");
 		assertThat(jdbc.queryForObject("SELECT receive_allowed FROM active_user_presence WHERE user_id = ?",
 				Boolean.class, userId)).isTrue();
 	}

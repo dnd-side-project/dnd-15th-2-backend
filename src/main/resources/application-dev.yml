@@ -27,6 +27,12 @@ springdoc:
     enabled: true
 
 qello:
+  direction:
+    coordinate-protection:
+      current-key-id: ${QELLO_COORDINATE_CURRENT_KEY_ID}
+      current-key-base64: ${QELLO_COORDINATE_CURRENT_KEY_BASE64}
+      previous-key-id: ${QELLO_COORDINATE_PREVIOUS_KEY_ID:}
+      previous-key-base64: ${QELLO_COORDINATE_PREVIOUS_KEY_BASE64:}
   worker:
     scheduling:
       # 실기기 확인 지연을 줄이기 위한 dev 전용 fixture다. 운영 권장값이 아니다.
