@@ -271,6 +271,42 @@ variable "push_fcm_credential_json_tier" {
   }
 }
 
+variable "coordinate_current_key_id" {
+  description = "현재 좌표 암호화 key ID. 보호된 Environment 입력으로만 제공한다."
+  type        = string
+  sensitive   = true
+  ephemeral   = true
+}
+
+variable "coordinate_current_key_id_version" {
+  description = "좌표 current key ID의 value_wo_version. 첫 회전 설계 승인 전에는 초기 버전만 허용한다."
+  type        = number
+  default     = 1
+
+  validation {
+    condition     = var.coordinate_current_key_id_version == 1
+    error_message = "좌표 key ID version은 첫 회전 설계 승인 전까지 1이어야 한다."
+  }
+}
+
+variable "coordinate_current_key_base64" {
+  description = "Push key와 독립적인 좌표 AES-256 key의 standard Base64 값. 보호된 Environment 입력으로만 제공한다."
+  type        = string
+  sensitive   = true
+  ephemeral   = true
+}
+
+variable "coordinate_current_key_base64_version" {
+  description = "좌표 current key의 value_wo_version. 첫 회전 설계 승인 전에는 초기 버전만 허용한다."
+  type        = number
+  default     = 1
+
+  validation {
+    condition     = var.coordinate_current_key_base64_version == 1
+    error_message = "좌표 key version은 첫 회전 설계 승인 전까지 1이어야 한다."
+  }
+}
+
 variable "tags" {
   description = "이 스택이 생성하는 리소스에 공통으로 적용할 태그. infra-apply 역할의 IAM 권한 조건(aws:ResourceTag/Project)이 이 태그를 전제로 한다."
   type        = map(string)

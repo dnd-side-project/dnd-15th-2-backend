@@ -9,6 +9,8 @@ locals {
   push_token_fingerprint_key_parameter_name        = "${local.ssm_parameter_path_prefix}/push-token-fingerprint-key"
   push_fcm_project_id_parameter_name               = "${local.ssm_parameter_path_prefix}/push-fcm-project-id"
   push_fcm_credential_json_parameter_name          = "${local.ssm_parameter_path_prefix}/push-fcm-credential-json"
+  coordinate_current_key_id_parameter_name         = "${local.ssm_parameter_path_prefix}/coordinate-current-key-id"
+  coordinate_current_key_parameter_name            = "${local.ssm_parameter_path_prefix}/coordinate-current-key"
 }
 
 # --- 네트워크 -----------------------------------------------------------------
@@ -155,6 +157,38 @@ resource "aws_ssm_parameter" "push_fcm_credential_json" {
   tags = var.tags
 }
 
+resource "aws_ssm_parameter" "coordinate_current_key_id" {
+  name             = local.coordinate_current_key_id_parameter_name
+  type             = "SecureString"
+  tier             = "Standard"
+  key_id           = "alias/aws/ssm"
+  value_wo         = var.coordinate_current_key_id
+  value_wo_version = var.coordinate_current_key_id_version
+
+  tags = var.tags
+
+  # 복호화에 필요한 ID의 우발적 삭제·교체를 막는다. 폐기는 키 보존 검토와 별도 승인이 필요하다(D-6 H-1).
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
+resource "aws_ssm_parameter" "coordinate_current_key" {
+  name             = local.coordinate_current_key_parameter_name
+  type             = "SecureString"
+  tier             = "Standard"
+  key_id           = "alias/aws/ssm"
+  value_wo         = var.coordinate_current_key_base64
+  value_wo_version = var.coordinate_current_key_base64_version
+
+  tags = var.tags
+
+  # DB 백업만으로 복구할 수 없는 키의 우발적 삭제·교체를 막는다. 폐기는 별도 승인한다(D-6 H-1).
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
 # --- 컴퓨트 --------------------------------------------------------------------
 
 module "app_server" {
@@ -186,6 +220,8 @@ module "app_server" {
     aws_ssm_parameter.push_token_fingerprint_key.arn,
     aws_ssm_parameter.push_fcm_project_id.arn,
     aws_ssm_parameter.push_fcm_credential_json.arn,
+    aws_ssm_parameter.coordinate_current_key_id.arn,
+    aws_ssm_parameter.coordinate_current_key.arn,
   ]
   ssm_kms_key_arn                                  = data.aws_kms_alias.ssm_default.target_key_arn
   db_password_parameter_name                       = local.db_password_parameter_name
@@ -195,6 +231,8 @@ module "app_server" {
   push_token_fingerprint_key_parameter_name        = local.push_token_fingerprint_key_parameter_name
   push_fcm_project_id_parameter_name               = local.push_fcm_project_id_parameter_name
   push_fcm_credential_json_parameter_name          = local.push_fcm_credential_json_parameter_name
+  coordinate_current_key_id_parameter_name         = local.coordinate_current_key_id_parameter_name
+  coordinate_current_key_parameter_name            = local.coordinate_current_key_parameter_name
 
   image_bucket_arn         = local.media_bucket_arn
   image_bucket_kms_key_arn = var.media_bucket_kms_key_arn

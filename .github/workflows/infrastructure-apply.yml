@@ -117,6 +117,8 @@ jobs:
       TF_VAR_push_token_fingerprint_key_base64: ${{ secrets.TF_VAR_PUSH_TOKEN_FINGERPRINT_KEY_BASE64 }}
       TF_VAR_push_fcm_project_id: ${{ secrets.TF_VAR_PUSH_FCM_PROJECT_ID }}
       TF_VAR_push_fcm_credential_json: ${{ secrets.TF_VAR_PUSH_FCM_CREDENTIAL_JSON }}
+      TF_VAR_coordinate_current_key_id: ${{ secrets.TF_VAR_COORDINATE_CURRENT_KEY_ID }}
+      TF_VAR_coordinate_current_key_base64: ${{ secrets.TF_VAR_COORDINATE_CURRENT_KEY_BASE64 }}
       # 같은 스택의 media_bucket_kms_key_arn(#63 storage 스택 출력값,
       # 기본값 없음). Terraform 변수 자체는 sensitive가 아니지만, 전체
       # ARN에 계정 ID가 포함되어 있고 GitHub Actions는 variable을 로그에서

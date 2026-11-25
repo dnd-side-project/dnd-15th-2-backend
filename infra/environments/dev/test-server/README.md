@@ -4,6 +4,7 @@
 Infrastructure Design Report `docs/reports/infrastructure/gh-229-D-3.md`
 (DESIGN-ID `D-3`, GitHub Issue #229 설계, #233 구현)를 따른다.
 Push secret 주입은 승인된 `docs/reports/infrastructure/gh-364-D-5.md`(D-5, #364)를 따른다.
+좌표 key 주입은 승인된 `docs/reports/infrastructure/gh-390-D-6.md`(D-6, #390)를 따른다.
 
 ## 리소스
 
@@ -14,7 +15,7 @@ Push secret 주입은 승인된 `docs/reports/infrastructure/gh-364-D-5.md`(D-5,
 | Elastic IP | 프론트엔드가 접근하는 고정 공인 IP |
 | 데이터 EBS 볼륨(gp3, 10 GiB) | PostGIS 데이터 전용. 인스턴스와 분리, `prevent_destroy` |
 | ECR 리포지토리 | 백엔드 이미지. 최근 `ecr_max_image_count`개만 보존 |
-| SSM SecureString 파라미터 7개 | 기존 DB·access token 2개와 D-5 push 설정 5개. `value_wo`로 값을 전달한다 |
+| SSM SecureString 파라미터 9개 | 기존 DB·access token 2개, D-5 push 설정 5개, D-6 좌표 current 설정 2개. `value_wo`로 값을 전달한다 |
 | EventBridge Scheduler | 매일 새벽 3시 EC2 자동 정지(H-1). 자동 시작은 없다 |
 
 ## 예산
@@ -107,14 +108,14 @@ key ID·AES·HMAC을 배포마다 재생성하지 않는다. 암호화·fingerpr
    명령으로 `.env`와 `compose.push.yaml`을 staging·검증·게시한다. 인스턴스를 교체하거나
    user_data 전체를 재실행하지 않는다.
 4. 새 다섯 설정의 존재·형식·JSON 파싱, app health, 기존 DB·access token과 데이터 볼륨 보존,
-   SSM Agent Run Command 배포 경로, 허용 7개 밖 read/decrypt 거부 및 기존 S3 key 접근을
+   SSM Agent Run Command 배포 경로, 허용 9개 밖 read/decrypt 거부 및 기존 S3 key 접근을
    승인된 환경에서 검증한다. 값·실제 식별자·전체 Compose config를 로그에 출력하지 않는다.
 5. #364의 apply와 기존 인스턴스 다섯 설정 주입 검증이 끝난 뒤에만 #365를 main에 병합한다.
    provider와 worker 활성화는 #366의 별도 범위다.
 
 `AmazonSSMManagedInstanceCore`는 유지한다. 그 정책의 광역 파라미터 read를 좁은 Allow만으로
-제한할 수 없어 runtime role에 허용 7개 밖 `GetParameter`·`GetParameters`의 명시적 Deny를
-추가한다. 복호화 Deny는 SSM 기본 key와 그 7개 encryption context에만 적용하며 S3 key는
+제한할 수 없어 runtime role에 허용 9개 밖 `GetParameter`·`GetParameters`의 명시적 Deny를
+둔다. 복호화 Deny는 SSM 기본 key와 그 9개 encryption context에만 적용하며 S3 key는
 건드리지 않는다. 실제 IAM·Run Command 동작은 정적 validate만으로 증명되지 않는다.
 
 부팅 정의는 EC2 user data의 16 KiB 제한 때문에 `base64gzip`으로 압축해
@@ -158,6 +159,55 @@ H-4a에 따라 다음 성공 배포에서만 교체하고 날짜별 사본이나
 중단된 게시의 pending 복구본이 있으면 이를 우선하고, 없으면 보관된 이전 성공 세트를 먼저
 확인하므로 같은 이미지 SHA에서 secret만 바꾼 배포도 이전 구성으로 복구할 수 있다.
 health와 설정 존재/형식을 확인한 뒤 복구 완료로 판단한다. 실제 배포·복구는 사람이 수행한다.
+
+## 좌표 current key 준비와 적용
+
+current ID/key만 추가하고 previous 슬롯과 첫 회전은 별도 설계 전까지 사용하지 않는다.
+발급·장애·병합 동결 담당은 `@Byuntil`, 복구본 담당은 `@tkv00`이며 회전 재검토일은
+`2027-05-25`다. 사람이 독립적인 32-byte AES key를 생성하고 canonical standard Base64로
+보호 저장한다. push AES/HMAC과 같은 key는 runtime에서 거부한다.
+ID는 비공백·NUL 없는 문자열이고 UTF-8 255 bytes 이하여야 한다.
+
+| Terraform 입력 | infrastructure-apply Environment secret | app 환경변수 |
+| --- | --- | --- |
+| `coordinate_current_key_id` | `TF_VAR_COORDINATE_CURRENT_KEY_ID` | `QELLO_COORDINATE_CURRENT_KEY_ID` |
+| `coordinate_current_key_base64` | `TF_VAR_COORDINATE_CURRENT_KEY_BASE64` | `QELLO_COORDINATE_CURRENT_KEY_BASE64` |
+
+새 두 secret은 repository/organization 수준에 등록하지 않는다. 사람이 scope·접근자·보호
+규칙을 확인한 뒤 보호 Environment에만 등록한다. 값 변수는 sensitive/ephemeral이며
+`value_wo`로만 전달한다. 이름 output을 공개 로그에 복사하거나 값 data source를 만들지 않는다.
+SSM은 Terraform이 생성하므로 수동 선생성하지 않는다.
+
+두 `_version` 변수는 current-only 기간 `1`만 허용하고, 두 리소스에는 `prevent_destroy`를 둔다.
+이는 관리자 변경이나 리소스 블록 제거까지 막는 보호가 아니다. owner는 입력을 동결하고
+사람 plan에서 삭제·교체·EC2 변경 0을 확인한다. 실제 key를 로컬 plan의 shell/tfvars/인자에
+넣지 않으며 새 입력에는 형식에 맞는 공개 합성 fixture만 사용한다.
+normalized plan hash는 write-only 실제 key 동일성의 증거가 아니다.
+
+1. 사람이 실제 MFA·secret scope·IAM을 확인하고 원본과 복구본을 대조한다.
+2. 인프라 PR 병합 직전 기존 배포가 끝났는지 확인한다. `@Byuntil`은 apply·주입 검증까지
+   자동 deploy trigger 경로의 main 병합과 임의 dispatch를 동결한다. 유지할 수 없으면 병합을 보류한다.
+3. 승인된 PR과 보호 Environment 게이트를 통과한 workflow에서 사람이 apply한다.
+4. `image_sha`를 비운 정상 `workflow_dispatch`로 기존 앱에 먼저 주입한다.
+   image_sha를 지정하면 보관 세트를 쓰는 rollback 모드여서 새 SSM 값을 읽지 않는다.
+   문서/infra-only 병합은 자동 배포 trigger가 아니므로 명시적 정상 dispatch가 필요하다.
+5. `@Byuntil`이 실제 SSM과 실행 중 컨테이너의 두 값을 원본·복구본과 fingerprint로 대조하고
+   app health, DB/auth/push 보존과 범위 밖 read/decrypt 거부를 확인한다.
+   실제 값·ID·전체 config/inspect·오류 원문을 출력하지 않는다.
+6. 네 대상이 MATCH이고 #389 자체 gate도 충족한 뒤에만 #389를 병합하고 동결을 해제한다.
+
+대조 규칙과 사람 로컬 MFA/Run Command 접근은 D-6 §7을 따른다.
+UTF-8 ID와 strict decode한 key 각각에 byte 길이의 uint32 big-endian을 앞에 붙여 결합한
+bytes의 SHA-256을 사용한다. 원본/복구본/SSM은 사람 로컬 메모리에서 비교하며,
+컨테이너는 기대 fingerprint만 받은 Run Command가 MATCH/MISMATCH만 반환한다.
+실제 key는 에이전트나 대조용 CI runner로 전달하지 않는다. 기대 fingerprint도 공개 로그·문서에
+남기지 않고 명령 이력 접근을 제한한다. 비교 불능은 실패이며 #389 병합을 차단한다.
+
+좌표도 기존 공용 runtime의 `.env`/`compose.push.yaml` staging·게시·previous/pending 복구를
+사용한다. 실패 시 위 수동 rollback 경로로 요청 이미지와 맞는 세트만 복구한다.
+#389 migration 이후에는 pre-#389 이미지로만 되돌리거나 좌표 key를 제거하지 않는다.
+암호문과 백업이 요구하는 key는 보존하고, DB rollback은 #388 담당과 별도 승인한다.
+첫 회전은 previous 인프라·reader-first 배포·기술적 배포/부팅 동결을 별도 승인받은 뒤에만 한다.
 
 ## 값 갱신
 
