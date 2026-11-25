@@ -39,10 +39,15 @@ import com.zaxxer.hikari.HikariDataSource;
 @ExtendWith(PostgisContainerIntegrationTestSupport.SharedDatabaseResetExtension.class)
 abstract class PostgisContainerIntegrationTestSupport {
 
+	private static final boolean PERFORMANCE_TASK = Boolean.getBoolean("qello.test.performance-task");
 	private static final DockerImageName POSTGIS_IMAGE = DockerImageName
-			// Testcontainers DockerImageName does not accept the Compose tag@digest form.
-			.parse("postgis/postgis:16-3.5-alpine")
+			.parse(PERFORMANCE_TASK
+					? System.getProperty("qello.test.postgres.image", "imresamu/postgis:16-3.5-alpine")
+					: "postgis/postgis:16-3.5-alpine")
 			.asCompatibleSubstituteFor("postgres");
+	private static final String POSTGIS_PLATFORM = PERFORMANCE_TASK
+			? System.getProperty("qello.test.postgres.platform", "linux/arm64")
+			: "linux/amd64";
 
 	private static final String PG_STAT_STATEMENTS_ENABLED = "qello.test.postgres.pg-stat-statements-enabled";
 
@@ -58,7 +63,7 @@ abstract class PostgisContainerIntegrationTestSupport {
 				.withDatabaseName("qello_test")
 				.withUsername("qello_test")
 				.withPassword("test-only")
-				.withCreateContainerCmdModifier(command -> command.withPlatform("linux/amd64"));
+				.withCreateContainerCmdModifier(command -> command.withPlatform(POSTGIS_PLATFORM));
 		if (Boolean.getBoolean(PG_STAT_STATEMENTS_ENABLED)) {
 			container.withCommand(
 					"postgres",
