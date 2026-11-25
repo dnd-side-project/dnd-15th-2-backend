@@ -74,6 +74,15 @@
 | 수정 | `docs/product/data-model/DIRECTION_COMMUNICATION_ERD.md`, `direction_communication.dbml`, `schema-manifest.md`, `docs/error-codes.md`(새 오류 코드가 있을 때만) | 스키마·오류 문서 |
 | 신규·수정 | `docs/reports/tests/gh-388-TEST-PLAN-GH-388-COORDINATE-ENCRYPTION.md` | 테스트 실행 보고 |
 
+추가 승인(@Byuntil, 2026-11-25): 아래 기존 테스트 파일은 기재한 범위로만 수정한다. 테스트 삭제·skip·suppression·옛 SQL 문자열 주입은 금지한다.
+
+| 파일 | 허용 범위 |
+| --- | --- |
+| `src/test/java/com/dnd/qello/FlywayMigrationContractTest.java` | V35를 목록에 추가하고 최신 버전 기대를 35로 바꾼다. V1·V2·V8 checksum 검증은 유지한다 |
+| `src/test/java/com/dnd/qello/direction/DirectionPreviewPersistenceBoundaryTest.java` | 제거된 PostGIS SQL 문자열 고정 대신 한 snapshot 읽기와 후보 0개 segment 보존 같은 행동 계약으로 바꾼다 |
+| `src/test/java/com/dnd/qello/direction/DirectionRecipientSelectionBoundaryTest.java` | SQL `ORDER BY` 문자열 고정 대신 필터 조건과 앱 측 공정성 정렬 계약을 검증한다 |
+| `src/integrationTest/java/com/dnd/qello/PostgisContainerIntegrationTestSupport.java` | `performanceTest`에서만 이미지·platform을 바꿀 수 있게 한다. 일반 CI·로컬 기본값은 유지한다 |
+
 허용하지 않는다. 필요하면 멈추고 보고한다.
 
 - `direction/repository/ActiveUserPresenceRepository.java`, `direction/repository/PostAudienceRepository.java`의 메서드 시그니처 변경.
