@@ -314,7 +314,7 @@ Issue #115는 방향글 제출과 수신자 매칭 사이의 경계를 transacti
 - fingerprint 입력은 `approvedQuestionId`, `schemeId`, `segmentKey`, `minDistanceMeters`, `maxDistanceMeters`, `coarseRegionCode`, `bodyText`다. sender, idempotency key, 서버 소유 시각(`submittedAt`, `expiresAt`)은 입력에 포함하지 않는다. 문자열은 NFC 정규화 후 바깥 Unicode whitespace만 trim하고, body 내부 whitespace와 식별자 대소문자는 보존한다.
 - matching event의 `match_round`는 해당 이벤트에만 필수이며 초기 제출은 `1`이다. retry/reclaim은 round를 증가시키지 않는다. `(aggregate_id, match_round, event_type)` partial unique index가 같은 post·round·event의 중복 작업을 막는다. `dedup_key`는 `direction-match:{postId}:{matchRound}:{eventType}`로 서버가 파생한다.
 - `outbox_event`의 `lease_owner`, `lease_expires_at`, `lease_generation`은 한 번의 claim/reclaim에서 함께 갱신한다. `lease_generation`은 성공마다 증가하는 fencing token이다. 완료·실패·dead 갱신은 id, `PROCESSING`, owner, generation, 아직 만료되지 않은 lease를 모두 조건으로 사용해 stale worker의 갱신을 거절한다.
-- 매칭 payload에는 `postId`, `matchRound`, `eventType`, `requestFingerprint`와 재조회에 필요한 coarse 식별자만 저장한다. `post_audience.origin_position`, `active_user_presence.position`과 위도·경도, geography WKB/GeoJSON처럼 정확 좌표를 복원할 수 있는 값은 payload에 넣지 않는다.
+- 매칭 payload에는 `postId`, `matchRound`, `eventType`, `requestFingerprint`와 재조회에 필요한 coarse 식별자만 저장한다. `post_audience.origin_position_ciphertext`, `active_user_presence.position_ciphertext`와 복호화된 위도·경도, 정확 좌표를 복원할 수 있는 값은 payload에 넣지 않는다.
 - lease duration과 retry backoff 숫자는 이 데이터 모델에 고정하지 않고 application configuration의 책임으로 남긴다.
 
 ### 2026-08-08 문서 정정
@@ -328,13 +328,23 @@ Issue #115는 방향글 제출과 수신자 매칭 사이의 경계를 transacti
 
 **짧은 TTL의 정확 좌표를 `active_user_presence`에 저장하고 외부에는 흐린 값만 제공한다.**
 
-- `active_user_presence.position`과 `post_audience.origin_position`은 실제 사용자 좌표를 담는 **운영 컬럼**이다. 더 이상 합성 데이터 전용이 아니다.
-- `active_user_presence`가 서비스 전체에서 정확 좌표를 보관하는 유일한 곳이며, 접근 경로를 매칭 워커로 제한한다.
+- ADR-0009와 V35는 정확 좌표를 `active_user_presence.position_ciphertext`와 `post_audience.origin_position_ciphertext`의 nullable `bytea`로 저장한다. 좌표 전용 AES-256-GCM 키를 사용하며 version·key ID·table/column 용도·행 ID를 AAD로 인증한다.
+- 앱만 좌표를 복호화한다. DB는 계정·만료·수신 허용·차단 조건과 정렬 자료를 한 snapshot으로 읽고, 앱은 GeographicLib WGS84로 거리·방위·역방위를 계산한다. 공간 GiST는 제거하며 후보를 미리 LIMIT하지 않는다.
 - 정확 좌표는 API 응답, 로그, 분석 이벤트, Outbox payload에 넣지 않는다. 외부에는 `distance_band`와 `coarse_region_code`만 나간다(불변식 13).
 - `expires_at`이 지난 좌표는 후보 탐색에서 제외한다. 실제 보존·삭제 기간은 P07에서 확정한다.
 - 2안(coarse cell만 저장)과 3안(위치 참조 토큰)은 채택하지 않았다. `coarse_cell_id`와 `origin_cell_id`는 폐기하지 않고 선택적 보조 컬럼으로 남긴다.
 
 이 결정으로 매칭 파이프라인이 정확 좌표를 전제해도 되는 것이 확정됐다. 다만 실제 사용자 좌표를 수집하기 전에 데이터 흐름·접근 권한·로그 제외·암호화·삭제 작업에 대한 Security/Privacy 승인은 여전히 필요하다.
+
+V35는 정확 좌표가 있던 기존 presence를 삭제하고 셀만 있는 행은 보존한다. 모든
+기존 audience 원점은 폐기하지만 방향·거리 범위·시각·셀 등 메타데이터는 보존한다.
+정확 원점을 잃는 SUBMITTED·SAFETY_CHECKING·MATCHING·REVIEW_HELD 글만
+MATCH_FAILED로 닫으며 기존 Outbox·수신자·슬롯 이력은 변경하지 않는다.
+과거 audience의 원점과 셀 모두 NULL을 허용하므로 `ck_post_audience_origin`은
+제거한다. 신규 발송·worker의 정확 원점 요구는 유지한다. 복구는 전환 전 백업의
+별도 승인된 복원만 가능하며 구버전 앱만 되돌려도 폐기 좌표는 돌아오지 않는다.
+기존 백업·WAL·삭제 페이지와 post_recipient 파생 값의 보호는 이 전환만으로
+완료되지 않는다.
 
 ### 용어 정규화
 
