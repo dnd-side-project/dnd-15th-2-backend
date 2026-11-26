@@ -3,7 +3,7 @@
 > Created at: `2026-11-25T00:14:29+09:00`
 > GitHub Issue: `#376`
 > Branch: `feat/gh-376-operator-password-policy`
-> Commit: base `30efa9ca`. 실행 당시 변경은 모두 미커밋이다
+> Commit: base `30efa9ca`. `pr-ready`를 뺀 실행은 모두 미커밋 변경에서 했다. `pr-ready`는 14개 커밋을 `dae144f8`(main, #387 병합) 위로 rebase한 뒤 실행했다
 
 ## 1. Executive summary
 
@@ -49,8 +49,10 @@
 | 독립 검증 반영(5절) 뒤 영향 테스트 | PASS | 단위 194(`auth.*` 등) / 통합 25(`OperatorPasswordChangeIntegrationTest`, `OpenApiSpecificationIntegrationTest`), 실패 0 | 약 2분 | 문서 문구·상수 정리·테스트 단언 보강 |
 | `./harness check` | PASS | — | — | 첫 실행의 JUnit 정책 실패 1건 수정 후(5절) |
 | `./gradlew spotlessCheck javaConventionCheck` | PASS | — | — | `spotlessApply` 뒤 |
-| `./harness pr-ready --project-tests` | 미실행 | — | — | main에 #386·#387이 병합돼 브랜치가 뒤처졌고, 명령이 `./harness sync`를 먼저 요구하며 멈췄다. 커밋 뒤 sync하고 다시 실행한다. main의 새 변경은 harness·hook 스크립트와 `RepoMapToolTest`이고 이 작업과 겹치는 파일은 `TASK.md`뿐이다 |
-| `git diff --check`, `npm run hooks:validate` | PASS | — | — | 현재 작업 트리 기준 |
+| `./harness sync` | PASS | — | — | main에 들어온 #386·#387 위로 rebase했다. 충돌은 `TASK.md` 하나였고 #376 계약을 남겼다. 그 밖의 파일은 rebase 전후 내용이 같다 |
+| `./harness pr-ready --project-tests` (첫 실행) | FAIL(환경) | 통합 131 중 129 실패 | 약 1분 | Docker Desktop이 꺼져 있어 Testcontainers가 초기화되지 않았다. `PushSecretDeploymentIntegrationTest`는 PATH의 `python3`(3.9·3.11.6·3.15)에 PyYAML이 없어 실패했다. 코드 결함이 아닌 로컬 환경 문제다 |
+| `./harness pr-ready --project-tests` (재실행) | PASS | 단위 1,663 / 통합 918 / 아키텍처 23 / 소스 컨벤션 3, 실패·오류·skip 0 | Gradle 3분 48초 | Docker Desktop을 켜고, PyYAML 6.0.3이 있는 Homebrew Python 3.11과 Docker CLI를 PATH 앞에 두었다. 패키지 설치나 설정 변경은 하지 않았다. 단위 테스트는 같은 커밋에서 돈 첫 실행 결과를 Gradle이 재사용했다. 단위가 1,661에서 늘어난 2개는 main이 추가한 `RepoMapToolTest`다 |
+| `git diff --check`, `npm run hooks:validate` | PASS | — | — | rebase 뒤 HEAD 기준 |
 
 ## 4. Scenario results
 
