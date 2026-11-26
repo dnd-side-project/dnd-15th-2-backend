@@ -2,18 +2,20 @@ package com.dnd.qello.auth.web;
 
 import java.io.IOException;
 
+import jakarta.servlet.http.HttpServletResponse;
+
 import org.springframework.http.MediaType;
 import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.access.AccessDeniedHandler;
+import org.springframework.security.web.csrf.CsrfException;
 import org.springframework.stereotype.Component;
 
+import com.dnd.qello.auth.error.AuthErrorCode;
 import com.dnd.qello.common.error.ApiErrorResponseFactory;
 import com.dnd.qello.common.error.CommonErrorCode;
 import com.dnd.qello.common.error.ErrorCode;
 import com.dnd.qello.common.web.response.ApiErrorResponse;
 import com.fasterxml.jackson.databind.ObjectMapper;
-
-import jakarta.servlet.http.HttpServletResponse;
 
 // 필터 단계에서 끝나는 인증·인가 실패의 응답을 만든다.
 //
@@ -31,13 +33,19 @@ public class AuthEntryPoints {
 	}
 
 	public AuthenticationEntryPoint unauthorized() {
-		return (request, response, exception) ->
-			write(response, CommonErrorCode.UNAUTHORIZED);
+		return (request, response, exception) -> write(response, CommonErrorCode.UNAUTHORIZED);
 	}
 
+	// 비밀번호를 바꿔야 하는 운영자 세션의 권한 거부는 AUT-APP-008로 알린다(#376). 프론트가 이 코드로 변경 화면을
+	// 띄운다. CSRF 거부(CsrfException)는 같은 핸들러로 오지만 원인이 다르므로 공통 403을 유지한다.
 	public AccessDeniedHandler forbidden() {
-		return (request, response, exception) ->
+		return (request, response, exception) -> {
+			if (!(exception instanceof CsrfException) && OperatorAccessContext.isPasswordChangeSession()) {
+				write(response, AuthErrorCode.PASSWORD_CHANGE_REQUIRED);
+				return;
+			}
 			write(response, CommonErrorCode.FORBIDDEN);
+		};
 	}
 
 	// 예외의 메시지를 응답에 담지 않는다. 인증 실패 원인이 그대로 새어 나간다.
