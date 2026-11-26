@@ -270,6 +270,7 @@
 | `AUT-VAL-002` | REQUIRED_VALUE_MISSING | 400 | VAL | 인증 필수 값이 없습니다. |
 | `AUT-VAL-003` | INVALID_INSTALLATION_ID | 400 | VAL | 기기 식별자가 올바르지 않습니다. |
 | `AUT-VAL-004` | INVALID_COUNTRY_CODE | 400 | VAL | 국가 코드가 올바르지 않습니다. |
+| `AUT-VAL-005` | PASSWORD_POLICY_VIOLATION | 400 | VAL | 비밀번호 작성 규칙에 맞지 않습니다. |
 | `AUT-DOM-001` | INVALID_CREDENTIAL_STATE | 400 | DOM | 자격증명 상태가 올바르지 않습니다. |
 | `AUT-APP-001` | LOGIN_FAILED | 401 | APP | 로그인 정보가 올바르지 않습니다. |
 | `AUT-APP-002` | CREDENTIAL_LOCKED | 423 | APP | 잠긴 계정입니다. 잠시 후 다시 시도해 주세요. |
@@ -278,6 +279,9 @@
 | `AUT-APP-005` | DEVICE_ALREADY_REGISTERED | 409 | APP | 이미 등록된 기기입니다. |
 | `AUT-APP-006` | DEVICE_CREDENTIAL_INVALID | 401 | APP | 기기 자격증명이 유효하지 않습니다. |
 | `AUT-APP-007` | RATE_LIMIT_EXCEEDED | 429 | APP | 요청이 너무 많습니다. 잠시 후 다시 시도해 주세요. |
+| `AUT-APP-008` | PASSWORD_CHANGE_REQUIRED | 403 | APP | 비밀번호를 변경해야 합니다. |
+| `AUT-APP-009` | CURRENT_PASSWORD_MISMATCH | 400 | APP | 현재 비밀번호가 올바르지 않습니다. |
+| `AUT-APP-010` | PASSWORD_NOT_CHANGED | 400 | APP | 현재 비밀번호와 다른 비밀번호를 입력해 주세요. |
 
 `AUT-APP-001`은 존재하지 않는 `login_id`와 잘못된 비밀번호를 **구분하지 않는다**. 두 경우에
 다른 코드나 다른 `reason`을 주면 계정 열거에 쓰인다. 같은 이유로 자격증명이 없을 때도 더미
@@ -297,6 +301,21 @@
 클라이언트 IP 단위 요청 한도를 넘으면 나간다(#315). 한도 검사는 서비스 호출보다 먼저 하므로 거절된
 요청은 계정·자격증명을 만들지 않고 운영자 로그인 실패 횟수도 올리지 않는다. 계정 단위 잠금인
 `AUT-APP-002`와는 별개다.
+
+`AUT-VAL-005`는 `POST /admin/password`의 새 비밀번호와 운영자 시드가 새로 만드는 비밀번호가 작성 규칙을 어기면
+나간다(#376). 영문 대문자·소문자·숫자·특수문자 중 2종류 이상이면 10자 이상, 3종류 이상이면 8자 이상이고, 공백을
+포함한 ASCII 출력 문자만 쓸 수 있으며 72자를 넘을 수 없다. `login_id`와 대소문자만 다른 값도 거부한다. `field`는
+`newPassword`이고 `reason`은 어긴 규칙을 알려 주되 입력값을 담지 않는다. 로그인 요청의 비밀번호에는 적용하지 않는다.
+
+`AUT-APP-008`은 초기 비밀번호이거나 마지막 변경 후 `qello.auth.operator-password.max-age`(기본 90일)가 지난 운영자
+세션이 비밀번호 변경·로그아웃·CSRF 발급 밖의 `/admin/**`, `/api/v1/operator/**`를 호출하면 `AuthEntryPoints`가
+낸다(#376). 판정은 로그인할 때 하므로 세션 도중 주기가 지나도 다음 로그인까지는 나가지 않는다. 같은 세션의 CSRF
+거부는 이 코드가 아니라 `CMN-DOM-001`이다.
+
+`AUT-APP-009`는 `POST /admin/password`의 현재 비밀번호 불일치다. 로그인한 세션에서만 나오므로 `AUT-APP-001`과 달리
+원인을 숨기지 않는다. 401을 쓰면 클라이언트가 세션 만료로 오해하므로 400이다. 로그인 실패와 같은 횟수에 더해 5회면
+`AUT-APP-002`로 잠긴다. 검사 순서는 잠금(`AUT-APP-002`) → 현재 비밀번호(`AUT-APP-009`) → 작성 규칙(`AUT-VAL-005`) →
+현재와 같은 값(`AUT-APP-010`)이다.
 
 필터 단계에서 끝나는 인증·인가 실패는 controller에 닿지 않아 `GlobalExceptionHandler`를
 거치지 않는다. `AuthEntryPoints`가 같은 형식으로 `CMN-VAL-003`(401)과 `CMN-DOM-001`(403)을
