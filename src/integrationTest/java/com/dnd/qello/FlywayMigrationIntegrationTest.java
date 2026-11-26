@@ -29,7 +29,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * TEST-PLAN-GH-294-COUNTRY-SEED-INT-006,
  * TEST-PLAN-GH-137-DIRECTION-POST-MODERATION (V32 latest version, added 2026-10-07T22:38:41+09:00),
  * TEST-PLAN-GH-337-ACCOUNT-WITHDRAWAL-INT-001 (V33 latest version and catalog, added 2026-10-09T18:47:28+09:00),
- * TEST-PLAN-GH-375-OPERATOR-ACCESS-LOG-INT-001 (V34 latest version and catalog, added 2026-11-22T22:02:56+09:00)
+ * TEST-PLAN-GH-375-OPERATOR-ACCESS-LOG-INT-001 (V34 latest version and catalog, added 2026-11-22T22:02:56+09:00),
+ * TEST-PLAN-GH-376-OPERATOR-PASSWORD-POLICY-INT-001 (V35 latest version, column and backfill, added 2026-11-24T23:50:07+09:00)
  */
 @SpringBootTest
 @ActiveProfiles({"test", "flyway-migration"})
@@ -174,7 +175,7 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 			"ct_media_status_preserves_content",
 			"ct_answer_reaction_reactor_can_view");
 
-	private static final int LATEST_MIGRATION_VERSION = 34;
+	private static final int LATEST_MIGRATION_VERSION = 35;
 
 	@Autowired
 	private Flyway flyway;
@@ -636,6 +637,67 @@ class FlywayMigrationIntegrationTest extends PostgisContainerIntegrationTestSupp
 		assertThatThrownBy(() -> jdbcTemplate.update(accessLogInsert(), "API_CALL", 1L, 600))
 				.isInstanceOf(DataIntegrityViolationException.class);
 		jdbcTemplate.update("DELETE FROM operator_access_log");
+	}
+
+	@Test
+	@DisplayName("TEST-PLAN-GH-376-OPERATOR-PASSWORD-POLICY-INT-001: V35는 operator_credential에 기본값 TRUE인 NOT NULL 변경 필요 컬럼만 더한다")
+	void v35AddsPasswordChangeRequiredColumn() {
+		var column = jdbcTemplate.queryForMap("""
+				SELECT data_type, is_nullable, column_default
+				FROM information_schema.columns
+				WHERE table_schema = 'public' AND table_name = 'operator_credential'
+				  AND column_name = 'password_change_required'
+				""");
+
+		assertThat(column)
+				.containsEntry("data_type", "boolean")
+				.containsEntry("is_nullable", "NO")
+				.containsEntry("column_default", "true");
+	}
+
+	@Test
+	@DisplayName("TEST-PLAN-GH-376-OPERATOR-PASSWORD-POLICY-INT-001: V35는 V34까지 있던 자격증명 행을 변경 필요(TRUE)로 채운다")
+	void v35BackfillsExistingCredentialsAsChangeRequired() {
+		String schema = "operator_password_v35";
+		try {
+			migrationFlyway(schema, "34").migrate();
+			jdbcTemplate.update("""
+					INSERT INTO %s.region_code (code, parent_code, display_name, level)
+					VALUES ('V35-REGION', 'KR', 'Migration Region', 'REGION')
+					""".formatted(schema));
+			Long operatorId = jdbcTemplate.queryForObject("""
+					INSERT INTO %s.user_account (role, status, coarse_region_code, locale, timezone, nickname)
+					VALUES ('OPERATOR', 'ACTIVE', 'V35-REGION', 'ko-KR', 'Asia/Seoul', 'v35-operator')
+					RETURNING id
+					""".formatted(schema), Long.class);
+			jdbcTemplate.update("""
+					INSERT INTO %s.operator_credential (user_id, login_id, password_hash)
+					VALUES (?, 'v35-operator', '$2a$10$not-a-real-hash')
+					""".formatted(schema), operatorId);
+
+			MigrateResult result = migrationFlyway(schema).migrate();
+			Boolean changeRequired = jdbcTemplate.queryForObject(
+					"SELECT password_change_required FROM %s.operator_credential WHERE user_id = ?".formatted(schema),
+					Boolean.class, operatorId);
+
+			assertThat(result.migrationsExecuted).isEqualTo(LATEST_MIGRATION_VERSION - 34);
+			assertThat(changeRequired).isTrue();
+		} finally {
+			jdbcTemplate.execute("DROP SCHEMA IF EXISTS " + schema + " CASCADE");
+		}
+	}
+
+	private static Flyway migrationFlyway(String schema, String... target) {
+		var configuration = Flyway.configure()
+				.dataSource(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())
+				.schemas(schema)
+				.defaultSchema(schema)
+				.locations("classpath:db/migration")
+				.cleanDisabled(true);
+		if (target.length > 0) {
+			configuration = configuration.target(target[0]);
+		}
+		return configuration.load();
 	}
 
 	private static String accessLogInsert() {
