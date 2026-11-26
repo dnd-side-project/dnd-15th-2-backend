@@ -37,7 +37,11 @@ public interface OperatorLoginApiSpec {
 
 			로그인 전에 GET /admin/csrf로 CSRF 토큰을 받아 함께 보내야 합니다.
 
-			이후 백오피스 요청은 발급된 세션 쿠키로 보냅니다. 같은 IP에서 짧은 시간에 너무 많이 호출하면 429를 반환합니다.""")
+			이후 백오피스 요청은 발급된 세션 쿠키로 보냅니다. 같은 IP에서 짧은 시간에 너무 많이 호출하면 429를 반환합니다.
+
+			응답의 passwordChangeRequired가 true면 초기 비밀번호이거나 변경 주기가 지난 비밀번호입니다. 이 세션으로는 \
+			POST /admin/password와 POST /admin/logout(그리고 인증 없이 열린 GET /admin/csrf, POST /admin/login)만 \
+			호출할 수 있고, 다른 운영자 API는 403 AUT-APP-008을 반환합니다.""")
 	@ApiResponses({
 			// content를 비워 두면 springdoc이 반환 타입으로 채운다. 200을 아예 적지 않으면
 			// 선언한 오류 응답만 남고 성공 응답이 통째로 빠진다.
@@ -66,5 +70,29 @@ public interface OperatorLoginApiSpec {
 	})
 	@PostMapping("/logout")
 	ResponseEntity<ApiResponse<Void>> logout(HttpServletRequest httpRequest);
+
+	@Operation(summary = "운영자 비밀번호 변경", description = """
+			로그인한 운영자가 자기 비밀번호를 바꿉니다.
+
+			운영자 로그인과 CSRF 토큰이 필요합니다. 비밀번호를 바꿔야 하는 세션(로그인 응답의 passwordChangeRequired가 \
+			true)도 호출할 수 있습니다.
+
+			성공하면 세션 ID를 새로 발급합니다(Set-Cookie). 이후 요청은 새 세션 쿠키로 보내야 하며, 세션은 정상 운영자 \
+			권한을 갖습니다. 세션의 최대 수명은 로그인 시각 기준 그대로입니다.
+
+			현재 비밀번호가 틀리면 로그인 실패와 같은 횟수에 더해지고, 5회가 쌓이면 잠깁니다.""")
+	@SecurityRequirement(name = "operatorSession")
+	@ApiResponses({
+			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "비밀번호를 바꿨습니다. 새 세션 쿠키가 발급됩니다."),
+			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "새 비밀번호가 작성 규칙에 맞지 않거나(AUT-VAL-005), 현재 비밀번호가 올바르지 않거나(AUT-APP-009), 새 비밀번호가 현재 비밀번호와 같습니다(AUT-APP-010). 값이 비어 있어도 400입니다.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
+			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "401", description = "세션이 없거나 만료되었습니다.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
+			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "403", description = "운영자 권한이 없거나 CSRF 토큰이 유효하지 않습니다.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class))),
+			@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "423", description = "비밀번호를 연속으로 틀려 잠긴 계정입니다. 잠시 후 다시 시도해 주세요.", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = ApiErrorResponse.class)))
+	})
+	@PostMapping("/password")
+	ResponseEntity<ApiResponse<Void>> changePassword(
+			@RequestBody @Valid OperatorPasswordChangeRequest request,
+			HttpServletRequest httpRequest,
+			HttpServletResponse httpResponse);
 
 }

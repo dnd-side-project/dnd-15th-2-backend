@@ -11,6 +11,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.dnd.qello.account.domain.Account;
 import com.dnd.qello.account.domain.AccountStatus;
 import com.dnd.qello.account.repository.AccountRepository;
+import com.dnd.qello.auth.config.OperatorPasswordProperties;
 import com.dnd.qello.auth.domain.LoginId;
 import com.dnd.qello.auth.domain.OperatorAccessLogEntry;
 import com.dnd.qello.auth.domain.OperatorAccessRequest;
@@ -30,6 +31,9 @@ import com.dnd.qello.auth.security.RawPassword;
 //
 // 판정 결과는 모두 접근 기록에 남긴다(#375). 기록은 판정과 같은 트랜잭션이라, 실패 기록은 실패 카운터와
 // 함께 커밋되고 기록 insert가 실패하면 판정 전체가 롤백된다. 기록 없는 세션은 만들지 않는다.
+//
+// 성공하면 비밀번호를 바꿔야 하는지도 함께 판정한다(#376). 바꿔야 하는 운영자도 로그인은 시키고, 세션 권한으로
+// 운영자 API를 막는다(OperatorLoginController). 로그인까지 막으면 비밀번호를 바꿀 세션이 없다.
 @Service
 @Transactional(readOnly = true)
 public class OperatorLoginService {
@@ -38,6 +42,7 @@ public class OperatorLoginService {
 	private final AccountRepository accountRepository;
 	private final PasswordHasher passwordHasher;
 	private final OperatorAccessLogRecorder accessLogRecorder;
+	private final OperatorPasswordProperties passwordProperties;
 	private final Clock clock;
 
 	// 존재하지 않는 login_id의 응답 시간을 맞추기 위한 더미 해시.
@@ -52,17 +57,19 @@ public class OperatorLoginService {
 			AccountRepository accountRepository,
 			PasswordHasher passwordHasher,
 			OperatorAccessLogRecorder accessLogRecorder,
+			OperatorPasswordProperties passwordProperties,
 			Clock clock) {
 		this.credentialRepository = credentialRepository;
 		this.accountRepository = accountRepository;
 		this.passwordHasher = passwordHasher;
 		this.accessLogRecorder = accessLogRecorder;
+		this.passwordProperties = passwordProperties;
 		this.clock = clock;
 		this.dummyHash = passwordHasher.hash(new RawPassword(UUID.randomUUID().toString()));
 	}
 
 	/**
-	 * 자격증명을 검증하고 로그인한 운영자의 계정 id를 돌려준다.
+	 * 자격증명을 검증하고 로그인한 운영자의 계정 id와 비밀번호 변경 필요 여부를 돌려준다.
 	 *
 	 * <p>
 	 * 실패 원인은 호출자에게 구분해 알리지 않는다.
@@ -73,7 +80,7 @@ public class OperatorLoginService {
 	// noRollbackFor가 없으면 실패 카운터 증가가 예외와 함께 rollback되어 잠금이 영원히
 	// 걸리지 않는다. 로그인 실패는 "실패를 기록하고 거절한다"는 하나의 성공한 처리다.
 	@Transactional(noRollbackFor = AuthException.class)
-	public long login(LoginId loginId, RawPassword rawPassword, OperatorAccessRequest accessRequest) {
+	public OperatorLoginResult login(LoginId loginId, RawPassword rawPassword, OperatorAccessRequest accessRequest) {
 		Instant now = Instant.now(clock);
 		Optional<OperatorCredential> found = credentialRepository.findByLoginId(loginId);
 
@@ -98,7 +105,7 @@ public class OperatorLoginService {
 		requireActiveAccount(userId, accessRequest, now);
 		credentialRepository.updateLoginState(credential.recordSuccess(now));
 		accessLogRecorder.recordWithinTransaction(OperatorAccessLogEntry.loginSucceeded(userId, accessRequest, now));
-		return userId;
+		return new OperatorLoginResult(userId, credential.requiresPasswordChangeAt(now, passwordProperties.maxAge()));
 	}
 
 	// 차단·삭제된 계정은 자격증명이 맞아도 로그인시키지 않는다. 여기서 막지 않으면
