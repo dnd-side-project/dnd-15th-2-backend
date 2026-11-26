@@ -73,6 +73,10 @@ qello:
     operator-session:
       # 로그인 후 사용 여부와 무관하게 세션이 끝나는 시간(AUTH_DESIGN.md 2절, #342).
       absolute-timeout: PT12H
+    operator-password:
+      # 운영자 비밀번호 변경 주기(#376). 마지막 변경 후 이 기간이 지나면 다음 로그인부터 변경 전까지
+      # 운영자 API를 막는다.
+      max-age: P90D
   account:
     nickname-change:
       # 마지막 변경 후 다음 변경까지의 최소 간격(F01). 가입 때 정한 닉네임은 이 주기에 넣지 않는다.
