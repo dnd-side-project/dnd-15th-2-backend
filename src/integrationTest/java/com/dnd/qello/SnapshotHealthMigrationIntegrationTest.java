@@ -1,15 +1,9 @@
 /**
  * Created at: 2026-08-16T00:00:00+09:00
  * Source scenario: TEST-PLAN-GH-109-SNAPSHOT-HEALTH-MIGRATION-INT-001 through INT-008
+ * Source scenario: TEST-PLAN-GH-376-OPERATOR-PASSWORD-POLICY-INT-010 (seed helper, added 2026-11-24T23:50:07+09:00)
  */
 package com.dnd.qello;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.time.Clock;
 import java.time.Duration;
@@ -23,6 +17,8 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+
+import jakarta.servlet.http.Cookie;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -47,8 +43,8 @@ import com.dnd.qello.filtering.domain.FilterJob;
 import com.dnd.qello.filtering.domain.FilterRelease;
 import com.dnd.qello.filtering.domain.FilterTarget;
 import com.dnd.qello.filtering.domain.FilterTargetType;
-import com.dnd.qello.filtering.domain.OperatorReason;
 import com.dnd.qello.filtering.domain.ModerationFailureClassification;
+import com.dnd.qello.filtering.domain.OperatorReason;
 import com.dnd.qello.filtering.domain.SnapshotHealth;
 import com.dnd.qello.filtering.domain.SnapshotHealthPolicy;
 import com.dnd.qello.filtering.domain.SnapshotHealthStatus;
@@ -79,7 +75,12 @@ import com.dnd.qello.notification.repository.OutboxEventRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-import jakarta.servlet.http.Cookie;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 // #109: snapshot health의 동시 probe 갱신, emergency migration의 원자성·재실행 안전성,
 // migration 이후 worker가 새 release로 자연스럽게 이어지는지, stale generation 결과
@@ -171,19 +172,19 @@ class SnapshotHealthMigrationIntegrationTest extends PostgisContainerIntegration
 		CountDownLatch start = new CountDownLatch(1);
 
 		List<Future<SnapshotHealth>> futures = List.of(
-			executor.submit(recordAfterSignal(recorder, ready, start)),
-			executor.submit(recordAfterSignal(recorder, ready, start)));
+				executor.submit(recordAfterSignal(recorder, ready, start)),
+				executor.submit(recordAfterSignal(recorder, ready, start)));
 		assertThat(ready.await(5, TimeUnit.SECONDS)).isTrue();
 		start.countDown();
 		futures.get(0).get(10, TimeUnit.SECONDS);
 		futures.get(1).get(10, TimeUnit.SECONDS);
 
 		assertThat(jdbc.queryForObject(
-			"SELECT target_only_failure_count FROM snapshot_health WHERE model_snapshot = ?",
-			Integer.class, SOURCE_MODEL_SNAPSHOT)).isEqualTo(2);
+				"SELECT target_only_failure_count FROM snapshot_health WHERE model_snapshot = ?",
+				Integer.class, SOURCE_MODEL_SNAPSHOT)).isEqualTo(2);
 		assertThat(jdbc.queryForObject(
-			"SELECT count(*) FROM snapshot_health_probe_result WHERE model_snapshot = ?",
-			Integer.class, SOURCE_MODEL_SNAPSHOT)).isEqualTo(4);
+				"SELECT count(*) FROM snapshot_health_probe_result WHERE model_snapshot = ?",
+				Integer.class, SOURCE_MODEL_SNAPSHOT)).isEqualTo(4);
 	}
 
 	@Test
@@ -193,11 +194,12 @@ class SnapshotHealthMigrationIntegrationTest extends PostgisContainerIntegration
 		long targetReleaseId = canaryRelease(TARGET_MODEL_SNAPSHOT);
 		FilterJob automated = createJob(sourceReleaseId, target(1L), "migrate-automated-1");
 		FilterJob resolved = createJob(sourceReleaseId, target(2L), "migrate-resolved-1")
-			.applyAutomatedDecision(1, com.dnd.qello.filtering.domain.FilterVerdict.ALLOW, NOW);
+				.applyAutomatedDecision(1, com.dnd.qello.filtering.domain.FilterVerdict.ALLOW, NOW);
 		filterJobRepository.save(resolved);
 		confirmPermanent(sourceReleaseId);
 
-		var history = emergencyMigrationService.emergencyMigrate(sourceReleaseId, targetReleaseId, 1L, new OperatorReason("TEST", "테스트 근거"));
+		var history = emergencyMigrationService.emergencyMigrate(sourceReleaseId, targetReleaseId, 1L,
+				new OperatorReason("TEST", "테스트 근거"));
 
 		assertThat(history.migratedJobCount()).isEqualTo(1);
 		FilterJob migratedAutomated = filterJobRepository.findById(automated.id()).orElseThrow();
@@ -206,7 +208,7 @@ class SnapshotHealthMigrationIntegrationTest extends PostgisContainerIntegration
 		FilterJob untouchedResolved = filterJobRepository.findById(resolved.id()).orElseThrow();
 		assertThat(untouchedResolved.filterReleaseId()).isEqualTo(sourceReleaseId);
 		assertThat(filterReleaseRepository.findById(targetReleaseId).orElseThrow().status())
-			.isEqualTo(com.dnd.qello.filtering.domain.FilterReleaseStatus.PROMOTED);
+				.isEqualTo(com.dnd.qello.filtering.domain.FilterReleaseStatus.PROMOTED);
 	}
 
 	@Test
@@ -216,15 +218,16 @@ class SnapshotHealthMigrationIntegrationTest extends PostgisContainerIntegration
 		FilterJob automated = createJob(sourceReleaseId, target(3L), "migrate-missing-target-1");
 		confirmPermanent(sourceReleaseId);
 
-		assertThatThrownBy(() -> emergencyMigrationService.emergencyMigrate(sourceReleaseId, 999_999L, 1L, new OperatorReason("TEST", "테스트 근거")))
-			.isInstanceOf(FilteringException.class)
-			.hasFieldOrPropertyWithValue("errorCode", FilteringErrorCode.RELEASE_NOT_FOUND);
+		assertThatThrownBy(() -> emergencyMigrationService.emergencyMigrate(sourceReleaseId, 999_999L, 1L,
+				new OperatorReason("TEST", "테스트 근거")))
+				.isInstanceOf(FilteringException.class)
+				.hasFieldOrPropertyWithValue("errorCode", FilteringErrorCode.RELEASE_NOT_FOUND);
 
 		FilterJob unchanged = filterJobRepository.findById(automated.id()).orElseThrow();
 		assertThat(unchanged.filterReleaseId()).isEqualTo(sourceReleaseId);
 		assertThat(unchanged.attemptGeneration()).isEqualTo(1);
 		assertThat(jdbc.queryForObject(
-			"SELECT count(*) FROM snapshot_emergency_migration_history", Integer.class)).isEqualTo(0);
+				"SELECT count(*) FROM snapshot_emergency_migration_history", Integer.class)).isEqualTo(0);
 	}
 
 	@Test
@@ -235,16 +238,18 @@ class SnapshotHealthMigrationIntegrationTest extends PostgisContainerIntegration
 		FilterJob automated = createJob(sourceReleaseId, target(4L), "migrate-duplicate-1");
 		confirmPermanent(sourceReleaseId);
 
-		emergencyMigrationService.emergencyMigrate(sourceReleaseId, targetReleaseId, 1L, new OperatorReason("TEST", "테스트 근거"));
+		emergencyMigrationService.emergencyMigrate(sourceReleaseId, targetReleaseId, 1L,
+				new OperatorReason("TEST", "테스트 근거"));
 		// 두 번째 호출 시점에는 source release에 남은 AUTOMATED job이 없어 대상
 		// release도 이미 PROMOTED라 재승격 시도가 거절된다 — 이중 이관이 되지 않는다.
-		assertThatThrownBy(() -> emergencyMigrationService.emergencyMigrate(sourceReleaseId, targetReleaseId, 1L, new OperatorReason("TEST", "테스트 근거")))
-			.isInstanceOf(FilteringException.class);
+		assertThatThrownBy(() -> emergencyMigrationService.emergencyMigrate(sourceReleaseId, targetReleaseId, 1L,
+				new OperatorReason("TEST", "테스트 근거")))
+				.isInstanceOf(FilteringException.class);
 
 		FilterJob afterSecondAttempt = filterJobRepository.findById(automated.id()).orElseThrow();
 		assertThat(afterSecondAttempt.attemptGeneration()).isEqualTo(2);
 		assertThat(jdbc.queryForObject(
-			"SELECT count(*) FROM snapshot_emergency_migration_history", Integer.class)).isEqualTo(1);
+				"SELECT count(*) FROM snapshot_emergency_migration_history", Integer.class)).isEqualTo(1);
 	}
 
 	@Test
@@ -255,12 +260,13 @@ class SnapshotHealthMigrationIntegrationTest extends PostgisContainerIntegration
 		AnswerModerationJobIntakeService intake = intakeService();
 		FilterJob job = intake.submit(target(5L), "migration worker 연동 답변", ModerationLanguage.KO, "migrate-worker-1");
 		confirmPermanent(sourceReleaseId);
-		emergencyMigrationService.emergencyMigrate(sourceReleaseId, targetReleaseId, 1L, new OperatorReason("TEST", "테스트 근거"));
+		emergencyMigrationService.emergencyMigrate(sourceReleaseId, targetReleaseId, 1L,
+				new OperatorReason("TEST", "테스트 근거"));
 
 		AtomicReference<String> calledWithModelSnapshot = new AtomicReference<>();
 		AnswerModerationExecutionWorker worker = executionWorker(recordingPipeline(calledWithModelSnapshot));
 		worker.processBatch(new AnswerModerationExecutionWorker.BatchCommand(
-			10, "migration-worker-owner", NOW, NOW.plusSeconds(30)));
+				10, "migration-worker-owner", NOW, NOW.plusSeconds(30)));
 
 		assertThat(calledWithModelSnapshot.get()).isEqualTo(TARGET_MODEL_SNAPSHOT);
 		FilterJob current = filterJobRepository.findById(job.id()).orElseThrow();
@@ -274,14 +280,15 @@ class SnapshotHealthMigrationIntegrationTest extends PostgisContainerIntegration
 		long targetReleaseId = canaryRelease(TARGET_MODEL_SNAPSHOT);
 		FilterJob job = createJob(sourceReleaseId, target(6L), "migrate-stale-1");
 		confirmPermanent(sourceReleaseId);
-		emergencyMigrationService.emergencyMigrate(sourceReleaseId, targetReleaseId, 1L, new OperatorReason("TEST", "테스트 근거"));
+		emergencyMigrationService.emergencyMigrate(sourceReleaseId, targetReleaseId, 1L,
+				new OperatorReason("TEST", "테스트 근거"));
 
 		FilterJob migrated = filterJobRepository.findById(job.id()).orElseThrow();
 		assertThat(migrated.attemptGeneration()).isEqualTo(2);
 		assertThatThrownBy(() -> migrated.applyAutomatedDecision(
-			1, com.dnd.qello.filtering.domain.FilterVerdict.ALLOW, NOW.plusSeconds(1)))
-			.isInstanceOf(FilteringException.class)
-			.hasFieldOrPropertyWithValue("errorCode", FilteringErrorCode.STALE_ATTEMPT_GENERATION);
+				1, com.dnd.qello.filtering.domain.FilterVerdict.ALLOW, NOW.plusSeconds(1)))
+				.isInstanceOf(FilteringException.class)
+				.hasFieldOrPropertyWithValue("errorCode", FilteringErrorCode.STALE_ATTEMPT_GENERATION);
 	}
 
 	@Test
@@ -291,16 +298,17 @@ class SnapshotHealthMigrationIntegrationTest extends PostgisContainerIntegration
 		OperatorSession session = login();
 
 		mockMvc.perform(withSession(withCsrf(post(
-				"/admin/filtering/snapshot-health/%s/confirm-permanent".formatted(SOURCE_MODEL_SNAPSHOT)), session), session)
+				"/admin/filtering/snapshot-health/%s/confirm-permanent".formatted(SOURCE_MODEL_SNAPSHOT)), session),
+				session)
 				.contentType(MediaType.APPLICATION_JSON)
 				.content("{\"reasonCode\":\"TEST\",\"reasonText\":\"통합 테스트 근거\"}"))
-			.andExpect(status().isOk())
-			.andExpect(jsonPath("$.data.status").value("PERMANENT_CONFIRMED"))
-			.andExpect(jsonPath("$.data.confirmedByOperatorUserId").exists());
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.data.status").value("PERMANENT_CONFIRMED"))
+				.andExpect(jsonPath("$.data.confirmedByOperatorUserId").exists());
 
 		assertThat(jdbc.queryForObject(
-			"SELECT status FROM snapshot_health WHERE model_snapshot = ?", String.class, SOURCE_MODEL_SNAPSHOT))
-			.isEqualTo("PERMANENT_CONFIRMED");
+				"SELECT status FROM snapshot_health WHERE model_snapshot = ?", String.class, SOURCE_MODEL_SNAPSHOT))
+				.isEqualTo("PERMANENT_CONFIRMED");
 	}
 
 	@Test
@@ -316,16 +324,15 @@ class SnapshotHealthMigrationIntegrationTest extends PostgisContainerIntegration
 		mockMvc.perform(post("/admin/filtering/snapshot-health/%s/confirm-permanent".formatted(SOURCE_MODEL_SNAPSHOT))
 				.header(csrfData.get("headerName").asText(), csrfData.get("token").asText())
 				.cookie(issued.getResponse().getCookies()))
-			.andExpect(status().isUnauthorized());
+				.andExpect(status().isUnauthorized());
 
 		assertThat(jdbc.queryForObject(
-			"SELECT status FROM snapshot_health WHERE model_snapshot = ?", String.class, SOURCE_MODEL_SNAPSHOT))
-			.isEqualTo("PERMANENT_SUSPECTED");
+				"SELECT status FROM snapshot_health WHERE model_snapshot = ?", String.class, SOURCE_MODEL_SNAPSHOT))
+				.isEqualTo("PERMANENT_SUSPECTED");
 	}
 
 	private Callable<SnapshotHealth> recordAfterSignal(
-		SnapshotHealthProbeRecorder recorder, CountDownLatch ready, CountDownLatch start
-	) {
+			SnapshotHealthProbeRecorder recorder, CountDownLatch ready, CountDownLatch start) {
 		return () -> {
 			ready.countDown();
 			if (!start.await(5, TimeUnit.SECONDS)) {
@@ -337,55 +344,55 @@ class SnapshotHealthMigrationIntegrationTest extends PostgisContainerIntegration
 
 	private SnapshotHealthProbeRecorder probeRecorder() {
 		return new SnapshotHealthProbeRecorder(snapshotHealthRepository, probeResultRepository, POLICY,
-			Clock.fixed(NOW, ZoneOffset.UTC), new TransactionTemplate(transactionManager));
+				Clock.fixed(NOW, ZoneOffset.UTC), new TransactionTemplate(transactionManager));
 	}
 
 	private void confirmPermanent(long sourceReleaseId) {
 		FilterRelease source = filterReleaseRepository.findById(sourceReleaseId).orElseThrow();
 		SnapshotHealth health = snapshotHealthRepository.findOrCreateForUpdate(source.modelSnapshot(), NOW)
-			.recordProbe(ModerationFailureClassification.SERVER_ERROR, null, NOW, POLICY)
-			.confirmPermanent(1L, NOW);
+				.recordProbe(ModerationFailureClassification.SERVER_ERROR, null, NOW, POLICY)
+				.confirmPermanent(1L, NOW);
 		snapshotHealthRepository.save(health);
 	}
 
 	private void seedSuspectedHealth(String modelSnapshot) {
 		SnapshotHealth suspected = snapshotHealthRepository.findOrCreateForUpdate(modelSnapshot, NOW)
-			.recordProbe(ModerationFailureClassification.SERVER_ERROR, null, NOW, POLICY);
+				.recordProbe(ModerationFailureClassification.SERVER_ERROR, null, NOW, POLICY);
 		snapshotHealthRepository.save(suspected);
 	}
 
 	private AnswerModerationJobIntakeService intakeService() {
 		return new AnswerModerationJobIntakeService(filterJobRepository, filterReleaseRepository, historyRepository,
-			outboxEventRepository, objectMapper, Duration.ofMinutes(10), transactionManager,
-			Clock.fixed(NOW, ZoneOffset.UTC));
+				outboxEventRepository, objectMapper, Duration.ofMinutes(10), transactionManager,
+				Clock.fixed(NOW, ZoneOffset.UTC));
 	}
 
 	private AnswerModerationExecutionWorker executionWorker(ModerationPipelineService pipeline) {
 		AnswerModerationRetryPolicy retryPolicy = new AnswerModerationRetryPolicy(
-			attempt -> Duration.ofSeconds(60), attempt -> Duration.ofSeconds(120), 100, Duration.ofHours(1));
+				attempt -> Duration.ofSeconds(60), attempt -> Duration.ofSeconds(120), 100, Duration.ofHours(1));
 		return new AnswerModerationExecutionWorker(pipeline, filterJobRepository, filterReleaseRepository,
-			historyRepository, outboxEventRepository, retryPolicy, filterReleaseRetryGateRepository,
-			new com.dnd.qello.filtering.domain.RetryGateConfig(3, 2, 2, 2, 6), manualReviewCaseRepository,
-			manualReviewPriorityEvaluationRepository,
-			new com.dnd.qello.filtering.domain.ManualReviewPriorityPolicy(3, Duration.ofHours(24), "test-v1"),
-			notificationEventRepository,
-			Duration.ofSeconds(5), objectMapper, pipelineExecutor, Duration.ofSeconds(5), transactionManager,
-			Clock.fixed(NOW, ZoneOffset.UTC));
+				historyRepository, outboxEventRepository, retryPolicy, filterReleaseRetryGateRepository,
+				new com.dnd.qello.filtering.domain.RetryGateConfig(3, 2, 2, 2, 6), manualReviewCaseRepository,
+				manualReviewPriorityEvaluationRepository,
+				new com.dnd.qello.filtering.domain.ManualReviewPriorityPolicy(3, Duration.ofHours(24), "test-v1"),
+				notificationEventRepository,
+				Duration.ofSeconds(5), objectMapper, pipelineExecutor, Duration.ofSeconds(5), transactionManager,
+				Clock.fixed(NOW, ZoneOffset.UTC));
 	}
 
 	private ModerationPipelineService recordingPipeline(AtomicReference<String> calledWithModelSnapshot) {
 		return new ModerationPipelineService(
-			(rawContent, normalizationRef) -> rawContent,
-			(normalizedContent, localRulesetRef) -> LocalRuleVerdict.noMatch(),
-			(normalizedContent, modelSnapshot) -> {
-				calledWithModelSnapshot.set(modelSnapshot);
-				throw new FilteringException(FilteringErrorCode.MODERATION_PROVIDER_UNAVAILABLE, "openai", "boom");
-			},
-			(providerResult, contentType, language, categoryMappingRef) -> {
-				throw new AssertionError("판정까지 도달하면 안 됩니다");
-			},
-			filterDecisionRepository,
-			Clock.fixed(NOW, ZoneOffset.UTC));
+				(rawContent, normalizationRef) -> rawContent,
+				(normalizedContent, localRulesetRef) -> LocalRuleVerdict.noMatch(),
+				(normalizedContent, modelSnapshot) -> {
+					calledWithModelSnapshot.set(modelSnapshot);
+					throw new FilteringException(FilteringErrorCode.MODERATION_PROVIDER_UNAVAILABLE, "openai", "boom");
+				},
+				(providerResult, contentType, language, categoryMappingRef) -> {
+					throw new AssertionError("판정까지 도달하면 안 됩니다");
+				},
+				filterDecisionRepository,
+				Clock.fixed(NOW, ZoneOffset.UTC));
 	}
 
 	private FilterJob createJob(long filterReleaseId, FilterTarget target, String idempotencyKey) {
@@ -399,7 +406,7 @@ class SnapshotHealthMigrationIntegrationTest extends PostgisContainerIntegration
 
 	private long promotedRelease(String modelSnapshot) {
 		FilterRelease candidate = releaseRegistryService.createCandidate(
-			"norm-" + modelSnapshot, "ruleset-" + modelSnapshot, "category-" + modelSnapshot, modelSnapshot);
+				"norm-" + modelSnapshot, "ruleset-" + modelSnapshot, "category-" + modelSnapshot, modelSnapshot);
 		releaseRegistryService.markOfflineEvaluated(candidate.id(), 1L, new OperatorReason("TEST", "테스트 근거"));
 		releaseRegistryService.designateShadow(candidate.id(), 1L, new OperatorReason("TEST", "테스트 근거"));
 		releaseRegistryService.designateCanary(candidate.id(), 1L, new OperatorReason("TEST", "테스트 근거"));
@@ -408,11 +415,11 @@ class SnapshotHealthMigrationIntegrationTest extends PostgisContainerIntegration
 
 	private long canaryRelease(String modelSnapshot) {
 		FilterRelease candidate = releaseRegistryService.createCandidate(
-			"norm-" + modelSnapshot, "ruleset-" + modelSnapshot, "category-" + modelSnapshot, modelSnapshot);
+				"norm-" + modelSnapshot, "ruleset-" + modelSnapshot, "category-" + modelSnapshot, modelSnapshot);
 		releaseRegistryService.markOfflineEvaluated(candidate.id(), 1L, new OperatorReason("TEST", "테스트 근거"));
 		releaseRegistryService.designateShadow(candidate.id(), 1L, new OperatorReason("TEST", "테스트 근거"));
 		return releaseRegistryService.designateCanary(
-			candidate.id(), 1L, new OperatorReason("TEST", "테스트 근거")).id();
+				candidate.id(), 1L, new OperatorReason("TEST", "테스트 근거")).id();
 	}
 
 	private OperatorSession login() throws Exception {
@@ -420,12 +427,13 @@ class SnapshotHealthMigrationIntegrationTest extends PostgisContainerIntegration
 		jdbc.update("DELETE FROM user_account WHERE nickname = 'qello-admin'");
 		jdbc.update("DELETE FROM region_code WHERE code = 'SNAPSHOT-HEALTH-TEST'");
 		jdbc.update("""
-			INSERT INTO region_code (code, display_name, level)
-			VALUES ('SNAPSHOT-HEALTH-TEST', 'Test Country', 'COUNTRY')
-			""");
+				INSERT INTO region_code (code, display_name, level)
+				VALUES ('SNAPSHOT-HEALTH-TEST', 'Test Country', 'COUNTRY')
+				""");
 		operatorSeedService.seedIfAbsent(
-			LoginId.of(LOGIN_ID), new RawPassword(PASSWORD), "qello-admin", "SNAPSHOT-HEALTH-TEST", "ko-KR",
-			"Asia/Seoul");
+				LoginId.of(LOGIN_ID), new RawPassword(PASSWORD), "qello-admin", "SNAPSHOT-HEALTH-TEST", "ko-KR",
+				"Asia/Seoul");
+		OperatorTestAccounts.completePasswordChange(jdbc, LOGIN_ID);
 
 		MvcResult issued = mockMvc.perform(get("/admin/csrf")).andReturn();
 		JsonNode data = objectMapper.readTree(issued.getResponse().getContentAsString()).get("data");
@@ -436,8 +444,8 @@ class SnapshotHealthMigrationIntegrationTest extends PostgisContainerIntegration
 		MvcResult loggedIn = mockMvc.perform(withCsrf(post("/admin/login"), csrfHeaderName, csrfToken, csrfCookies)
 				.contentType(MediaType.APPLICATION_JSON)
 				.content("{\"loginId\":\"%s\",\"password\":\"%s\"}".formatted(LOGIN_ID, PASSWORD)))
-			.andExpect(status().isOk())
-			.andReturn();
+				.andExpect(status().isOk())
+				.andReturn();
 		Cookie sessionCookie = loggedIn.getResponse().getCookie("SESSION");
 		return new OperatorSession(csrfHeaderName, csrfToken, csrfCookies, sessionCookie);
 	}
@@ -451,11 +459,11 @@ class SnapshotHealthMigrationIntegrationTest extends PostgisContainerIntegration
 	}
 
 	private static MockHttpServletRequestBuilder withCsrf(
-		MockHttpServletRequestBuilder request, String csrfHeaderName, String csrfToken, Cookie[] csrfCookies
-	) {
+			MockHttpServletRequestBuilder request, String csrfHeaderName, String csrfToken, Cookie[] csrfCookies) {
 		return request.header(csrfHeaderName, csrfToken).cookie(csrfCookies);
 	}
 
-	private record OperatorSession(String csrfHeaderName, String csrfToken, Cookie[] csrfCookies, Cookie sessionCookie) {
+	private record OperatorSession(String csrfHeaderName, String csrfToken, Cookie[] csrfCookies,
+			Cookie sessionCookie) {
 	}
 }

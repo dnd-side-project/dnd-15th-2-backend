@@ -1,6 +1,7 @@
 /*
  * Created at: 2026-10-09T20:42:16+09:00
  * Source scenario: TEST-PLAN-GH-342-OPERATOR-SESSION-LIFETIME-INT-001 through INT-008
+ * Source scenario: TEST-PLAN-GH-376-OPERATOR-PASSWORD-POLICY-INT-010 (seed helper, added 2026-11-24T23:50:07+09:00)
  */
 package com.dnd.qello;
 
@@ -80,6 +81,7 @@ class OperatorSessionLifetimeIntegrationTest extends PostgisContainerIntegration
 				""", REGION_CODE);
 		operatorSeedService.seedIfAbsent(
 				LoginId.of(LOGIN_ID), new RawPassword(PASSWORD), LOGIN_ID, REGION_CODE, "ko-KR", "Asia/Seoul");
+		OperatorTestAccounts.completePasswordChange(jdbcTemplate, LOGIN_ID);
 	}
 
 	@Test

@@ -1,6 +1,7 @@
 /*
  * Created at: 2026-11-22T22:14:54+09:00
  * Source scenario: TEST-PLAN-GH-375-OPERATOR-ACCESS-LOG-INT-016 through INT-017
+ * Source scenario: TEST-PLAN-GH-376-OPERATOR-PASSWORD-POLICY-INT-010 (seed helper, added 2026-11-24T23:50:07+09:00)
  */
 package com.dnd.qello;
 
@@ -84,6 +85,7 @@ class OperatorAccessLogFailureIntegrationTest extends PostgisContainerIntegratio
 				""", REGION_CODE);
 		operatorSeedService.seedIfAbsent(
 				LoginId.of(LOGIN_ID), new RawPassword(PASSWORD), "failure-admin", REGION_CODE, "ko-KR", "Asia/Seoul");
+		OperatorTestAccounts.completePasswordChange(jdbcTemplate, LOGIN_ID);
 		csrf = issueCsrf();
 	}
 
