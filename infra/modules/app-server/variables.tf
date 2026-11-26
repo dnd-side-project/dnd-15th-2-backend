@@ -54,7 +54,7 @@ variable "ecr_repository_arn" {
 }
 
 variable "ssm_parameter_arns" {
-  description = "인스턴스 Role이 값을 읽을 SSM 파라미터의 정확한 ARN 목록(DB 비밀번호, 인증 토큰 시크릿, push 설정 5개)."
+  description = "인스턴스 Role이 값을 읽을 SSM 파라미터의 정확한 ARN 9개 목록(DB 비밀번호, 인증 토큰 시크릿, push 설정 5개, 좌표 설정 2개)."
   type        = list(string)
 }
 
@@ -121,6 +121,16 @@ variable "push_fcm_project_id_parameter_name" {
 
 variable "push_fcm_credential_json_parameter_name" {
   description = "Dev FCM 서비스 계정 credential JSON을 담은 SSM 파라미터 이름."
+  type        = string
+}
+
+variable "coordinate_current_key_id_parameter_name" {
+  description = "현재 좌표 암호화 key ID를 담은 SSM 파라미터 이름."
+  type        = string
+}
+
+variable "coordinate_current_key_parameter_name" {
+  description = "현재 좌표 암호화 key의 Base64 값을 담은 SSM 파라미터 이름."
   type        = string
 }
 

@@ -26,6 +26,15 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  * Source scenario: TEST-PLAN-GH-364-PUSH-SECRET-DEPLOY-INT-011
  * Source scenario: TEST-PLAN-GH-364-PUSH-SECRET-DEPLOY-INT-012
  * Source scenario: TEST-PLAN-GH-364-PUSH-SECRET-DEPLOY-INT-013
+ * Source scenario: TEST-PLAN-GH-390-COORDINATE-KEY-DEPLOY-INT-001
+ * Source scenario: TEST-PLAN-GH-390-COORDINATE-KEY-DEPLOY-INT-002
+ * Source scenario: TEST-PLAN-GH-390-COORDINATE-KEY-DEPLOY-INT-003
+ * Source scenario: TEST-PLAN-GH-390-COORDINATE-KEY-DEPLOY-INT-004
+ * Source scenario: TEST-PLAN-GH-390-COORDINATE-KEY-DEPLOY-INT-005
+ * Source scenario: TEST-PLAN-GH-390-COORDINATE-KEY-DEPLOY-INT-006
+ * Source scenario: TEST-PLAN-GH-390-COORDINATE-KEY-DEPLOY-INT-007
+ * Source scenario: TEST-PLAN-GH-390-COORDINATE-KEY-DEPLOY-INT-008
+ * Source scenario: TEST-PLAN-GH-390-COORDINATE-KEY-DEPLOY-INT-009
  * </pre>
  */
 class PushSecretDeploymentIntegrationTest {
@@ -48,6 +57,8 @@ class PushSecretDeploymentIntegrationTest {
 			exec(compile(ast.parse(runtime), "<runtime-definitions>", "exec"), namespace)
 			keys = namespace["PUSH_KEYS"]
 			suffixes = namespace["SUFFIXES"]
+			coordinate_id = "QELLO_COORDINATE_CURRENT_KEY_ID"
+			coordinate_key = "QELLO_COORDINATE_CURRENT_KEY_BASE64"
 			override = os.environ.get("QELLO_TEST_COMPOSE")
 			docker = shutil.which("docker")
 			if not override and docker is None:
@@ -160,17 +171,25 @@ class PushSecretDeploymentIntegrationTest {
 			    sys.exit(status)
 			if tool == "aws":
 			    if "get-parameter" in args:
-			        if control.get("aws_failure"):
-			            print(control["sentinel"], file=sys.stderr)
-			            sys.exit(17)
-			        if control.get("malformed"):
-			            print(control["sentinel"])
-			            sys.exit(0)
 			        name = args[args.index("--name") + 1]
 			        assert name.startswith("/fixture/")
 			        assert args[args.index("--region") + 1] == "fixture-region"
 			        assert "--with-decryption" in args
-			        finish({"Parameter": {"Value": control["parameters"][name.rsplit("/", 1)[1]]}})
+			        suffix = name.rsplit("/", 1)[1]
+			        error = control.get("parameter_errors", {}).get(suffix)
+			        if error or suffix not in control["parameters"]:
+			            print((error or "ParameterNotFound") + ": " + control["sentinel"]
+			                  + " ".join(control["coordinate_sentinels"]), file=sys.stderr)
+			            sys.exit(17)
+			        if control.get("aws_failure"):
+			            print(control["sentinel"] + " ".join(control["coordinate_sentinels"]), file=sys.stderr)
+			            sys.exit(17)
+			        if control.get("malformed") or suffix in control.get("malformed_parameters", []):
+			            print(control["sentinel"] + " ".join(control["coordinate_sentinels"]))
+			            sys.exit(0)
+			        if suffix in control.get("responses", {}):
+			            finish(control["responses"][suffix])
+			        finish({"Parameter": {"Value": control["parameters"][suffix]}})
 			    if "get-login-password" in args:
 			        print(control["sentinel"])
 			        sys.exit(0)
@@ -215,7 +234,7 @@ class PushSecretDeploymentIntegrationTest {
 			        if (control.get("compose_failure") and location.name == "next"
 			                or control.get("published_config_failure")
 			                and location == root and (root / ".runtime/pending.json").exists()):
-			            print(control["sentinel"], file=sys.stderr)
+			            print(control["sentinel"] + " ".join(control["coordinate_sentinels"]), file=sys.stderr)
 			            sys.exit(19)
 			        result = subprocess.run([*json.loads(os.environ["QELLO_FIXTURE_COMPOSE_COMMAND"]), *args[1:]],
 			                                capture_output=True, timeout=20)
@@ -226,7 +245,7 @@ class PushSecretDeploymentIntegrationTest {
 			    sys.exit(0)
 			if tool == "curl":
 			    if control.get("health_failure"):
-			        print(control["sentinel"], file=sys.stderr)
+			        print(control["sentinel"] + " ".join(control["coordinate_sentinels"]), file=sys.stderr)
 			        sys.exit(22)
 			    print('{"status":"UP"}')
 			    sys.exit(0)
@@ -240,6 +259,7 @@ class PushSecretDeploymentIntegrationTest {
 			        self.bin = self.root / "bin"
 			        self.bin.mkdir()
 			        self.control = {"sentinel": sentinel}
+			        self.coordinate_sentinels = []
 			        self.secrets("initial")
 			        for tool in ("aws", "docker", "curl"):
 			            executable = self.bin / tool
@@ -260,6 +280,8 @@ class PushSecretDeploymentIntegrationTest {
 			            "QELLO_FIXTURE_COMPOSE_COMMAND": json.dumps(compose_command),
 			            "APP_IMAGE": "fixture.invalid/polluted:parent",
 			            **{key: "polluted-parent" for key in keys},
+			            coordinate_id: "FIXTURE_COORDINATE_PARENT_ID",
+			            coordinate_key: base64.b64encode(bytes(range(192, 224))).decode(),
 			        }
 
 			    def secrets(self, label):
@@ -274,6 +296,13 @@ class PushSecretDeploymentIntegrationTest {
 			            json.dumps(credential, indent=2),
 			        ]))
 			        self.control["parameters"] = dict(zip(suffixes, self.values.values()))
+			        offset = 64 + sum(label.encode("utf-8")) % 128
+			        self.values[coordinate_id] = "FIXTURE_COORDINATE_390_ID_" + label
+			        self.values[coordinate_key] = base64.b64encode(bytes(range(offset, offset + 32))).decode()
+			        self.control["parameters"]["coordinate-current-key-id"] = self.values[coordinate_id]
+			        self.control["parameters"]["coordinate-current-key"] = self.values[coordinate_key]
+			        self.coordinate_sentinels.extend([self.values[coordinate_id], self.values[coordinate_key]])
+			        self.control["coordinate_sentinels"] = self.coordinate_sentinels
 			        self.control["parameters"].update({
 			            "db-password": "fixture-db", "auth-token": "fixture-auth",
 			        })
@@ -310,7 +339,8 @@ class PushSecretDeploymentIntegrationTest {
 			        return result
 
 			    def pair(self):
-			        return {name: (self.root / name).read_text() if (self.root / name).exists() else None
+			        return {name: (self.root / name).read_bytes().decode("utf-8")
+			                if (self.root / name).exists() else None
 			                for name in (".env", "compose.push.yaml")}
 
 			    def backup(self):
@@ -335,19 +365,27 @@ class PushSecretDeploymentIntegrationTest {
 			                (self.root / "workflow-trace.jsonl").read_text().splitlines()]
 
 			    def safe_output(self, result):
-			        assert sentinel not in result.stdout + result.stderr
+			        assert all(value not in result.stdout + result.stderr
+			                   for value in [sentinel, *self.coordinate_sentinels]), "secret leaked in output"
 
 			    def safe_files(self):
 			        allowed = {".env", "fixture.json", ".runtime/previous.json", ".runtime/pending.json"}
 			        for file in self.root.rglob("*"):
 			            if file.is_file() and file.relative_to(self.root).as_posix() not in allowed:
-			                assert sentinel.encode() not in file.read_bytes(), str(file)
+			                content = file.read_bytes()
+			                assert all(value.encode() not in content
+			                           for value in [sentinel, *self.coordinate_sentinels]), str(file)
 
 			    def assert_push(self):
 			        actual = self.effective()["services"]["app"]["environment"]
 			        for key in keys[:4]:
 			            assert actual[key] == self.values[key], key
 			        assert json.loads(actual[keys[4]]) == json.loads(self.values[keys[4]])
+			        overlay = yaml.safe_load((self.root / "compose.push.yaml").read_text())
+			        for key in (coordinate_id, coordinate_key):
+			            assert actual.get(key) == self.values[key], "coordinate effective value mismatch: " + key
+			            assert self.pair()[".env"].count(key + "=") == 1, "duplicate coordinate assignment"
+			            assert overlay["services"]["app"]["environment"][key] == "${" + key + ":?required}"
 
 			def success(result):
 			    assert result.returncode == 0, result.stdout + result.stderr
@@ -363,6 +401,8 @@ class PushSecretDeploymentIntegrationTest {
 			        "media_bucket_name": "fixture-bucket", "spring_profiles_active": "test",
 			        "compose_version": "v2.29.7", "db_password_parameter_name": "/fixture/db-password",
 			        "auth_token_secret_parameter_name": "/fixture/auth-token",
+			        "coordinate_current_key_id_parameter_name": "/fixture/coordinate-current-key-id",
+			        "coordinate_current_key_parameter_name": "/fixture/coordinate-current-key",
 			    }
 			    for name, suffix in zip((
 			            "push_token_current_key_id_parameter_name",
@@ -386,7 +426,7 @@ class PushSecretDeploymentIntegrationTest {
 			""";
 
 	@Test
-	@DisplayName("INT001: 기존 설정과 DB를 보존하고 다섯 secret과 파일 권한을 게시한다")
+	@DisplayName("INT001: 기존 설정과 DB를 보존하고 push 다섯 값과 좌표 두 값 및 파일 권한을 게시한다")
 	void existingHostDeployment() throws Exception {
 		run("""
 				host = Sandbox("existing")
@@ -410,6 +450,13 @@ class PushSecretDeploymentIntegrationTest {
 				assert [event[event.index("up"):] for event in effects if "up" in event] == [
 				    ["up", "-d", "--no-deps", "--force-recreate", "app"]]
 				assert not any("down" in event or "volume" in event for event in host.events())
+				assert sorted(event[event.index("--name") + 1] for event in host.events()
+				              if "get-parameter" in event) == sorted([
+				    "/fixture/push-token-current-key-id", "/fixture/push-token-current-encryption-key",
+				    "/fixture/push-token-fingerprint-key", "/fixture/push-fcm-project-id",
+				    "/fixture/push-fcm-credential-json", "/fixture/coordinate-current-key-id",
+				    "/fixture/coordinate-current-key",
+				])
 				assert not list((host.root / ".runtime").glob("stage-*"))
 				assert not (host.root / ".runtime/pending.json").exists()
 				host.safe_files()
@@ -432,23 +479,42 @@ class PushSecretDeploymentIntegrationTest {
 				    ({"published_config_failure": True}, "publish"),
 				    ({"rename_failures": ["previous.json"]}, "backup"),
 				]
+				for suffix in ("coordinate-current-key-id", "coordinate-current-key"):
+				    for error in ("ParameterNotFound", "AccessDenied"):
+				        cases.append(({"parameter_errors": {suffix: error}}, "secrets"))
+				    cases.append(({"malformed_parameters": [suffix]}, "secrets"))
+				    responses = [{}, {"Parameter": {}}] + [
+				        {"Parameter": {"Value": value}} for value in ("", " \\t\\r\\n", "\\0", None, 42, [], {})]
+				    for response in responses:
+				        cases.append(({"responses": {suffix: response}}, "secrets"))
+				for suffix, value in (
+				        ("coordinate-current-key-id", "한" * 85 + "a"),
+				        ("coordinate-current-key", "invalid-base64"),
+				        ("coordinate-current-key", base64.b64encode(bytes(range(31))).decode()),
+				        ("coordinate-current-key", base64.b64encode(bytes(range(64, 96))).decode()[:-2] + "B=")):
+				    cases.append(({"responses": {suffix: {"Parameter": {"Value": value}}}}, "secrets"))
 				for index, (controls, stage) in enumerate(cases):
 				    host = Sandbox("failure-" + str(index))
 				    success(host.deploy())
 				    before, backup = host.pair(), host.backup()
+				    starts = len([event for event in host.events() if "up" in event])
 				    host.secrets("changed")
 				    host.control.update(controls)
 				    failure(host.deploy(image_c), stage)
-				    assert host.pair() == before, controls
-				    assert host.backup() == backup, controls
+				    assert host.pair() == before, "active pair changed in failure case " + str(index)
+				    assert host.backup() == backup, "backup changed in failure case " + str(index)
+				    if stage in ("secrets", "validate", "pull", "publish"):
+				        assert len([event for event in host.events() if "up" in event]) == starts
 				    host.safe_files()
 				host = Sandbox("locked")
 				success(host.deploy())
 				before = host.pair()
+				backup = host.backup()
 				with (host.root / ".runtime/lock").open("a") as lock:
 				    fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
 				    failure(host.deploy(image_c), "prepare")
 				    assert host.pair() == before
+				    assert host.backup() == backup
 				""");
 	}
 
@@ -458,8 +524,10 @@ class PushSecretDeploymentIntegrationTest {
 		run("""
 				host = Sandbox("health")
 				success(host.deploy(image_a))
+				host.assert_push()
 				host.secrets("B")
 				success(host.deploy(image_b))
+				host.assert_push()
 				before, backup = host.pair(), host.backup()
 				host.control["health_failure"] = True
 				failure(host.deploy(image_c), "health")
@@ -470,6 +538,7 @@ class PushSecretDeploymentIntegrationTest {
 				host.control["aws_failure"] = True
 				success(host.deploy(image_b, rollback=True))
 				assert host.pair() == before
+				host.assert_push()
 				assert host.backup() == backup
 				assert len([event for event in host.events() if "get-parameter" in event]) == reads
 				assert host.effective()["services"]["app"]["image"] == image_b
@@ -483,9 +552,11 @@ class PushSecretDeploymentIntegrationTest {
 		run("""
 				host = Sandbox("lifecycle")
 				success(host.deploy(image_a))
+				host.assert_push()
 				pair_a = host.pair()
 				host.secrets("B")
 				success(host.deploy(image_b))
+				host.assert_push()
 				pair_b = host.pair()
 				assert host.backup() == pair_a
 				host.secrets("C")
@@ -497,9 +568,11 @@ class PushSecretDeploymentIntegrationTest {
 				assert host.backup() == pair_a
 				host.secrets("D")
 				success(host.deploy(image_d))
+				host.assert_push()
 				assert host.backup() == pair_b
 				pair_d = host.pair()
 				success(host.deploy(image_d))
+				host.assert_push()
 				assert host.pair() == pair_d and host.backup() == pair_b
 				assert sorted(path.name for path in (host.root / ".runtime").iterdir()) == ["lock", "previous.json"]
 				assert (host.root / ".env").read_text().count(keys[0] + "=") == 2
@@ -507,7 +580,7 @@ class PushSecretDeploymentIntegrationTest {
 	}
 
 	@Test
-	@DisplayName("INT005: 실제 부팅과 workflow SSM 전달이 같은 다섯 환경 값을 생성하고 누출하지 않는다")
+	@DisplayName("INT005: 실제 부팅과 workflow SSM 전달이 같은 push·좌표 환경 값을 생성하고 누출하지 않는다")
 	void bootAndWorkflowConverge() throws Exception {
 		run("""
 				boot = Sandbox("boot", existing=False)
@@ -519,8 +592,8 @@ class PushSecretDeploymentIntegrationTest {
 				existing.assert_push()
 				boot_environment = boot.effective()["services"]["app"]["environment"]
 				host_environment = existing.effective()["services"]["app"]["environment"]
-				assert {key: boot_environment[key] for key in keys} == {
-				    key: host_environment[key] for key in keys}
+				assert {key: boot_environment[key] for key in (*keys, coordinate_id, coordinate_key)} == {
+				    key: host_environment[key] for key in (*keys, coordinate_id, coordinate_key)}
 				assert boot.effective()["services"]["app"]["image"] == image_b
 				boot.safe_files()
 				existing.safe_files()
@@ -532,7 +605,12 @@ class PushSecretDeploymentIntegrationTest {
 	void diagnosticAndPayloadRedaction() throws Exception {
 		run("""
 				for index, controls in enumerate((
-				        {"aws_failure": True}, {"malformed": True}, {"compose_failure": True})):
+				        {"aws_failure": True}, {"malformed": True}, {"compose_failure": True},
+				        {"parameter_errors": {"coordinate-current-key-id": "AccessDenied"}},
+				        {"parameter_errors": {"coordinate-current-key": "AccessDenied"}},
+				        {"malformed_parameters": ["coordinate-current-key-id"]},
+				        {"malformed_parameters": ["coordinate-current-key"]},
+				        {"published_config_failure": True})):
 				    host = Sandbox("redaction-" + str(index))
 				    before = host.pair()
 				    host.control.update(controls)
@@ -554,7 +632,9 @@ class PushSecretDeploymentIntegrationTest {
 		run(legacyRollbackScenario() + """
 				host = Sandbox("same-sha")
 				success(host.deploy(image_a))
+				host.assert_push()
 				pair_a = host.pair()
+				environment_a = host.effective()["services"]["app"]["environment"]
 				host.secrets("rotated")
 				success(host.deploy(image_a))
 				pair_b = host.pair()
@@ -563,6 +643,7 @@ class PushSecretDeploymentIntegrationTest {
 				host.control["aws_failure"] = True
 				success(host.deploy(image_a, rollback=True))
 				assert host.pair() == pair_a and host.backup() == pair_b
+				assert host.effective()["services"]["app"]["environment"] == environment_a
 				assert len([event for event in host.events() if "get-parameter" in event]) == reads
 				interrupted = Sandbox("interrupted")
 				success(interrupted.deploy(image_a))
@@ -570,6 +651,7 @@ class PushSecretDeploymentIntegrationTest {
 				interrupted.secrets("rotated")
 				success(interrupted.deploy(image_a))
 				pair_b = interrupted.pair()
+				environment_b = interrupted.effective()["services"]["app"]["environment"]
 				interrupted.secrets("broken")
 				interrupted.control["rename_failures"] = ["next/compose.push.yaml", "restore/.env"]
 				result = interrupted.deploy(image_c)
@@ -587,6 +669,7 @@ class PushSecretDeploymentIntegrationTest {
 				reads = len([event for event in interrupted.events() if "get-parameter" in event])
 				success(interrupted.deploy(image_a, rollback=True))
 				assert interrupted.pair() == pair_b
+				assert interrupted.effective()["services"]["app"]["environment"] == environment_b
 				assert interrupted.backup() == pair_a
 				assert len([event for event in interrupted.events() if "get-parameter" in event]) == reads
 				assert not pending.exists()
@@ -600,7 +683,7 @@ class PushSecretDeploymentIntegrationTest {
 				success(legacy.deploy(image_b))
 				reads = len([event for event in legacy.events() if "get-parameter" in event])
 				legacy.control["aws_failure"] = True
-				success(legacy.deploy(image_a, rollback=True))
+				success(legacy.workflow(image_a, inputs={"REQUESTED_IMAGE_SHA": "a" * 40}))
 				assert legacy.pair() == original
 				assert not (legacy.root / "compose.push.yaml").exists()
 				assert len([event for event in legacy.events() if "get-parameter" in event]) == reads
@@ -639,6 +722,17 @@ class PushSecretDeploymentIntegrationTest {
 				        pass
 				    else:
 				        raise AssertionError("invalid push input accepted")
+				    host.secrets("initial")
+				    for key, suffix in zip(keys, suffixes):
+				        if key in candidate:
+				            host.control["parameters"][suffix] = candidate[key]
+				        else:
+				            del host.control["parameters"][suffix]
+				    failure(host.deploy(), "secrets")
+				    assert host.pair() == before, "invalid push input published a pair"
+				    assert not (host.root / ".runtime/previous.json").exists()
+				    assert not any("up" in event for event in host.events())
+				    host.safe_files()
 				host.control["parameters"][suffixes[1]] = "invalid-base64"
 				failure(host.deploy(), "secrets")
 				assert host.pair() == before
@@ -648,6 +742,24 @@ class PushSecretDeploymentIntegrationTest {
 				actual = host.effective()["services"]["app"]
 				assert actual["image"] == image_b
 				assert json.loads(actual["environment"][keys[4]]) == credential | {"private_key_id": "round-trip"}
+				for identifier, offset in (("a" * 255, 96), ("한" * 85, 128)):
+				    before_update = host.pair()
+				    before_environment = host.effective()["services"]["app"]["environment"]
+				    host.values[coordinate_id] = identifier
+				    host.values[coordinate_key] = base64.b64encode(bytes(range(offset, offset + 32))).decode()
+				    host.control["parameters"]["coordinate-current-key-id"] = identifier
+				    host.control["parameters"]["coordinate-current-key"] = host.values[coordinate_key]
+				    host.coordinate_sentinels.extend([identifier, host.values[coordinate_key]])
+				    success(host.deploy())
+				    host.assert_push()
+				    assert host.backup() == before_update
+				    environment = host.effective()["services"]["app"]["environment"]
+				    assert all(environment[key] == value for key, value in before_environment.items()
+				               if key not in (coordinate_id, coordinate_key))
+				updated, backup = host.pair(), host.backup()
+				success(host.deploy())
+				host.assert_push()
+				assert host.pair() == updated and host.backup() == backup
 				""");
 	}
 
@@ -687,6 +799,24 @@ class PushSecretDeploymentIntegrationTest {
 				payload = json.loads((host.root / "payload.json").read_text())
 				assert len(payload["commands"]) == 1
 				assert json.loads((host.root / "invocation.json").read_text())["Status"] == "Success"
+				pair_b = host.pair()
+				environment_b = host.effective()["services"]["app"]["environment"]
+				host.secrets("workflow-C")
+				success(host.workflow(image_c))
+				host.assert_push()
+				pair_c = host.pair()
+				assert pair_c != pair_b and host.backup() == pair_b
+				reads = len([event for event in host.events() if "get-parameter" in event])
+				host.control["aws_failure"] = True
+				result = host.workflow(image_d, inputs={"REQUESTED_IMAGE_SHA": "d" * 40})
+				assert result.returncode == 1, "unretained rollback image accepted"
+				assert host.pair() == pair_c and host.backup() == pair_b
+				assert len([event for event in host.events() if "get-parameter" in event]) == reads
+				success(host.workflow(image_b, inputs={"REQUESTED_IMAGE_SHA": "b" * 40}))
+				assert host.pair() == pair_b and host.backup() == pair_c
+				assert host.effective()["services"]["app"]["environment"] == environment_b
+				assert host.effective()["services"]["app"]["image"] == image_b
+				assert len([event for event in host.events() if "get-parameter" in event]) == reads
 				for index, prefix in enumerate(("", "fixture", "/fixture/", "/fixture//nested", "/fixture;bad")):
 				    invalid = Sandbox("invalid-prefix-" + str(index))
 				    before = invalid.pair()

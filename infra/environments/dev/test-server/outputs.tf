@@ -48,6 +48,16 @@ output "push_fcm_credential_json_parameter_name" {
   value       = aws_ssm_parameter.push_fcm_credential_json.name
 }
 
+output "coordinate_current_key_id_parameter_name" {
+  description = "현재 좌표 암호화 key ID의 SSM 파라미터 이름. 비밀값은 반환하지 않는다."
+  value       = aws_ssm_parameter.coordinate_current_key_id.name
+}
+
+output "coordinate_current_key_parameter_name" {
+  description = "현재 좌표 암호화 key의 SSM 파라미터 이름. 비밀값은 반환하지 않는다."
+  value       = aws_ssm_parameter.coordinate_current_key.name
+}
+
 output "ssm_parameter_path_prefix" {
   description = "배포 구성에 사용하는 SSM 파라미터 경로 접두사. 비밀값은 포함하지 않는다."
   value       = local.ssm_parameter_path_prefix

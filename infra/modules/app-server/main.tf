@@ -252,6 +252,8 @@ resource "aws_instance" "this" {
     push_token_fingerprint_key_parameter_name        = var.push_token_fingerprint_key_parameter_name
     push_fcm_project_id_parameter_name               = var.push_fcm_project_id_parameter_name
     push_fcm_credential_json_parameter_name          = var.push_fcm_credential_json_parameter_name
+    coordinate_current_key_id_parameter_name         = var.coordinate_current_key_id_parameter_name
+    coordinate_current_key_parameter_name            = var.coordinate_current_key_parameter_name
     media_bucket_name                                = var.media_bucket_name
     spring_profiles_active                           = var.spring_profiles_active
     compose_version                                  = var.compose_version
