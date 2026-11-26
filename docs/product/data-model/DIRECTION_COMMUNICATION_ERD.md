@@ -143,7 +143,7 @@ erDiagram
 | 알림·푸시·Outbox | `push_device` (8), `notification_user_setting` (6), `notification_preference` (4), `outbox_event` (15), `notification` (11), `notification_seen_state` (2), `notification_event` (11), `notification_delivery` (9), `push_dispatch_group` (15), `push_dispatch_group_member` (3), `push_daily_budget` (5) | 11 / 89 |
 | 프레임워크 (DBML 밖) | `spring_session` (7), `spring_session_attributes` (3) | 2 / 10 |
 
-V28 스냅샷 이후 V34(#375)가 운영 감사 그룹에 `operator_access_log` (9)를 추가했다. 위 표와 총합은 V1~V28 스냅샷 기준이라 이 테이블을 포함하지 않는다.
+V28 스냅샷 이후 V34(#375)가 운영 감사 그룹에 `operator_access_log` (9)를 추가했고, V35(#376)가 `operator_credential`에 초기 비밀번호 판별 컬럼 `password_change_required`를 추가해 11컬럼이 됐다. 위 표와 총합은 V1~V28 스냅샷 기준이라 이 두 변경을 포함하지 않는다.
 
 ## DBML 표현 경계와 검증
 
