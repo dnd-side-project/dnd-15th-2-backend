@@ -1,15 +1,15 @@
 # Test Report: TEST-PLAN-GH-388-COORDINATE-ENCRYPTION
 
-> 로컬 실행일: 2026-11-25 / OCI 최종 감사일: 2026-11-26
+> 로컬 최초 실행일: 2026-11-25 / OCI 후속 회귀일: 2026-11-27
 > Issue: #388 / task_id: TASK-GH-388-COORDINATE-ENCRYPTION / design_id: ADR-0009
-> Branch: feat/gh-388-coordinate-encryption / 기존 로컬 검증 코드: 1800bca2 / OCI candidate: c131aa7268219106a78af826ce23567e0e098a52
+> Branch: feat/gh-388-coordinate-encryption / 기존 로컬 검증 코드: 1800bca2 / OCI 64회 candidate: c131aa7268219106a78af826ce23567e0e098a52 / 후속 회귀 candidate: 79d1c313262335f8983696dc5420de89a68d880e
 
 ## 1. Executive summary
 
-- status: BLOCKED (Issue 전체의 필수 성능 증거 미완료). local_implementation_status: PASS.
+- status: FAIL (2026-11-27 기존 성능 회귀 17개 중 1개 실패). local_implementation_status: PASS는 기존 로컬 실행 기록이며 후속 회귀의 실패를 상쇄하지 않는다.
 - 승인된 C8 구현, 갱신 4의 통합 실패 20건 수정, 기능 회귀 및 로컬 필수 검사를 완료했다. 미해결 로컬 기능 실패는 없다.
 - 단위 1,778건, 통합 967건: 실패 0, 오류 0, skip 0. 계획의 단위 14/통합 24는 계약 시나리오 수이며 JUnit invocation 수와 다르다.
-- PERF-001~003은 OCI에서 32조건·64회 작업량을 완료했다. 필수 외부 지표 8개와 기존 성능 회귀가 BLOCKED이므로 #388 전체 PASS나 배포 가능 판정을 내리지 않는다. 전체 수치·해시는 §10에 기록했다.
+- PERF-001~003은 OCI에서 32조건·64회 작업량을 완료했다. 미계측 외부 지표 8개는 2026-11-27 사람 결정으로 대체 수용됐지만, 같은 자원에서 실행한 기존 성능 회귀의 E3 첫 규모가 실패해 #388 전체 PASS나 배포 가능 판정을 내리지 않는다. 전체 수치·해시는 §10에 기록했다.
 - 독립 검토: INT-002 이력 보존 coverage 지적을 비어 있지 않은 실제 행의 전후 비교로 보완한 뒤 로컬 코드 준비 상태 APPROVE. 사람의 PR 승인·OCI 측정 승인을 대신하지 않는다.
 
 ## 2. Environment
@@ -39,7 +39,8 @@ GeographicLib는 착수 시 Maven Central metadata/POM과 upstream 라이선스�
 | python3 scripts/run-hook.py pre-commit | PASS | 실제 staged manifest 검사, hook 우회 없음 |
 | git diff --check | PASS | 소스·문서 공백 오류 없음 |
 | dependencyScanLock / OSV policy | PASS | 173 packages, blocked 0, 기존 예외 2 |
-| ./gradlew performanceTest (OCI, 64 invocations) | BLOCKED | 64회 작업량 완료, 필수 증거 assertion으로 nonzero 종료. 기존 회귀는 동일 DB 제한 경로 부재로 NOT_RUN/BLOCKED |
+| ./gradlew performanceTest (OCI, 64 invocations) | 원자료 BLOCKED 유지 / 외부 지표 대체 수용 | 64회 재측정·runner assertion 변경 없음. 2026-11-27 후속 판정과 회귀 결과는 §10 |
+| ./gradlew performanceTest (OCI, 기존 회귀 5개 클래스) | FAIL | 17개 실행, 16개 통과·1개 실패·오류 0·skip 0; E3 SELECTIVITY_PROBE preview 합계 기대 2, 실제 3 |
 
 - Unit: 217 XML suites / 1,778 tests. Integration: 122 XML suites / 967 tests. XML의 failures/errors/skipped는 모두 0이다.
 - 공식 harness test-run도 전체 회귀를 실행했다. 이후 최종 코드 커밋 기준 전체 회귀와 pr-ready를 다시 확인했다. Gradle의 UP-TO-DATE는 직전 동일 입력 성공 결과를 재사용한 것이며 별도 재실행으로 세지 않았다.
@@ -141,7 +142,7 @@ Worker의 빈 결과는 HTTP enqueue보다 이른 command.at에서 실제 due �
 | DirectionMatchingE3PerformanceIntegrationTest | 암호문 fixture·성능 전용 설정 유지 |
 | DirectionMatchingIndexPlanPerformanceIntegrationTest | 제거된 GiST 강제 대신 실제 변경 후 계획 기록 |
 | DirectionMatchingPerformanceProbe | 암호문 쓰기·앱 계산 경계로 probe 갱신 |
-| PostgisContainerIntegrationTestSupport | performanceTest에서만 이미지/platform 선택, 일반 기본값 유지 |
+| PostgisContainerIntegrationTestSupport | performanceTest에서만 이미지/platform 선택 및 DB 자원 제한, 일반 기본값 유지 |
 
 ## 6. Potential issues
 
@@ -151,7 +152,7 @@ AES-256-GCM 전용 key ring과 version/key ID/nonce/tag envelope, 행 ID 및 용
 
 ### Infrastructure and resource limits
 
-오케스트레이터가 준비한 OCI에서 동일 arm64 digest, DB/JVM 각 1코어·4GiB·swap 0과 512MiB heap을 직접 확인하고 64회 교대 측정을 완료했다. 100k 조건 24회는 고정 한도에서 완료됐다. 전체 환경·수치·원자료 해시·호출 경계 heap·CPU/GC·동시 처리량·EXPLAIN은 §10에 기록했다. 필수 외부 지표 8개가 없고 기존 회귀는 동일 DB 제한 경로가 없어 BLOCKED다.
+오케스트레이터가 준비한 OCI에서 동일 arm64 digest, DB/JVM 각 1코어·4GiB·swap 0과 512MiB heap을 직접 확인하고 64회 교대 측정을 완료했다. 100k 조건 24회는 고정 한도에서 완료됐다. 전체 환경·수치·원자료 해시·호출 경계 heap·CPU/GC·동시 처리량·EXPLAIN은 §10에 기록했다. 외부 지표 8개는 미계측 상태로 2026-11-27 사람 결정에 따라 대체 수용됐다. 승인된 지원 경로로 같은 제한을 적용한 기존 성능 회귀는 E3 한 건이 실패했다(§10.9).
 
 ### Database and migrations
 
@@ -159,7 +160,7 @@ V35 단일 migration은 정확 좌표 presence만 폐기하고 cell-only는 유�
 
 ### Concurrency and idempotency
 
-claim/reclaim·용량 row lock·stale fencing·재생·최신 관측 우선순위 회귀는 PASS다. 새 신호는 실제 claim/transaction 경계에 결합하며 고정 sleep이나 polling으로 통과시키지 않았다. OCI 동시 라운드와 실제 잠금/commit은 §10에 기록했다. lease 여유·DB lock 대기·transaction 시간은 UNKNOWN/BLOCKED다.
+claim/reclaim·용량 row lock·stale fencing·재생·최신 관측 우선순위의 기존 기능 회귀는 PASS였다. 새 신호는 실제 claim/transaction 경계에 결합하며 고정 sleep이나 polling으로 통과시키지 않았다. OCI 동시 라운드와 실제 잠금/commit은 §10에 기록했다. lease 여유·DB lock 대기·transaction 시간은 미계측이며 §10.1의 사람 결정 근거로 대체 수용됐다.
 
 ### Transactions and event ordering
 
@@ -176,15 +177,15 @@ claim/reclaim·용량 row lock·stale fencing·재생·최신 관측 우선순�
 ## 7. Regression and residual risk
 
 - local executed_checks / passed_checks: §3의 기존 PASS 명령과 §4 UNIT/INT. local failed_checks: 최종 미해결 없음. 이번 OCI 성능 실행·nonzero 종료·차단은 §10에 별도 기록했다.
-- blocked_checks: OCI 필수 외부 성능 지표 8개 및 동일 DB 자원 제한 경로가 없는 기존 성능 회귀. 전체 성능 PASS는 성립하지 않는다. LSP 진단은 환경 미구성으로 미실행(기존 대체 컴파일·정적 검사 PASS).
+- failed_checks: 후속 OCI 기존 성능 회귀 E3의 preview 후보 합계 기대 2, 실제 3. 전체 성능 PASS는 성립하지 않는다. LSP 진단은 환경 미구성으로 미실행(대체 컴파일·정적 검사 PASS).
 - assumptions: 승인된 ADR-0009/D3 보정·TASK 소유 계약, 합성 데이터/fixture key, 이 브랜치 V34 다음 V35. 성능 결과를 기능 회귀에서 추정하지 않는다.
-- risks: OCI 필수 외부 지표 누락과 일부 조건의 큰 상대 지연, 기존 성능 회귀 차단, dev key 주입 선행 필요, V35 충돌, 기존 OSV 예외/Moderate findings, 과거 복사본과 파생 위치 정보 별도 보호.
-- required_human_decisions: 기존 성능 회귀에도 동일 DB 제한을 적용할 성능 전용 지원 코드/실행 경로의 범위 결정, 별도 dev 주입 인프라 작업, V35 병합 순서/재번호. OCI 측정·추가 인증은 이미 확인했다.
+- risks: 사람 결정으로 수용한 OCI 외부 지표 미계측과 일부 조건의 큰 상대 지연, E3 실제 회귀 실패, dev key 주입 선행 필요, migration 번호 충돌, 기존 OSV 예외/Moderate findings, 과거 복사본과 파생 위치 정보 별도 보호.
+- required_human_decisions: E3 회귀 실패 수정의 별도 범위 결정과 별도 dev 주입 인프라 작업. 동일 DB 자원 제한 경로 추가 및 V36 재번호는 갱신 3으로 승인됐으며, 동기화 결과는 §10.10에 기록한다.
 - 실제 접근/변경: 로컬 테스트 DB 및 승인된 OCI 합성 측정, archive 배치와 읽기 전용 진단. push·dev/운영 배포 없음.
 
 ## 8. Artifacts
 
-- Test plan: docs/test-plans/gh-388-TEST-PLAN-GH-388-COORDINATE-ENCRYPTION.md (사람 승인, 수정하지 않음).
+- Test plan: docs/test-plans/gh-388-TEST-PLAN-GH-388-COORDINATE-ENCRYPTION.md (사람 승인 상태 유지, §11에 2026-11-27 D6 필수 지표 조정 기록 추가).
 - Related ADR: docs/adr/0009-encrypt-coordinate-storage-and-replace-spatial-matching.md (accepted).
 - Contract: TASK.md 소유 승인 a910241e, 추가 승인 81b4d177/b62f7afe, D3 계획 cb4af36d.
 - 실행 보고: 본 문서와 지정 scratchpad report-c8-impl.md. CI run / PR: 이 작업에서 생성하지 않음.
@@ -258,7 +259,7 @@ claim/reclaim·용량 row lock·stale fencing·재생·최신 관측 우선순�
 ## 9. Reviewer checklist
 
 - [x] 실제 좌표·키·환경변수 값·서버/계정 식별자 없이 기록했다.
-- [x] OCI 측정 결과와 필수 지표·기존 회귀 차단, 실환경 복구/주입 미검증 범위를 명시했다.
+- [x] OCI 측정 결과와 미계측 지표 대체 수용·기존 회귀 실패, 실환경 복구/주입 미검증 범위를 명시했다.
 - [x] 후속 위험을 #388/ADR D9 및 기존 #382, #381/PR #384와 연결했다. 별도 인프라 Issue는 아직 번호가 없다.
 - [x] 실행 결과·중간 실패 수정·독립 검토·사람 승인 범위를 구분했다.
 - [x] 기존 변경·과거 migration·승인 게이트를 보존했고 skip/suppression/hook 우회 및 Co-Authored-By를 추가하지 않았다.
@@ -266,7 +267,7 @@ claim/reclaim·용량 row lock·stale fencing·재생·최신 관측 우선순�
 ## 10. OCI performance evidence
 
 > 최종 원자료 감사: 2026-11-26T16:15:25.119Z
-> performance_status: BLOCKED / issue_number: 388 / task_id: TASK-GH-388-COORDINATE-ENCRYPTION / design_id: ADR-0009
+> performance_status: FAIL (2026-11-27 후속 회귀) / issue_number: 388 / task_id: TASK-GH-388-COORDINATE-ENCRYPTION / design_id: ADR-0009
 > test_plan_id: TEST-PLAN-GH-388-COORDINATE-ENCRYPTION
 
 ### 10.1. 판정과 증거 범위
@@ -281,18 +282,20 @@ claim/reclaim·용량 row lock·stale fencing·재생·최신 관측 우선순�
 - 100k 조건은 총 24회 모두 고정 자원에서 완료됐다. DB/JVM 한도는 각 4,294,967,296 bytes, JVM heap은 536,870,912 bytes다. 호출 경계에서 관측한 최대 heap은 356,159,120 bytes다. 이는 전체 실행의 peak RSS/peak heap이나 cgroup 전체 peak가 아니다. 메모리 한도 확대나 OOM 후 재측정은 없었다.
 - 직접 원인: CoordinatePerformanceRunner.java:392의 D6 필수 증거 assertion. 마지막 GLOBAL/MIXED main은 3h 5m 8s, candidate는 3h 4m 20s였다. 전체 benchmark 실행 시간은 서비스 호출 지연과 구분한다.
 
-필수 지표는 아래 8개가 64회 모두 UNKNOWN/BLOCKED다. 없는 값을 0으로 채우거나 순간 docker stats, barrier 시간, EXPLAIN의 진단값으로 대체하지 않았다.
+아래 8개는 64회 모두 미계측이며 원자료의 UNKNOWN/BLOCKED와 Gradle nonzero 종료는 그대로 보존한다. @Byuntil의 2026-11-27 결정(https://github.com/dnd-side-project/dnd-15th-2-backend/issues/388#issuecomment-7209939195)에 따라 필수 증거를 다음처럼 대체 수용했다. 이는 사람의 수용 결정이지 누락된 값을 실제 계측했다는 뜻이 아니다. 0·추정치로 채우지 않고 64회 재측정 및 runner assertion 변경도 하지 않았다.
 
 | 필수 외부 지표 | 결과 |
 | --- | --- |
-| dbCpuNanos | UNKNOWN/BLOCKED |
-| rowsRead | UNKNOWN/BLOCKED |
-| wireBytes | UNKNOWN/BLOCKED |
-| transactionNanos | UNKNOWN/BLOCKED |
-| leaseHeadroomNanos | UNKNOWN/BLOCKED |
-| lockWaitNanos | UNKNOWN/BLOCKED |
-| dbBufferIo | UNKNOWN/BLOCKED |
-| dbTempIo | UNKNOWN/BLOCKED |
+| dbCpuNanos | 미계측, 결정 댓글 근거로 대체 수용(사람 결정); EXPLAIN §10.8, wall time §10.4·10.6, heap·GC §10.5·10.7 |
+| rowsRead | 미계측, 결정 댓글 근거로 대체 수용(사람 결정); 같은 EXPLAIN·wall time·heap·GC 근거 |
+| wireBytes | 미계측, 결정 댓글 근거로 대체 수용(사람 결정); 같은 EXPLAIN·wall time·heap·GC 근거 |
+| transactionNanos | 미계측, 결정 댓글 근거로 대체 수용(사람 결정); PERF-003 worker p95 최대 930.274290ms, 중복 확정 assertion 실패 0건 |
+| leaseHeadroomNanos | 미계측, 결정 댓글 근거로 대체 수용(사람 결정); 같은 PERF-003 지연·중복 확정 근거 |
+| lockWaitNanos | 미계측, 결정 댓글 근거로 대체 수용(사람 결정); 같은 PERF-003 지연·중복 확정 근거 |
+| dbBufferIo | 미계측, 결정 댓글 근거로 대체 수용(사람 결정); EXPLAIN §10.8, wall time §10.4·10.6, heap·GC §10.5·10.7 |
+| dbTempIo | 미계측, 결정 댓글 근거로 대체 수용(사람 결정); 같은 EXPLAIN·wall time·heap·GC 근거 |
+
+PERF-003의 후보 worker p95 네 값은 DENSE/CURRENT 815.515493ms, DENSE/MIXED 821.921945ms, GLOBAL/CURRENT 930.274290ms, GLOBAL/MIXED 917.083108ms다. 최대값은 §10.4 원자료 요약과 일치한다. 중복 확정 0건은 실제 확정 행·이벤트 assertion에서 도출한 판정이며 별도 직렬화 counter나 실제 leaseHeadroom 값으로 바꾸어 적지 않는다.
 
 ### 10.2. 환경과 고정 자원
 
@@ -743,18 +746,32 @@ repository/preview의 별도 EXPLAIN ANALYZE 진단이다. target node별 actual
 
 ### 10.9. 기존 성능 회귀와 남은 제한
 
-기존 성능 회귀 5개는 NOT_RUN/BLOCKED다. 사용자가 DB 1코어/4GiB/swap 0 조건을 기존 회귀에도 동일하게 적용한다고 확인했다. 다섯 클래스는 PostgisContainerIntegrationTestSupport를 직접 상속하며 DB 제한은 CoordinatePerformanceRunner.configureDatabaseResources에만 있다. 현재 회귀 실행 경로는 그 메서드를 거치지 않는다. 공통 support의 승인된 변경 범위는 performance-only image/platform이며 자원 제한 경로 추가는 현 소유 계약 밖이다. 제한 없는 실행이나 원격 소스 편집으로 우회하지 않았다.
+2026-11-27 추가 승인으로 support의 performanceTest 전용 자원 제한 경로를 구현했다. 일반 CI·로컬 이미지 및 자원 제한 없음 기본값은 유지했다. 로컬 compileIntegrationTestJava와 AccountPersistenceIntegrationTest 17개·ActiveUserPresenceApiIntegrationTest 6개가 통과했고, 실제 Docker 이벤트에서 일반 DB cpuset 빈 값·memory=0·memorySwap=0을 확인했다. JDTLS는 설치돼 있지 않아 LSP 진단은 실행하지 못했으며 설치하지 않았다.
 
-대상: DirectionMatchingPerformanceIntegrationTest, DirectionMatchingE3PerformanceIntegrationTest, DirectionMatchingIndexPlanPerformanceIntegrationTest, DirectionMatchingPerformanceProbeIntegrationTest, PgStatStatementsPerformanceIntegrationTest. 이 다섯 회귀를 실행했다고 또는 통과했다고 기록하지 않는다.
+회귀 후보 commit은 79d1c313262335f8983696dc5420de89a68d880e다. 로컬 git archive 사본을 전송해 candidate만 교체했으며 baseline과 기존 round01 원자료 64개는 보존했다. archive SHA-256은 b79608089bd0ffc429b45c13df71dd9be5495f5de64298977ceec2a47e158b56, COMMIT 파일 SHA-256은 ddc4efbb2128e5684f28e6567aeebd4754f1ca2947fd1b2d5ed490b953582de0이다. 공통 runner SHA-256은 §10.3과 동일하다. 원격 source 편집, 패키지 설치, production 변경은 하지 않았다.
 
-- executed_checks: 64회 OCI 교대 실행, 고정 자원/arm64 digest/COMMIT/공통 runner 직접 대조, 원자료 64개 SHA-256, phase별 retained 표본 수, p50/p95/p99 및 96개 비율, 32쌍 환경/경계/잠금 프로토콜, CPU/GC 분포, PERF-003 실제 라운드 처리량 독립 재검산.
+회귀는 2026-11-27T04:42:50Z 시작한 단 한 회차(regression-update3-round01)다. 같은 arm64 digest에서 실제 Docker update 조회로 DB cpuset=0, memory=4294967296, memorySwap=4294967296을 확인했다. JVM/Gradle scope 조회는 AllowedCPUs=1·MemoryMax=4294967296·MemorySwapMax=0이고 실행 shell의 실제 taskset affinity도 1이었다. systemd의 EffectiveCPUs 출력은 빈 값이므로 CPU 확인 근거로 사용하지 않았다. Gradle과 자식 JVM은 해당 scope 및 affinity를 상속한다.
+
+| Class | Tests | Passed | Failures / errors / skipped | XML SHA-256 |
+| --- | ---: | ---: | --- | --- |
+| DirectionMatchingPerformanceIntegrationTest | 3 | 3 | 0 / 0 / 0 | cb50e512ff52863f3056caa64c846797e7cb0ef6e5f136ce7a2972754872a35e |
+| DirectionMatchingE3PerformanceIntegrationTest | 5 | 4 | 1 / 0 / 0 | 3c93b87b05ea476f854e7706257d611a8fa07a30993462e03967811e98a44f09 |
+| DirectionMatchingIndexPlanPerformanceIntegrationTest | 5 | 5 | 0 / 0 / 0 | fe65e0bbe42861c2fc42beb794a7f095f3694dd27d448501fd82f1dbcbf50116 |
+| DirectionMatchingPerformanceProbeIntegrationTest | 3 | 3 | 0 / 0 / 0 | 58d2ea4fdcd668e5295e89a63fa4f3bc2f26708ea1a37ae541fd5df78ea60027 |
+| PgStatStatementsPerformanceIntegrationTest | 1 | 1 | 0 / 0 / 0 | 60746e722b51946590cff14cd7a39c8dae4fc7adc843fe7b66b832e1cb7929cf |
+
+실패 지점은 DirectionMatchingE3PerformanceIntegrationTest.java:407의 SELECTIVITY_PROBE preview 후보 합계이며, 10K:1K 조건에서 기대 2, 실제 3이었다. 17 tests completed, 1 failed, BUILD FAILED in 7m 20s, exit 1을 그대로 기록한다. 다섯 회귀 클래스·fixture·기대값을 변경하지 않았고 재실행하지 않았다.
+
+JUnit XML과 HTML 보고 보관 archive SHA-256은 d9011386a3306d31283d7d0fb9c832dee1563c7f764900245d071228492b5c29, execution.log SHA-256은 77501759b4fb02b35b537397eefa47cc82bedeb471d94fe39b4738c58fbd27d5다. OCI results/regression-update3-round01에 보관했고 로컬에는 감사 사본만 받았다. 기존 64회 원자료를 재측정·수정하지 않았다.
+
+- executed_checks: 기존 64회 OCI 교대 실행 및 원자료·해시·분포 독립 감사, 후속 support 컴파일 및 일반 통합 23개, 새 후보 배치·동일 digest·Docker/cgroup 설정 조회, 기존 성능 회귀 5개 클래스 17개와 XML 감사.
 - passed_checks: 원자료/원격 요약 해시 일치; measured 43,200개와 cold 포함 43,416개; 32쌍 환경/경계/프로토콜 일치; 100k 24회 작업량 완료; PERF-001의 preview/worker 상대 p95 8개 모두 2 이하; 기능 및 중복 검증 assertion 실패 0건.
-- failed_checks: 64회 performanceTest가 필수 D6 증거 assertion으로 nonzero 종료했다(원장 62회 exit=1, 초기 2회 별도 BUILD FAILED 로그). PERF-002의 큰 성능 저하는 표에 그대로 기록했다.
-- blocked_checks: 필수 외부 지표 8개, 동일 DB 자원 제한을 적용할 수 없는 기존 성능 회귀 5개, 전체 성능 PASS 및 배포 가능 판정.
-- changed_files: 이번 성능 증거 보고 변경은 이 추적 보고서 한 개다. 원자료·로컬 감사 산출물은 커밋하지 않는다. 기존 production·테스트·승인 계획·이미지 기본값을 수정하지 않았다.
+- failed_checks: 기존 성능 회귀 E3의 SELECTIVITY_PROBE preview 합계 기대 2, 실제 3. 기존 64회 performanceTest의 필수 D6 증거 assertion nonzero도 이력으로 유지했다(원장 62회 exit=1, 초기 2회 별도 BUILD FAILED 로그). PERF-002의 큰 성능 저하는 표에 그대로 기록했다.
+- blocked_checks: 외부 지표 수집·회귀 실행 경로의 이전 차단은 추가 승인으로 해소됐다. 현재 전체 성능 PASS 및 배포 가능 판정은 실제 회귀 실패 때문에 불가하다.
+- changed_files: 후속 승인 계약 TASK.md·테스트 계획 §11, 성능 전용 지원 코드 PostgisContainerIntegrationTestSupport.java와 이 보고서. 원자료·로컬 감사 산출물은 커밋하지 않는다. production·다섯 회귀 클래스·일반 이미지 기본값은 수정하지 않았다.
 - assumptions: 원자료 status/workloadCompleted와 실제 runner assertion 경계를 함께 사용했다. 예열 표본은 의도적 미보존이다. 기능 불일치 0 판정은 별도 직렬화 counter가 아니라 성공한 실제 assertion에서 도출했다.
-- risks: 필수 DB/transaction/lease/lock 계측 누락; 1k/100k의 큰 상대 지연; 기존 회귀 미실행; OCI와 CI DB patch/arch 차이; 전체 peak RSS 미계측. 기존 §7의 dev key 주입, V35 충돌 및 OSV 잔여 위험도 남는다.
-- required_human_decisions: 기존 회귀에 동일 DB 제한을 적용할 수 있도록 성능 전용 지원 코드의 소유 범위/실행 경로 확장에 대한 별도 결정이 필요하다. 현 보고는 그 변경을 승인하지 않는다.
+- risks: 기존 E3 실제 회귀 실패; 사람 결정으로 수용한 DB/transaction/lease/lock 미계측; 1k/100k의 큰 상대 지연; OCI와 CI DB patch/arch 차이; 전체 peak RSS 미계측. 기존 §7의 dev key 주입, migration 번호 충돌 및 OSV 잔여 위험도 남는다.
+- required_human_decisions: 기존 회귀 실패를 수정할 별도 범위 결정이 필요하다. 현 승인은 다섯 회귀 클래스 변경이나 기대값 완화를 허용하지 않는다. 동기화·migration 번호 정리와 최종 검증 결과는 §10.10에 이어 기록한다.
 
 ### 10.10. 이번 보고서 변경의 검증
 
