@@ -267,6 +267,8 @@ INT-017/024는 “암호학적으로 해독 불가능함”의 증명이 아니�
 | PERF-002 | 같은 OCI 환경의 1,000·100,000 후보와 10km·100km·20,100km 거리 | 후보 규모·거리·분포별 같은 반복 측정 | 고정비와 한계의 p50/p95/p99·처리량·CPU·GC·전송·DB I/O 기록; 100,000명이 고정 메모리 안에서 실행되지 않으면 자원 한계 결과로 기록하며 성공으로 간주하지 않는다; 실행된 결과의 오류·누락은 FAIL | P0 | Performance |
 | PERF-003 | 같은 후보 자료, 매칭 동시성 4와 preview 혼합 | 미리 등록한 barrier로 부하 시작, commit 완료 관찰 | 후보 집합·순서·집계 불일치 0, 중복 확정 0; lock 대기·transaction 시간·lease 여유·성능 저하 기록 | P0 | Performance |
 
+기존 E3 회귀의 갱신 3-3 승인(@Byuntil, 2026-11-27, https://github.com/dnd-side-project/dnd-15th-2-backend/issues/388#issuecomment-7214622190): E3 전용 seed와 scales 계약에서 거리 경계에 걸리는 점을 양옆 ±1m에 명시 배치한다. 각 scale의 후보 집합과 모든 구간별 합계는 fixture 산술로 독립 확정해 정확 비교하며 구현 실행 결과를 기대값으로 옮기지 않는다. 같은 fixture·기대값을 main 임시 사본과 C8에서 검증하고, OCI 고정 자원에서 E3만 재실행한다. 공유 seed 공식 기본값·production 거리 술어·허용 오차는 유지한다.
+
 승인된 측정 환경은 개인 OCI 인스턴스의 aarch64(Neoverse-N1), 2코어, 11GB다.
 Docker는 미설치 상태이며 측정 단계에서 설치를 별도 승인받는다.
 이 문서 승인 반영 작업에서는 인스턴스에 접속하거나 환경을 변경하지 않는다.
@@ -414,6 +416,7 @@ Performance 소유:
   `DirectionMatchingPerformanceProbeIntegrationTest.java`.
 - GiST 강제 assertion은 승인된 A의 계산·지연 계약으로 갱신한다.
   `build.gradle`의 기존 performance 분리 설정은 사용만 하며 변경하지 않는다.
+- 갱신 3-3 승인으로 `DirectionMatchingE3PerformanceIntegrationTest.java`의 E3 전용 seed와 scales 계약만 수정한다. 경계 양옆 ±1m와 fixture에서 독립 확정한 후보 집합·구간별 합계를 검증한다. 공유 `projectedCoordinatesSql` 등의 기본값, 다른 성능 클래스, production 코드·거리 술어·허용 오차는 변경하지 않는다. main의 동일 수정은 저장소 밖 임시 사본에만 적용한다.
 - 성능 전용 arm64 이미지 선택 방식과 필요한 수정 파일은 구현 단계에서 확정한다.
   일반 CI·로컬 통합 테스트의 이미지 기본값을 바꾸지 않으며, 추가 파일 소유는
   실행 계약에 기록한 뒤 진행한다. 두 버전에 같은 이미지·digest·자원 제한을 적용한다.
