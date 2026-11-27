@@ -475,6 +475,7 @@ Performance 소유:
   이미지·digest와 고정 CPU·메모리로 main/#388을 교대 측정한다. 상대 비교로 합격을
   판정하고 절대 지연은 참고값으로 남긴다. Docker 설치는 측정 단계에서 별도 승인받는다.
 - 승인과 실행의 구분: 테스트 계획은 승인됐지만 구현·검증 성공을 의미하지 않는다.
+- D6 필수 지표 조정(@Byuntil, 2026-11-27, https://github.com/dnd-side-project/dnd-15th-2-backend/issues/388#issuecomment-7209939195): 미계측 `dbCpuNanos`·`rowsRead`·`wireBytes`·`dbBufferIo`·`dbTempIo`는 합성 EXPLAIN 요약과 기존 64회 wall time·heap·GC 분포로 대체 수용하고, `transactionNanos`·`leaseHeadroomNanos`·`lockWaitNanos`는 PERF-003 worker p95 최대 약 930ms와 중복 확정 0건을 근거로 추가 측정 없이 수용한다. 값은 0·추정치로 채우지 않고 미계측·사람 결정으로 표시하며, 64회 재측정 및 runner 필수 증거 assertion 변경은 하지 않는다.
   이 승인 반영 작업은 코드 작성·테스트 실행·OCI 접속·설치·commit/push를 수행하지 않는다.
 
 ### 2026-11-25 — ADR D3 차등 테스트 보정 1~6

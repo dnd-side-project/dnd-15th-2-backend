@@ -81,7 +81,7 @@
 | `src/test/java/com/dnd/qello/FlywayMigrationContractTest.java` | V35를 목록에 추가하고 최신 버전 기대를 35로 바꾼다. V1·V2·V8 checksum 검증은 유지한다 |
 | `src/test/java/com/dnd/qello/direction/DirectionPreviewPersistenceBoundaryTest.java` | 제거된 PostGIS SQL 문자열 고정 대신 한 snapshot 읽기와 후보 0개 segment 보존 같은 행동 계약으로 바꾼다 |
 | `src/test/java/com/dnd/qello/direction/DirectionRecipientSelectionBoundaryTest.java` | SQL `ORDER BY` 문자열 고정 대신 필터 조건과 앱 측 공정성 정렬 계약을 검증한다 |
-| `src/integrationTest/java/com/dnd/qello/PostgisContainerIntegrationTestSupport.java` | `performanceTest`에서만 이미지·platform을 바꿀 수 있게 한다. 일반 CI·로컬 기본값은 유지한다 |
+| `src/integrationTest/java/com/dnd/qello/PostgisContainerIntegrationTestSupport.java` | `performanceTest`에서만 이미지·platform을 바꿀 수 있게 한다. 일반 CI·로컬 기본값은 유지한다. `performanceTest`에서만 DB 자원 제한(1코어, 4GiB, swap 없음) 적용 경로 추가(3차 추가 승인, @Byuntil, 2026-11-27, https://github.com/dnd-side-project/dnd-15th-2-backend/issues/388#issuecomment-7209939195) |
 | `src/integrationTest/java/com/dnd/qello/DevProfileBootIntegrationTest.java` | 기존 `DynamicPropertySource`에 합성 좌표 key fixture만 주입한다. production dev fallback은 넣지 않는다(2차 추가 승인) |
 | `src/integrationTest/java/com/dnd/qello/NotificationPreferenceMigrationIntegrationTest.java` | V25~V35 적용 수 기대를 10에서 11로 바꾸고 설명을 갱신한다. 알림 설정 이행 검증은 유지한다(2차 추가 승인) |
 
