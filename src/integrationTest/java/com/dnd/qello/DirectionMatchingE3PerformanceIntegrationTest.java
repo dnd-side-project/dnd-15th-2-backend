@@ -38,6 +38,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 import org.junit.jupiter.api.AfterEach;
@@ -70,7 +71,9 @@ import com.dnd.qello.direction.config.DirectionPostProperties;
 import com.dnd.qello.direction.config.DirectionReceiveProperties;
 import com.dnd.qello.direction.config.DirectionRecipientSelectionProperties;
 import com.dnd.qello.direction.matching.DirectionMatchingWorker;
+import com.dnd.qello.direction.repository.ActiveUserPresenceRepository;
 import com.dnd.qello.direction.repository.jdbc.sql.ActiveUserPresenceSql;
+import com.dnd.qello.direction.security.CoordinateProtector;
 import com.dnd.qello.direction.service.DirectionPostApplicationService;
 import com.dnd.qello.direction.service.DirectionPostPolicy;
 import com.dnd.qello.direction.service.DirectionPresenceService;
@@ -106,7 +109,10 @@ class DirectionMatchingE3PerformanceIntegrationTest extends PostgisContainerInte
 	private static final String ACCOUNT_NICKNAME_PATTERN = ACCOUNT_PREFIX + "%";
 	private static final String LOGICAL_SUFFIX_PATTERN = "\\d{6}";
 
-	private static final FixtureScale FIXED_SCALE = new FixtureScale("100K_10K", 100_000, 10_000, 25);
+	private static final FixtureScale FIXED_SCALE = new FixtureScale("100K_10K", 100_000, 10_000, 25,
+			Map.of("N", 1_251L, "NE", 1_249L, "E", 1_250L, "SE", 1_251L,
+					"S", 1_250L, "SW", 1_249L, "W", 1_249L, "NW", 1_251L),
+			Map.of("N", 4L, "NE", 3L, "E", 3L, "SE", 3L, "S", 3L, "SW", 3L, "W", 3L, "NW", 3L));
 	private static final String STATISTICS_COMPARISON_SCENARIO = "PERF-006";
 	private static final String RECIPIENT_GUARDRAIL_SCENARIO = "PERF-008";
 	private static final String RECIPIENT = "RECIPIENT";
@@ -202,18 +208,18 @@ class DirectionMatchingE3PerformanceIntegrationTest extends PostgisContainerInte
 			SELECT 'USER', 'KR', 'ACTIVE', ?, 'ko-KR', 'Asia/Seoul', ? || lpad(gs::text, 6, '0')
 			FROM generate_series(1, ?) AS gs
 			""";
-	private static final String SEED_PRESENCE_SQL = """
-			INSERT INTO active_user_presence
-				(user_id, position, coarse_region_code, accuracy_m, receive_allowed, location_at, expires_at)
-			SELECT ua.id,
-			       ST_Project(
-			           ST_SetSRID(ST_MakePoint(?, ?), 4326)::geography,
-			           sqrt((gs - 0.5) / ?) * 100000,
-			           radians(mod((gs - 1) * 137.50776405003785, 360))
-			       ),
-			       ?, 5, TRUE, ?, ?
+	private static final String E3_PROJECTED_COORDINATES_SQL = """
+			SELECT ua.id AS user_id, ST_Y(point::geometry) AS latitude, ST_X(point::geometry) AS longitude
 			FROM generate_series(1, ?) AS gs
 			JOIN user_account ua ON ua.nickname = ? || lpad(gs::text, 6, '0')
+			CROSS JOIN LATERAL (
+				SELECT ST_Project(ST_SetSRID(ST_MakePoint(?, ?), 4326)::geography,
+					CASE WHEN gs = ? THEN 4999.0
+					     WHEN gs = ? THEN 5001.0
+					     ELSE sqrt((gs - 0.5) / ?) * 100000 END,
+					radians(mod((gs - 1) * 137.50776405003785, 360))) AS point
+			) projected
+			WHERE ua.coarse_region_code = ?
 			""";
 	private static final String SEED_EXCLUDED_SQL = """
 			INSERT INTO user_account (role, country_code, status, coarse_region_code, locale, timezone, nickname)
@@ -224,16 +230,14 @@ class DirectionMatchingE3PerformanceIntegrationTest extends PostgisContainerInte
 			VALUES ('USER', 'KR', ?, ?, 'ko-KR', 'Asia/Seoul', ?)
 			""";
 	private static final String SEED_GUARDRAIL_PRESENCE_SQL = """
-			INSERT INTO active_user_presence
-				(user_id, position, coarse_region_code, accuracy_m, receive_allowed, location_at, expires_at)
-			SELECT ua.id,
-			       ST_Project(
+			SELECT ua.id AS user_id, ST_Y(point::geometry) AS latitude, ST_X(point::geometry) AS longitude
+			FROM user_account ua CROSS JOIN LATERAL (
+			       SELECT ST_Project(
 			           ST_SetSRID(ST_MakePoint(?, ?), 4326)::geography,
 			           CAST(? AS double precision),
 			           radians(CAST(? AS double precision))
-			       ),
-			       ?, 5, TRUE, ?, ?
-			FROM user_account ua
+			       ) AS point
+			) projected
 			WHERE ua.coarse_region_code = ? AND ua.nickname = ?
 			""";
 	private static final String SEED_GUARDRAIL_BLOCK_SQL = """
@@ -278,6 +282,10 @@ class DirectionMatchingE3PerformanceIntegrationTest extends PostgisContainerInte
 	private DirectionMatchingWorker matchingWorker;
 	@Autowired
 	private DirectionMatchingE3MutableClock clock;
+	@Autowired
+	private CoordinateProtector coordinateProtector;
+	@Autowired
+	private ActiveUserPresenceRepository presenceRepository;
 
 	private DirectionMatchingPerformanceProbe probe;
 
@@ -300,16 +308,22 @@ class DirectionMatchingE3PerformanceIntegrationTest extends PostgisContainerInte
 	}
 
 	/**
-	 * 10K:1K에서 gs=3, 50K:5K에서 gs=13은 결정적 반경식이 정확히 5,000.000m를 만드는 경계값이다.
-	 * {@code ST_DWithin}의 spheroid 경로는 두 경계를 서로 다르게 판정해 10K:1K에서만 gs=3을 제외한다. 따라서
-	 * 5km 진단 후보 수의 실측 결정값은 2, 13, 25다. 이 값은 합성 데이터를 조정해서 얻은 것이 아니라 승인된 반경식이 만든
-	 * 관측값이며, 구현 계획이 해석적으로 적어 둔 3과 다르다.
+	 * r(g)^2=10^10(g-1/2)/N에서 5km 경계는 g=N/400+1/2다. K=3,13,25와 K+1을 각각 4999m,5001m에
+	 * 두므로 probe 후보는 정확히 1..K이고 정책 반경은 1..N이다. 최소 반경 0m 위의 점은 없으며 음수 거리 fixture를 만들지
+	 * 않는다. 구간별 기대값은 ((g-1)*13750776405003785 mod 36000000000000000)/10^14를 45도 반열린
+	 * 구간에 배분한 독립 정수 산술 값이다. 엔진의 경계 포함 관측을 기대값으로 고정하지 않는다.
 	 */
 	private static Stream<FixtureScale> scales() {
 		return Stream.of(
-				new FixtureScale("10K_1K", 10_000, 1_000, 2),
-				new FixtureScale("50K_5K", 50_000, 5_000, 13),
-				new FixtureScale("100K_10K", 100_000, 10_000, 25));
+				new FixtureScale("10K_1K", 10_000, 1_000, 3,
+						Map.of("N", 125L, "NE", 124L, "E", 126L, "SE", 124L,
+								"S", 125L, "SW", 126L, "W", 124L, "NW", 126L),
+						Map.of("N", 1L, "NE", 0L, "E", 0L, "SE", 1L, "S", 0L, "SW", 0L, "W", 1L, "NW", 0L)),
+				new FixtureScale("50K_5K", 50_000, 5_000, 13,
+						Map.of("N", 625L, "NE", 625L, "E", 625L, "SE", 625L,
+								"S", 626L, "SW", 624L, "W", 625L, "NW", 625L),
+						Map.of("N", 2L, "NE", 1L, "E", 2L, "SE", 1L, "S", 2L, "SW", 2L, "W", 1L, "NW", 2L)),
+				FIXED_SCALE);
 	}
 
 	@ParameterizedTest
@@ -324,6 +338,7 @@ class DirectionMatchingE3PerformanceIntegrationTest extends PostgisContainerInte
 		long schemeId = octantSchemeId();
 		long minDistanceMeters = policy.minDistanceMeters();
 		long policyMaxDistanceMeters = policy.maxDistanceMeters();
+		assertScaleContract(scale, schemeId);
 
 		observePreview(scale, POLICY_BASELINE,
 				previewParameters(excludedUserId, schemeId, minDistanceMeters, policyMaxDistanceMeters),
@@ -533,16 +548,20 @@ class DirectionMatchingE3PerformanceIntegrationTest extends PostgisContainerInte
 	}
 
 	private Map<String, Long> previewCounts(MapSqlParameterSource parameters) {
-		List<Map.Entry<String, Long>> rows = namedJdbc.query(
-				ActiveUserPresenceSql.FIND_CANDIDATE_COUNTS_BY_SEGMENT_SQL, parameters,
-				(resultSet, rowNumber) -> Map.entry(resultSet.getString("segment_key"),
-						resultSet.getLong("candidate_count")));
-		return rows.stream().collect(Collectors.toUnmodifiableMap(Map.Entry::getKey, Map.Entry::getValue));
+		return presenceRepository.findCandidateCountsBySegment(((Number) parameters.getValue("schemeId")).longValue(),
+				((Number) parameters.getValue("excludedUserId")).longValue(), ORIGIN_LATITUDE, ORIGIN_LONGITUDE,
+				((Number) parameters.getValue("minDistanceMeters")).longValue(),
+				((Number) parameters.getValue("maxDistanceMeters")).longValue(), NOW, null).stream()
+				.collect(Collectors.toUnmodifiableMap(row -> row.segmentKey(), row -> row.count()));
 	}
 
 	private List<Long> matchingCandidateIds(MapSqlParameterSource parameters) {
-		return List.copyOf(namedJdbc.query(ActiveUserPresenceSql.FIND_CANDIDATES_SQL, parameters,
-				(resultSet, rowNumber) -> resultSet.getLong("user_id")));
+		return presenceRepository.findCandidates(((Number) parameters.getValue("excludedUserId")).longValue(),
+				ORIGIN_LATITUDE, ORIGIN_LONGITUDE,
+				((Number) parameters.getValue("minDistanceMeters")).longValue(),
+				((Number) parameters.getValue("maxDistanceMeters")).longValue(),
+				NORTH_SECTOR_START_DEGREES, NORTH_SECTOR_END_DEGREES, NOW, null).stream()
+				.map(candidate -> candidate.userId()).toList();
 	}
 
 	/**
@@ -578,9 +597,11 @@ class DirectionMatchingE3PerformanceIntegrationTest extends PostgisContainerInte
 		jdbc.update("INSERT INTO region_code (code, parent_code, display_name, level)"
 				+ " VALUES (?, 'KR', 'Direction Perf E3', 'REGION')", REGION);
 		jdbc.update(SEED_ACCOUNTS_SQL, REGION, ACCOUNT_PREFIX, scale.accountCount());
-		jdbc.update(SEED_PRESENCE_SQL, ORIGIN_LONGITUDE, ORIGIN_LATITUDE, scale.presenceCount(), REGION,
-				Timestamp.from(NOW.minusSeconds(10)), Timestamp.from(NOW.plusSeconds(3600)),
-				scale.presenceCount(), ACCOUNT_PREFIX);
+		DirectionMatchingPerformanceProbe.seedEncryptedPresence(jdbc, coordinateProtector,
+				E3_PROJECTED_COORDINATES_SQL, REGION, NOW.minusSeconds(10),
+				NOW.plusSeconds(3600), scale.presenceCount(), ACCOUNT_PREFIX, ORIGIN_LONGITUDE,
+				ORIGIN_LATITUDE, scale.expectedProbePresenceCount(), scale.expectedProbePresenceCount() + 1,
+				scale.presenceCount(), REGION);
 		jdbc.update(SEED_EXCLUDED_SQL, REGION, EXCLUDED_NICKNAME);
 		guardrailSeeder.run();
 	}
@@ -646,6 +667,24 @@ class DirectionMatchingE3PerformanceIntegrationTest extends PostgisContainerInte
 		});
 	}
 
+	private void assertScaleContract(FixtureScale scale, long schemeId) {
+		for (long maxDistanceMeters : List.of(policy.maxDistanceMeters(), SELECTIVITY_PROBE_MAX_DISTANCE_METERS)) {
+			boolean probeRadius = maxDistanceMeters == SELECTIVITY_PROBE_MAX_DISTANCE_METERS;
+			int expectedCount = probeRadius ? scale.expectedProbePresenceCount() : scale.presenceCount();
+			Map<String, Long> expectedCounts = probeRadius ? scale.expectedProbeCounts() : scale.expectedPolicyCounts();
+			assertThat(previewCounts(previewParameters(excludedUserId(), schemeId, policy.minDistanceMeters(),
+					maxDistanceMeters))).as("%s 반경 %s 구간별 합계", scale.label(), maxDistanceMeters)
+					.containsExactlyInAnyOrderEntriesOf(expectedCounts);
+			List<Long> candidateIds = presenceRepository.findCandidates(excludedUserId(), ORIGIN_LATITUDE,
+					ORIGIN_LONGITUDE, policy.minDistanceMeters(), maxDistanceMeters, 0, 360, NOW, null).stream()
+					.map(candidate -> candidate.userId()).toList();
+			List<String> expectedSuffixes = IntStream.rangeClosed(1, expectedCount)
+					.mapToObj(ordinal -> String.format(Locale.ROOT, "%06d", ordinal)).toList();
+			assertThat(logicalAccountSuffixes(candidateIds)).as("%s 반경 %s 후보 집합", scale.label(), maxDistanceMeters)
+					.containsExactlyInAnyOrderElementsOf(expectedSuffixes);
+		}
+	}
+
 	private void assertFixtureShape(FixtureScale scale) {
 		assertThat(policy.isGlobal()).as("운영 기본 delivery scope").isTrue();
 		assertThat(policy.minDistanceMeters()).as("운영 기본 최소 반경").isZero();
@@ -674,19 +713,14 @@ class DirectionMatchingE3PerformanceIntegrationTest extends PostgisContainerInte
 				FROM active_user_presence p
 				JOIN user_account ua ON ua.id = p.user_id
 				WHERE ua.coarse_region_code = ? AND ua.nickname LIKE ?
-				  AND p.receive_allowed = TRUE AND p.position IS NOT NULL
+				  AND p.receive_allowed = TRUE AND p.position_ciphertext IS NOT NULL
 				  AND p.location_at <= ? AND p.expires_at > ?
 				""", REGION, ACCOUNT_NICKNAME_PATTERN, Timestamp.from(NOW), Timestamp.from(NOW));
 	}
 
 	private long countWithin(long maxDistanceMeters) {
-		return count("""
-				SELECT COUNT(*)
-				FROM active_user_presence p
-				JOIN user_account ua ON ua.id = p.user_id
-				WHERE ua.coarse_region_code = ? AND ua.nickname LIKE ?
-				  AND ST_DWithin(p.position, ST_SetSRID(ST_MakePoint(?, ?), 4326)::geography, ?)
-				""", REGION, ACCOUNT_NICKNAME_PATTERN, ORIGIN_LONGITUDE, ORIGIN_LATITUDE, maxDistanceMeters);
+		return DirectionMatchingPerformanceProbe.countWithin(jdbc, coordinateProtector, REGION,
+				ACCOUNT_NICKNAME_PATTERN, ORIGIN_LONGITUDE, ORIGIN_LATITUDE, maxDistanceMeters);
 	}
 
 	private long count(String sql, Object... arguments) {
@@ -895,9 +929,10 @@ class DirectionMatchingE3PerformanceIntegrationTest extends PostgisContainerInte
 	private void seedGuardrailRows() {
 		for (GuardrailRow row : GUARDRAIL_ROWS) {
 			jdbc.update(SEED_GUARDRAIL_ACCOUNT_SQL, row.accountStatus(), REGION, row.nickname());
-			jdbc.update(SEED_GUARDRAIL_PRESENCE_SQL, ORIGIN_LONGITUDE, ORIGIN_LATITUDE, row.distanceMeters(),
-					GUARDRAIL_BEARING_DEGREES, REGION, Timestamp.from(NOW.minusSeconds(10)),
-					Timestamp.from(row.expiresAtNow() ? NOW : NOW.plusSeconds(3600)), REGION, row.nickname());
+			DirectionMatchingPerformanceProbe.seedEncryptedPresence(jdbc, coordinateProtector,
+					SEED_GUARDRAIL_PRESENCE_SQL, REGION, NOW.minusSeconds(10),
+					row.expiresAtNow() ? NOW : NOW.plusSeconds(3600), ORIGIN_LONGITUDE, ORIGIN_LATITUDE,
+					row.distanceMeters(), GUARDRAIL_BEARING_DEGREES, REGION, row.nickname());
 		}
 		jdbc.update(SEED_GUARDRAIL_BLOCK_SQL, Timestamp.from(NOW.minusSeconds(60)), REGION, EXCLUDED_NICKNAME,
 				BLOCKED_BY_SENDER);
@@ -960,7 +995,7 @@ class DirectionMatchingE3PerformanceIntegrationTest extends PostgisContainerInte
 				SELECT COUNT(*)
 				FROM active_user_presence p
 				JOIN user_account ua ON ua.id = p.user_id
-				WHERE ua.coarse_region_code = ? AND ua.nickname = ? AND p.position IS NOT NULL
+				WHERE ua.coarse_region_code = ? AND ua.nickname = ? AND p.position_ciphertext IS NOT NULL
 				""", REGION, EXCLUDED_NICKNAME);
 	}
 
@@ -969,25 +1004,12 @@ class DirectionMatchingE3PerformanceIntegrationTest extends PostgisContainerInte
 	 * 검증한다.
 	 */
 	private long guardrailCandidateCount(long maxDistanceMeters, long excludedUserId) {
-		return count("""
-				SELECT COUNT(*)
-				FROM active_user_presence p
-				JOIN user_account ua ON ua.id = p.user_id
-				WHERE ua.coarse_region_code = ? AND ua.nickname LIKE ?
-				  AND p.user_id <> ?
-				  AND ua.status = 'ACTIVE'
-				  AND p.position IS NOT NULL
-				  AND p.receive_allowed = TRUE
-				  AND p.location_at <= ? AND p.expires_at > ?
-				  AND ST_DWithin(p.position, ST_SetSRID(ST_MakePoint(?, ?), 4326)::geography, ?)
-				  AND NOT EXISTS (SELECT 1 FROM user_block ub
-				                  WHERE ub.blocker_id = ? AND ub.blocked_id = p.user_id
-				                    AND ub.released_at IS NULL)
-				  AND NOT EXISTS (SELECT 1 FROM user_block ub
-				                  WHERE ub.blocker_id = p.user_id AND ub.blocked_id = ?
-				                    AND ub.released_at IS NULL)
-				""", REGION, GUARDRAIL_NICKNAME_PATTERN, excludedUserId, Timestamp.from(NOW), Timestamp.from(NOW),
-				ORIGIN_LONGITUDE, ORIGIN_LATITUDE, maxDistanceMeters, excludedUserId, excludedUserId);
+		Set<Long> guardrailIds = Set.copyOf(jdbc.queryForList("""
+				SELECT id FROM user_account WHERE coarse_region_code = ? AND nickname LIKE ?
+				""", Long.class, REGION, GUARDRAIL_NICKNAME_PATTERN));
+		return presenceRepository.findCandidates(excludedUserId, ORIGIN_LATITUDE, ORIGIN_LONGITUDE, 0,
+				maxDistanceMeters, 0, 360, NOW, null).stream()
+				.filter(candidate -> guardrailIds.contains(candidate.userId())).count();
 	}
 
 	private long receiveStateRowCount() {
@@ -1131,7 +1153,9 @@ class DirectionMatchingE3PerformanceIntegrationTest extends PostgisContainerInte
 			String label,
 			int accountCount,
 			int presenceCount,
-			int expectedProbePresenceCount) {
+			int expectedProbePresenceCount,
+			Map<String, Long> expectedPolicyCounts,
+			Map<String, Long> expectedProbeCounts) {
 	}
 
 	private record GuardrailRow(

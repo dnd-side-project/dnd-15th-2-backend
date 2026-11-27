@@ -9,6 +9,9 @@
  */
 package com.dnd.qello;
 
+import java.math.BigDecimal;
+import java.sql.Timestamp;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -19,6 +22,9 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 
+import com.dnd.qello.direction.security.Coordinate;
+import com.dnd.qello.direction.security.CoordinateProtector;
+import com.dnd.qello.direction.security.CoordinatePurpose;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -26,6 +32,70 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 final class DirectionMatchingPerformanceProbe {
 
 	static final int MEASURED_CALLS = 20;
+
+	static void seedEncryptedPresence(JdbcTemplate jdbc, CoordinateProtector protector,
+			String projectedCoordinatesSql, String region, Instant locationAt, Instant expiresAt, Object... arguments) {
+		List<Object[]> rows = jdbc.query(projectedCoordinatesSql, (rs, index) -> new Object[]{
+				rs.getLong("user_id"),
+				protector.protect(new Coordinate(rs.getBigDecimal("latitude"), rs.getBigDecimal("longitude")),
+						CoordinatePurpose.ACTIVE_USER_PRESENCE, rs.getLong("user_id")),
+				region, Timestamp.from(locationAt), Timestamp.from(expiresAt)}, arguments);
+		jdbc.batchUpdate(
+				"""
+						INSERT INTO active_user_presence
+							(user_id, position_ciphertext, coarse_region_code, accuracy_m, receive_allowed, location_at, expires_at)
+						VALUES (?, ?, ?, 5, TRUE, ?, ?)
+						""",
+				rows);
+	}
+
+	static String projectedCoordinatesSql() {
+		return """
+				SELECT ua.id AS user_id, ST_Y(point::geometry) AS latitude, ST_X(point::geometry) AS longitude
+				FROM generate_series(1, ?) AS gs
+				JOIN user_account ua ON ua.nickname = ? || lpad(gs::text, 6, '0')
+				CROSS JOIN LATERAL (
+					SELECT ST_Project(ST_SetSRID(ST_MakePoint(?, ?), 4326)::geography,
+						sqrt((gs - 0.5) / ?) * 100000,
+						radians(mod((gs - 1) * 137.50776405003785, 360))) AS point
+				) projected
+				WHERE ua.coarse_region_code = ?
+				""";
+	}
+
+	static long countWithin(JdbcTemplate jdbc, CoordinateProtector protector, String region,
+			String nicknamePattern, double longitude, double latitude, long maxDistanceMeters) {
+		List<Coordinate> coordinates = jdbc.query("""
+				SELECT p.user_id, p.position_ciphertext
+				FROM active_user_presence p JOIN user_account ua ON ua.id = p.user_id
+				WHERE ua.coarse_region_code = ? AND ua.nickname LIKE ?
+				""", (rs, index) -> protector.decrypt(rs.getBytes("position_ciphertext"),
+				CoordinatePurpose.ACTIVE_USER_PRESENCE, rs.getLong("user_id")), region, nicknamePattern);
+		BigDecimal[] latitudes = coordinates.stream().map(Coordinate::latitude).toArray(BigDecimal[]::new);
+		BigDecimal[] longitudes = coordinates.stream().map(Coordinate::longitude).toArray(BigDecimal[]::new);
+		return jdbc.execute((org.springframework.jdbc.core.ConnectionCallback<Long>) connection -> {
+			java.sql.Array lats = connection.createArrayOf("numeric", latitudes);
+			java.sql.Array lons = connection.createArrayOf("numeric", longitudes);
+			try (var statement = connection.prepareStatement("""
+					SELECT count(*) FROM unnest(?::numeric[], ?::numeric[]) AS c(lat, lon)
+					WHERE ST_DWithin(ST_SetSRID(ST_MakePoint(lon::float8, lat::float8), 4326)::geography,
+						ST_SetSRID(ST_MakePoint(?, ?), 4326)::geography, ?)
+					""")) {
+				statement.setArray(1, lats);
+				statement.setArray(2, lons);
+				statement.setDouble(3, longitude);
+				statement.setDouble(4, latitude);
+				statement.setLong(5, maxDistanceMeters);
+				try (var result = statement.executeQuery()) {
+					result.next();
+					return result.getLong(1);
+				}
+			} finally {
+				lats.free();
+				lons.free();
+			}
+		});
+	}
 
 	private static final String PARTIAL_GIST_INDEX = "active_user_presence_position_gix";
 	private static final String MISSING_TEXT = "N/A";
@@ -199,7 +269,7 @@ final class DirectionMatchingPerformanceProbe {
 	}
 
 	enum QueryFingerprint {
-		PREVIEW("%candidate_bearings AS (%"), MATCHING("%LEFT JOIN recipient_receive_state%"), PROBE_CONTRACT(
+		PREVIEW("%FROM active_user_presence p%"), MATCHING("%FROM active_user_presence p%"), PROBE_CONTRACT(
 				"%e3_probe_contract%");
 
 		private final String likePattern;

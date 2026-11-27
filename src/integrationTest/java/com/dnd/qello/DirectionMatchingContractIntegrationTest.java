@@ -3,6 +3,7 @@
  * Source scenario: TEST-PLAN-GH-115-DIRECTION-MATCHING-CONTRACT-INT-002 through INT-004,
  * TEST-PLAN-GH-118-DIRECTION-POST-SUBMISSION-INT-001 through INT-005
  * Source scenario: TEST-PLAN-GH-137-DIRECTION-POST-MODERATION (release fixture only, added 2026-10-07T22:14:59+09:00)
+ * Source scenario: TEST-PLAN-GH-388-COORDINATE-ENCRYPTION-INT-019
  */
 package com.dnd.qello;
 
@@ -124,12 +125,41 @@ class DirectionMatchingContractIntegrationTest extends PostgisContainerIntegrati
 	}
 
 	@Test
+	@DisplayName("audience 저장 실패는 암호화된 원점과 post 및 outbox를 부분 commit하지 않는다")
+	void rollsBackSubmissionWhenAudienceStorageFails() {
+		jdbc.execute("""
+				CREATE FUNCTION gh388_fail_audience() RETURNS trigger LANGUAGE plpgsql AS $$
+				BEGIN
+					RAISE EXCEPTION 'synthetic audience storage failure' USING ERRCODE = '23514';
+				END $$
+				""");
+		jdbc.execute("""
+				CREATE TRIGGER gh388_fail_audience BEFORE INSERT ON post_audience
+				FOR EACH ROW EXECUTE FUNCTION gh388_fail_audience()
+				""");
+		try {
+			assertThatThrownBy(() -> send("audience-storage-failure", "storage failure"))
+					.isInstanceOf(DataAccessException.class);
+		} finally {
+			jdbc.execute("DROP TRIGGER gh388_fail_audience ON post_audience");
+			jdbc.execute("DROP FUNCTION gh388_fail_audience()");
+		}
+
+		assertThat(jdbc.queryForObject("SELECT count(*) FROM direction_post", Long.class)).isZero();
+		assertThat(jdbc.queryForObject("SELECT count(*) FROM post_audience", Long.class)).isZero();
+		assertThat(jdbc.queryForObject("SELECT count(*) FROM outbox_event", Long.class)).isZero();
+	}
+
+	@Test
 	@DisplayName("matching Outbox 저장 실패는 post와 audience를 함께 rollback한다")
 	void rollsBackPostAndAudienceWhenMatchingOutboxFails() {
 		jdbc.execute("""
 				CREATE OR REPLACE FUNCTION test_gh118_fail_matching_outbox()
 				RETURNS trigger LANGUAGE plpgsql AS $$
 				BEGIN
+					IF NEW.event_type <> 'RECIPIENT_MATCH_REQUESTED' THEN
+						RETURN NEW;
+					END IF;
 					RAISE EXCEPTION 'TEST-PLAN-GH-118 rollback injection';
 				END;
 				$$

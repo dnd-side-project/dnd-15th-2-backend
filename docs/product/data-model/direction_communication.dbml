@@ -398,13 +398,13 @@ ck_user_private_attribute_gender: CHECK (gender IS NULL OR (gender::text = ANY (
 
 Table active_user_presence [headercolor: #4E79A7] {
   user_id bigint [pk, not null, note: '대상 사용자 식별자']
-  position geography(Point,4326) [note: 'P06 1안 확정에 따라 실제 사용자 좌표를 담는 운영 컬럼이다. 거리와 방위 계산에 사용한다. SQL DDL은 이 컬럼에 partial GiST 인덱스 active_user_presence_position_gix(USING GIST ... WHERE receive_allowed)를 두어 방향·거리 후보 탐색을 가속한다. DBML은 GiST를 표현하지 못해 아래 인덱스 블록에 나타나지 않는다. 이 값은 API 응답·로그·분석 이벤트·Outbox payload에 넣지 않는다.']
   coarse_cell_id varchar(100) [note: '정확 좌표를 대체하지 않고 보조로 두는 공간 셀 식별자. P06 2안을 채택하지 않았으므로 선택 입력이다.']
   coarse_region_code varchar(100) [not null, note: '외부 응답에 노출하는 흐린 지역 코드']
   accuracy_m numeric(10,2) [note: '측정 위치의 예상 오차 반경 미터']
   receive_allowed boolean [not null, default: false, note: '현재 수신 후보에 포함할 수 있는지 여부']
   location_at timestamptz [not null, note: '위치가 실제 측정된 시각']
   expires_at timestamptz [not null, note: '이 위치를 후보 탐색에 쓰지 않을 시각']
+  position_ciphertext bytea [note: 'ADR-0009: 좌표 전용 AES-256-GCM envelope. version·key ID·용도·user_id를 AAD로 인증한다. 앱에서 복호화하고 WGS84 거리·방위를 계산한다. 평문·key·envelope는 응답·로그·이벤트에 노출하지 않는다.']
 
   indexes {
     expires_at [name: 'active_user_presence_expiry_idx', note: 'SQL DDL은 receive_allowed=true인 partial index']
@@ -413,12 +413,12 @@ Table active_user_presence [headercolor: #4E79A7] {
 
 
   Note: '''
-테이블 설명: 수신자 매칭에 사용할 사용자의 최근 위치와 수신 가능 여부를 TTL 형태로 보관하는 테이블이다. 필요 이유: 자주 바뀌고 짧게 유효한 위치와 수신 가능 상태를 계정 원본에서 분리해 TTL 기반 수신자 탐색을 빠르게 수행한다. P06 정책: 1안(짧은 TTL 정확 좌표 저장, 외부에는 흐린 값만 제공)으로 2026-08-03 확정했다. 이 테이블이 서비스 전체에서 정확 좌표를 보관하는 유일한 곳이며 접근 경로를 매칭 워커로 제한한다. 인덱스 보충: SQL DDL에는 아래 인덱스 블록 외에 position 컬럼의 partial GiST 인덱스 active_user_presence_position_gix(WHERE receive_allowed)가 있으며, 이것이 방향·거리 후보 탐색의 핵심 인덱스다.
+수신자 매칭에 사용할 최근 위치와 수신 상태를 TTL 형태로 보관한다. ADR-0009와 V35는 평문 position을 폐기하고 position_ciphertext로 전환한다. 정확 좌표가 있던 기존 presence는 삭제하며 셀만 있는 행은 보존한다. post_audience에도 암호화된 발송 원점이 있으므로 정확 좌표의 유일 저장소가 아니다. GiST는 제거하고 비공간 조건을 통과한 한 snapshot의 후보를 앱에서 복호화·계산한다. TTL 만료는 조회 제외이며 보존·물리 파기는 C6 범위다.
 
 Flyway CHECK constraints (SQL):
 ck_active_user_presence_accuracy: CHECK (accuracy_m IS NULL OR accuracy_m >= 0::numeric)
 ck_active_user_presence_expiry: CHECK (expires_at > location_at)
-ck_active_user_presence_location: CHECK (num_nonnulls("position", coarse_cell_id) >= 1)
+ck_active_user_presence_location: CHECK (num_nonnulls(position_ciphertext, coarse_cell_id) >= 1)
 '''
 }
 
@@ -715,9 +715,9 @@ Table post_audience [headercolor: #F28E2B] {
   angular_width_deg numeric(7,3) [not null, note: '발송 당시 선택 구간 각도 폭']
   min_distance_m bigint [not null, note: '수신 후보 최소 거리 미터']
   max_distance_m bigint [not null, note: '수신 후보 최대 거리 미터']
-  origin_position geography(Point,4326) [note: 'P06 1안 확정에 따라 실제 발송 원점 좌표를 담는 운영 컬럼이다. 거리·방위 계산에 사용하며 외부 응답에는 노출하지 않는다.']
   origin_cell_id varchar(100) [note: '정확 좌표를 대체하지 않고 보조로 두는 발송 원점 공간 셀. 선택 입력이다.']
   snapshotted_at timestamptz [not null, default: `clock_timestamp()`, note: '발송 조건을 확정한 시각']
+  origin_position_ciphertext bytea [note: 'ADR-0009: 발송 원점의 AES-256-GCM envelope. 용도와 post_id 결합 AAD로 인증한다. V35가 폐기한 기존 원점은 NULL이며 셀도 NULL일 수 있다. 신규 발송은 정확 원점을 요구한다.']
 
   indexes {
     (direction_scheme_id, selected_segment_key) [name: 'post_audience_segment_idx', note: 'direction_segment 복합 FK의 RESTRICT 검사와 방향 구간별 집계용']
@@ -730,7 +730,6 @@ Table post_audience [headercolor: #F28E2B] {
 Flyway CHECK constraints (SQL):
 ck_post_audience_center: CHECK (center_bearing_deg >= 0::numeric AND center_bearing_deg < 360::numeric)
 ck_post_audience_distance: CHECK (min_distance_m >= 0 AND max_distance_m > min_distance_m)
-ck_post_audience_origin: CHECK (num_nonnulls(origin_position, origin_cell_id) >= 1)
 ck_post_audience_width: CHECK (angular_width_deg > 0::numeric AND angular_width_deg <= 360::numeric)
 '''
 }

@@ -31,6 +31,7 @@ import org.springframework.test.context.ActiveProfiles;
 
 import com.dnd.qello.direction.matching.DirectionMatchingWorker;
 import com.dnd.qello.direction.repository.jdbc.sql.ActiveUserPresenceSql;
+import com.dnd.qello.direction.security.CoordinateProtector;
 import com.dnd.qello.direction.service.DirectionPostApplicationService;
 import com.dnd.qello.direction.service.DirectionPresenceService;
 import com.dnd.qello.filtering.service.FilterReleaseRegistryService;
@@ -41,11 +42,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * GH-127 Gap B. 저장소 전체에 {@code EXPLAIN} 사용이 0건이었다 — 10,000명 규모에서
- * {@code active_user_presence}의 부분 GIST 인덱스
- * ({@code active_user_presence_position_gix})를 후보 조회가 실제로 타는지 확인된 적이 없었다. 판정
- * 기준은 실행계획이고 지연은 증거일 뿐이다(TASK.md 결정 2) — Testcontainers 머신 편차로 지연 임계값을 단언하면 회귀
- * 탐지력보다 잡음이 커진다.
+ * ADR-0009의 앱 계산에서는 비공간 snapshot의 접근 경로를 기록한다. 공간 인덱스와 Seq Scan 금지는 더 이상 유효한
+ * 계약이 아니다.
  *
  * <p>
  * {@code check}가 이 클래스에 의존하지 않도록 {@code @Tag("performance")}를 붙이고
@@ -81,6 +79,8 @@ class DirectionMatchingPerformanceIntegrationTest extends PostgisContainerIntegr
 	private DirectionMatchingWorker matchingWorker;
 	@Autowired
 	private DirectionFlow127MutableClock clock;
+	@Autowired
+	private CoordinateProtector coordinateProtector;
 
 	@BeforeEach
 	void resetClock() {
@@ -128,7 +128,7 @@ class DirectionMatchingPerformanceIntegrationTest extends PostgisContainerIntegr
 	}
 
 	@Test
-	@DisplayName("PERF-001: 10,000명 규모·운영 기본값에서 미리보기 집계 쿼리는 active_user_presence에 Seq Scan을 쓰지 않는다")
+	@DisplayName("PERF-001: 10,000명 규모에서 미리보기의 비공간 snapshot 접근 경로를 기록한다")
 	void previewCandidateCountQueryAvoidsSeqScanAtScale() {
 		seedSyntheticPresence(SYNTHETIC_PRESENCE_COUNT);
 		long senderId = seedSender();
@@ -147,11 +147,13 @@ class DirectionMatchingPerformanceIntegrationTest extends PostgisContainerIntegr
 				.addValue("regionCode", null);
 
 		JsonNode plan = executeExplain(explainSql, params);
-		assertNoSeqScanAndRecordAccessPath(plan, "preview candidate count query");
+		assertSnapshotPlanAndRecordAccessPath(plan, "preview candidate snapshot query");
+		assertThat(postApplicationService.preview(senderId).segments().stream()
+				.mapToLong(segment -> segment.count()).sum()).isEqualTo(SYNTHETIC_PRESENCE_COUNT);
 	}
 
 	@Test
-	@DisplayName("PERF-002: 10,000명 규모·운영 기본값에서 매칭 후보 조회 쿼리는 active_user_presence에 Seq Scan을 쓰지 않는다")
+	@DisplayName("PERF-002: 10,000명 규모에서 매칭의 비공간 snapshot 접근 경로를 기록한다")
 	void matchingCandidateSelectionQueryAvoidsSeqScanAtScale() {
 		seedSyntheticPresence(SYNTHETIC_PRESENCE_COUNT);
 		long senderId = seedSender();
@@ -169,7 +171,7 @@ class DirectionMatchingPerformanceIntegrationTest extends PostgisContainerIntegr
 				.addValue("regionCode", null);
 
 		JsonNode plan = executeExplain(explainSql, params);
-		assertNoSeqScanAndRecordAccessPath(plan, "matching candidate selection query");
+		assertSnapshotPlanAndRecordAccessPath(plan, "matching candidate snapshot query");
 	}
 
 	@Test
@@ -198,9 +200,7 @@ class DirectionMatchingPerformanceIntegrationTest extends PostgisContainerIntegr
 		long matchingDurationMs = Duration.ofNanos(System.nanoTime() - matchingStartNanos).toMillis();
 
 		assertThat(matchResult.outcomes()).containsExactly(DirectionMatchingWorker.Outcome.PROCESSED);
-		// PASS/FAIL 판정에는 쓰지 않는다 — 실행계획(PERF-001/002)이 판정 기준이고 이 수치는
-		// 보고서에 옮겨 적을 증거일 뿐이다. Testcontainers 머신 편차로 임계값을 단언하면
-		// 회귀 탐지력보다 잡음이 커진다(TASK.md 결정 2).
+		// D6의 main 전체 흐름 상대 비교는 별도 PERF-001~003에서 수행한다.
 		System.out.println("PERF-003 evidence: presence_rows=" + SYNTHETIC_PRESENCE_COUNT
 				+ " preview_ms=" + previewDurationMs + " matching_ms=" + matchingDurationMs);
 	}
@@ -215,16 +215,7 @@ class DirectionMatchingPerformanceIntegrationTest extends PostgisContainerIntegr
 		}
 	}
 
-	/**
-	 * PASS/FAIL 기준은 Seq Scan 부재뿐이다. 실측 결과 10,000행 규모에서는 계획기가
-	 * {@code user_account}(작은 driving 테이블)를 Seq Scan한 뒤
-	 * {@code active_user_presence}를 {@code active_user_presence_pkey}(user_id 기준)로
-	 * nested-loop join하고, 부분 GIST 인덱스({@code active_user_presence_position_gix})는 이
-	 * 두 쿼리 형태에서 전혀 선택되지 않았다 — PK join이 이미 1:1 관계라 공간 인덱스보다 저렴하기 때문이다. 이는 인덱스나 코드
-	 * 결함이 아니라 이 규모·쿼리 형태의 계획기 판단이므로 GIST 인덱스 사용 자체를 단언하지 않는다. 실제 사용된 접근 경로는 증거로만
-	 * 기록해 보고서와 후속 Issue 판단에 맡긴다(TASK.md 결정 4 — 구현 결함을 발견해도 이 브랜치에서 고치지 않는다).
-	 */
-	private void assertNoSeqScanAndRecordAccessPath(JsonNode plan, String label) {
+	private void assertSnapshotPlanAndRecordAccessPath(JsonNode plan, String label) {
 		List<JsonNode> allNodes = new ArrayList<>();
 		collectAllNodes(plan, allNodes);
 
@@ -234,10 +225,6 @@ class DirectionMatchingPerformanceIntegrationTest extends PostgisContainerIntegr
 		assertThat(presenceScanNodes)
 				.as("%s: active_user_presence를 스캔하는 계획 노드", label)
 				.isNotEmpty();
-
-		boolean usesSeqScan = presenceScanNodes.stream()
-				.anyMatch(node -> "Seq Scan".equals(text(node, "Node Type")));
-		assertThat(usesSeqScan).as("%s: active_user_presence에 Seq Scan이 없어야 한다", label).isFalse();
 
 		boolean usesPartialGistIndex = allNodes.stream()
 				.anyMatch(node -> "active_user_presence_position_gix".equals(text(node, "Index Name")));
@@ -275,18 +262,15 @@ class DirectionMatchingPerformanceIntegrationTest extends PostgisContainerIntegr
 				SELECT 'USER', 'KR', 'ACTIVE', ?, 'ko-KR', 'Asia/Seoul', 'perf-candidate-' || gs
 				FROM generate_series(1, ?) AS gs
 				""", REGION, count);
-		jdbc.update(
-				"""
-						INSERT INTO active_user_presence
-							(user_id, position, coarse_region_code, accuracy_m, receive_allowed, location_at, expires_at)
-						SELECT ua.id,
-						       ST_Project(ST_SetSRID(ST_MakePoint(?, ?), 4326)::geography, 50 + random() * 4950, radians(random() * 360)),
-						       ?, 5, TRUE, ?, ?
-						FROM user_account ua
-						WHERE ua.coarse_region_code = ? AND ua.nickname LIKE 'perf-candidate-%'
-						""",
-				SENDER_LON, SENDER_LAT, REGION, Timestamp.from(NOW.minusSeconds(10)),
-				Timestamp.from(NOW.plusSeconds(3600)), REGION);
+		DirectionMatchingPerformanceProbe.seedEncryptedPresence(jdbc, coordinateProtector, """
+				SELECT ua.id AS user_id, ST_Y(point::geometry) AS latitude, ST_X(point::geometry) AS longitude
+				FROM user_account ua CROSS JOIN LATERAL (
+					SELECT ST_Project(ST_SetSRID(ST_MakePoint(?, ?), 4326)::geography,
+						50 + mod(substring(ua.nickname from 16)::integer * 31, 4950),
+						radians(mod(substring(ua.nickname from 16)::integer * 137.50776405003785, 360))) AS point
+				) projected
+				WHERE ua.coarse_region_code = ? AND ua.nickname LIKE 'perf-candidate-%'
+				""", REGION, NOW.minusSeconds(10), NOW.plusSeconds(3600), SENDER_LON, SENDER_LAT, REGION);
 		jdbc.execute("ANALYZE active_user_presence");
 	}
 

@@ -41,10 +41,12 @@ import org.springframework.transaction.PlatformTransactionManager;
 
 import com.dnd.qello.account.domain.Account;
 import com.dnd.qello.account.repository.AccountRepository;
+import com.dnd.qello.direction.domain.ActiveUserPresence;
 import com.dnd.qello.direction.domain.DirectionPost;
 import com.dnd.qello.direction.domain.DirectionRequestFingerprint;
 import com.dnd.qello.direction.domain.PostRecipient;
 import com.dnd.qello.direction.domain.PostRecipientStatus;
+import com.dnd.qello.direction.repository.ActiveUserPresenceRepository;
 import com.dnd.qello.direction.repository.DirectionPostRepository;
 import com.dnd.qello.direction.repository.PostRecipientRepository;
 import com.dnd.qello.feed.service.InboxQueryService;
@@ -106,6 +108,8 @@ class RecipientNotificationFanOutWorkerIntegrationTest extends PostgisContainerI
 	private PlatformTransactionManager transactionManager;
 	@Autowired
 	private InboxQueryService inbox;
+	@Autowired
+	private ActiveUserPresenceRepository presenceRepository;
 
 	@BeforeEach
 	void resetFixtures() {
@@ -841,13 +845,9 @@ class RecipientNotificationFanOutWorkerIntegrationTest extends PostgisContainerI
 	}
 
 	private void presence(long userId, String region, double longitude, double latitude) {
-		jdbc.update("""
-				INSERT INTO active_user_presence
-					(user_id, position, coarse_region_code, accuracy_m, receive_allowed,
-					 location_at, expires_at)
-				VALUES (?, ST_SetSRID(ST_MakePoint(?, ?), 4326)::geography, ?, 5, TRUE, ?, ?)
-				""", userId, longitude, latitude, region, Timestamp.from(NOW.minusSeconds(10)),
-				Timestamp.from(NOW.plusSeconds(3600)));
+		presenceRepository.save(ActiveUserPresence.create(userId, BigDecimal.valueOf(latitude),
+				BigDecimal.valueOf(longitude), null, region, BigDecimal.valueOf(5), true,
+				NOW.minusSeconds(10), NOW.plusSeconds(3600)));
 	}
 
 	private void block(long blockerId, long blockedId, Instant releasedAt) {

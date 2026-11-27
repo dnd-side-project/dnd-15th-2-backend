@@ -1,16 +1,20 @@
 /**
  * Created at: 2026-08-10T23:14:20+09:00
  * Source scenario: TEST-PLAN-GH-97-RECIPIENT-FILTER-LIMIT-DISTRIBUTION-UNIT-002 through UNIT-004
+ * Source scenario: TEST-PLAN-GH-388-COORDINATE-ENCRYPTION-UNIT-012 (updated 2026-11-25T01:43:04.889Z)
  */
 package com.dnd.qello.direction;
 
+import java.util.List;
 import java.util.Properties;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.config.YamlPropertiesFactoryBean;
 import org.springframework.core.io.ClassPathResource;
 
+import com.dnd.qello.direction.domain.DirectionCandidate;
 import com.dnd.qello.direction.repository.jdbc.sql.ActiveUserPresenceSql;
 import com.dnd.qello.feed.repository.jdbc.sql.PostAnswerQuerySql;
 
@@ -29,8 +33,23 @@ class DirectionRecipientSelectionBoundaryTest {
 				.contains("ub.blocker_id = :excludedUserId")
 				.contains("ub.blocker_id = p.user_id")
 				.contains("ub.released_at IS NULL")
-				.contains("recipient_receive_state")
-				.contains("ORDER BY recent_received_count, last_received_at NULLS FIRST, distance_m, user_id");
+				.contains("recipient_receive_state");
+	}
+
+	@Test
+	@DisplayName("저장소는 비정렬 snapshot을 수신수·NULL 우선 시각·거리·ID 순서로 정렬한다")
+	void repositoryOrdersCandidatesAfterDecryption() {
+		var at = DirectionPreviewPersistenceBoundaryTest.AT;
+		var repository = DirectionPreviewPersistenceBoundaryTest.repository(List.of(
+				DirectionPreviewPersistenceBoundaryTest.candidate(6, 1, 0, 1, null),
+				DirectionPreviewPersistenceBoundaryTest.candidate(5, 1, 0, 0, at),
+				DirectionPreviewPersistenceBoundaryTest.candidate(4, 2, 0, 0, at.minusSeconds(1)),
+				DirectionPreviewPersistenceBoundaryTest.candidate(3, 1, 0, 0, null),
+				DirectionPreviewPersistenceBoundaryTest.candidate(2, 1, 0, 0, null),
+				DirectionPreviewPersistenceBoundaryTest.candidate(9, 0.5, 0, 0, null)), new AtomicInteger());
+
+		assertThat(repository.findCandidates(1, 0, 0, 0, 20_100_000, 315, 45, at, null))
+				.extracting(DirectionCandidate::userId).containsExactly(9L, 2L, 3L, 4L, 5L, 6L);
 	}
 
 	@Test

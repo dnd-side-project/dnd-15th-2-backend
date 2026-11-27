@@ -5,26 +5,38 @@
  * Source scenario: TEST-PLAN-GH-137-DIRECTION-POST-MODERATION (release fixture and DIRECTION_POST outbox filter, added 2026-10-07T22:14:59+09:00)
  * Source scenario: TEST-PLAN-GH-337-ACCOUNT-WITHDRAWAL-INT-006 (added 2026-10-09T18:47:28+09:00)
  * Source scenario: TEST-PLAN-GH-350-SHARE-SPRING-CONTEXT-INT-001 (base와 중복된 컨텍스트 폐기 선언 제거, added 2026-10-10T15:19:46+09:00)
+ * Source scenario: TEST-PLAN-GH-388-COORDINATE-ENCRYPTION-INT-017, INT-023, INT-024
  */
 package com.dnd.qello;
 
 import java.math.BigDecimal;
 import java.sql.Timestamp;
+import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.IntStream;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
+import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 
+import com.dnd.qello.direction.config.DirectionSchemeProperties;
 import com.dnd.qello.direction.domain.ActiveUserPresence;
 import com.dnd.qello.direction.domain.DirectionScheme;
 import com.dnd.qello.direction.domain.DirectionSegment;
@@ -32,7 +44,14 @@ import com.dnd.qello.direction.matching.DirectionMatchingWorker;
 import com.dnd.qello.direction.repository.ActiveUserPresenceRepository;
 import com.dnd.qello.direction.repository.DirectionSchemeRepository;
 import com.dnd.qello.direction.repository.RecipientReceiveStateRepository;
+import com.dnd.qello.direction.security.AesGcmCoordinateProtector;
+import com.dnd.qello.direction.security.CoordinateKeyRing;
+import com.dnd.qello.direction.security.CoordinateProtectionException;
+import com.dnd.qello.direction.security.CoordinateProtector;
+import com.dnd.qello.direction.security.CoordinatePurpose;
+import com.dnd.qello.direction.service.DirectionPostModerationVerdictApplier;
 import com.dnd.qello.direction.service.DirectionPostService;
+import com.dnd.qello.filtering.domain.FilterVerdict;
 import com.dnd.qello.filtering.service.FilterReleaseRegistryService;
 import com.dnd.qello.notification.domain.OutboxEvent;
 import com.dnd.qello.notification.domain.OutboxEventType;
@@ -40,9 +59,18 @@ import com.dnd.qello.notification.domain.OutboxStatus;
 import com.dnd.qello.notification.repository.OutboxEventRepository;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest
+@AutoConfigureMockMvc
 @ActiveProfiles("test")
+@ExtendWith(OutputCaptureExtension.class)
 class DirectionMatchingWorkerIntegrationTest extends PostgisContainerIntegrationTestSupport {
 
 	private static final String REGION = "TEST-DIRECTION-MATCHING-WORKER";
@@ -65,6 +93,16 @@ class DirectionMatchingWorkerIntegrationTest extends PostgisContainerIntegration
 	private OutboxEventRepository outboxRepository;
 	@Autowired
 	private RecipientReceiveStateRepository receiveStateRepository;
+	@Autowired
+	private MockMvc mockMvc;
+	@Autowired
+	private Clock clock;
+	@Autowired
+	private DirectionSchemeProperties schemeProperties;
+	@Autowired
+	private DirectionPostModerationVerdictApplier verdictApplier;
+	@Autowired
+	private CoordinateProtector protector;
 
 	@BeforeEach
 	void reset() {
@@ -94,6 +132,43 @@ class DirectionMatchingWorkerIntegrationTest extends PostgisContainerIntegration
 				OTHER_REGION);
 		// #137: 본문 있는 질문글 제출은 승격된 release가 없으면 moderation job 접수에서 거절된다.
 		AnswerModerationReleaseTestFixture.promotedRelease(releaseRegistryService, 1L);
+	}
+
+	@Test
+	@DisplayName("위치 PUT·preview·submit·worker 실제 경로는 두 bytea 좌표를 저장하고 응답·payload·로그에 좌표를 노출하지 않는다")
+	void protectsCoordinatesAcrossHttpSubmissionAndMatching(CapturedOutput output) throws Exception {
+		Fixture fixture = fixtureWithCandidates(1);
+		Instant at = clock.instant().truncatedTo(java.time.temporal.ChronoUnit.SECONDS);
+		jdbc.update("UPDATE direction_scheme SET code = ? WHERE id = ?", schemeProperties.schemeCode(),
+				fixture.schemeId());
+		jdbc.update("UPDATE approved_question SET active_from = ?, active_until = ? WHERE id = ?",
+				Timestamp.from(at.minusSeconds(120)), Timestamp.from(at.plusSeconds(7200)), fixture.questionId());
+		presenceRepository.save(ActiveUserPresence.create(fixture.candidateIds().getFirst(),
+				new BigDecimal("37.51334567"), new BigDecimal("127.09876543"), null, REGION,
+				BigDecimal.ONE, true, at.minusSeconds(1), at.plusSeconds(7200)));
+
+		long postId = submitThroughHttp(fixture, at);
+		Instant matchingAt = jdbc.queryForObject("""
+				SELECT next_attempt_at FROM outbox_event
+				WHERE aggregate_type = 'DIRECTION_POST' AND aggregate_id = ?
+					AND event_type = 'RECIPIENT_MATCH_REQUESTED'
+				""", Timestamp.class, postId).toInstant();
+		verdictApplier.applyVerdict(postId, FilterVerdict.ALLOW, matchingAt);
+		var result = worker.processBatch(new DirectionMatchingWorker.BatchCommand(10, "http-coordinate-388",
+				matchingAt, matchingAt.plusSeconds(60),
+				new com.dnd.qello.notification.domain.OutboxRetryPolicy(3, attempt -> Duration.ofSeconds(1))));
+
+		assertThat(result.outcomes()).containsExactly(DirectionMatchingWorker.Outcome.PROCESSED);
+		assertThat(jdbc.queryForList("SELECT recipient_id FROM post_recipient WHERE post_id = ?",
+				Long.class, postId)).containsExactly(fixture.candidateIds().getFirst());
+		assertStoredCoordinate("active_user_presence", "position_ciphertext", "user_id", fixture.senderId(),
+				CoordinatePurpose.ACTIVE_USER_PRESENCE);
+		assertStoredCoordinate("post_audience", "origin_position_ciphertext", "post_id", postId,
+				CoordinatePurpose.POST_AUDIENCE);
+		String observed = result + output.getAll()
+				+ jdbc.queryForList("SELECT payload::text FROM outbox_event", String.class);
+		assertThat(observed.contains("37.51234567") || observed.contains("127.09876543"))
+				.as("successful flow must not expose exact coordinates").isFalse();
 	}
 
 	@Test
@@ -571,14 +646,63 @@ class DirectionMatchingWorkerIntegrationTest extends PostgisContainerIntegration
 	}
 
 	private void presenceAtBearing(long userId, double distanceMeters, double bearingDegrees, Instant expiresAt) {
-		jdbc.update(
-				"""
-						INSERT INTO active_user_presence
-							(user_id, position, coarse_cell_id, coarse_region_code, accuracy_m, receive_allowed, location_at, expires_at)
-						VALUES (?, ST_Project(ST_SetSRID(ST_MakePoint(127.0000, 37.5000), 4326)::geography, ?, radians(?)), NULL, ?, 1, TRUE, ?, ?)
-						""",
-				userId, distanceMeters, bearingDegrees, REGION, Timestamp.from(NOW.minusSeconds(10)),
-				Timestamp.from(expiresAt));
+		double[] point = jdbc.queryForObject("""
+				SELECT ST_Y(projected::geometry), ST_X(projected::geometry)
+				FROM (SELECT ST_Project(ST_SetSRID(ST_MakePoint(127.0000, 37.5000), 4326)::geography,
+					?, radians(?)) AS projected) fixture
+				""", (rs, rowNum) -> new double[]{rs.getDouble(1), rs.getDouble(2)}, distanceMeters, bearingDegrees);
+		presence(userId, point[0], point[1], expiresAt);
+	}
+
+	private long submitThroughHttp(Fixture fixture, Instant at) throws Exception {
+		String presenceResponse = mockMvc.perform(authenticated(put("/api/v1/direction/presence"), fixture.senderId())
+				.contentType(MediaType.APPLICATION_JSON).content("""
+						{"latitude":37.51234567,"longitude":127.09876543,"accuracyMeters":1,
+						 "receiveAllowed":true,"observedAt":"%s"}
+						""".formatted(at)))
+				.andExpect(status().isOk()).andExpect(jsonPath("$.data.applied").value(true))
+				.andReturn().getResponse().getContentAsString();
+		String previewResponse = mockMvc.perform(authenticated(get("/api/v1/direction/preview"), fixture.senderId()))
+				.andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+		String submissionResponse = mockMvc.perform(authenticated(post("/api/v1/direction/posts"), fixture.senderId())
+				.header("Idempotency-Key", "http-coordinate-388").contentType(MediaType.APPLICATION_JSON)
+				.content("""
+						{"approvedQuestionId":%d,"schemeId":%d,"segmentKey":"S0",
+						 "bodyText":"Coordinate flow","mediaIds":[]}
+						""".formatted(fixture.questionId(), fixture.schemeId())))
+				.andExpect(status().isAccepted()).andExpect(jsonPath("$.data.submissionStatus").value("SUBMITTED"))
+				.andReturn().getResponse().getContentAsString();
+		assertThat((presenceResponse + previewResponse + submissionResponse)
+				.contains("37.51234567")
+				|| (presenceResponse + previewResponse + submissionResponse).contains("127.09876543"))
+				.as("HTTP responses must not expose exact coordinates").isFalse();
+		return jdbc.queryForObject("SELECT id FROM direction_post WHERE sender_id = ? AND idempotency_key = ?",
+				Long.class, fixture.senderId(), "http-coordinate-388");
+	}
+
+	private MockHttpServletRequestBuilder authenticated(MockHttpServletRequestBuilder request, long userId) {
+		return request.with(jwt().authorities(new SimpleGrantedAuthority("ROLE_USER"))
+				.jwt(token -> token.subject(Long.toString(userId))));
+	}
+
+	private void assertStoredCoordinate(String table, String column, String idColumn, long id,
+			CoordinatePurpose purpose) {
+		assertThat(jdbc.queryForObject("SELECT pg_typeof(" + column + ")::text FROM " + table
+				+ " WHERE " + idColumn + " = ?", String.class, id)).isEqualTo("bytea");
+		byte[] envelope = jdbc.queryForObject("SELECT " + column + " FROM " + table + " WHERE " + idColumn + " = ?",
+				byte[].class, id);
+		var coordinate = protector.decrypt(envelope, purpose, id);
+		assertThat(coordinate.latitude()).isEqualByComparingTo("37.51234567");
+		assertThat(coordinate.longitude()).isEqualByComparingTo("127.09876543");
+		var wrongKey = new AesGcmCoordinateProtector(new CoordinateKeyRing("coordinate-fixture-current",
+				Map.of("coordinate-fixture-current", new byte[32])));
+		assertThatThrownBy(() -> wrongKey.decrypt(envelope, purpose, id))
+				.isInstanceOf(CoordinateProtectionException.class);
+		assertThat(jdbc.queryForObject("""
+				SELECT count(*) FROM information_schema.columns WHERE table_schema = 'public'
+					AND table_name = ? AND column_name = ?
+				""", Long.class, table, purpose == CoordinatePurpose.POST_AUDIENCE ? "origin_position" : "position"))
+				.isZero();
 	}
 
 	private record Fixture(long senderId, long questionId, long schemeId, List<Long> candidateIds) {

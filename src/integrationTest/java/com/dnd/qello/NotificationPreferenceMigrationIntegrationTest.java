@@ -67,8 +67,8 @@ class NotificationPreferenceMigrationIntegrationTest extends PostgisContainerInt
 
 		MigrateResult result = migrateToLatest();
 
-		// V25~V34 10개가 적용된다. 새 migration을 추가하면 이 수를 함께 올린다.
-		assertThat(result.migrationsExecuted).isEqualTo(10);
+		// V25~V35 11개가 적용된다. 새 migration을 추가하면 이 수를 함께 올린다.
+		assertThat(result.migrationsExecuted).isEqualTo(11);
 		for (Map.Entry<String, Boolean> entry : ENABLED_BY_TYPE.entrySet()) {
 			assertThat(enabled(userId, entry.getKey())).isEqualTo(entry.getValue());
 		}

@@ -85,6 +85,11 @@ qello:
       # 탈퇴 요청 후 계정을 삭제하기까지의 유예 기간(#337). 이 기간 안에는 같은 기기로 철회할 수 있다.
       grace-period: ${QELLO_ACCOUNT_WITHDRAWAL_GRACE_PERIOD:P30D}
   direction:
+    coordinate-protection:
+      current-key-id: ${QELLO_COORDINATE_CURRENT_KEY_ID:}
+      current-key-base64: ${QELLO_COORDINATE_CURRENT_KEY_BASE64:}
+      previous-key-id: ${QELLO_COORDINATE_PREVIOUS_KEY_ID:}
+      previous-key-base64: ${QELLO_COORDINATE_PREVIOUS_KEY_BASE64:}
     # 사용자별 활성 미처리 수신 상한. DB CHECK가 아니라 운영 설정값이며, DB는 안전 상한 50만만 강제한다.
     receive-capacity: 5
     # 발송 한 건에서 확정할 수 있는 최대 수신자 수. 운영 실험에 따라 조정한다.

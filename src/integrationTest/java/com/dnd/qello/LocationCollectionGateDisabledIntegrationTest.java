@@ -4,6 +4,7 @@
  */
 package com.dnd.qello;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.LinkedHashMap;
@@ -24,7 +25,9 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 
+import com.dnd.qello.direction.domain.ActiveUserPresence;
 import com.dnd.qello.direction.gate.LocationCollectionGate;
+import com.dnd.qello.direction.repository.ActiveUserPresenceRepository;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
@@ -54,6 +57,9 @@ class LocationCollectionGateDisabledIntegrationTest extends PostgisContainerInte
 	@Autowired
 	private LocationCollectionGate gate;
 
+	@Autowired
+	private ActiveUserPresenceRepository presenceRepository;
+
 	private long userId;
 	private Instant existingLocationAt;
 
@@ -75,12 +81,9 @@ class LocationCollectionGateDisabledIntegrationTest extends PostgisContainerInte
 				""", Long.class, REGION);
 		// 게이트 도입 전에 저장된 좌표가 있어도 미리보기·발송이 그 좌표를 읽지 않아야 한다.
 		existingLocationAt = Instant.now().minusSeconds(60).truncatedTo(ChronoUnit.SECONDS);
-		jdbc.update("""
-				INSERT INTO active_user_presence
-					(user_id, position, coarse_region_code, accuracy_m, receive_allowed, location_at, expires_at)
-				VALUES (?, ST_SetSRID(ST_MakePoint(127.0, 37.5), 4326)::geography, ?, 10, TRUE, ?, ?)
-				""", userId, REGION, java.sql.Timestamp.from(existingLocationAt),
-				java.sql.Timestamp.from(existingLocationAt.plus(1, ChronoUnit.HOURS)));
+		presenceRepository.save(ActiveUserPresence.create(userId, BigDecimal.valueOf(37.5),
+				BigDecimal.valueOf(127), null, REGION, BigDecimal.TEN, true, existingLocationAt,
+				existingLocationAt.plus(1, ChronoUnit.HOURS)));
 	}
 
 	@AfterEach
@@ -95,6 +98,8 @@ class LocationCollectionGateDisabledIntegrationTest extends PostgisContainerInte
 	void rejectsPresenceUpdateWithoutTouchingStoredLocation() throws Exception {
 		assertThat(gate.isEnabled()).isFalse();
 		Map<String, Integer> before = rowCounts();
+		byte[] ciphertext = jdbc.queryForObject(
+				"SELECT position_ciphertext FROM active_user_presence WHERE user_id = ?", byte[].class, userId);
 
 		String response = mockMvc.perform(authenticated(put("/api/v1/direction/presence"))
 				.contentType(MediaType.APPLICATION_JSON)
@@ -108,8 +113,10 @@ class LocationCollectionGateDisabledIntegrationTest extends PostgisContainerInte
 
 		assertThat(response).doesNotContain(SENTINEL_LATITUDE, SENTINEL_LONGITUDE);
 		assertThat(rowCounts()).isEqualTo(before);
-		assertThat(jdbc.queryForObject("SELECT ST_Y(position::geometry) FROM active_user_presence WHERE user_id = ?",
-				Double.class, userId)).isEqualTo(37.5);
+		assertThat(presenceRepository.findByUserId(userId).orElseThrow().getLatitude())
+				.isEqualByComparingTo("37.5");
+		assertThat(jdbc.queryForObject("SELECT position_ciphertext FROM active_user_presence WHERE user_id = ?",
+				byte[].class, userId)).isEqualTo(ciphertext);
 		assertThat(jdbc.queryForObject("SELECT location_at FROM active_user_presence WHERE user_id = ?",
 				java.sql.Timestamp.class, userId).toInstant()).isEqualTo(existingLocationAt);
 	}

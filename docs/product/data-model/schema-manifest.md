@@ -8,6 +8,9 @@
 
 ## 현재 파일 체크섬
 
+아래 해시는 V34까지의 이전 검증 값이다. V35 변경 파일의 해시와 실행 검증은
+아래 V35 절에서 별도로 기록하며, 이전 전체 카탈로그 집계를 V35 실측으로 해석하지 않는다.
+
 | Artifact | SHA-256 | 검증 시점·의미 |
 | --- | --- | --- |
 | [DBML](direction_communication.dbml) | `78db286f90af543cf338406f7b15976d7c0e5c553858affc5a847f44f52207a3` | 2026-11-22, #375 V34 `operator_access_log` 반영 후 계산 |
@@ -265,6 +268,25 @@ DBML parser `@dbml/core@10.2.0`은 `checks {}`와 TableGroup 속성을 받지 �
 | 테이블 | PK | FK | UNIQUE | CHECK | 인덱스 |
 | --- | --- | --- | --- | --- | --- |
 | `operator_access_log` | `operator_access_log_pkey` | — | — | `ck_operator_access_log_client_address`, `ck_operator_access_log_event_type`, `ck_operator_access_log_http_method`, `ck_operator_access_log_http_status`, `ck_operator_access_log_operator`, `ck_operator_access_log_operator_required`, `ck_operator_access_log_request_path`, `ck_operator_access_log_result_code` | `operator_access_log_occurred_at_idx` (독립), `operator_access_log_pkey` (PK) |
+
+## V35 좌표 암호화 전환 (Issue #388)
+
+- migration: `V35__encrypt_exact_coordinates.sql`, ADR-0009.
+- `active_user_presence.position` geography를 제거하고 마지막 ordinal에
+  `position_ciphertext bytea`를 추가한다. 열 수 8은 유지한다.
+- `post_audience.origin_position` geography를 제거하고 마지막 ordinal에
+  `origin_position_ciphertext bytea`를 추가한다. 열 수 10은 유지한다.
+- `active_user_presence_position_gix`를 제거한다. 다른 인덱스는 변경하지 않는다.
+- `ck_active_user_presence_location`을 암호문 또는 기존 셀이 최소 하나 존재하는
+  조건으로 교체한다. `ck_post_audience_origin`은 제거한다. CHECK 순감 1이다.
+- 기존 정확 presence는 삭제하고 셀 전용 행은 유지한다. 기존 audience 원점은
+  전부 폐기하며 원점을 잃은 미완료 상태만 MATCH_FAILED로 전이한다.
+  메타데이터·수신자·슬롯·Outbox 이력은 보존한다.
+- schema 정의 변경과 폐기는 하나의 Flyway transaction이다. 이미 적용된
+  V1~V34 파일은 수정하지 않는다. 복구는 migration 전 백업 복원으로만 가능하다.
+- 빈 DB·V34 업그레이드·실패 rollback·합성 백업 복원 검증과 현재 문서 해시는
+  `docs/reports/tests/gh-388-TEST-PLAN-GH-388-COORDINATE-ENCRYPTION.md`에 기록한다.
+- #381(PR #384)도 V35를 사용하므로 나중에 병합되는 쪽에서 migration 번호를 이동한다.
 
 ## 2026-09-29 검증 근거와 한계
 

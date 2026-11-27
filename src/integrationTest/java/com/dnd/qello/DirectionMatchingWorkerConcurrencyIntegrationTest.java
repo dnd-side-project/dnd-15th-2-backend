@@ -3,6 +3,7 @@
  * Source scenario: TEST-PLAN-GH-120-DIRECTION-MATCHING-WORKER-INT-010 through INT-012
  * Source scenario: TEST-PLAN-GH-137-DIRECTION-POST-MODERATION (release fixture only, added 2026-10-07T22:14:59+09:00)
  * Source scenario: TEST-PLAN-GH-350-SHARE-SPRING-CONTEXT-INT-001 (base와 중복된 컨텍스트 폐기 선언 제거, added 2026-10-10T15:19:46+09:00)
+ * Source scenario: TEST-PLAN-GH-388-COORDINATE-ENCRYPTION-INT-020, INT-021
  */
 package com.dnd.qello;
 
@@ -12,21 +13,33 @@ import java.sql.ResultSet;
 import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
 
+import org.aopalliance.intercept.MethodInterceptor;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.aop.framework.ProxyFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.config.BeanPostProcessor;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import com.dnd.qello.direction.domain.ActiveUserPresence;
 import com.dnd.qello.direction.domain.DirectionScheme;
@@ -38,15 +51,19 @@ import com.dnd.qello.direction.service.DirectionPostService;
 import com.dnd.qello.filtering.service.FilterReleaseRegistryService;
 import com.dnd.qello.notification.domain.OutboxRetryPolicy;
 import com.dnd.qello.notification.domain.OutboxStatus;
+import com.dnd.qello.notification.repository.OutboxEventRepository;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 @SpringBootTest
 @ActiveProfiles("test")
+@Import(DirectionMatchingWorkerConcurrencyIntegrationTest.ClaimSignalConfiguration.class)
 class DirectionMatchingWorkerConcurrencyIntegrationTest extends PostgisContainerIntegrationTestSupport {
 
 	private static final String REGION = "TEST-DIRECTION-MATCHING-WORKER-CONCURRENCY";
 	private static final Instant NOW = Instant.parse("2026-08-13T08:30:00Z");
+	private static final Map<String, CountDownLatch> CLAIM_SIGNALS = new ConcurrentHashMap<>();
+	private static volatile CyclicBarrier candidateReads;
 
 	@Autowired
 	private FilterReleaseRegistryService releaseRegistryService;
@@ -63,6 +80,8 @@ class DirectionMatchingWorkerConcurrencyIntegrationTest extends PostgisContainer
 
 	@BeforeEach
 	void reset() {
+		CLAIM_SIGNALS.clear();
+		candidateReads = null;
 		jdbc.update("DELETE FROM notification_delivery");
 		jdbc.update("DELETE FROM notification");
 		jdbc.update("DELETE FROM outbox_event");
@@ -140,6 +159,7 @@ class DirectionMatchingWorkerConcurrencyIntegrationTest extends PostgisContainer
 		ExecutorService executor = Executors.newFixedThreadPool(2);
 		CountDownLatch ready = new CountDownLatch(2);
 		CountDownLatch start = new CountDownLatch(1);
+		candidateReads = new CyclicBarrier(2);
 		try {
 			List<Future<DirectionMatchingWorker.BatchResult>> futures = List.of(
 					executor.submit(() -> processAfterSignal("worker-slot-a", NOW, ready, start)),
@@ -166,6 +186,7 @@ class DirectionMatchingWorkerConcurrencyIntegrationTest extends PostgisContainer
 			assertThat(jdbc.queryForObject("SELECT count(*) FROM outbox_event WHERE aggregate_type = 'POST_RECIPIENT'",
 					Long.class)).isEqualTo(1L);
 		} finally {
+			candidateReads = null;
 			executor.shutdownNow();
 		}
 	}
@@ -178,6 +199,10 @@ class DirectionMatchingWorkerConcurrencyIntegrationTest extends PostgisContainer
 				"stale-lease");
 		CountDownLatch postLocked = new CountDownLatch(1);
 		CountDownLatch releasePost = new CountDownLatch(1);
+		CountDownLatch staleClaimed = new CountDownLatch(1);
+		CountDownLatch reclaimed = new CountDownLatch(1);
+		CLAIM_SIGNALS.put("worker-stale", staleClaimed);
+		CLAIM_SIGNALS.put("worker-reclaim", reclaimed);
 		ExecutorService executor = Executors.newFixedThreadPool(3);
 		try {
 			Future<?> lockHolder = executor.submit(() -> holdPostLock(postId, postLocked, releasePost));
@@ -185,10 +210,12 @@ class DirectionMatchingWorkerConcurrencyIntegrationTest extends PostgisContainer
 
 			Future<DirectionMatchingWorker.BatchResult> staleWorker = executor
 					.submit(() -> worker.processBatch(command("worker-stale", NOW, NOW.plusSeconds(1))));
-			awaitLease(postId, 1, "worker-stale");
+			assertThat(staleClaimed.await(5, TimeUnit.SECONDS)).as("first claim committed").isTrue();
+			assertLease(postId, 1, "worker-stale");
 			Future<DirectionMatchingWorker.BatchResult> reclaimingWorker = executor.submit(
 					() -> worker.processBatch(command("worker-reclaim", NOW.plusSeconds(2), NOW.plusSeconds(62))));
-			awaitLease(postId, 2, "worker-reclaim");
+			assertThat(reclaimed.await(5, TimeUnit.SECONDS)).as("reclaim committed").isTrue();
+			assertLease(postId, 2, "worker-reclaim");
 			releasePost.countDown();
 
 			assertThat(staleWorker.get(10, TimeUnit.SECONDS).outcomes())
@@ -210,6 +237,8 @@ class DirectionMatchingWorkerConcurrencyIntegrationTest extends PostgisContainer
 		} finally {
 			releasePost.countDown();
 			executor.shutdownNow();
+			assertThat(executor.awaitTermination(10, TimeUnit.SECONDS)).isTrue();
+			CLAIM_SIGNALS.clear();
 		}
 	}
 
@@ -222,7 +251,7 @@ class DirectionMatchingWorkerConcurrencyIntegrationTest extends PostgisContainer
 	}
 
 	private DirectionMatchingWorker.BatchCommand command(String owner, Instant at, Instant leaseExpiresAt) {
-		return new DirectionMatchingWorker.BatchCommand(10, owner, at, leaseExpiresAt,
+		return new DirectionMatchingWorker.BatchCommand(1, owner, at, leaseExpiresAt,
 				new OutboxRetryPolicy(3, attempt -> Duration.ofSeconds(1)));
 	}
 
@@ -254,17 +283,11 @@ class DirectionMatchingWorkerConcurrencyIntegrationTest extends PostgisContainer
 		});
 	}
 
-	private void awaitLease(long postId, long generation, String owner) throws InterruptedException {
-		long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
-		while (System.nanoTime() < deadline) {
-			List<String> owners = jdbc.queryForList(
-					"SELECT lease_owner FROM outbox_event WHERE aggregate_id = ? AND event_type = 'RECIPIENT_MATCH_REQUESTED' AND lease_generation = ?",
-					String.class, postId, generation);
-			if (owners.contains(owner))
-				return;
-			Thread.sleep(10);
-		}
-		throw new AssertionError("lease was not acquired: generation=" + generation + ", owner=" + owner);
+	private void assertLease(long postId, long generation, String owner) {
+		assertThat(jdbc.queryForList("""
+				SELECT lease_owner FROM outbox_event WHERE aggregate_id = ?
+					AND event_type = 'RECIPIENT_MATCH_REQUESTED' AND lease_generation = ?
+				""", String.class, postId, generation)).containsExactly(owner);
 	}
 
 	private Fixture fixture(String key, int candidateCount) {
@@ -322,5 +345,52 @@ class DirectionMatchingWorkerConcurrencyIntegrationTest extends PostgisContainer
 	}
 
 	private record Fixture(List<Long> senderIds, long questionId, long schemeId, List<Long> candidateIds) {
+	}
+
+	@TestConfiguration(proxyBeanMethods = false)
+	static class ClaimSignalConfiguration {
+		@Bean
+		static BeanPostProcessor matchingSignals() {
+			return new BeanPostProcessor() {
+				@Override
+				public Object postProcessAfterInitialization(Object bean, String beanName) {
+					if (!(bean instanceof OutboxEventRepository) && !(bean instanceof ActiveUserPresenceRepository)) {
+						return bean;
+					}
+					ProxyFactory proxy = new ProxyFactory(bean);
+					proxy.addAdvice((MethodInterceptor) invocation -> {
+						Object result = invocation.proceed();
+						if (invocation.getMethod().getName().equals("claimDue")
+								&& result instanceof Collection<?> events && !events.isEmpty()) {
+							CountDownLatch signal = CLAIM_SIGNALS.get(invocation.getArguments()[2]);
+							if (signal != null) {
+								signalAfterCommit(signal);
+							}
+						}
+						CyclicBarrier reads = candidateReads;
+						if (invocation.getMethod().getName().equals("findCandidates") && reads != null) {
+							reads.await(5, TimeUnit.SECONDS);
+						}
+						return result;
+					});
+					return proxy.getProxy();
+				}
+			};
+		}
+
+		private static void signalAfterCommit(CountDownLatch signal) {
+			// NOT_SUPPORTED can own synchronization without a transaction; its JDBC claim
+			// commits on return.
+			if (TransactionSynchronizationManager.isActualTransactionActive()) {
+				TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+					@Override
+					public void afterCommit() {
+						signal.countDown();
+					}
+				});
+			} else {
+				signal.countDown();
+			}
+		}
 	}
 }

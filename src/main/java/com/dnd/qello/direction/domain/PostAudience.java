@@ -21,9 +21,9 @@ public final class PostAudience {
 	private final Instant snapshottedAt;
 
 	private PostAudience(Long postId, Long directionSchemeId, String selectedSegmentKey,
-		BigDecimal centerBearingDegrees, BigDecimal angularWidthDegrees, long minDistanceMeters,
-		long maxDistanceMeters, BigDecimal originLatitude, BigDecimal originLongitude,
-		String originCellId, Instant snapshottedAt) {
+			BigDecimal centerBearingDegrees, BigDecimal angularWidthDegrees, long minDistanceMeters,
+			long maxDistanceMeters, BigDecimal originLatitude, BigDecimal originLongitude,
+			String originCellId, Instant snapshottedAt) {
 		this.postId = requireId(postId, "postId");
 		this.directionSchemeId = requireId(directionSchemeId, "directionSchemeId");
 		this.selectedSegmentKey = requireText(selectedSegmentKey, "selectedSegmentKey", 20);
@@ -31,21 +31,17 @@ public final class PostAudience {
 		this.angularWidthDegrees = requireValue(angularWidthDegrees, "angularWidthDegrees");
 		if (angularWidthDegrees.signum() <= 0 || angularWidthDegrees.compareTo(BigDecimal.valueOf(360)) > 0) {
 			throw new DirectionException(
-				DirectionErrorCode.INVALID_BEARING, "angularWidthDegrees", "angularWidthDegrees 범위가 유효하지 않습니다");
+					DirectionErrorCode.INVALID_BEARING, "angularWidthDegrees", "angularWidthDegrees 범위가 유효하지 않습니다");
 		}
 		if (minDistanceMeters < 0 || maxDistanceMeters <= minDistanceMeters) {
 			throw new DirectionException(
-				DirectionErrorCode.INVALID_DISTANCE_RANGE, "maxDistanceMeters", "거리 범위가 유효하지 않습니다");
+					DirectionErrorCode.INVALID_DISTANCE_RANGE, "maxDistanceMeters", "거리 범위가 유효하지 않습니다");
 		}
 		this.minDistanceMeters = minDistanceMeters;
 		this.maxDistanceMeters = maxDistanceMeters;
 		if ((originLatitude == null) != (originLongitude == null)) {
 			throw new DirectionException(
-				DirectionErrorCode.INVALID_COORDINATE, "originLatitude", "origin 위치는 위도와 경도를 함께 지정해야 합니다");
-		}
-		if (originLatitude == null && (originCellId == null || originCellId.isBlank())) {
-			throw new DirectionException(
-				DirectionErrorCode.LOCATION_REQUIRED, "originCellId", "origin 위치 또는 cell이 필요합니다");
+					DirectionErrorCode.INVALID_COORDINATE, "originLatitude", "origin 위치는 위도와 경도를 함께 지정해야 합니다");
 		}
 		this.originLatitude = originLatitude;
 		this.originLongitude = originLongitude;
@@ -54,18 +50,31 @@ public final class PostAudience {
 	}
 
 	public static PostAudience create(Long postId, Long directionSchemeId, String selectedSegmentKey,
-		BigDecimal centerBearingDegrees, BigDecimal angularWidthDegrees, long minDistanceMeters,
-		long maxDistanceMeters, BigDecimal originLatitude, BigDecimal originLongitude,
-		String originCellId, Instant snapshottedAt) {
+			BigDecimal centerBearingDegrees, BigDecimal angularWidthDegrees, long minDistanceMeters,
+			long maxDistanceMeters, BigDecimal originLatitude, BigDecimal originLongitude,
+			String originCellId, Instant snapshottedAt) {
+		if (originLatitude == null && originLongitude == null && (originCellId == null || originCellId.isBlank())) {
+			throw new DirectionException(
+					DirectionErrorCode.LOCATION_REQUIRED, "originCellId", "origin 위치 또는 cell이 필요합니다");
+		}
 		return new PostAudience(postId, directionSchemeId, selectedSegmentKey, centerBearingDegrees,
-			angularWidthDegrees, minDistanceMeters, maxDistanceMeters, originLatitude,
-			originLongitude, originCellId, snapshottedAt);
+				angularWidthDegrees, minDistanceMeters, maxDistanceMeters, originLatitude,
+				originLongitude, originCellId, snapshottedAt);
+	}
+
+	public static PostAudience restore(Long postId, Long directionSchemeId, String selectedSegmentKey,
+			BigDecimal centerBearingDegrees, BigDecimal angularWidthDegrees, long minDistanceMeters,
+			long maxDistanceMeters, BigDecimal originLatitude, BigDecimal originLongitude,
+			String originCellId, Instant snapshottedAt) {
+		return new PostAudience(postId, directionSchemeId, selectedSegmentKey, centerBearingDegrees,
+				angularWidthDegrees, minDistanceMeters, maxDistanceMeters, originLatitude,
+				originLongitude, originCellId, snapshottedAt);
 	}
 
 	private static <T> T requireValue(T value, String field) {
 		if (value == null) {
 			throw new DirectionException(
-				DirectionErrorCode.REQUIRED_VALUE_MISSING, field, field + "은 필수입니다");
+					DirectionErrorCode.REQUIRED_VALUE_MISSING, field, field + "은 필수입니다");
 		}
 		return value;
 	}
@@ -89,15 +98,37 @@ public final class PostAudience {
 		return value;
 	}
 
-	public Long getPostId() { return postId; }
-	public Long getDirectionSchemeId() { return directionSchemeId; }
-	public String getSelectedSegmentKey() { return selectedSegmentKey; }
-	public BigDecimal getCenterBearingDegrees() { return centerBearingDegrees; }
-	public BigDecimal getAngularWidthDegrees() { return angularWidthDegrees; }
-	public long getMinDistanceMeters() { return minDistanceMeters; }
-	public long getMaxDistanceMeters() { return maxDistanceMeters; }
-	public BigDecimal getOriginLatitude() { return originLatitude; }
-	public BigDecimal getOriginLongitude() { return originLongitude; }
-	public String getOriginCellId() { return originCellId; }
-	public Instant getSnapshottedAt() { return snapshottedAt; }
+	public Long getPostId() {
+		return postId;
+	}
+	public Long getDirectionSchemeId() {
+		return directionSchemeId;
+	}
+	public String getSelectedSegmentKey() {
+		return selectedSegmentKey;
+	}
+	public BigDecimal getCenterBearingDegrees() {
+		return centerBearingDegrees;
+	}
+	public BigDecimal getAngularWidthDegrees() {
+		return angularWidthDegrees;
+	}
+	public long getMinDistanceMeters() {
+		return minDistanceMeters;
+	}
+	public long getMaxDistanceMeters() {
+		return maxDistanceMeters;
+	}
+	public BigDecimal getOriginLatitude() {
+		return originLatitude;
+	}
+	public BigDecimal getOriginLongitude() {
+		return originLongitude;
+	}
+	public String getOriginCellId() {
+		return originCellId;
+	}
+	public Instant getSnapshottedAt() {
+		return snapshottedAt;
+	}
 }
