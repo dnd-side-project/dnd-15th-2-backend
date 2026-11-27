@@ -6,7 +6,8 @@
 
 ## 1. Executive summary
 
-- status: FAIL (2026-11-27 기존 성능 회귀 17개 중 1개 실패). execution_status: BLOCKED (V35 선행 migration 부재로 V36 연속성 검증 실패, 승인된 중단 조건). local_implementation_status: PASS는 기존 로컬 실행 기록이며 후속 회귀의 실패를 상쇄하지 않는다.
+- status: FAIL (2026-11-27 기존 성능 회귀 17개 중 1개 실패). 갱신 3-2에 따라 V35 유지, C9(#384) 병합 후 V36으로 변경한다. 기존 V36 공백 중단은 과거 이력이며 V35 복구 후 전체 검증은 §10.10, E3 진단 결과는 §10.11에 기록한다.
+- 갱신 3-2 A: 단위 1782·통합 967, 실패·오류·skip 0이며 harness·pr-ready·hook·공백 검사 PASS. B: 같은 seed의 정확 5km 경계 후보에서 main 제외/C8 포함을 재현했으며 수정은 적용하지 않았다.
 - 승인된 C8 구현, 갱신 4의 통합 실패 20건 수정, 기능 회귀 및 로컬 필수 검사를 완료했다. 미해결 로컬 기능 실패는 없다.
 - 단위 1,778건, 통합 967건: 실패 0, 오류 0, skip 0. 계획의 단위 14/통합 24는 계약 시나리오 수이며 JUnit invocation 수와 다르다.
 - PERF-001~003은 OCI에서 32조건·64회 작업량을 완료했다. 미계측 외부 지표 8개는 2026-11-27 사람 결정으로 대체 수용됐지만, 같은 자원에서 실행한 기존 성능 회귀의 E3 첫 규모가 실패해 #388 전체 PASS나 배포 가능 판정을 내리지 않는다. 전체 수치·해시는 §10에 기록했다.
@@ -92,13 +93,13 @@ OSV 정책 검사 PASS: 런타임 패키지 173개, blocked 0개. Moderate 3개�
 - 최초 9건은 승인 댓글 7150447072의 fixture/비교 계약 보정으로 해결했다. production 계산이나 허용 오차를 바꾸지 않았다.
 - oracle 파일 SHA-256: ea14a56837c73115ddb24a7e50da2cbdfba06364b8318a1a8ec2b26c890dfe64.
 - differential 파일 SHA-256: 0fbf9db2979e9eae5d228aae6e6f7998a540af32b8dda5ecfc192429bfe436aa.
-- 번호 변경 전 V35 DBML SHA-256: 12c8ee803ec1cfff65a3d482962022c058317fa19cd5ab6972e81920f9462a20. 현재 좌표 migration은 V36이며 이 해시는 변경 전 문서의 이력이다.
+- V35 DBML SHA-256: 12c8ee803ec1cfff65a3d482962022c058317fa19cd5ab6972e81920f9462a20. 현재 좌표 migration은 V35 유지, C9(#384) 병합 후 V36으로 변경한다.
 - 번호 변경 전 V35 ERD SHA-256: b1ebb8421a21a756d1d252017ca52d14fc6b52b1b1cf314162a8ccf23bbfa2b3. V36 표기로 바꾼 문서의 해시와 혼동하지 않는다.
-- V36 표기 변경 후 작업 트리 DBML SHA-256: 167615c3e63d3142cec82d97bc22be9056b57e7c6b1ccda08349de2610a38cc1, ERD SHA-256: 4c0031ec9c1952431b63234fa36b7d481ebc9b838745b5ef101f84342715b1d9. 번호 변경·관련 문서는 §10.10의 중단으로 미커밋이며 기존 카탈로그 검증을 V36 성공으로 재해석하지 않는다.
+- 이전 갱신 3의 임시 V36 표기 DBML SHA-256: 167615c3e63d3142cec82d97bc22be9056b57e7c6b1ccda08349de2610a38cc1, ERD SHA-256: 4c0031ec9c1952431b63234fa36b7d481ebc9b838745b5ef101f84342715b1d9. 이 미커밋 번호 변경은 갱신 3-2 승인으로 되돌렸으며 현재 문서의 해시가 아니다.
 
 ## 5. Failures and diagnostics
 
-갱신 4의 20건은 아래 테스트 진입 조건·fixture·신호 문제로 해결했다. 이 절의 V35는 번호 변경 전 실행 이력이며 현재 좌표 migration은 V36이다. 승인 목록 밖 production 변경은 필요하지 않았다. 중간 실패를 최종 미해결 실패와 구분한다.
+갱신 4의 20건은 아래 테스트 진입 조건·fixture·신호 문제로 해결했다. 이 절의 V35는 당시 실행 이력이며 현재도 V35로 유지한다. C9(#384) 병합 후 V36으로 변경한다. 승인 목록 밖 production 변경은 필요하지 않았다. 중간 실패를 최종 미해결 실패와 구분한다.
 
 | File / group | Cause | Correction / preserved assertion |
 | --- | --- | --- |
@@ -130,12 +131,12 @@ Worker의 빈 결과는 HTTP enqueue보다 이른 command.at에서 실제 due �
 | DirectionMatchingWorkerIntegrationTest | 암호문 origin/presence, 실제 due 시각 사용, PROCESSED 유지 |
 | DirectionMatchingWorkerConcurrencyIntegrationTest | 암호문 fixture, sleep polling 대신 실제 transaction/claim 신호 |
 | DirectionPreviewIntegrationTest | 암호문 fixture, 승인 D3 경계 분리, 정확 segment 개수 유지 |
-| FlywayMigrationIntegrationTest | 좌표 V36 컬럼·제약·GiST 제거 inventory 및 최신 번호 반영, 과거 checksum 유지 |
+| FlywayMigrationIntegrationTest | 좌표 V35 컬럼·제약·GiST 제거 inventory 및 최신 번호 반영, 과거 checksum 유지 |
 | LocationCollectionGateDisabledIntegrationTest | 기존 차단 assertion을 암호문 스키마에 맞춤 |
 | RecipientNotificationFanOutWorkerIntegrationTest | 수신자 매칭용 origin/presence fixture만 암호화 |
 | DevProfileBootIntegrationTest | DynamicPropertySource에 좌표 전용 합성 키만 추가 |
-| NotificationPreferenceMigrationIntegrationTest | V25~V36 12개 적용 기대와 설명만 변경, C9 V35 선행 병합 필요 |
-| FlywayMigrationContractTest | 최신 V36 목록, V1/V2/V8 checksum 유지 |
+| NotificationPreferenceMigrationIntegrationTest | V25~V35 11개 적용 기대와 설명만 변경 |
+| FlywayMigrationContractTest | 최신 V35 목록, V1/V2/V8 checksum 유지 |
 | DirectionPreviewPersistenceBoundaryTest | SQL 문구 대신 단일 snapshot·빈 방향 행동 검증 |
 | DirectionRecipientSelectionBoundaryTest | SQL 정렬 문구 대신 필터·앱 공정성 정렬 검증 |
 | PostAudienceTest | 원점 없는 과거 행 복원, 신규 생성 엄격성 유지 |
@@ -157,7 +158,7 @@ AES-256-GCM 전용 key ring과 version/key ID/nonce/tag envelope, 행 ID 및 용
 
 ### Database and migrations
 
-V36 단일 migration은 정확 좌표 presence만 폐기하고 cell-only는 유지한다. audience 과거 원점은 NULL, 원점을 잃는 미완료 글만 MATCH_FAILED다. ACTIVE/종결 글과 실제 수신자·슬롯·Outbox·메타데이터를 유지하며 과거 migration은 불변이다. SQL SHA-256: b1b557ec7aad4dd5339ebeb5a9ee74939af17e11388a86df36da8fa4636f65c8. 갱신 3 승인으로 파일명만 V35에서 V36으로 바꾸며 C9(#384)의 V35 선행 병합이 필요하다.
+V35 단일 migration은 정확 좌표 presence만 폐기하고 cell-only는 유지한다. audience 과거 원점은 NULL, 원점을 잃는 미완료 글만 MATCH_FAILED다. ACTIVE/종결 글과 실제 수신자·슬롯·Outbox·메타데이터를 유지하며 과거 migration은 불변이다. SQL SHA-256: b1b557ec7aad4dd5339ebeb5a9ee74939af17e11388a86df36da8fa4636f65c8. 갱신 3-2 승인으로 V35 유지, C9(#384) 병합 후 V36으로 변경한다.
 
 ### Concurrency and idempotency
 
@@ -179,9 +180,9 @@ claim/reclaim·용량 row lock·stale fencing·재생·최신 관측 우선순�
 
 - local executed_checks / passed_checks: §3의 기존 PASS 명령과 §4 UNIT/INT. local failed_checks: 최종 미해결 없음. 이번 OCI 성능 실행·nonzero 종료·차단은 §10에 별도 기록했다.
 - failed_checks: 후속 OCI 기존 성능 회귀 E3의 preview 후보 합계 기대 2, 실제 3. 전체 성능 PASS는 성립하지 않는다. LSP 진단은 환경 미구성으로 미실행(대체 컴파일·정적 검사 PASS).
-- assumptions: 승인된 ADR-0009/D3 보정·TASK 소유 계약, 합성 데이터/fixture key. 현재 좌표 migration은 V36이고 C9 V35 선행 병합을 전제하며, 실제 원격 main의 V35 존재 여부와 버전 연속성 검증은 §10.10에 기록한다. 성능 결과를 기능 회귀에서 추정하지 않는다.
+- assumptions: 승인된 ADR-0009/D3 보정·TASK 소유 계약, 합성 데이터/fixture key. 현재 좌표 migration은 V35 유지, C9(#384) 병합 후 V36으로 변경한다. 과거 V36 시도와 현재 복구 후 검증을 구분하며 성능 결과를 기능 회귀에서 추정하지 않는다.
 - risks: 사람 결정으로 수용한 OCI 외부 지표 미계측과 일부 조건의 큰 상대 지연, E3 실제 회귀 실패, dev key 주입 선행 필요, migration 번호 충돌, 기존 OSV 예외/Moderate findings, 과거 복사본과 파생 위치 정보 별도 보호.
-- required_human_decisions: E3 회귀 실패 수정의 별도 범위 결정과 별도 dev 주입 인프라 작업. 동일 DB 자원 제한 경로 추가 및 V36 재번호는 갱신 3으로 승인됐으며, 동기화 결과는 §10.10에 기록한다.
+- required_human_decisions: E3 진단 후 수정 방향의 별도 결정과 별도 dev 주입 인프라 작업. 현재 V35 유지와 저장소 밖 진단은 갱신 3-2로 승인됐다. C9(#384) 병합 후 V36으로 변경한다.
 - 실제 접근/변경: 로컬 테스트 DB 및 승인된 OCI 합성 측정, archive 배치와 읽기 전용 진단. push·dev/운영 배포 없음.
 
 ## 8. Artifacts
@@ -246,7 +247,7 @@ claim/reclaim·용량 row lock·stale fencing·재생·최신 관측 우선순�
 - src/main/resources/application-dev.yml
 - src/main/resources/application-local.yml
 - src/main/resources/application.yml
-- src/main/resources/db/migration/V36__encrypt_exact_coordinates.sql
+- src/main/resources/db/migration/V35__encrypt_exact_coordinates.sql
 - src/test/java/com/dnd/qello/FlywayMigrationContractTest.java
 - src/test/java/com/dnd/qello/direction/DirectionPreviewPersistenceBoundaryTest.java
 - src/test/java/com/dnd/qello/direction/DirectionRecipientSelectionBoundaryTest.java
@@ -768,13 +769,13 @@ JUnit XML과 HTML 보고 보관 archive SHA-256은 d9011386a3306d31283d7d0fb9c83
 - executed_checks: 기존 64회 OCI 교대 실행 및 원자료·해시·분포 독립 감사, 후속 support 컴파일 및 일반 통합 23개, 새 후보 배치·동일 digest·Docker/cgroup 설정 조회, 기존 성능 회귀 5개 클래스 17개와 XML 감사.
 - passed_checks: 원자료/원격 요약 해시 일치; measured 43,200개와 cold 포함 43,416개; 32쌍 환경/경계/프로토콜 일치; 100k 24회 작업량 완료; PERF-001의 preview/worker 상대 p95 8개 모두 2 이하; 기능 및 중복 검증 assertion 실패 0건.
 - failed_checks: 기존 성능 회귀 E3의 SELECTIVITY_PROBE preview 합계 기대 2, 실제 3. 기존 64회 performanceTest의 필수 D6 증거 assertion nonzero도 이력으로 유지했다(원장 62회 exit=1, 초기 2회 별도 BUILD FAILED 로그). PERF-002의 큰 성능 저하는 표에 그대로 기록했다.
-- blocked_checks: 외부 지표 수집·회귀 실행 경로의 이전 차단은 추가 승인으로 해소됐다. 현재 E3 실패와 V35 선행 migration 부재가 남아 있다. V36 번호 변경 커밋 및 전체 필수 검증은 승인된 중단 조건에 따라 실행하지 않았다.
-- changed_files: 후속 승인 계약 TASK.md·테스트 계획 §11, 성능 전용 지원 코드 PostgisContainerIntegrationTestSupport.java와 이 보고서. 동기화 후 좌표 migration 파일명·번호 참조 테스트·관련 문서만 미커밋으로 조정했다(§10.10). SQL 내용·production Java·다섯 성능 회귀 클래스·일반 이미지 기본값은 수정하지 않았다. 원자료·로컬 감사 산출물은 커밋하지 않는다.
+- blocked_checks: 외부 지표 수집·회귀 실행 경로의 이전 차단은 추가 승인으로 해소됐다. 갱신 3-2에서 V35로 복구했으므로 V36 공백은 현재 차단 사유가 아니다. E3 실패는 수정 없이 진단했으며 전체 검증 결과는 §10.10의 갱신 3-2 A에 기록한다.
+- changed_files: 이전 후속 승인 계약·성능 전용 support 구현 이력은 보존했다. 갱신 3-2에서 미커밋 번호 변경만 되돌려 코드가 HEAD의 V35와 같으며 현재 커밋 대상은 TASK.md와 이 보고서뿐이다. SQL 내용·production Java·다섯 성능 회귀 클래스·일반 이미지 기본값은 변경하지 않았다. 임시 사본의 진단 로그와 원자료는 커밋하지 않는다.
 - assumptions: 원자료 status/workloadCompleted와 실제 runner assertion 경계를 함께 사용했다. 예열 표본은 의도적 미보존이다. 기능 불일치 0 판정은 별도 직렬화 counter가 아니라 성공한 실제 assertion에서 도출했다.
 - risks: 기존 E3 실제 회귀 실패; 사람 결정으로 수용한 DB/transaction/lease/lock 미계측; 1k/100k의 큰 상대 지연; OCI와 CI DB patch/arch 차이; 전체 peak RSS 미계측. 기존 §7의 dev key 주입, migration 번호 충돌 및 OSV 잔여 위험도 남는다.
-- required_human_decisions: 기존 E3 회귀 실패를 수정할 별도 범위 결정과 C9 V35 선행 병합이 필요하다. 현 승인은 다섯 회귀 클래스 변경·기대값 완화·누락 migration 대체 구현을 허용하지 않는다.
+- required_human_decisions: 진단을 바탕으로 E3 수정 방향을 별도로 결정해야 한다. 현재 V35를 유지하므로 C9 부재가 로컬 검증을 막지는 않지만, 병합 순서는 C9 먼저이며 이후 C8을 V36으로 변경해야 한다. 현 승인은 다섯 회귀 클래스 변경·기대값 완화·C9 대체 구현을 허용하지 않는다.
 
-### 10.10. 후속 동기화·번호 변경·검증
+### 10.10. 갱신 3 동기화·번호 변경·검증 이력
 
 §3의 단위 1778/통합 967 및 이전 harness PASS는 과거 실행 이력이다. 2026-11-26 보고 단계에서는 harness check·hooks:validate·diff --check가 PASS, pr-ready가 branch behind origin/main으로 exit 2였으며 full project check는 실행되지 않았다. 아래는 2026-11-27 갱신 3의 실제 결과다.
 
@@ -796,8 +797,99 @@ JUnit XML과 HTML 보고 보관 archive SHA-256은 d9011386a3306d31283d7d0fb9c83
 
 실행한 결합 명령은 `./gradlew --console=plain test --tests com.dnd.qello.FlywayMigrationContractTest integrationTest --tests com.dnd.qello.FlywayMigrationIntegrationTest.appliesAllMigrationsOnApplicationStartup`이다. 단위 XML SHA-256은 21a473c594d57269f98e5806c2f300353f222d52b677af64064ca6f406c03138, 실패 통합 XML SHA-256은 066962d64c1db434888406e3b538beb1cb112a7613e1b0f40fc2f599ef78f0a4다. 테스트를 완화하거나 C9 migration을 대신 만들거나 V36을 V35로 되돌려 통과시키지 않았다.
 
-승인된 중단 조건에 따라 번호 변경 커밋과 §7 전체 검증은 실행하지 않았다. 번호 변경·관련 참조 파일은 작업 트리에 미커밋으로 보존한다. 보고서만 별도 목적 커밋으로 남기며 미커밋 번호 변경이 검증·커밋됐다고 주장하지 않는다. local main은 별도 worktree에서 사용 중이므로 그대로 두었고, 최신 origin/main에 대한 rebase는 완료했다.
+당시 승인된 중단 조건에 따라 번호 변경 커밋과 §7 전체 검증은 실행하지 않았다. 번호 변경·관련 참조 파일을 미커밋으로 보존한 뒤 갱신 3-2 승인에 따라 그 변경만 되돌렸다. 현재 좌표 migration은 V35 유지, C9(#384) 병합 후 V36으로 변경한다. local main은 별도 worktree에서 사용 중이므로 그대로 두었고, origin/main에 대한 rebase는 완료했다.
 
 후속 commit 매핑은 승인 문서 6f67289c→47f7057f3e4a4ebce89af4b433b90263c3242fa4, 지원 코드 79d1c313→975171e6815cb20fcb1f2c782862a1c5cd2d621d, 회귀 보고 5f5454f0→8a064eb942bc4106f05352c0efe72ff4ba608d8e다. OCI 실행 commit은 실제 배치한 rebase 전 79d1c313262335f8983696dc5420de89a68d880e로 유지한다. 기존 64회 commit/원자료도 이력 그대로 보존한다.
 
 독립 검증은 지원 코드와 5개 XML 수치·해시를 확인했으며, 보고서 앞부분의 stale BLOCKED 설명을 지적해 현재 지표 대체 수용·E3 실패로 수정했다. Docker/scope·로컬 23개 실행·64회 원자료를 이 후속 검토자가 독립 재현한 것은 아니다. 마지막 보고서 commit의 hook·공백 검사와 실제 hash는 지정 인계 보고에 기록한다. Co-Authored-By, push, dev/운영 배포는 하지 않는다.
+
+#### 갱신 3-2 A: V35 유지와 전체 검증 (2026-11-27)
+
+승인 댓글 issuecomment-7210371917을 읽고, 자신의 미커밋 번호 변경만 역패치했다. 복구 전 status와 diff 요약은 지정 인계 보고에 먼저 기록했다. V36 신규 파일은 untracked였고, tracked diff는 9개 파일의 27 insertions/55 deletions였다. 복구 직후 git status --short와 diff --stat는 모두 빈 출력이었다. V35 SQL 내용은 기존 commit과 같고, production·E3 테스트·기대값은 변경하지 않았다.
+
+현재 좌표 migration은 V35 유지, C9(#384) 병합 후 V36으로 변경한다. 이전 V36 버전 공백 실패는 현재 검증 상태가 아니라 위 실행 이력이다.
+
+| Command | Result | Evidence |
+| --- | --- | --- |
+| env -u SSL_CERT_FILE -u SSL_CERT_DIR ./harness check | PASS | exit 0 |
+| ./gradlew --console=plain test | PASS | exit 0; 217 XML suites, 1782 tests, failures/errors/skipped 모두 0 |
+| ./gradlew --console=plain integrationTest | PASS | exit 0; 122 XML suites, 967 tests, failures/errors/skipped 모두 0; 3m 44s |
+| env -u SSL_CERT_FILE -u SSL_CERT_DIR ./harness pr-ready --project-tests | PASS | exit 0; harness 및 Gradle check, Local PR readiness checks passed |
+| npm run hooks:validate | PASS | exit 0 |
+| git diff --check | PASS | exit 0 |
+
+pr-ready는 다른 worktree가 local main을 사용 중이라 main 자동 갱신 거부 경고를 냈지만 origin/main ancestry 검사와 full project check는 통과했다. 이를 main 변경이나 push로 해결하지 않았다. 이 PASS는 일반 단위·통합·정책 검증 범위이며 performance 태그의 E3 실패를 통과로 바꾸지 않는다.
+
+
+### 10.11. 갱신 3-2 B: E3 원인 진단 (수정 미적용)
+
+결론: 분류 (c), 기존 PostGIS 경계 관측 기대값을 C8의 앱 계산에도 고정한 테스트 계약 문제다. 원래 main의 기대 2가 잘못됐다는 뜻은 아니다. main은 그대로 통과하지만, 정확히 5km를 만드는 gs=3을 PostGIS ST_DWithin은 제외하고 C8의 독립 계산값·상한 비교는 포함한다. 같은 좌표에서 발생하는 경계 수치 판정 차이이며 seed/암복호화 좌표 변경이 원인이 아니다. 기존 E3 실패 상태는 유지하고 수정안은 제안만 한다.
+
+#### 실행 범위와 보존
+
+- 승인: @Byuntil, 2026-11-27, issuecomment-7210371917. source commit은 C8 84e0b7b57ba8b28b1db33430d11deac7c1f57e4a, main e6d6746597e2a03ddc7a4c4f8f9fe20a976f9a9f다.
+- scratchpad/e3-diag-c8, e3-diag-main을 git archive로 만들었다. 저장소·OCI production과 E3 클래스·기대값은 변경하지 않았다. C8 사본 build.gradle의 performance-task 플래그만 false로 해 일반 로컬 이미지·무제한 기본 자원을 사용했다. 기대값과 seed를 바꾸지 않은 원본 실행 뒤, 두 사본 E3 클래스에만 E3_DIAG 접두사의 읽기 전용 진단 메서드·호출을 추가했다.
+- 로컬 Java 21.0.13.1(Homebrew), 동일 PostgreSQL 16.14·PostGIS 3.5(PostGIS_Version 반환값)·PROJ 9.8.1이다. 로컬 기본 DB 이미지는 postgis/postgis:16-3.5-alpine, 현재 캐시 digest는 sha256:d2fe6296c8ed5b21b31a426f51b9176b4d89f80a0a380632a7a833d604951273, arch amd64다. OCI arm64 16.10 성능 측정과 구분한다.
+- 진단 전에 예상 시간(각 원본 5~10분, 계측 1~3분, 총15~30분)을 지정 보고에 기록했다. 실제 원본 C8/main은 49s/51s, 계측 C8/main은 41s/54s였다. 첫 사본 preflight는 Java25/Unsupported class file major version69로 517ms에 중단돼 테스트가 실행되지 않았다. 기존 Java21을 지정해 재개했으며 패키지를 설치하지 않았다.
+- 명령: 각 사본에서 JAVA_HOME을 기존 java_home -v21로 지정하고 ./gradlew --console=plain performanceTest --tests com.dnd.qello.DirectionMatchingE3PerformanceIntegrationTest.cardinalitySweepObservesPreviewAndMatchingPlans를 실행했다. 원본 세 규모를 줄이거나 skip하지 않았다. 원본·계측 모두 C8은 3개 중 10K:1K 한 건이 기대2/실제3으로 실패(exit1), main은 3개 모두 통과(exit0)했다.
+
+| Round | Tests | Failures / errors / skipped | XML SHA-256 |
+| --- | ---: | --- | --- |
+| c8-original | 3 | 1 / 0 / 0 | 0379fc0a00b5b9ddd9fbf3958cf086f4a274d10af14e27c3502274421e32b222 |
+| main-original | 3 | 0 / 0 / 0 | 3739d9026f51b150e2451c2b76cf4f243d411b8cfae7ace778069f8158bd4b3d |
+| c8-probe | 3 | 1 / 0 / 0 | c5fb7a2285c48fd899ef0cf0416eb75726f41b34bcac7a7f2d374dfb93a17f9f |
+| main-probe | 3 | 0 / 0 / 0 | f2fa74b3ab52e120ec3d8a608aab96d72d25a938ebdac9cd8dfbec0ed1ddc06a |
+
+원본·계측 XML은 scratchpad/e3-diag-evidence의 각 round에 보존했다. 후보별 comparison.json SHA-256은 331b7d9609559fcac196b91f93e6801d597136864cf15ab4020dadc68564d954다. 예상 실패가 남아 계측 controller도 exit1이며 이를 성공한 테스트 실행으로 바꾸지 않는다. 기존 OCI 64회는 재측정하지 않았고 OCI 접속·사본 변경도 하지 않았다.
+
+#### seed와 좌표 동일성
+
+origin은 합성 (latitude=37.5, longitude=127), 최소 거리는0m·최대 거리는5000m다. 두 seed는 ST_Project에 sqrt((gs-0.5)/1000)*100000m와 mod((gs-1)*137.50776405003785,360)도 방위를 전달한다. gs=3의 투영 거리 식은 정확히5000m다. main은 생성 geography를 저장하고 C8은 생성 점의 ST_Y/ST_X를 읽어 실제 protector로 저장·복원한다.
+
+아래 gs1~4에서 양쪽의 생성 seed, main 저장 geography, C8 복호화 좌표의 double 비트가 모두 같다. 전체1000행의 비트 동일성을 측정한 것은 아니며, 갈리는 후보 gs3과 대조군1·2·4의 관측이다. 좌표는 승인된 합성 fixture이며 key·암호문을 출력하지 않았다.
+
+| gs | latitude (main=C8) | longitude (main=C8) | latitude hex (seed=stored, 양쪽 동일) | longitude hex (seed=stored, 양쪽 동일) |
+| --- | --- | --- | --- | --- |
+| 1 | 37.52014707501063 | 127.00000000000003 | 0x1.2c2942dea23eep5 | 0x1.fc00000000002p6 |
+| 2 | 37.47426515133774 | 127.02957593664709 | 0x1.2bcb4b8715065p5 | 0x1.fc1e492782976p6 |
+| 3 | 37.50392512398141 | 126.94366874497567 | 0x1.2c0809e539103p5 | 0x1.fbc6511977b62p6 |
+| 4 | 37.53242034243147 | 127.05311861231569 | 0x1.2c426598b3bf1p5 | 0x1.fc3664b9bad1bp6 |
+
+#### 거리와 경계 차이
+
+PostGIS 열은 기존 SQL과 같은 ST_Distance(position,origin) geography 식의 실제 반환값이다. ST_DWithin도 별도로 실행했으며 거리 반환값만으로 그 결과를 추정하지 않았다. GeographicLib 열은 C8 production CoordinateGeometry.inverse가 실제 복호화 좌표에서 계산한 값이다. 좌표 비트가 같으므로 같은 지점의 비교이며 GeoLib 수치를 oracle에 주입하지 않았다. Δmin=distance-0, Δmax=distance-5000, 단위는 m다.
+
+| gs | PostGIS distance | GeographicLib distance | PG Δmin / Δmax | App Δmin / Δmax | ST_DWithin / App 포함 |
+| --- | ---: | ---: | --- | --- | --- |
+| 1 | 2236.0679775 | 2236.0679775010535 | 2236.0679775 / -2763.9320225 | 2236.0679775010535 / -2763.9320224989465 | true / true |
+| 2 | 3872.98334621 | 3872.9833462094 | 3872.98334621 / -1127.01665379 | 3872.9833462094 / -1127.0166537905998 | true / true |
+| 3 | 5000 | 4999.999999998928 | 5000 / 0 | 4999.999999998928 / -1.0722942533902824e-9 | false / true |
+| 4 | 5916.0797831 | 5916.079783101148 | 5916.0797831 / 916.0797831 | 5916.079783101148 / 916.0797831011478 | false / false |
+
+갈리는 후보는 합성 논리 라벨 perf-e3-account-000003이다. SQL 거리 반환값은5000이지만 ST_DWithin은false다. C8 거리는4999.999999998928이고 max보다1.0722942533902824e-9m 작아, 실제 withinRange의 distance>=min && distance<=max가true다. SQL 반환값의 소수점 아래 내부 정밀도를 관측한 것으로 해석하지 않는다.
+
+| gs | PostGIS 방위 (도) | GeographicLib 방위 (도) | 순환 각 차이 (도) | segment (PG 방위 / App 방위) |
+| --- | ---: | ---: | ---: | --- |
+| 1 | 0 | 6.437961220265494e-11 | 6.437961220265494e-11 | N / N |
+| 2 | 137.5077640500217 | 137.50776404999203 | 2.9672264645341784e-11 | SE / SE |
+| 3 | 275.01552810007075 | 275.0155281000834 | 1.261923898709938e-11 | W / W |
+| 4 | 52.523292150119396 | 52.523292150125954 | 6.558309451065725e-12 | NE / NE |
+
+실제 segment 범위는 N=[337.5,360)∪[0,22.5), SE=[112.5,157.5), W=[247.5,292.5), NE=[22.5,67.5)다. gs3은 양쪽 모두 W이며 방위 경계와 멀다. 이는 방위로 분류했을 때의 구간이며 main에서는 거리 필터가 먼저 제외해 실제 W 집계가0이다. 실제 preview는 main N1/SE1/W0, C8 N1/SE1/W1이며 다른 다섯 segment는 모두0이다.
+
+네 관측점의 최대 |거리 차|는1.1477823136374354e-9m, 최대 순환 |방위 차|는6.437961220265494e-11도로 승인된0.001m/0.0000001도 이내다. 이 값은 네 진단점 범위의 최대이며 전체 corpus나 역방위 최대 오차를 새로 측정한 값이 아니다.
+
+#### 분류 근거와 수정안 (적용하지 않음)
+
+- (b) 배제: 갈리는 gs3과 대조군의 seed·저장 좌표 비트가 같다. C8 seed 경로가 암호화 저장으로 바뀐 사실만으로 이 실패를 설명할 수 없다.
+- (a)의 경계 결과 차이라는 관찰은 맞지만, 현재 증거로 ADR D3 위반인 production 계산 결함이라고 판정하지 않는다. 수치 오차는 승인 한도 이내이고 앱은 자기 수치의 상한 포함 비교를 일관되게 적용한다. ADR 원문§3은 경계까지 정확 일치를 요구하지만, 후속 @Byuntil 승인 issuecomment-7150447072(2026-11-25T02:12:42Z)와 테스트 계획§3은 정확 경계에서는 수치 허용 오차와 자기 경계 규칙을 검증하도록 명시적으로 보정했다. 원문과 후속 보정을 구분해 판단했다.
+- 일차 분류는(c): E3 scales의 기대2는 main ST_DWithin의 결정적 경계 관측값이고, 이를 다른 엔진에도 그대로 고정해 후속 보정과 충돌한다. 기존 main 테스트 자체가 baseline-red라는 주장은 하지 않는다. 서로 다른 DB/CPU 환경만의 문제도 아니다. 같은 로컬 DB에서 main2/C8 3을 재현했고 OCI에서도 C8 3이었다.
+
+| 수정안 | 향후 수정 대상 | ADR·테스트 계획 영향 |
+| --- | --- | --- |
+| 권장: E3의 일반 집계 fixture를5km 경계 양옆±1m에 명시적으로 두고, 해당 fixture의 후보 집합·구간별 합계를 독립적으로 확정해 정확 비교 | DirectionMatchingE3PerformanceIntegrationTest.java의 E3 전용 seed와 scales 계약, 테스트 계획§7·§9 Performance 소유 및 실행 보고. 공유 projectedCoordinatesSql 기본값은 다른 성능 시험에 영향을 주므로 임의 변경하지 않음 | 기존 D3 보정의 margin을 적용하며 허용 오차·production 술어는 유지. seed·정확 기대 집합 변경 범위를 별도로 승인받고 main/C8을 같은 새 fixture로 검증해야 함 |
+| 대안: 원래 exact-boundary 점은 보존하되 전용 차등 corpus에서 PostGIS 수치 대비 오차와 앱 자기 경계 일관성을 검증하고, E3 일반 집계에서는 그 점과 안전한 후보 집계 계약을 분리 | E3 클래스, 기존 CoordinateMatchingDifferentialIntegrationTest.java의 담당 corpus(중복 신규 테스트 대신 기존 owner 확장), 테스트 계획§3·§7·§9와 실행 보고 | 정확 경계의 후보 동일성 예외를 후속 승인대로 명확히 연결. ADR 원문의 무예외 문구와 승인 보정의 관계를 문서상 정리할 사람 결정 필요. production·키·형식·허용 오차 변경 없음 |
+
+단순히 기대2를3으로 바꾸거나 epsilon을 넣는 수정은 제안하지 않는다. 전자는 플랫폼의 미세 경계 수치에 다시 고정되고 후자는 후보 정책 변경이 된다. 이번에는 위 수정안 어느 것도 적용하지 않았으며 production·E3·기대값은 저장소에서 그대로다. 따라서 진단 완료를 기존 성능 회귀 PASS 또는 전체 배포 가능 판정으로 표현하지 않는다.
+
+독립 보고 감사 결과는 APPROVE/PASS다. 검증 담당은 네 관측점과 실제 집계·원자료 해시·분류 (c) 및 미적용 수정안 구분을 확인했다. A의 전체 검사 실행을 독립 재현하거나 OCI·git 전체 변경 부재를 조회한 것은 아니며, 이 승인은 보고·진단 정확성 범위에 한정한다. 실제 E3 FAIL과 별도 수정 방향 결정 필요는 그대로다.
