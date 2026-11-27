@@ -38,6 +38,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 import org.junit.jupiter.api.AfterEach;
@@ -108,7 +109,10 @@ class DirectionMatchingE3PerformanceIntegrationTest extends PostgisContainerInte
 	private static final String ACCOUNT_NICKNAME_PATTERN = ACCOUNT_PREFIX + "%";
 	private static final String LOGICAL_SUFFIX_PATTERN = "\\d{6}";
 
-	private static final FixtureScale FIXED_SCALE = new FixtureScale("100K_10K", 100_000, 10_000, 25);
+	private static final FixtureScale FIXED_SCALE = new FixtureScale("100K_10K", 100_000, 10_000, 25,
+			Map.of("N", 1_251L, "NE", 1_249L, "E", 1_250L, "SE", 1_251L,
+					"S", 1_250L, "SW", 1_249L, "W", 1_249L, "NW", 1_251L),
+			Map.of("N", 4L, "NE", 3L, "E", 3L, "SE", 3L, "S", 3L, "SW", 3L, "W", 3L, "NW", 3L));
 	private static final String STATISTICS_COMPARISON_SCENARIO = "PERF-006";
 	private static final String RECIPIENT_GUARDRAIL_SCENARIO = "PERF-008";
 	private static final String RECIPIENT = "RECIPIENT";
@@ -204,6 +208,19 @@ class DirectionMatchingE3PerformanceIntegrationTest extends PostgisContainerInte
 			SELECT 'USER', 'KR', 'ACTIVE', ?, 'ko-KR', 'Asia/Seoul', ? || lpad(gs::text, 6, '0')
 			FROM generate_series(1, ?) AS gs
 			""";
+	private static final String E3_PROJECTED_COORDINATES_SQL = """
+			SELECT ua.id AS user_id, ST_Y(point::geometry) AS latitude, ST_X(point::geometry) AS longitude
+			FROM generate_series(1, ?) AS gs
+			JOIN user_account ua ON ua.nickname = ? || lpad(gs::text, 6, '0')
+			CROSS JOIN LATERAL (
+				SELECT ST_Project(ST_SetSRID(ST_MakePoint(?, ?), 4326)::geography,
+					CASE WHEN gs = ? THEN 4999.0
+					     WHEN gs = ? THEN 5001.0
+					     ELSE sqrt((gs - 0.5) / ?) * 100000 END,
+					radians(mod((gs - 1) * 137.50776405003785, 360))) AS point
+			) projected
+			WHERE ua.coarse_region_code = ?
+			""";
 	private static final String SEED_EXCLUDED_SQL = """
 			INSERT INTO user_account (role, country_code, status, coarse_region_code, locale, timezone, nickname)
 			VALUES ('USER', 'KR', 'ACTIVE', ?, 'ko-KR', 'Asia/Seoul', ?)
@@ -291,16 +308,22 @@ class DirectionMatchingE3PerformanceIntegrationTest extends PostgisContainerInte
 	}
 
 	/**
-	 * 10K:1K에서 gs=3, 50K:5K에서 gs=13은 결정적 반경식이 정확히 5,000.000m를 만드는 경계값이다.
-	 * {@code ST_DWithin}의 spheroid 경로는 두 경계를 서로 다르게 판정해 10K:1K에서만 gs=3을 제외한다. 따라서
-	 * 5km 진단 후보 수의 실측 결정값은 2, 13, 25다. 이 값은 합성 데이터를 조정해서 얻은 것이 아니라 승인된 반경식이 만든
-	 * 관측값이며, 구현 계획이 해석적으로 적어 둔 3과 다르다.
+	 * r(g)^2=10^10(g-1/2)/N에서 5km 경계는 g=N/400+1/2다. K=3,13,25와 K+1을 각각 4999m,5001m에
+	 * 두므로 probe 후보는 정확히 1..K이고 정책 반경은 1..N이다. 최소 반경 0m 위의 점은 없으며 음수 거리 fixture를 만들지
+	 * 않는다. 구간별 기대값은 ((g-1)*13750776405003785 mod 36000000000000000)/10^14를 45도 반열린
+	 * 구간에 배분한 독립 정수 산술 값이다. 엔진의 경계 포함 관측을 기대값으로 고정하지 않는다.
 	 */
 	private static Stream<FixtureScale> scales() {
 		return Stream.of(
-				new FixtureScale("10K_1K", 10_000, 1_000, 2),
-				new FixtureScale("50K_5K", 50_000, 5_000, 13),
-				new FixtureScale("100K_10K", 100_000, 10_000, 25));
+				new FixtureScale("10K_1K", 10_000, 1_000, 3,
+						Map.of("N", 125L, "NE", 124L, "E", 126L, "SE", 124L,
+								"S", 125L, "SW", 126L, "W", 124L, "NW", 126L),
+						Map.of("N", 1L, "NE", 0L, "E", 0L, "SE", 1L, "S", 0L, "SW", 0L, "W", 1L, "NW", 0L)),
+				new FixtureScale("50K_5K", 50_000, 5_000, 13,
+						Map.of("N", 625L, "NE", 625L, "E", 625L, "SE", 625L,
+								"S", 626L, "SW", 624L, "W", 625L, "NW", 625L),
+						Map.of("N", 2L, "NE", 1L, "E", 2L, "SE", 1L, "S", 2L, "SW", 2L, "W", 1L, "NW", 2L)),
+				FIXED_SCALE);
 	}
 
 	@ParameterizedTest
@@ -315,6 +338,7 @@ class DirectionMatchingE3PerformanceIntegrationTest extends PostgisContainerInte
 		long schemeId = octantSchemeId();
 		long minDistanceMeters = policy.minDistanceMeters();
 		long policyMaxDistanceMeters = policy.maxDistanceMeters();
+		assertScaleContract(scale, schemeId);
 
 		observePreview(scale, POLICY_BASELINE,
 				previewParameters(excludedUserId, schemeId, minDistanceMeters, policyMaxDistanceMeters),
@@ -574,9 +598,10 @@ class DirectionMatchingE3PerformanceIntegrationTest extends PostgisContainerInte
 				+ " VALUES (?, 'KR', 'Direction Perf E3', 'REGION')", REGION);
 		jdbc.update(SEED_ACCOUNTS_SQL, REGION, ACCOUNT_PREFIX, scale.accountCount());
 		DirectionMatchingPerformanceProbe.seedEncryptedPresence(jdbc, coordinateProtector,
-				DirectionMatchingPerformanceProbe.projectedCoordinatesSql(), REGION, NOW.minusSeconds(10),
+				E3_PROJECTED_COORDINATES_SQL, REGION, NOW.minusSeconds(10),
 				NOW.plusSeconds(3600), scale.presenceCount(), ACCOUNT_PREFIX, ORIGIN_LONGITUDE,
-				ORIGIN_LATITUDE, scale.presenceCount(), REGION);
+				ORIGIN_LATITUDE, scale.expectedProbePresenceCount(), scale.expectedProbePresenceCount() + 1,
+				scale.presenceCount(), REGION);
 		jdbc.update(SEED_EXCLUDED_SQL, REGION, EXCLUDED_NICKNAME);
 		guardrailSeeder.run();
 	}
@@ -640,6 +665,24 @@ class DirectionMatchingE3PerformanceIntegrationTest extends PostgisContainerInte
 			}
 			return null;
 		});
+	}
+
+	private void assertScaleContract(FixtureScale scale, long schemeId) {
+		for (long maxDistanceMeters : List.of(policy.maxDistanceMeters(), SELECTIVITY_PROBE_MAX_DISTANCE_METERS)) {
+			boolean probeRadius = maxDistanceMeters == SELECTIVITY_PROBE_MAX_DISTANCE_METERS;
+			int expectedCount = probeRadius ? scale.expectedProbePresenceCount() : scale.presenceCount();
+			Map<String, Long> expectedCounts = probeRadius ? scale.expectedProbeCounts() : scale.expectedPolicyCounts();
+			assertThat(previewCounts(previewParameters(excludedUserId(), schemeId, policy.minDistanceMeters(),
+					maxDistanceMeters))).as("%s 반경 %s 구간별 합계", scale.label(), maxDistanceMeters)
+					.containsExactlyInAnyOrderEntriesOf(expectedCounts);
+			List<Long> candidateIds = presenceRepository.findCandidates(excludedUserId(), ORIGIN_LATITUDE,
+					ORIGIN_LONGITUDE, policy.minDistanceMeters(), maxDistanceMeters, 0, 360, NOW, null).stream()
+					.map(candidate -> candidate.userId()).toList();
+			List<String> expectedSuffixes = IntStream.rangeClosed(1, expectedCount)
+					.mapToObj(ordinal -> String.format(Locale.ROOT, "%06d", ordinal)).toList();
+			assertThat(logicalAccountSuffixes(candidateIds)).as("%s 반경 %s 후보 집합", scale.label(), maxDistanceMeters)
+					.containsExactlyInAnyOrderElementsOf(expectedSuffixes);
+		}
 	}
 
 	private void assertFixtureShape(FixtureScale scale) {
@@ -1110,7 +1153,9 @@ class DirectionMatchingE3PerformanceIntegrationTest extends PostgisContainerInte
 			String label,
 			int accountCount,
 			int presenceCount,
-			int expectedProbePresenceCount) {
+			int expectedProbePresenceCount,
+			Map<String, Long> expectedPolicyCounts,
+			Map<String, Long> expectedProbeCounts) {
 	}
 
 	private record GuardrailRow(
