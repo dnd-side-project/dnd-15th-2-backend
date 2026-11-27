@@ -3,7 +3,7 @@
 > Created at: `2026-11-25T00:14:29+09:00`
 > GitHub Issue: `#376`
 > Branch: `feat/gh-376-operator-password-policy`
-> Commit: base `30efa9ca`. `pr-ready`를 뺀 실행은 모두 미커밋 변경에서 했다. `pr-ready`는 14개 커밋을 `dae144f8`(main, #387 병합) 위로 rebase한 뒤 실행했다
+> Commit: base `30efa9ca`. `pr-ready`를 뺀 실행은 모두 미커밋 변경에서 했다. 최종 `pr-ready`는 이 브랜치 커밋을 `e6d67465`(main, #391 병합) 위로 rebase한 뒤 실행했다
 
 ## 1. Executive summary
 
@@ -52,6 +52,8 @@
 | `./harness sync` | PASS | — | — | main에 들어온 #386·#387 위로 rebase했다. 충돌은 `TASK.md` 하나였고 #376 계약을 남겼다. 그 밖의 파일은 rebase 전후 내용이 같다 |
 | `./harness pr-ready --project-tests` (첫 실행) | FAIL(환경) | 통합 131 중 129 실패 | 약 1분 | Docker Desktop이 꺼져 있어 Testcontainers가 초기화되지 않았다. `PushSecretDeploymentIntegrationTest`는 PATH의 `python3`(3.9·3.11.6·3.15)에 PyYAML이 없어 실패했다. 코드 결함이 아닌 로컬 환경 문제다 |
 | `./harness pr-ready --project-tests` (재실행) | PASS | 단위 1,663 / 통합 918 / 아키텍처 23 / 소스 컨벤션 3, 실패·오류·skip 0 | Gradle 3분 48초 | Docker Desktop을 켜고, PyYAML 6.0.3이 있는 Homebrew Python 3.11과 Docker CLI를 PATH 앞에 두었다. 패키지 설치나 설정 변경은 하지 않았다. 단위 테스트는 같은 커밋에서 돈 첫 실행 결과를 Gradle이 재사용했다. 단위가 1,661에서 늘어난 2개는 main이 추가한 `RepoMapToolTest`다 |
+| `./harness sync` (#391 병합 뒤) | PASS | — | — | main에 #390·#391(좌표 key SSM 주입)이 들어와 다시 rebase했다. 충돌은 `TASK.md` 하나였고 #376 계약을 남겼다. 그 밖의 파일은 main의 변경만 더해졌다 |
+| `./harness pr-ready --project-tests` (최종) | PASS | 단위 1,667 / 통합 918 / 아키텍처 23 / 소스 컨벤션 3, 실패·오류·skip 0 | Gradle 5분 52초 | 위 재실행과 같은 환경이다. 단위·통합 모두 새로 실행했다. 단위가 늘어난 4개는 #391이 추가한 `PushSecretEncodingTest`다 |
 | `git diff --check`, `npm run hooks:validate` | PASS | — | — | rebase 뒤 HEAD 기준 |
 
 ## 4. Scenario results
@@ -137,7 +139,7 @@
 ### Database and migrations
 
 - 병합 뒤 test-server에 V35가 적용되면 기존 운영자 행이 모두 `password_change_required = TRUE`가 된다. 다음 로그인부터 변경을 요구받는 것은 의도한 동작이다(계획 4절 P1).
-- Byuntil의 Draft PR #384도 V34를 쓰고 있어, 이 작업의 V35와 함께 번호를 맞춰야 한다. 먼저 병합되는 쪽이 V35를 쓰고, 나중 쪽이 번호와 Flyway 테스트의 고정 개수를 다시 맞춘다.
+- Byuntil의 Draft PR #384(`V35__add_location_consent_history`)와 #389(`V35__encrypt_exact_coordinates`)도 V35를 쓴다. 먼저 병합되는 쪽이 V35를 쓰고, 나중 쪽이 번호와 Flyway 테스트의 고정 개수를 다시 맞춘다.
 - schema manifest의 전체 카탈로그(V1~V28)는 다시 추출하지 않았다. V35 컬럼은 별도 절에만 적었다.
 
 ### Concurrency and idempotency
@@ -173,7 +175,7 @@
   - `FlywayMigrationContractTest`: migration 목록, 최신 버전 단언을 V35 테스트로 이동.
   - `NotificationPreferenceMigrationIntegrationTest`: 적용 수 11.
   - `OperatorLoginServiceTest`: 시그니처.
-- 남은 위험: 6절의 다른 세션 유지, 세션 도중 만료 지연, test-server 운영자의 변경 강제, #384와의 migration 번호 충돌.
+- 남은 위험: 6절의 다른 세션 유지, 세션 도중 만료 지연, test-server 운영자의 변경 강제, #384·#389와의 migration 번호 충돌.
 
 ## 8. Artifacts
 
