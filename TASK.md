@@ -87,6 +87,8 @@
 
 성능 기준선 overlay 승인(@Byuntil, 2026-11-25, https://github.com/dnd-side-project/dnd-15th-2-backend/issues/388#issuecomment-7152803870): 성능 하네스를 공통 runner와 adapter로 나누는 변경은 `src/integrationTest/java/com/dnd/qello/` 아래 테스트 전용 파일(기존 성능 파일과 새 runner·adapter 파일)에 한정한다. main 기준선용 평문 adapter는 OCI 기준선 사본에만 적용하고 patch SHA-256과 파일 목록을 테스트 보고서에 남긴다.
 
+갱신 3-2 승인(@Byuntil, 2026-11-27, https://github.com/dnd-side-project/dnd-15th-2-backend/issues/388#issuecomment-7210371917): 현재 좌표 migration은 V35로 유지한다. C9(#384) 병합 후 rebase하면서 V36으로 변경하고 관련 번호를 함께 갱신한다. E3 실패는 production·E3 테스트·기대값을 변경하지 않고 진단하며, 진단용 변경은 저장소·OCI 밖 scratch 사본에서만 한다.
+
 허용하지 않는다. 필요하면 멈추고 보고한다.
 
 - `direction/repository/ActiveUserPresenceRepository.java`, `direction/repository/PostAudienceRepository.java`의 메서드 시그니처 변경.
