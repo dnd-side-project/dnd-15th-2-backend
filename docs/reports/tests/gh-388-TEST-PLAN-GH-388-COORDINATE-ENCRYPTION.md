@@ -6,7 +6,7 @@
 
 ## 1. Executive summary
 
-- status: FAIL (2026-11-27 기존 성능 회귀 17개 중 1개 실패). local_implementation_status: PASS는 기존 로컬 실행 기록이며 후속 회귀의 실패를 상쇄하지 않는다.
+- status: FAIL (2026-11-27 기존 성능 회귀 17개 중 1개 실패). execution_status: BLOCKED (V35 선행 migration 부재로 V36 연속성 검증 실패, 승인된 중단 조건). local_implementation_status: PASS는 기존 로컬 실행 기록이며 후속 회귀의 실패를 상쇄하지 않는다.
 - 승인된 C8 구현, 갱신 4의 통합 실패 20건 수정, 기능 회귀 및 로컬 필수 검사를 완료했다. 미해결 로컬 기능 실패는 없다.
 - 단위 1,778건, 통합 967건: 실패 0, 오류 0, skip 0. 계획의 단위 14/통합 24는 계약 시나리오 수이며 JUnit invocation 수와 다르다.
 - PERF-001~003은 OCI에서 32조건·64회 작업량을 완료했다. 미계측 외부 지표 8개는 2026-11-27 사람 결정으로 대체 수용됐지만, 같은 자원에서 실행한 기존 성능 회귀의 E3 첫 규모가 실패해 #388 전체 PASS나 배포 가능 판정을 내리지 않는다. 전체 수치·해시는 §10에 기록했다.
@@ -92,12 +92,13 @@ OSV 정책 검사 PASS: 런타임 패키지 173개, blocked 0개. Moderate 3개�
 - 최초 9건은 승인 댓글 7150447072의 fixture/비교 계약 보정으로 해결했다. production 계산이나 허용 오차를 바꾸지 않았다.
 - oracle 파일 SHA-256: ea14a56837c73115ddb24a7e50da2cbdfba06364b8318a1a8ec2b26c890dfe64.
 - differential 파일 SHA-256: 0fbf9db2979e9eae5d228aae6e6f7998a540af32b8dda5ecfc192429bfe436aa.
-- V35 DBML SHA-256: 12c8ee803ec1cfff65a3d482962022c058317fa19cd5ab6972e81920f9462a20.
-- V35 ERD SHA-256: b1ebb8421a21a756d1d252017ca52d14fc6b52b1b1cf314162a8ccf23bbfa2b3.
+- 번호 변경 전 V35 DBML SHA-256: 12c8ee803ec1cfff65a3d482962022c058317fa19cd5ab6972e81920f9462a20. 현재 좌표 migration은 V36이며 이 해시는 변경 전 문서의 이력이다.
+- 번호 변경 전 V35 ERD SHA-256: b1ebb8421a21a756d1d252017ca52d14fc6b52b1b1cf314162a8ccf23bbfa2b3. V36 표기로 바꾼 문서의 해시와 혼동하지 않는다.
+- V36 표기 변경 후 작업 트리 DBML SHA-256: 167615c3e63d3142cec82d97bc22be9056b57e7c6b1ccda08349de2610a38cc1, ERD SHA-256: 4c0031ec9c1952431b63234fa36b7d481ebc9b838745b5ef101f84342715b1d9. 번호 변경·관련 문서는 §10.10의 중단으로 미커밋이며 기존 카탈로그 검증을 V36 성공으로 재해석하지 않는다.
 
 ## 5. Failures and diagnostics
 
-갱신 4의 20건은 아래 테스트 진입 조건·fixture·신호 문제로 해결했다. 승인 목록 밖 production 변경은 필요하지 않았다. 중간 실패를 최종 미해결 실패와 구분한다.
+갱신 4의 20건은 아래 테스트 진입 조건·fixture·신호 문제로 해결했다. 이 절의 V35는 번호 변경 전 실행 이력이며 현재 좌표 migration은 V36이다. 승인 목록 밖 production 변경은 필요하지 않았다. 중간 실패를 최종 미해결 실패와 구분한다.
 
 | File / group | Cause | Correction / preserved assertion |
 | --- | --- | --- |
@@ -129,12 +130,12 @@ Worker의 빈 결과는 HTTP enqueue보다 이른 command.at에서 실제 due �
 | DirectionMatchingWorkerIntegrationTest | 암호문 origin/presence, 실제 due 시각 사용, PROCESSED 유지 |
 | DirectionMatchingWorkerConcurrencyIntegrationTest | 암호문 fixture, sleep polling 대신 실제 transaction/claim 신호 |
 | DirectionPreviewIntegrationTest | 암호문 fixture, 승인 D3 경계 분리, 정확 segment 개수 유지 |
-| FlywayMigrationIntegrationTest | V35 컬럼·제약·GiST 제거 inventory 반영, 과거 checksum 유지 |
+| FlywayMigrationIntegrationTest | 좌표 V36 컬럼·제약·GiST 제거 inventory 및 최신 번호 반영, 과거 checksum 유지 |
 | LocationCollectionGateDisabledIntegrationTest | 기존 차단 assertion을 암호문 스키마에 맞춤 |
 | RecipientNotificationFanOutWorkerIntegrationTest | 수신자 매칭용 origin/presence fixture만 암호화 |
 | DevProfileBootIntegrationTest | DynamicPropertySource에 좌표 전용 합성 키만 추가 |
-| NotificationPreferenceMigrationIntegrationTest | V25~V35 11개 적용과 설명만 변경 |
-| FlywayMigrationContractTest | 최신 V35 목록, V1/V2/V8 checksum 유지 |
+| NotificationPreferenceMigrationIntegrationTest | V25~V36 12개 적용 기대와 설명만 변경, C9 V35 선행 병합 필요 |
+| FlywayMigrationContractTest | 최신 V36 목록, V1/V2/V8 checksum 유지 |
 | DirectionPreviewPersistenceBoundaryTest | SQL 문구 대신 단일 snapshot·빈 방향 행동 검증 |
 | DirectionRecipientSelectionBoundaryTest | SQL 정렬 문구 대신 필터·앱 공정성 정렬 검증 |
 | PostAudienceTest | 원점 없는 과거 행 복원, 신규 생성 엄격성 유지 |
@@ -156,7 +157,7 @@ AES-256-GCM 전용 key ring과 version/key ID/nonce/tag envelope, 행 ID 및 용
 
 ### Database and migrations
 
-V35 단일 migration은 정확 좌표 presence만 폐기하고 cell-only는 유지한다. audience 과거 원점은 NULL, 원점을 잃는 미완료 글만 MATCH_FAILED다. ACTIVE/종결 글과 실제 수신자·슬롯·Outbox·메타데이터를 유지하며 과거 migration은 불변이다. SQL SHA-256: b1b557ec7aad4dd5339ebeb5a9ee74939af17e11388a86df36da8fa4636f65c8. #381/PR #384도 V35이므로 나중에 병합하는 쪽이 재번호 후 검증해야 한다.
+V36 단일 migration은 정확 좌표 presence만 폐기하고 cell-only는 유지한다. audience 과거 원점은 NULL, 원점을 잃는 미완료 글만 MATCH_FAILED다. ACTIVE/종결 글과 실제 수신자·슬롯·Outbox·메타데이터를 유지하며 과거 migration은 불변이다. SQL SHA-256: b1b557ec7aad4dd5339ebeb5a9ee74939af17e11388a86df36da8fa4636f65c8. 갱신 3 승인으로 파일명만 V35에서 V36으로 바꾸며 C9(#384)의 V35 선행 병합이 필요하다.
 
 ### Concurrency and idempotency
 
@@ -178,7 +179,7 @@ claim/reclaim·용량 row lock·stale fencing·재생·최신 관측 우선순�
 
 - local executed_checks / passed_checks: §3의 기존 PASS 명령과 §4 UNIT/INT. local failed_checks: 최종 미해결 없음. 이번 OCI 성능 실행·nonzero 종료·차단은 §10에 별도 기록했다.
 - failed_checks: 후속 OCI 기존 성능 회귀 E3의 preview 후보 합계 기대 2, 실제 3. 전체 성능 PASS는 성립하지 않는다. LSP 진단은 환경 미구성으로 미실행(대체 컴파일·정적 검사 PASS).
-- assumptions: 승인된 ADR-0009/D3 보정·TASK 소유 계약, 합성 데이터/fixture key, 이 브랜치 V34 다음 V35. 성능 결과를 기능 회귀에서 추정하지 않는다.
+- assumptions: 승인된 ADR-0009/D3 보정·TASK 소유 계약, 합성 데이터/fixture key. 현재 좌표 migration은 V36이고 C9 V35 선행 병합을 전제하며, 실제 원격 main의 V35 존재 여부와 버전 연속성 검증은 §10.10에 기록한다. 성능 결과를 기능 회귀에서 추정하지 않는다.
 - risks: 사람 결정으로 수용한 OCI 외부 지표 미계측과 일부 조건의 큰 상대 지연, E3 실제 회귀 실패, dev key 주입 선행 필요, migration 번호 충돌, 기존 OSV 예외/Moderate findings, 과거 복사본과 파생 위치 정보 별도 보호.
 - required_human_decisions: E3 회귀 실패 수정의 별도 범위 결정과 별도 dev 주입 인프라 작업. 동일 DB 자원 제한 경로 추가 및 V36 재번호는 갱신 3으로 승인됐으며, 동기화 결과는 §10.10에 기록한다.
 - 실제 접근/변경: 로컬 테스트 DB 및 승인된 OCI 합성 측정, archive 배치와 읽기 전용 진단. push·dev/운영 배포 없음.
@@ -245,7 +246,7 @@ claim/reclaim·용량 row lock·stale fencing·재생·최신 관측 우선순�
 - src/main/resources/application-dev.yml
 - src/main/resources/application-local.yml
 - src/main/resources/application.yml
-- src/main/resources/db/migration/V35__encrypt_exact_coordinates.sql
+- src/main/resources/db/migration/V36__encrypt_exact_coordinates.sql
 - src/test/java/com/dnd/qello/FlywayMigrationContractTest.java
 - src/test/java/com/dnd/qello/direction/DirectionPreviewPersistenceBoundaryTest.java
 - src/test/java/com/dnd/qello/direction/DirectionRecipientSelectionBoundaryTest.java
@@ -767,24 +768,36 @@ JUnit XML과 HTML 보고 보관 archive SHA-256은 d9011386a3306d31283d7d0fb9c83
 - executed_checks: 기존 64회 OCI 교대 실행 및 원자료·해시·분포 독립 감사, 후속 support 컴파일 및 일반 통합 23개, 새 후보 배치·동일 digest·Docker/cgroup 설정 조회, 기존 성능 회귀 5개 클래스 17개와 XML 감사.
 - passed_checks: 원자료/원격 요약 해시 일치; measured 43,200개와 cold 포함 43,416개; 32쌍 환경/경계/프로토콜 일치; 100k 24회 작업량 완료; PERF-001의 preview/worker 상대 p95 8개 모두 2 이하; 기능 및 중복 검증 assertion 실패 0건.
 - failed_checks: 기존 성능 회귀 E3의 SELECTIVITY_PROBE preview 합계 기대 2, 실제 3. 기존 64회 performanceTest의 필수 D6 증거 assertion nonzero도 이력으로 유지했다(원장 62회 exit=1, 초기 2회 별도 BUILD FAILED 로그). PERF-002의 큰 성능 저하는 표에 그대로 기록했다.
-- blocked_checks: 외부 지표 수집·회귀 실행 경로의 이전 차단은 추가 승인으로 해소됐다. 현재 전체 성능 PASS 및 배포 가능 판정은 실제 회귀 실패 때문에 불가하다.
-- changed_files: 후속 승인 계약 TASK.md·테스트 계획 §11, 성능 전용 지원 코드 PostgisContainerIntegrationTestSupport.java와 이 보고서. 원자료·로컬 감사 산출물은 커밋하지 않는다. production·다섯 회귀 클래스·일반 이미지 기본값은 수정하지 않았다.
+- blocked_checks: 외부 지표 수집·회귀 실행 경로의 이전 차단은 추가 승인으로 해소됐다. 현재 E3 실패와 V35 선행 migration 부재가 남아 있다. V36 번호 변경 커밋 및 전체 필수 검증은 승인된 중단 조건에 따라 실행하지 않았다.
+- changed_files: 후속 승인 계약 TASK.md·테스트 계획 §11, 성능 전용 지원 코드 PostgisContainerIntegrationTestSupport.java와 이 보고서. 동기화 후 좌표 migration 파일명·번호 참조 테스트·관련 문서만 미커밋으로 조정했다(§10.10). SQL 내용·production Java·다섯 성능 회귀 클래스·일반 이미지 기본값은 수정하지 않았다. 원자료·로컬 감사 산출물은 커밋하지 않는다.
 - assumptions: 원자료 status/workloadCompleted와 실제 runner assertion 경계를 함께 사용했다. 예열 표본은 의도적 미보존이다. 기능 불일치 0 판정은 별도 직렬화 counter가 아니라 성공한 실제 assertion에서 도출했다.
 - risks: 기존 E3 실제 회귀 실패; 사람 결정으로 수용한 DB/transaction/lease/lock 미계측; 1k/100k의 큰 상대 지연; OCI와 CI DB patch/arch 차이; 전체 peak RSS 미계측. 기존 §7의 dev key 주입, migration 번호 충돌 및 OSV 잔여 위험도 남는다.
-- required_human_decisions: 기존 회귀 실패를 수정할 별도 범위 결정이 필요하다. 현 승인은 다섯 회귀 클래스 변경이나 기대값 완화를 허용하지 않는다. 동기화·migration 번호 정리와 최종 검증 결과는 §10.10에 이어 기록한다.
+- required_human_decisions: 기존 E3 회귀 실패를 수정할 별도 범위 결정과 C9 V35 선행 병합이 필요하다. 현 승인은 다섯 회귀 클래스 변경·기대값 완화·누락 migration 대체 구현을 허용하지 않는다.
 
-### 10.10. 이번 보고서 변경의 검증
+### 10.10. 후속 동기화·번호 변경·검증
 
-§3의 로컬 기능 검증은 이전 실행 기록이다. 이번 문서 변경의 검사는 아래와 구분한다.
+§3의 단위 1778/통합 967 및 이전 harness PASS는 과거 실행 이력이다. 2026-11-26 보고 단계에서는 harness check·hooks:validate·diff --check가 PASS, pr-ready가 branch behind origin/main으로 exit 2였으며 full project check는 실행되지 않았다. 아래는 2026-11-27 갱신 3의 실제 결과다.
 
 | Command / gate | Result | Scope / cause |
 | --- | --- | --- |
-| ./harness check | PASS | exit 0; secret/JUnit/convention/workflow/label/Husky 및 hook self-test |
-| npm run hooks:validate | PASS | exit 0; Husky validation |
-| git diff --check | PASS | exit 0; 문서 공백 검사 |
-| ./harness pr-ready --project-tests | FAIL | exit 2; branch is behind origin/main |
-| pr-ready의 full project check | NOT_RUN/BLOCKED | 위 선행 동기화 게이트에서 종료되어 실행되지 않음 |
+| compileIntegrationTestJava + 일반 integrationTest 두 클래스 | PASS | exit 0; AccountPersistence 17 + ActiveUserPresenceApi 6, 실패·오류·skip 0 |
+| 기존 성능 회귀 5개 클래스, OCI | FAIL | exit 1; 17개 중 1개 E3 후보 합계 실패, §10.9 |
+| env -u SSL_CERT_FILE -u SSL_CERT_DIR git fetch origin main | PASS | origin/main e6d6746597e2a03ddc7a4c4f8f9fe20a976f9a9f 확인 |
+| env -u SSL_CERT_FILE -u SSL_CERT_DIR ./harness sync | 최초 exit 2 / 이후 rebase 완료 | TASK.md만 충돌. #390 main 계약 대신 이 브랜치 #388 계약을 보존하고 git rebase --continue exit 0. 코드 충돌 없음 |
+| git merge-base --is-ancestor origin/main HEAD | PASS | exit 0; 재배치 완료 HEAD 8a064eb942bc4106f05352c0efe72ff4ba608d8e |
+| ./gradlew test --tests com.dnd.qello.FlywayMigrationContractTest | PASS | 번호 조정 작업 트리에서 기존 단위 계약 6개, 실패·오류·skip 0 |
+| ./gradlew integrationTest --tests com.dnd.qello.FlywayMigrationIntegrationTest.appliesAllMigrationsOnApplicationStartup | FAIL | 1개 실행·1개 실패; version 35 누락, BUILD FAILED in 12s, 결합 Gradle 명령 exit 1 |
+| 갱신 3의 ./harness check | NOT_RUN/BLOCKED | V35 공백 계약 실패 시 중단하라는 §6에 따라 §7 진입하지 않음 |
+| 갱신 3의 ./gradlew test (전체) | NOT_RUN/BLOCKED | 위 중단 조건. 단위 6개 선택 실행을 전체 통과로 주장하지 않음 |
+| 갱신 3의 ./gradlew integrationTest (전체) | NOT_RUN/BLOCKED | 위 중단 조건. 선택한 연속성 계약 1개만 실행 |
+| 갱신 3의 ./harness pr-ready --project-tests | NOT_RUN/BLOCKED | 위 중단 조건. ancestry 통과를 PR readiness로 대체하지 않음 |
 
-local main은 다른 worktree에 checkout돼 자동 갱신이 거부됐고, 현재 브랜치는 origin/main보다 뒤처져 있다. 자동 rebase/merge 또는 승인 우회를 하지 않았다. 측정 코드 commit c131aa7268219106a78af826ce23567e0e098a52와 OCI 증거는 그대로 보존했다. 이 보고서의 검증 통과를 PR readiness나 전체 성능 PASS로 표현하지 않는다.
+최신 origin/main에는 V1~V34만 있으며 C9의 V35__add_location_consent_history.sql은 아직 없다. 좌표 migration을 V36__encrypt_exact_coordinates.sql로 옮기고 최신 버전·관련 테스트·TASK·스키마 문서의 번호만 조정했다. SQL 내용 SHA-256 b1b557ec7aad4dd5339ebeb5a9ee74939af17e11388a86df36da8fa4636f65c8은 그대로다. 기존 연속성 assertion이 실제 1~34,36과 기대 1~36의 차이에서 `could not find the following elements: ["35"]`로 실패했다(FlywayMigrationIntegrationTest.java:198).
 
-목적 커밋 범위는 이 보고서 한 개다. 원자료·감사 사본·다른 파일은 포함하지 않는다. staged hook 및 커밋 생성 결과는 지정 인계 보고와 최종 전달에서 실제 hash로 기록한다. Co-Authored-By, push, dev/운영 배포는 하지 않는다.
+실행한 결합 명령은 `./gradlew --console=plain test --tests com.dnd.qello.FlywayMigrationContractTest integrationTest --tests com.dnd.qello.FlywayMigrationIntegrationTest.appliesAllMigrationsOnApplicationStartup`이다. 단위 XML SHA-256은 21a473c594d57269f98e5806c2f300353f222d52b677af64064ca6f406c03138, 실패 통합 XML SHA-256은 066962d64c1db434888406e3b538beb1cb112a7613e1b0f40fc2f599ef78f0a4다. 테스트를 완화하거나 C9 migration을 대신 만들거나 V36을 V35로 되돌려 통과시키지 않았다.
+
+승인된 중단 조건에 따라 번호 변경 커밋과 §7 전체 검증은 실행하지 않았다. 번호 변경·관련 참조 파일은 작업 트리에 미커밋으로 보존한다. 보고서만 별도 목적 커밋으로 남기며 미커밋 번호 변경이 검증·커밋됐다고 주장하지 않는다. local main은 별도 worktree에서 사용 중이므로 그대로 두었고, 최신 origin/main에 대한 rebase는 완료했다.
+
+후속 commit 매핑은 승인 문서 6f67289c→47f7057f3e4a4ebce89af4b433b90263c3242fa4, 지원 코드 79d1c313→975171e6815cb20fcb1f2c782862a1c5cd2d621d, 회귀 보고 5f5454f0→8a064eb942bc4106f05352c0efe72ff4ba608d8e다. OCI 실행 commit은 실제 배치한 rebase 전 79d1c313262335f8983696dc5420de89a68d880e로 유지한다. 기존 64회 commit/원자료도 이력 그대로 보존한다.
+
+독립 검증은 지원 코드와 5개 XML 수치·해시를 확인했으며, 보고서 앞부분의 stale BLOCKED 설명을 지적해 현재 지표 대체 수용·E3 실패로 수정했다. Docker/scope·로컬 23개 실행·64회 원자료를 이 후속 검토자가 독립 재현한 것은 아니다. 마지막 보고서 commit의 hook·공백 검사와 실제 hash는 지정 인계 보고에 기록한다. Co-Authored-By, push, dev/운영 배포는 하지 않는다.
