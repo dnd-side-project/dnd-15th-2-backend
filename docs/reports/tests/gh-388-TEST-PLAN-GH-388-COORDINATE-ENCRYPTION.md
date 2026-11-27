@@ -6,11 +6,11 @@
 
 ## 1. Executive summary
 
-- status: FAIL (2026-11-27 기존 성능 회귀 17개 중 1개 실패). 갱신 3-2에 따라 V35 유지, C9(#384) 병합 후 V36으로 변경한다. 기존 V36 공백 중단은 과거 이력이며 V35 복구 후 전체 검증은 §10.10, E3 진단 결과는 §10.11에 기록한다.
-- 갱신 3-2 A: 단위 1782·통합 967, 실패·오류·skip 0이며 harness·pr-ready·hook·공백 검사 PASS. B: 같은 seed의 정확 5km 경계 후보에서 main 제외/C8 포함을 재현했으며 수정은 적용하지 않았다.
+- status: PASS (갱신 3-3 승인 범위 및 외부 지표 대체 수용 반영). E3 경계 fixture 수정 후 로컬 main/C8와 OCI E3가 각각 5건 모두 통과했다. 최신 필수 검사와 다섯 성능 회귀 종합은 §10.12다. V35 유지 후 C9(#384) 병합·rebase·V36 변경과 배포는 별도 사람 결정으로 남는다.
+- 갱신 3-3: 단위 1782·통합 967, 실패·오류·skip 0이며 harness·pr-ready·hook·공백 검사 PASS. 갱신 3-2 진단 후 승인된 E3 전용 ±1m seed와 독립 후보/구간 합계 계약만 수정했다. 공유 seed·production·허용오차는 유지했다.
 - 승인된 C8 구현, 갱신 4의 통합 실패 20건 수정, 기능 회귀 및 로컬 필수 검사를 완료했다. 미해결 로컬 기능 실패는 없다.
-- 단위 1,778건, 통합 967건: 실패 0, 오류 0, skip 0. 계획의 단위 14/통합 24는 계약 시나리오 수이며 JUnit invocation 수와 다르다.
-- PERF-001~003은 OCI에서 32조건·64회 작업량을 완료했다. 미계측 외부 지표 8개는 2026-11-27 사람 결정으로 대체 수용됐지만, 같은 자원에서 실행한 기존 성능 회귀의 E3 첫 규모가 실패해 #388 전체 PASS나 배포 가능 판정을 내리지 않는다. 전체 수치·해시는 §10에 기록했다.
+- 최초 검증은 단위 1,778건, 통합 967건이었다. 최신 갱신 3-3은 단위 1,782건·통합 967건이며 실패·오류·skip 0이다. 계획의 단위 14/통합 24는 계약 시나리오 수이며 JUnit invocation 수와 다르다.
+- PERF-001~003은 OCI에서 32조건·64회 작업량을 완료했다. 미계측 외부 지표 8개는 2026-11-27 사람 결정으로 대체 수용됐다. 기존 성능 회귀의 E3 경계 실패는 갱신 3-3에서 수정·검증했으며 현재 승인 범위 PASS와 별도 배포 판단을 구분한다. 전체 수치·해시는 §10에 기록했다.
 - 독립 검토: INT-002 이력 보존 coverage 지적을 비어 있지 않은 실제 행의 전후 비교로 보완한 뒤 로컬 코드 준비 상태 APPROVE. 사람의 PR 승인·OCI 측정 승인을 대신하지 않는다.
 
 ## 2. Environment
@@ -28,6 +28,8 @@
 GeographicLib는 착수 시 Maven Central metadata/POM과 upstream 라이선스를 확인하여 안정 버전 2.1로 고정했다. 기존 의존성 스캔 init script를 사용하며 영구 dependency lock 정책을 새로 만들지 않았다. 런타임 lock은 build/dependency-scan/gradle.lockfile에 보관하고 커밋하지 않았다.
 
 ## 3. Execution results
+
+아래는 최초 및 갱신 3의 실행 이력이다. 최신 갱신 3-3의 필수 검사·로컬/OCI E3 통과 결과와 현재 판정은 §10.12에 기록한다.
 
 | Command / suite | Result | Evidence |
 | --- | --- | --- |
@@ -154,7 +156,7 @@ AES-256-GCM 전용 key ring과 version/key ID/nonce/tag envelope, 행 ID 및 용
 
 ### Infrastructure and resource limits
 
-오케스트레이터가 준비한 OCI에서 동일 arm64 digest, DB/JVM 각 1코어·4GiB·swap 0과 512MiB heap을 직접 확인하고 64회 교대 측정을 완료했다. 100k 조건 24회는 고정 한도에서 완료됐다. 전체 환경·수치·원자료 해시·호출 경계 heap·CPU/GC·동시 처리량·EXPLAIN은 §10에 기록했다. 외부 지표 8개는 미계측 상태로 2026-11-27 사람 결정에 따라 대체 수용됐다. 승인된 지원 경로로 같은 제한을 적용한 기존 성능 회귀는 E3 한 건이 실패했다(§10.9).
+오케스트레이터가 준비한 OCI에서 동일 arm64 digest, DB/JVM 각 1코어·4GiB·swap 0과 512MiB heap을 직접 확인하고 64회 교대 측정을 완료했다. 100k 조건 24회는 고정 한도에서 완료됐다. 전체 환경·수치·원자료 해시·호출 경계 heap·CPU/GC·동시 처리량·EXPLAIN은 §10에 기록했다. 외부 지표 8개는 미계측 상태로 2026-11-27 사람 결정에 따라 대체 수용됐다. 승인된 지원 경로의 기존 E3 실패 이력은 §10.9에 보존하며, 같은 제한의 갱신 3-3 E3는 5건 모두 통과했다(§10.12).
 
 ### Database and migrations
 
@@ -179,10 +181,10 @@ claim/reclaim·용량 row lock·stale fencing·재생·최신 관측 우선순�
 ## 7. Regression and residual risk
 
 - local executed_checks / passed_checks: §3의 기존 PASS 명령과 §4 UNIT/INT. local failed_checks: 최종 미해결 없음. 이번 OCI 성능 실행·nonzero 종료·차단은 §10에 별도 기록했다.
-- failed_checks: 후속 OCI 기존 성능 회귀 E3의 preview 후보 합계 기대 2, 실제 3. 전체 성능 PASS는 성립하지 않는다. LSP 진단은 환경 미구성으로 미실행(대체 컴파일·정적 검사 PASS).
+- failed_checks: 갱신 3-3 현재 미해결 실패 없음. 후속 OCI E3의 기대 2/실제 3 및 64회 원자료 nonzero는 과거 이력으로 보존한다. 현재 판정 근거는 §10.12이며 LSP는 미구성으로 미실행(대체 컴파일·정적 검사 PASS).
 - assumptions: 승인된 ADR-0009/D3 보정·TASK 소유 계약, 합성 데이터/fixture key. 현재 좌표 migration은 V35 유지, C9(#384) 병합 후 V36으로 변경한다. 과거 V36 시도와 현재 복구 후 검증을 구분하며 성능 결과를 기능 회귀에서 추정하지 않는다.
-- risks: 사람 결정으로 수용한 OCI 외부 지표 미계측과 일부 조건의 큰 상대 지연, E3 실제 회귀 실패, dev key 주입 선행 필요, migration 번호 충돌, 기존 OSV 예외/Moderate findings, 과거 복사본과 파생 위치 정보 별도 보호.
-- required_human_decisions: E3 진단 후 수정 방향의 별도 결정과 별도 dev 주입 인프라 작업. 현재 V35 유지와 저장소 밖 진단은 갱신 3-2로 승인됐다. C9(#384) 병합 후 V36으로 변경한다.
+- risks: 사람 결정으로 수용한 OCI 외부 지표 미계측과 일부 조건의 큰 상대 지연, dev key 주입 선행 필요, migration 번호 충돌, 기존 OSV 예외/Moderate findings, 과거 복사본과 파생 위치 정보 별도 보호.
+- required_human_decisions: PR #389 반영·push 승인, C9(#384) 선행 병합 후 C8 rebase/V36 변경과 재검증, 별도 dev key 주입 인프라 및 배포 판단. E3 수정안 1은 갱신 3-3에서 승인·완료했다.
 - 실제 접근/변경: 로컬 테스트 DB 및 승인된 OCI 합성 측정, archive 배치와 읽기 전용 진단. push·dev/운영 배포 없음.
 
 ## 8. Artifacts
@@ -746,7 +748,7 @@ repository/preview의 별도 EXPLAIN ANALYZE 진단이다. target node별 actual
 | 10000-20100000-GLOBAL-MIXED-C4 / candidate / repository | 0.712 | 12.852 | false | active_user_presence; Index Scan/active_user_presence_pkey; 10000 x 1; 234/0; 0/0 ; user_account; Seq Scan/N/A; 10001 x 1; 182/0; 0/0 | [{"method":"quicksort","spaceType":"Memory","spaceUsedKb":26,"actualRows":30}] |
 | 10000-20100000-GLOBAL-MIXED-C4 / candidate / preview | 0.991 | 18.313 | false | active_user_presence; Index Scan/active_user_presence_pkey; 10000 x 1; 234/0; 0/0 ; user_account; Seq Scan/N/A; 10001 x 1; 182/0; 0/0 | [{"method":"quicksort","spaceType":"Memory","spaceUsedKb":1713,"actualRows":10008},{"method":"quicksort","spaceType":"Memory","spaceUsedKb":26,"actualRows":30}] |
 
-### 10.9. 기존 성능 회귀와 남은 제한
+### 10.9. 기존 성능 회귀와 남은 제한 (갱신 3-2까지의 과거 이력)
 
 2026-11-27 추가 승인으로 support의 performanceTest 전용 자원 제한 경로를 구현했다. 일반 CI·로컬 이미지 및 자원 제한 없음 기본값은 유지했다. 로컬 compileIntegrationTestJava와 AccountPersistenceIntegrationTest 17개·ActiveUserPresenceApiIntegrationTest 6개가 통과했고, 실제 Docker 이벤트에서 일반 DB cpuset 빈 값·memory=0·memorySwap=0을 확인했다. JDTLS는 설치돼 있지 않아 LSP 진단은 실행하지 못했으며 설치하지 않았다.
 
@@ -821,7 +823,7 @@ JUnit XML과 HTML 보고 보관 archive SHA-256은 d9011386a3306d31283d7d0fb9c83
 pr-ready는 다른 worktree가 local main을 사용 중이라 main 자동 갱신 거부 경고를 냈지만 origin/main ancestry 검사와 full project check는 통과했다. 이를 main 변경이나 push로 해결하지 않았다. 이 PASS는 일반 단위·통합·정책 검증 범위이며 performance 태그의 E3 실패를 통과로 바꾸지 않는다.
 
 
-### 10.11. 갱신 3-2 B: E3 원인 진단 (수정 미적용)
+### 10.11. 갱신 3-2 B: E3 원인 진단 (당시 수정 미적용, 과거 이력)
 
 결론: 분류 (c), 기존 PostGIS 경계 관측 기대값을 C8의 앱 계산에도 고정한 테스트 계약 문제다. 원래 main의 기대 2가 잘못됐다는 뜻은 아니다. main은 그대로 통과하지만, 정확히 5km를 만드는 gs=3을 PostGIS ST_DWithin은 제외하고 C8의 독립 계산값·상한 비교는 포함한다. 같은 좌표에서 발생하는 경계 수치 판정 차이이며 seed/암복호화 좌표 변경이 원인이 아니다. 기존 E3 실패 상태는 유지하고 수정안은 제안만 한다.
 
@@ -893,3 +895,60 @@ PostGIS 열은 기존 SQL과 같은 ST_Distance(position,origin) geography 식�
 단순히 기대2를3으로 바꾸거나 epsilon을 넣는 수정은 제안하지 않는다. 전자는 플랫폼의 미세 경계 수치에 다시 고정되고 후자는 후보 정책 변경이 된다. 이번에는 위 수정안 어느 것도 적용하지 않았으며 production·E3·기대값은 저장소에서 그대로다. 따라서 진단 완료를 기존 성능 회귀 PASS 또는 전체 배포 가능 판정으로 표현하지 않는다.
 
 독립 보고 감사 결과는 APPROVE/PASS다. 검증 담당은 네 관측점과 실제 집계·원자료 해시·분류 (c) 및 미적용 수정안 구분을 확인했다. A의 전체 검사 실행을 독립 재현하거나 OCI·git 전체 변경 부재를 조회한 것은 아니며, 이 승인은 보고·진단 정확성 범위에 한정한다. 실제 E3 FAIL과 별도 수정 방향 결정 필요는 그대로다.
+
+### 10.12. 갱신 3-3: E3 경계 fixture 수정과 최종 검증
+
+승인: @Byuntil, 2026-11-27, issuecomment-7214622190. TASK와 테스트 계획 §7·§9에 E3 전용 seed/scales 계약을 기록한 커밋은 88d946fa5e250cfe285aed1f658b7eab854cd643, 검증된 E3 수정 커밋은 a0b86bc69d3c61a0dec9b3a4f7f9e6680ad094b9다. 테스트 계획의 승인 상태 문구는 유지했다.
+
+#### 수정 범위와 독립 계산
+
+E3 클래스 하나에서만 각 scale의 K번째 점을 4999m, K+1번째 점을 5001m에 명시적으로 배치했다. 나머지 점의 반경·방위는 유지한다. 공유 projectedCoordinatesSql, 다른 성능 클래스 네 개, production Java/SQL, 거리 술어, 허용 오차는 바꾸지 않았다. 최소 반경 0m 위의 점과 정책 최대 반경 20100000m 위의 점은 원래 없다. 음수 거리 fixture나 epsilon을 추가하지 않았다. 기존 guardrail의 차단·비활성·만료·공정성·수신 한도 검증도 유지했다.
+
+r(g)^2=10^10(g-1/2)/N이므로 5km 경계는 g=N/400+1/2다. 경계 인접 두 점을 명시적으로 나누면 probe 후보는 정확히 ordinal 1..K, 정책 반경 후보는 1..N이다. 방위 ((g-1)*13750776405003785 mod 36000000000000000)/10^14를 N의 wrap을 포함한 45도 반열린 구간에 독립 정수 산술로 배분했다. 구현 조회 결과를 기대값으로 옮기지 않았고 아래 값과 근거를 로컬 실행 전에 scratch 인계 파일에 기록했다.
+
+| presence N / K | probe 구간별 합계 | policy 구간별 합계 |
+| --- | --- | --- |
+| 1000 / 3 | 1,0,0,1,0,0,1,0 | 125,124,126,124,125,126,124,126 |
+| 5000 / 13 | 2,1,2,1,2,2,1,2 | 625,625,625,625,626,624,625,625 |
+| 10000 / 25 | 4,3,3,3,3,3,3,3 | 1251,1249,1250,1251,1250,1249,1249,1251 |
+
+구간 순서는 N,NE,E,SE,S,SW,W,NW다. 각 반경에서 preview의 여덟 합계를 정확 비교하고 full-circle matching 후보의 합성 nickname suffix 집합을 1..K 또는 1..N과 정확 비교한다. 기존 북쪽 sector 측정·정렬 검증도 보존한다. main 임시 사본에는 같은 seed·기대 계약을 적용하고 원본 SQL을 사용했으며 C8은 실제 repository adapter를 호출한다. main 임시 사본 변경은 저장소에 넣지 않았다. 독립 읽기 전용 검토는 계산한 여섯 map, 양쪽 fixture 동일성, scope와 guardrail 보존을 확인해 발견 사항 없음을 반환했다. 실제 실행 증거는 아래 별도 기록이다.
+
+#### 로컬과 OCI E3 결과
+
+| 실행 | code / base | tests / failures / errors / skipped | 실행 시간 | XML SHA-256 |
+| --- | --- | --- | --- | --- |
+| local main | origin/main e6d6746597e2a03ddc7a4c4f8f9fe20a976f9a9f + 동일 임시 fixture | 5 / 0 / 0 / 0 | BUILD 1m53s / suite 97.104s | f706b48248cf97c3c96ac30b77c324ffa5fc253c1a209548dda0214fa7ade243 |
+| local C8 | a0b86bc69d3c61a0dec9b3a4f7f9e6680ad094b9의 E3와 동일 | 5 / 0 / 0 / 0 | BUILD 2m8s / suite 118.933s | 60eb75e36f072451af0c5a03dd7995501fda3c5669793005567540fe35082d53 |
+| OCI C8 E3 only | a0b86bc69d3c61a0dec9b3a4f7f9e6680ad094b9 | 5 / 0 / 0 / 0 | BUILD 6m8s / suite 262.344s | ee1d8f84f86d1b5b03a5a75fc096a4d524c55301fd9c0db51428a7733c881eca |
+
+OCI는 2026-11-27T09:42:29Z 시작, 09:48:38Z 종료이며 E3_EXIT=0이다. SSH 사전 확인은 SSH_OK였고 인증 링크는 나오지 않았다. 로컬 git archive+scp로 candidate만 교체했으며 baseline은 유지했다. tar의 macOS provenance 확장 속성 무시 경고가 있었지만 exit 0이었고 실제 파일 SHA-256이 일치했다. 원격 source 편집·설치·배포는 하지 않았다.
+
+- candidate archive SHA-256: 31c9c8d52cde017f79a5f9cd8abb2a16d97f6fc44b3c55a57711487e66e008ec
+- candidate COMMIT 파일 SHA-256: 6fb065d9d552911c8f07b0c1971df5e93bc484aea77739379574e47397e0c9dd
+- E3 source SHA-256: 3b399de13b76ced0612b8f069531f6db7020903009bd3b87101941400e1c6bd6
+- baseline COMMIT 전후 SHA-256: 23f85cb261be693db6e780c5c5364daff0a09065885cbbe7f99f81f1003b315a
+- execution.log SHA-256: f6694643e2dfdeded09f19cfee525157821ad4318a718ecec6bde05313170755
+- 결과 archive SHA-256: 16c06dd04fab26397162fdd932ea32cdee9ff77a2b6a3226b32061e50abb9e7c
+
+실제 Docker update 이벤트에서 DB cpuset=0, memory=4294967296, memorySwap=4294967296을 조회했다. 이미지 digest는 imresamu/postgis@sha256:367f65cee655c1cc7ac2ed17b0c77ca516ab8634c53698eda4a799f23a575e89, platform은 linux/arm64다. JVM/Gradle systemd scope의 AllowedCPUs=1, MemoryMax=4294967296, MemorySwapMax=0과 shell taskset affinity=1을 직접 확인했다. EffectiveCPUs는 빈 출력이라 근거로 사용하지 않았다. JVM max heap과 Gradle heap은 512MiB다. 원격 결과는 results/e3-update33-round01에 별도 보존했고 수신한 archive·로그·XML의 해시가 일치했다. 종료 후 Docker 관찰 구독만 명시적으로 중단했으며 그 exit255는 성공한 E3 실행의 exit0과 별개다.
+
+#### 기존 회귀 다섯 클래스 종합
+
+나머지 네 클래스는 승인대로 다시 실행하지 않았다. 이전 후보 79d1c313262335f8983696dc5420de89a68d880e 사본과 현재 파일을 직접 비교해 바이트 동일함을 확인했다. §10.9의 네 통과 증거 12건과 이번 E3 5건을 합친 최신 유효 증거는 다섯 클래스 17/17 통과다. 이는 하나의 새 커밋에서 다섯 클래스를 동시에 재실행했다는 뜻이 아니다. 이전 E3의 1실패와 기존 64회 원자료 BLOCKED/nonzero는 삭제·덮어쓰기·PASS 재표기하지 않는다. 기존 64회 및 다른 네 회귀는 재측정하지 않았다.
+
+#### 최종 검사와 판정
+
+./harness check, ./gradlew test, ./gradlew integrationTest, ./harness pr-ready --project-tests, npm run hooks:validate, git diff --check 모두 exit 0이다. 단위 XML 217 suites/1782 tests, 통합 XML 122 suites/967 tests이며 failures/errors/skipped는 모두 0이다. 단위는 동일 입력 UP-TO-DATE 결과를 재사용했고 통합은 BUILD 3m44s에 완료했다. 최초 pr-ready는 Gradle check 성공 뒤 git diff pager가 (END)에서 대기해 30분 제한에 종료됐다. 소스·정책 변경 없이 GIT_PAGER=cat/PAGER=cat/TERM=dumb으로 재실행하여 Local PR readiness checks passed와 후속 hook·diff exit0을 확인했다. local main/C8 E3는 각각 1m53s/2m8s, OCI E3는 6m8s였으며 최초 예상과 달리 pager 대기 30분이 추가됐다.
+
+- status: PASS (승인된 갱신 3-3 범위와 사람의 외부 지표 대체 수용을 반영한 현재 판정). production 배포 승인과 원자료의 자동 runner PASS를 뜻하지 않는다.
+- issue_number: 388
+- task_id: TASK-GH-388-COORDINATE-ENCRYPTION
+- design_id: ADR-0009
+- changed_files: TASK.md, docs/test-plans/gh-388-TEST-PLAN-GH-388-COORDINATE-ENCRYPTION.md, src/integrationTest/java/com/dnd/qello/DirectionMatchingE3PerformanceIntegrationTest.java, 이 테스트 보고서.
+- executed_checks / passed_checks: 로컬 main/C8 E3 각 5건, OCI E3 5건, compileIntegrationTestJava·spotlessJavaCheck, 독립 scope/계산 검토, 아래 필수 여섯 명령.
+- failed_checks: 이번 E3·최종 검사 0. 이전 실패는 §10.1·§10.9 이력으로 유지.
+- blocked_checks: 이번 승인 범위 없음. JDTLS 미설치로 LSP 미실행이며 컴파일·정적 검사로 대체했다.
+- assumptions: 합성 데이터와 승인된 D3 경계 보정, §10.1의 사람 대체 수용 결정.
+- risks: 외부 지표 여덟 개 및 전체 peak RSS 미계측, 일부 조건의 큰 상대 지연, OCI/CI DB patch·arch 차이, dev key 주입 선행, migration 번호 충돌·기존 OSV 예외.
+- required_human_decisions: PR #389 반영·push와 리뷰 승인 여부, C9(#384) 먼저 병합한 뒤 C8 rebase/V36 번호 변경 및 재검증 시점, 별도 dev key 주입 인프라 Issue와 배포 판단. 이번 작업에서는 push·PR 수정·배포를 하지 않는다.
