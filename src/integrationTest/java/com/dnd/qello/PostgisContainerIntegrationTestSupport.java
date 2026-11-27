@@ -32,6 +32,8 @@ import org.testcontainers.utility.DockerImageName;
 
 import com.zaxxer.hikari.HikariDataSource;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 // PostGIS 컨테이너와 DB는 JVM에서 하나만 쓰고, 종료는 JVM이 끝날 때 Testcontainers Ryuk가 맡는다.
 // Spring 컨텍스트는 설정이 같은 클래스끼리 캐시해 공유한다. 각 클래스의 정리 코드는 빈 DB에서 시작한다는 전제로
 // 자기 테이블만 지우므로, 클래스 시작 전에 DB를 Flyway를 막 적용한 상태로 되돌린다
@@ -56,6 +58,21 @@ abstract class PostgisContainerIntegrationTestSupport {
 
 	static {
 		postgres.start();
+		if (PERFORMANCE_TASK) {
+			String cpuset = System.getProperty("qello.performance.db-cpuset");
+			String memory = System.getProperty("qello.performance.db-memory-bytes");
+			assertThat(cpuset).as("BLOCKED: exactly one PostGIS CPU required").matches("[0-9]+");
+			assertThat(memory).as("BLOCKED: explicit PostGIS memory limit required").isNotBlank();
+			long bytes = Long.parseLong(memory);
+			assertThat(bytes).isPositive();
+			var docker = postgres.getDockerClient();
+			docker.updateContainerCmd(postgres.getContainerId()).withCpusetCpus(cpuset)
+					.withMemory(bytes).withMemorySwap(bytes).exec();
+			var actual = docker.inspectContainerCmd(postgres.getContainerId()).exec().getHostConfig();
+			assertThat(actual.getCpusetCpus()).isEqualTo(cpuset);
+			assertThat(actual.getMemory()).isEqualTo(bytes);
+			assertThat(actual.getMemorySwap()).as("PostGIS swap disabled").isEqualTo(bytes);
+		}
 	}
 
 	private static PostgreSQLContainer<?> postgresContainer() {
