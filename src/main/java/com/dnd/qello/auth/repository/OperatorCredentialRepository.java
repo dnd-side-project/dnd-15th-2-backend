@@ -13,9 +13,14 @@ public interface OperatorCredentialRepository {
 	OperatorCredential save(OperatorCredential credential);
 
 	/**
-	 * 실패 횟수, 잠금 시각, 마지막 로그인 시각을 갱신한다.
+	 * 실패 횟수, 잠금 시각, 마지막 로그인 시각을 갱신한다. 비밀번호는 바꾸지 않는다.
 	 */
 	OperatorCredential updateLoginState(OperatorCredential credential);
+
+	/**
+	 * 비밀번호 해시, 변경 시각, 변경 필요 여부, 실패 횟수, 잠금 시각을 함께 갱신한다(#376). 마지막 로그인 시각은 바꾸지 않는다.
+	 */
+	OperatorCredential updatePassword(OperatorCredential credential);
 
 	Optional<OperatorCredential> findByLoginId(LoginId loginId);
 

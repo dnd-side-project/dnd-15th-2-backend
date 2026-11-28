@@ -11,26 +11,26 @@ final class OperatorCredentialJpaMapper {
 
 	static OperatorCredentialJpaEntity toNewEntity(OperatorCredential credential) {
 		return new OperatorCredentialJpaEntity(
-			credential.getUserId(),
-			credential.getLoginId().value(),
-			credential.getPasswordHash().value(),
-			toShort(credential.getFailedAttemptCount()),
-			credential.getLockedUntil(),
-			credential.getPasswordUpdatedAt(),
-			credential.getLastLoginAt()
-		);
+				credential.getUserId(),
+				credential.getLoginId().value(),
+				credential.getPasswordHash().value(),
+				toShort(credential.getFailedAttemptCount()),
+				credential.getLockedUntil(),
+				credential.getPasswordUpdatedAt(),
+				credential.isPasswordChangeRequired(),
+				credential.getLastLoginAt());
 	}
 
 	static OperatorCredential toDomain(OperatorCredentialJpaEntity entity) {
 		return OperatorCredential.restore(
-			entity.getUserId(),
-			new LoginId(entity.getLoginId()),
-			new PasswordHash(entity.getPasswordHash()),
-			entity.getFailedAttemptCount(),
-			entity.getLockedUntil(),
-			entity.getPasswordUpdatedAt(),
-			entity.getLastLoginAt()
-		);
+				entity.getUserId(),
+				new LoginId(entity.getLoginId()),
+				new PasswordHash(entity.getPasswordHash()),
+				entity.getFailedAttemptCount(),
+				entity.getLockedUntil(),
+				entity.getPasswordUpdatedAt(),
+				entity.isPasswordChangeRequired(),
+				entity.getLastLoginAt());
 	}
 
 	/**
@@ -38,10 +38,18 @@ final class OperatorCredentialJpaMapper {
 	 */
 	static void updateLoginState(OperatorCredentialJpaEntity entity, OperatorCredential credential) {
 		entity.updateLoginState(
-			toShort(credential.getFailedAttemptCount()),
-			credential.getLockedUntil(),
-			credential.getLastLoginAt()
-		);
+				toShort(credential.getFailedAttemptCount()),
+				credential.getLockedUntil(),
+				credential.getLastLoginAt());
+	}
+
+	static void updatePassword(OperatorCredentialJpaEntity entity, OperatorCredential credential) {
+		entity.updatePassword(
+				credential.getPasswordHash().value(),
+				credential.getPasswordUpdatedAt(),
+				credential.isPasswordChangeRequired(),
+				toShort(credential.getFailedAttemptCount()),
+				credential.getLockedUntil());
 	}
 
 	private static short toShort(int value) {

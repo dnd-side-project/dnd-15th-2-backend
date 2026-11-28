@@ -23,6 +23,10 @@ public enum AuthErrorCode implements ErrorCode {
 	// 국가 코드 형식·지원 국가·기준 지역 계층이 등록 요청과 일치하지 않음
 	INVALID_COUNTRY_CODE(HttpStatus.BAD_REQUEST, "AUT-VAL-004", ErrorCategory.VAL, "국가 코드가 올바르지 않습니다."),
 
+	// 운영자 새 비밀번호가 작성 규칙(길이·문자 종류·허용 문자·login_id와 같은 값)을 어김(#376)
+	PASSWORD_POLICY_VIOLATION(
+			HttpStatus.BAD_REQUEST, "AUT-VAL-005", ErrorCategory.VAL, "비밀번호 작성 규칙에 맞지 않습니다."),
+
 	// 잠금 상태와 잠금 해제 시각이 맞지 않는 등 자격증명 자체의 불변식 위반
 	INVALID_CREDENTIAL_STATE(HttpStatus.BAD_REQUEST, "AUT-DOM-001", ErrorCategory.DOM, "자격증명 상태가 올바르지 않습니다."),
 
@@ -47,7 +51,19 @@ public enum AuthErrorCode implements ErrorCode {
 
 	// 기기 등록·토큰 재발급·운영자 로그인에서 클라이언트 IP 단위 요청 한도를 넘음(#315)
 	RATE_LIMIT_EXCEEDED(
-			HttpStatus.TOO_MANY_REQUESTS, "AUT-APP-007", ErrorCategory.APP, "요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.");
+			HttpStatus.TOO_MANY_REQUESTS, "AUT-APP-007", ErrorCategory.APP, "요청이 너무 많습니다. 잠시 후 다시 시도해 주세요."),
+
+	// 초기 비밀번호이거나 변경 주기가 지난 운영자 세션. 비밀번호 변경·로그아웃만 허용한다(#376)
+	PASSWORD_CHANGE_REQUIRED(HttpStatus.FORBIDDEN, "AUT-APP-008", ErrorCategory.APP, "비밀번호를 변경해야 합니다."),
+
+	// 비밀번호 변경 요청의 현재 비밀번호 불일치. 로그인과 같은 실패 카운터에 더한다(#376).
+	// 로그인한 세션에서만 나오므로 AUT-APP-001과 달리 원인을 숨기지 않는다. 401을 쓰면 세션 만료로 오해한다
+	CURRENT_PASSWORD_MISMATCH(
+			HttpStatus.BAD_REQUEST, "AUT-APP-009", ErrorCategory.APP, "현재 비밀번호가 올바르지 않습니다."),
+
+	// 새 비밀번호가 현재 비밀번호와 같음(#376)
+	PASSWORD_NOT_CHANGED(
+			HttpStatus.BAD_REQUEST, "AUT-APP-010", ErrorCategory.APP, "현재 비밀번호와 다른 비밀번호를 입력해 주세요.");
 
 	private final HttpStatus httpStatus;
 	private final String code;

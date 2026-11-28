@@ -1,15 +1,11 @@
 /**
  * Created at: 2026-08-11T00:00:00+09:00
  * Source scenario: TEST-PLAN-GH-104-RELEASE-REGISTRY-INT-001 through INT-006
+ * Source scenario: TEST-PLAN-GH-376-OPERATOR-PASSWORD-POLICY-INT-010 (seed helper, added 2026-11-24T23:50:07+09:00)
  */
 package com.dnd.qello;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import jakarta.servlet.http.Cookie;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -26,16 +22,20 @@ import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-
-import jakarta.servlet.http.Cookie;
-
 import com.dnd.qello.auth.domain.LoginId;
 import com.dnd.qello.auth.security.RawPassword;
 import com.dnd.qello.auth.service.OperatorSeedService;
 import com.dnd.qello.filtering.domain.FilterRelease;
 import com.dnd.qello.filtering.repository.FilterReleaseRepository;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -71,12 +71,13 @@ class FilterReleaseRegistryIntegrationTest extends PostgisContainerIntegrationTe
 		jdbcTemplate.update("DELETE FROM user_account");
 		jdbcTemplate.update("DELETE FROM region_code WHERE code = ?", REGION_CODE);
 		jdbcTemplate.update("""
-			INSERT INTO region_code (code, display_name, level)
-			VALUES (?, 'Test Country', 'COUNTRY')
-			""", REGION_CODE);
+				INSERT INTO region_code (code, display_name, level)
+				VALUES (?, 'Test Country', 'COUNTRY')
+				""", REGION_CODE);
 		operatorSeedService.seedIfAbsent(
-			LoginId.of(LOGIN_ID), new RawPassword(PASSWORD),
-			"qello-admin", REGION_CODE, "ko-KR", "Asia/Seoul");
+				LoginId.of(LOGIN_ID), new RawPassword(PASSWORD),
+				"qello-admin", REGION_CODE, "ko-KR", "Asia/Seoul");
+		OperatorTestAccounts.completePasswordChange(jdbcTemplate, LOGIN_ID);
 
 		MvcResult issued = mockMvc.perform(get("/admin/csrf")).andReturn();
 		JsonNode data = objectMapper.readTree(issued.getResponse().getContentAsString()).get("data");
@@ -87,8 +88,8 @@ class FilterReleaseRegistryIntegrationTest extends PostgisContainerIntegrationTe
 		MvcResult loggedIn = mockMvc.perform(withCsrf(post("/admin/login"))
 				.contentType(MediaType.APPLICATION_JSON)
 				.content("{\"loginId\":\"%s\",\"password\":\"%s\"}".formatted(LOGIN_ID, PASSWORD)))
-			.andExpect(status().isOk())
-			.andReturn();
+				.andExpect(status().isOk())
+				.andReturn();
 		sessionCookie = loggedIn.getResponse().getCookie("SESSION");
 	}
 
@@ -98,18 +99,18 @@ class FilterReleaseRegistryIntegrationTest extends PostgisContainerIntegrationTe
 		long releaseId = createCandidate("norm-v1", "ruleset-v1", "category-v1", "text-moderation-2026-08");
 
 		transition(releaseId, "offline-evaluation")
-			.andExpect(status().isOk())
-			.andExpect(jsonPath("$.data.status").value("OFFLINE_EVALUATED"));
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.data.status").value("OFFLINE_EVALUATED"));
 		transition(releaseId, "shadow")
-			.andExpect(status().isOk())
-			.andExpect(jsonPath("$.data.status").value("SHADOW"));
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.data.status").value("SHADOW"));
 		transition(releaseId, "canary")
-			.andExpect(status().isOk())
-			.andExpect(jsonPath("$.data.status").value("CANARY"));
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.data.status").value("CANARY"));
 		transition(releaseId, "promote")
-			.andExpect(status().isOk())
-			.andExpect(jsonPath("$.data.status").value("PROMOTED"))
-			.andExpect(jsonPath("$.data.promotedAt").exists());
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.data.status").value("PROMOTED"))
+				.andExpect(jsonPath("$.data.promotedAt").exists());
 
 		FilterRelease promoted = filterReleaseRepository.findCurrentlyPromoted().orElseThrow();
 		assertThat(promoted.id()).isEqualTo(releaseId);
@@ -121,8 +122,8 @@ class FilterReleaseRegistryIntegrationTest extends PostgisContainerIntegrationTe
 		long releaseId = createCandidate("norm-v1", "ruleset-v1", "category-v1", "text-moderation-2026-08");
 
 		transition(releaseId, "promote")
-			.andExpect(status().isConflict())
-			.andExpect(jsonPath("$.errorDetail.code").value("FLT-DOM-004"));
+				.andExpect(status().isConflict())
+				.andExpect(jsonPath("$.errorDetail.code").value("FLT-DOM-004"));
 	}
 
 	@Test
@@ -135,14 +136,14 @@ class FilterReleaseRegistryIntegrationTest extends PostgisContainerIntegrationTe
 		assertThat(filterReleaseRepository.findById(first).orElseThrow().status().name()).isEqualTo("ROLLED_BACK");
 
 		transition(first, "rollback")
-			.andExpect(status().isOk())
-			.andExpect(jsonPath("$.data.status").value("PROMOTED"));
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.data.status").value("PROMOTED"));
 
 		assertThat(filterReleaseRepository.findCurrentlyPromoted().orElseThrow().id()).isEqualTo(first);
 		assertThat(filterReleaseRepository.findById(second).orElseThrow().status().name()).isEqualTo("ROLLED_BACK");
 
 		Integer promotedRowCount = jdbcTemplate.queryForObject(
-			"SELECT count(*) FROM filter_release WHERE status = 'PROMOTED'", Integer.class);
+				"SELECT count(*) FROM filter_release WHERE status = 'PROMOTED'", Integer.class);
 		assertThat(promotedRowCount).isEqualTo(1);
 	}
 
@@ -152,21 +153,21 @@ class FilterReleaseRegistryIntegrationTest extends PostgisContainerIntegrationTe
 		promoteFullPipeline("norm-v1", "ruleset-v1", "category-v1", "model-v1");
 
 		assertThatThrownBy(() -> jdbcTemplate.update("""
-			INSERT INTO filter_release
-				(normalization_ref, local_ruleset_ref, category_mapping_ref, model_snapshot, status, promoted_at)
-			VALUES ('norm-x', 'ruleset-x', 'category-x', 'model-x', 'PROMOTED', now())
-			""")).isInstanceOf(DataIntegrityViolationException.class);
+				INSERT INTO filter_release
+					(normalization_ref, local_ruleset_ref, category_mapping_ref, model_snapshot, status, promoted_at)
+				VALUES ('norm-x', 'ruleset-x', 'category-x', 'model-x', 'PROMOTED', now())
+				""")).isInstanceOf(DataIntegrityViolationException.class);
 	}
 
 	@Test
 	@DisplayName("세션이 없으면 registry endpoint는 401로 거절된다")
 	void rejectsUnauthenticatedAccess() throws Exception {
 		mockMvc.perform(get("/admin/filtering/releases"))
-			.andExpect(status().isUnauthorized());
+				.andExpect(status().isUnauthorized());
 	}
 
 	private long promoteFullPipeline(String normRef, String rulesetRef, String categoryRef, String modelSnapshot)
-		throws Exception {
+			throws Exception {
 		long releaseId = createCandidate(normRef, rulesetRef, categoryRef, modelSnapshot);
 		transition(releaseId, "offline-evaluation").andExpect(status().isOk());
 		transition(releaseId, "shadow").andExpect(status().isOk());
@@ -176,23 +177,23 @@ class FilterReleaseRegistryIntegrationTest extends PostgisContainerIntegrationTe
 	}
 
 	private long createCandidate(String normRef, String rulesetRef, String categoryRef, String modelSnapshot)
-		throws Exception {
+			throws Exception {
 		MvcResult result = mockMvc.perform(withSession(withCsrf(post("/admin/filtering/releases")))
 				.contentType(MediaType.APPLICATION_JSON)
 				.content("""
-					{"normalizationRef":"%s","localRulesetRef":"%s","categoryMappingRef":"%s","modelSnapshot":"%s"}
-					""".formatted(normRef, rulesetRef, categoryRef, modelSnapshot)))
-			.andExpect(status().isCreated())
-			.andReturn();
+						{"normalizationRef":"%s","localRulesetRef":"%s","categoryMappingRef":"%s","modelSnapshot":"%s"}
+						""".formatted(normRef, rulesetRef, categoryRef, modelSnapshot)))
+				.andExpect(status().isCreated())
+				.andReturn();
 		return objectMapper.readTree(result.getResponse().getContentAsString()).get("data").get("id").asLong();
 	}
 
 	// #113부터 authority를 바꾸는 release 전이는 근거를 함께 받는다(INV-APL-012).
 	private ResultActions transition(long releaseId, String action) throws Exception {
 		return mockMvc.perform(
-			withSession(withCsrf(post("/admin/filtering/releases/%d/%s".formatted(releaseId, action))))
-				.contentType(MediaType.APPLICATION_JSON)
-				.content("{\"reasonCode\":\"TEST\",\"reasonText\":\"통합 테스트 전이\"}"));
+				withSession(withCsrf(post("/admin/filtering/releases/%d/%s".formatted(releaseId, action))))
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("{\"reasonCode\":\"TEST\",\"reasonText\":\"통합 테스트 전이\"}"));
 	}
 
 	private MockHttpServletRequestBuilder withSession(MockHttpServletRequestBuilder request) {
@@ -201,7 +202,7 @@ class FilterReleaseRegistryIntegrationTest extends PostgisContainerIntegrationTe
 
 	private MockHttpServletRequestBuilder withCsrf(MockHttpServletRequestBuilder request) {
 		return request
-			.header(csrfHeaderName, csrfToken)
-			.cookie(csrfCookies);
+				.header(csrfHeaderName, csrfToken)
+				.cookie(csrfCookies);
 	}
 }

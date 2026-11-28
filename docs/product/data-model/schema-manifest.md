@@ -10,8 +10,8 @@
 
 | Artifact | SHA-256 | 검증 시점·의미 |
 | --- | --- | --- |
-| [DBML](direction_communication.dbml) | `78db286f90af543cf338406f7b15976d7c0e5c553858affc5a847f44f52207a3` | 2026-11-22, #375 V34 `operator_access_log` 반영 후 계산 |
-| [ERD](DIRECTION_COMMUNICATION_ERD.md) | `89e0e5e90e0850a5e58d8ccac424a6ab38014da467d0f5d88ef749a3d0da30f1` | 2026-11-22, #375 V34 `operator_access_log` 반영 후 계산 |
+| [DBML](direction_communication.dbml) | `cad814c14afcab2c123478d9523c32acc8b6db9b0967eff10493df14e72e7e72` | 2026-11-24, #376 V35 `operator_credential.password_change_required` 반영 후 계산 |
+| [ERD](DIRECTION_COMMUNICATION_ERD.md) | `90693d66e7646f8de4be34bfe1ee8288cbe8d495cfdc56df02de46c0e7b24456` | 2026-11-24, #376 V35 `operator_credential.password_change_required` 반영 후 계산 |
 
 과거 checksum은 아래 **이력** 표에 원문대로 보존한다. 이 두 현행 값은 저장소 파일의 해시이며 외부 vault 원본과의 byte-for-byte 일치 증거가 아니다.
 
@@ -266,6 +266,14 @@ DBML parser `@dbml/core@10.2.0`은 `checks {}`와 TableGroup 속성을 받지 �
 | --- | --- | --- | --- | --- | --- |
 | `operator_access_log` | `operator_access_log_pkey` | — | — | `ck_operator_access_log_client_address`, `ck_operator_access_log_event_type`, `ck_operator_access_log_http_method`, `ck_operator_access_log_http_status`, `ck_operator_access_log_operator`, `ck_operator_access_log_operator_required`, `ck_operator_access_log_request_path`, `ck_operator_access_log_result_code` | `operator_access_log_occurred_at_idx` (독립), `operator_access_log_pkey` (PK) |
 
+## V35(#376)가 추가한 컬럼
+
+V35가 위 인벤토리의 테이블에 더한 컬럼이다. 위 집계 수치에는 포함하지 않고, 제약·인덱스는 더하지 않았다. V30·V31·V33이 더한 컬럼은 이 표에 없다. 다음 전체 카탈로그 재추출 때 함께 위 인벤토리로 옮긴다.
+
+| Migration | 테이블 | 컬럼 | 정의 |
+| --- | --- | --- | --- |
+| V35 (#376) | `operator_credential` | `password_change_required` | `BOOLEAN NOT NULL DEFAULT TRUE`. 기존 행은 TRUE로 채운다 |
+
 ## 2026-09-29 검증 근거와 한계
 
 - Java 21에서 기존 `FlywayMigrationIntegrationTest` 11개 통과. 별도 빈 PostgreSQL 16/PostGIS 3.5에 변경하지 않은 V1~V28 migration 28개를 적용하고 전체 `public` 카탈로그를 추출했다. 생성 전후 migration 파일의 정렬된 SHA-256 목록은 일치했고 임시 DB는 제거했다.
@@ -285,6 +293,8 @@ DBML parser `@dbml/core@10.2.0`은 `checks {}`와 TableGroup 속성을 받지 �
 
 | Artifact | Repository path or source | SHA-256 | Role |
 | --- | --- | --- | --- |
+| DBML (Issue #375, 2026-11-22) | `docs/product/data-model/direction_communication.dbml` | `78db286f90af543cf338406f7b15976d7c0e5c553858affc5a847f44f52207a3` | V34 `operator_access_log` 반영 판. #376이 V35 컬럼을 더하기 전 |
+| ERD (Issue #375, 2026-11-22) | `docs/product/data-model/DIRECTION_COMMUNICATION_ERD.md` | `89e0e5e90e0850a5e58d8ccac424a6ab38014da467d0f5d88ef749a3d0da30f1` | V34 `operator_access_log` 반영 판. #376이 V35 변경을 더하기 전 |
 | DBML (Issue #288, 2026-09-29) | `docs/product/data-model/direction_communication.dbml` | `8d11d7e861e574843af8311621f917438bda81eeb0b23f2143c169b8aa03ca31` | V1~V28 스냅샷 판. 이후 V31 컬럼 Note가 추가돼 #375 직전 main의 파일과는 이미 달랐다 |
 | ERD (Issue #288, 2026-09-29) | `docs/product/data-model/DIRECTION_COMMUNICATION_ERD.md` | `87a40bfa4726d3059a9fd055a8f6b0a3ad7ea2b5a116d20eeec6b8100f69d170` | V1~V28 스냅샷 판 |
 | DBML (2026-08-08b, baseline) | `docs/product/data-model/direction_communication.dbml` | `ef5e9885f9308d1b86946094dfa49f084e2e3ace4094482d8b3e4b3c3dccd13c` | Issue #115 이전 logical schema baseline |

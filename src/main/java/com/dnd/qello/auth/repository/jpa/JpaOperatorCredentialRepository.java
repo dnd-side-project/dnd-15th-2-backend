@@ -48,9 +48,17 @@ public class JpaOperatorCredentialRepository implements OperatorCredentialReposi
 	}
 
 	@Override
+	@Transactional
+	public OperatorCredential updatePassword(OperatorCredential credential) {
+		OperatorCredentialJpaEntity entity = findManaged(credential.getUserId());
+		OperatorCredentialJpaMapper.updatePassword(entity, credential);
+		return OperatorCredentialJpaMapper.toDomain(entity);
+	}
+
+	@Override
 	public Optional<OperatorCredential> findByLoginId(LoginId loginId) {
 		return repository.findByLoginId(loginId.value())
-			.map(OperatorCredentialJpaMapper::toDomain);
+				.map(OperatorCredentialJpaMapper::toDomain);
 	}
 
 	@Override
@@ -60,8 +68,8 @@ public class JpaOperatorCredentialRepository implements OperatorCredentialReposi
 
 	private OperatorCredentialJpaEntity findManaged(Long userId) {
 		return repository.findById(userId)
-			.orElseThrow(() -> new AuthException(
-				AuthErrorCode.CREDENTIAL_NOT_FOUND, "userId", "대상 자격증명이 존재하지 않습니다"));
+				.orElseThrow(() -> new AuthException(
+						AuthErrorCode.CREDENTIAL_NOT_FOUND, "userId", "대상 자격증명이 존재하지 않습니다"));
 	}
 
 }

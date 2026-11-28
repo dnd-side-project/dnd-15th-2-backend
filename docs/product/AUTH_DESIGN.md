@@ -431,8 +431,20 @@ ADR-0005가 204 No Content를 쓰지 않기로 했으므로 성공 응답도 200
   `login-id`와 `password`는 환경변수로만 주입한다. Flyway 시드 migration을 쓰지 않는
   이유는 해시가 저장소에 남아 모든 환경이 같은 비밀번호를 갖게 되고, 바꾸려면 이미
   적용된 migration을 고쳐야 하기 때문이다.
-- **초기 비밀번호 강제 변경은 아직 구현하지 않았다.** `password_updated_at`으로 판단할
-  준비만 돼 있다.
+- **비밀번호 작성 규칙과 변경 강제**(#376): 새 비밀번호는 `OperatorPasswordPolicy`가 검사한다. 영문
+  대문자·소문자·숫자·특수문자 중 2종류 이상이면 10자 이상, 3종류 이상이면 8자 이상이고, 공백을 포함한 ASCII 출력
+  문자만 쓰며 BCrypt 입력 한도와 같은 72자를 넘지 못한다. `login_id`와 대소문자만 다른 값도 거부한다. 시드는 새로
+  만들 때만 같은 규칙을 적용한다. 시드한 자격증명은 `password_change_required = TRUE`(V35)로 시작하고, 마지막 변경 후
+  `qello.auth.operator-password.max-age`(기본 `P90D`)가 지난 비밀번호도 변경 대상이다. 로그인할 때 판정해, 바꿔야
+  하는 운영자에게는 `ROLE_OPERATOR` 대신 `ROLE_OPERATOR_PASSWORD_CHANGE`를 준다. 이 권한은 `POST /admin/password`와
+  `POST /admin/logout`만 통과하고(인증 없이 열린 `GET /admin/csrf`·`POST /admin/login`은 그대로 쓸 수 있다), 나머지
+  운영자 API는 403 `AUT-APP-008`이다. 세션 도중의 만료는 다음 로그인까지
+  반영되지 않으며 세션 절대 만료(`PT12H`)가 그 상한이다.
+- **비밀번호 변경**(#376): `POST /admin/password`는 잠금 → 현재 비밀번호 → 작성 규칙 → 현재와 같은 값 순서로
+  검사한다. 현재 비밀번호 불일치(`AUT-APP-009`)는 로그인과 같은 실패 카운터에 더하고, 로그인처럼 rollback시키지
+  않는다. 성공하면 비밀번호·변경 시각·변경 필요 여부·실패 기록·잠금을 함께 갱신하고, 커밋 뒤 세션 ID를 재발급하고
+  세션 권한을 `ROLE_OPERATOR`로 바꾼다. 세션 ID만 바꾸므로 세션 생성 시각(절대 만료 기준)은 그대로다. 같은 운영자의
+  다른 세션은 끊지 않는다.
 
 ## 6. Spring Security 구성
 
@@ -459,6 +471,9 @@ SecurityFilterChain backofficeChain(HttpSecurity http) throws Exception {
         .authorizeHttpRequests(a -> a
             .requestMatchers(HttpMethod.GET, "/admin/csrf").permitAll()
             .requestMatchers(HttpMethod.POST, "/admin/login").permitAll()
+            // #376: 비밀번호를 바꿔야 하는 세션은 변경과 로그아웃만 통과한다
+            .requestMatchers(HttpMethod.POST, "/admin/password", "/admin/logout")
+                .hasAnyRole("OPERATOR", "OPERATOR_PASSWORD_CHANGE")
             .anyRequest().hasRole("OPERATOR"))
         .exceptionHandling(h -> h
             .authenticationEntryPoint(authEntryPoints.unauthorized())

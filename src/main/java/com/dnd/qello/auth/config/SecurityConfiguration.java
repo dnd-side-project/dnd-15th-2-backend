@@ -25,6 +25,7 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import com.dnd.qello.auth.service.OperatorAccessLogRecorder;
 import com.dnd.qello.auth.web.AuthEntryPoints;
+import com.dnd.qello.auth.web.OperatorAccessContext;
 import com.dnd.qello.auth.web.OperatorAccessLogFilter;
 import com.dnd.qello.auth.web.OperatorSessionAbsoluteTimeoutFilter;
 
@@ -43,6 +44,7 @@ public class SecurityConfiguration {
 	public static final String ADMIN_PATH = "/admin/**";
 	public static final String LOGIN_PATH = "/admin/login";
 	public static final String LOGOUT_PATH = "/admin/logout";
+	public static final String PASSWORD_PATH = "/admin/password";
 	public static final String CSRF_PATH = "/admin/csrf";
 	public static final String API_PATH = "/api/**";
 	public static final String OPERATOR_API_PATH = "/api/v1/operator/**";
@@ -50,6 +52,11 @@ public class SecurityConfiguration {
 	public static final String DEVICE_TOKEN_PATH = "/api/v1/auth/token";
 	public static final String API_DOCS_PATH = "/v3/api-docs";
 	public static final String API_DOCS_SUBPATH = "/v3/api-docs/**";
+
+	// 운영자 세션의 권한(#376). 비밀번호를 바꿔야 하는 운영자는 OPERATOR 대신 OPERATOR_PASSWORD_CHANGE를 받는다
+	// (OperatorLoginController). 이름은 OperatorAccessContext 한곳에 둔다.
+	private static final String OPERATOR_ROLE = OperatorAccessContext.OPERATOR_ROLE;
+	private static final String PASSWORD_CHANGE_ROLE = OperatorAccessContext.PASSWORD_CHANGE_ROLE;
 
 	private final AuthEntryPoints authEntryPoints;
 	private final Clock clock;
@@ -137,7 +144,11 @@ public class SecurityConfiguration {
 						// 인증 없이 열려 있어야 한다. 이 둘이 세트다.
 						.requestMatchers(HttpMethod.GET, CSRF_PATH).permitAll()
 						.requestMatchers(HttpMethod.POST, LOGIN_PATH).permitAll()
-						.anyRequest().hasRole("OPERATOR"))
+						// 비밀번호를 바꿔야 하는 세션도 비밀번호를 바꾸거나 로그아웃할 수 있어야 한다. 나머지는 정상
+						// 운영자만 통과하고, 거부는 AuthEntryPoints가 AUT-APP-008로 알린다(#376).
+						.requestMatchers(HttpMethod.POST, PASSWORD_PATH, LOGOUT_PATH)
+						.hasAnyRole(OPERATOR_ROLE, PASSWORD_CHANGE_ROLE)
+						.anyRequest().hasRole(OPERATOR_ROLE))
 				.exceptionHandling(handling -> handling
 						.authenticationEntryPoint(authEntryPoints.unauthorized())
 						.accessDeniedHandler(authEntryPoints.forbidden()))
@@ -167,7 +178,7 @@ public class SecurityConfiguration {
 						// /admin/login이 발급한 세션의 CSRF 토큰을 그대로 재사용한다 — 별도
 						// 로그인 엔드포인트가 이 체인에는 없다.
 						.csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse()))
-				.authorizeHttpRequests(requests -> requests.anyRequest().hasRole("OPERATOR"))
+				.authorizeHttpRequests(requests -> requests.anyRequest().hasRole(OPERATOR_ROLE))
 				.exceptionHandling(handling -> handling
 						.authenticationEntryPoint(authEntryPoints.unauthorized())
 						.accessDeniedHandler(authEntryPoints.forbidden()))

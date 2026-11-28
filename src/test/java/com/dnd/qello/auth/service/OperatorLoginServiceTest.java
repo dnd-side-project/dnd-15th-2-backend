@@ -2,6 +2,7 @@
  * Created at: 2026-08-07T15:40:00+09:00
  * Source scenario: TEST-PLAN-GH-72-OPERATOR-LOGIN-UNIT-001 through UNIT-006
  * Source scenario: TEST-PLAN-GH-375-OPERATOR-ACCESS-LOG-UNIT-001 through UNIT-006 (added 2026-11-22T22:09:04+09:00)
+ * Source scenario: TEST-PLAN-GH-376-OPERATOR-PASSWORD-POLICY-UNIT-009 (added 2026-11-24T23:50:07+09:00)
  *
  * import 수가 많아 클래스 선언 위에 두면 정책 검사 범위(첫 30줄)를 벗어나므로 여기에 배치.
  */
@@ -26,6 +27,7 @@ import com.dnd.qello.account.domain.Account;
 import com.dnd.qello.account.domain.AccountRole;
 import com.dnd.qello.account.domain.AccountStatus;
 import com.dnd.qello.account.repository.AccountRepository;
+import com.dnd.qello.auth.config.OperatorPasswordProperties;
 import com.dnd.qello.auth.domain.LoginId;
 import com.dnd.qello.auth.domain.OperatorAccessEvent;
 import com.dnd.qello.auth.domain.OperatorAccessLogEntry;
@@ -51,6 +53,7 @@ class OperatorLoginServiceTest {
 	private static final String CORRECT_PASSWORD = "correct-horse-battery";
 	private static final OperatorAccessRequest REQUEST = new OperatorAccessRequest("192.0.2.10", "POST",
 			"/admin/login");
+	private static final Duration PASSWORD_MAX_AGE = Duration.ofDays(90);
 
 	private final CountingPasswordHasher passwordHasher = new CountingPasswordHasher(new BCryptPasswordHasher());
 
@@ -65,7 +68,8 @@ class OperatorLoginServiceTest {
 		accountRepository = new FakeAccountRepository();
 		accessLogRepository = new FakeAccessLogRepository();
 		service = new OperatorLoginService(credentialRepository, accountRepository, passwordHasher,
-				new OperatorAccessLogRecorder(accessLogRepository), Clock.fixed(NOW, ZoneOffset.UTC));
+				new OperatorAccessLogRecorder(accessLogRepository), new OperatorPasswordProperties(PASSWORD_MAX_AGE),
+				Clock.fixed(NOW, ZoneOffset.UTC));
 		passwordHasher.matchesCalls = 0;
 	}
 
@@ -178,12 +182,59 @@ class OperatorLoginServiceTest {
 	}
 
 	@Test
+	@DisplayName("UNIT-009: 초기 비밀번호로 로그인하면 변경이 필요하다는 결과를 돌려주고 성공 처리는 그대로 한다")
+	void reportsChangeRequiredForInitialPassword() {
+		givenOperator(AccountStatus.ACTIVE);
+		credentialRepository.store(storedCredential().recordFailure(NOW));
+
+		OperatorLoginResult result = service.login(
+				new LoginId("qello-admin"), new RawPassword(CORRECT_PASSWORD), REQUEST);
+
+		assertThat(result).isEqualTo(new OperatorLoginResult(OPERATOR_ID, true));
+		assertSuccessHandled();
+	}
+
+	@Test
+	@DisplayName("UNIT-009: 주기 안에 직접 바꾼 비밀번호로 로그인하면 변경이 필요 없다는 결과를 돌려준다")
+	void reportsNoChangeForRecentlyChangedPassword() {
+		givenOperator(AccountStatus.ACTIVE);
+		credentialRepository.store(changedCredential(NOW.minus(PASSWORD_MAX_AGE).plusSeconds(1)).recordFailure(NOW));
+
+		OperatorLoginResult result = service.login(
+				new LoginId("qello-admin"), new RawPassword(CORRECT_PASSWORD), REQUEST);
+
+		assertThat(result).isEqualTo(new OperatorLoginResult(OPERATOR_ID, false));
+		assertSuccessHandled();
+	}
+
+	@Test
+	@DisplayName("UNIT-009: 마지막 변경 후 주기가 지난 비밀번호로 로그인하면 변경이 필요하다는 결과를 돌려준다")
+	void reportsChangeRequiredForExpiredPassword() {
+		givenOperator(AccountStatus.ACTIVE);
+		credentialRepository.store(changedCredential(NOW.minus(PASSWORD_MAX_AGE)).recordFailure(NOW));
+
+		OperatorLoginResult result = service.login(
+				new LoginId("qello-admin"), new RawPassword(CORRECT_PASSWORD), REQUEST);
+
+		assertThat(result).isEqualTo(new OperatorLoginResult(OPERATOR_ID, true));
+		assertSuccessHandled();
+	}
+
+	private void assertSuccessHandled() {
+		assertThat(credentialRepository.stored.getFailedAttemptCount()).isZero();
+		assertThat(credentialRepository.stored.getLastLoginAt()).isEqualTo(NOW);
+		assertThat(accessLogRepository.entries).singleElement()
+				.extracting(OperatorAccessLogEntry::eventType)
+				.isEqualTo(OperatorAccessEvent.LOGIN_SUCCEEDED);
+	}
+
+	@Test
 	@DisplayName("자격증명이 맞으면 계정 id를 돌려주고 실패 기록을 지운다")
 	void returnsAccountIdOnSuccess() {
 		givenOperator(AccountStatus.ACTIVE);
 		credentialRepository.store(storedCredential().recordFailure(NOW));
 
-		long userId = service.login(new LoginId("qello-admin"), new RawPassword(CORRECT_PASSWORD), REQUEST);
+		long userId = service.login(new LoginId("qello-admin"), new RawPassword(CORRECT_PASSWORD), REQUEST).userId();
 
 		assertThat(userId).isEqualTo(OPERATOR_ID);
 		assertThat(credentialRepository.stored.getFailedAttemptCount()).isZero();
@@ -292,6 +343,13 @@ class OperatorLoginServiceTest {
 		return OperatorCredential.issue(OPERATOR_ID, new LoginId("qello-admin"), hash, NOW);
 	}
 
+	// 운영자가 changedAt에 직접 바꾼 비밀번호. 해시는 CORRECT_PASSWORD 그대로 둔다.
+	private OperatorCredential changedCredential(Instant changedAt) {
+		PasswordHash hash = passwordHasher.hash(new RawPassword(CORRECT_PASSWORD));
+		return OperatorCredential.restore(OPERATOR_ID, new LoginId("qello-admin"), hash, 0, null, changedAt, false,
+				null);
+	}
+
 	private static final class CountingPasswordHasher implements PasswordHasher {
 
 		private final PasswordHasher delegate;
@@ -345,6 +403,11 @@ class OperatorLoginServiceTest {
 		public OperatorCredential updateLoginState(OperatorCredential credential) {
 			this.stored = credential;
 			return credential;
+		}
+
+		@Override
+		public OperatorCredential updatePassword(OperatorCredential credential) {
+			throw new UnsupportedOperationException("로그인은 비밀번호를 바꾸지 않는다");
 		}
 
 		@Override

@@ -2302,6 +2302,26 @@
         ],
         "type" : "object"
       },
+      "OperatorPasswordChangeRequest" : {
+        "description" : "운영자 비밀번호 변경 요청",
+        "properties" : {
+          "currentPassword" : {
+            "description" : "현재 비밀번호입니다.",
+            "minLength" : 1,
+            "type" : "string"
+          },
+          "newPassword" : {
+            "description" : "새 비밀번호입니다. 영문 대문자·소문자·숫자·특수문자 중 2종류 이상이면 10자 이상, 3종류 이상이면 8자 이상이어야 하고 72자를 넘을 수 없습니다. 공백을 포함한 ASCII 문자만 쓸 수 있고, 로그인 식별자나 현재 비밀번호와 같은 값은 쓸 수 없습니다.",
+            "minLength" : 1,
+            "type" : "string"
+          }
+        },
+        "required" : [
+          "currentPassword",
+          "newPassword"
+        ],
+        "type" : "object"
+      },
       "OperatorReasonRequest" : {
         "description" : "운영자 행위의 근거를 담은 요청입니다.",
         "properties" : {
@@ -2328,6 +2348,10 @@
       "OperatorSessionResponse" : {
         "description" : "로그인 성공 응답입니다. 세션은 Set-Cookie로 전달되며 본문에는 담기지 않습니다.",
         "properties" : {
+          "passwordChangeRequired" : {
+            "description" : "비밀번호를 바꿔야 하는지 여부입니다. 초기 비밀번호이거나 변경 주기가 지났으면 true이고, 이때 세션은 POST /admin/password와 POST /admin/logout(그리고 인증 없이 열린 GET /admin/csrf, POST /admin/login)만 호출할 수 있습니다.",
+            "type" : "boolean"
+          },
           "userId" : {
             "description" : "로그인한 운영자의 계정 식별자",
             "format" : "int64",
@@ -4646,7 +4670,7 @@
     },
     "/admin/login" : {
       "post" : {
-        "description" : "운영자 계정으로 로그인하고 세션 쿠키를 발급합니다.\n\n로그인 전에 GET /admin/csrf로 CSRF 토큰을 받아 함께 보내야 합니다.\n\n이후 백오피스 요청은 발급된 세션 쿠키로 보냅니다. 같은 IP에서 짧은 시간에 너무 많이 호출하면 429를 반환합니다.",
+        "description" : "운영자 계정으로 로그인하고 세션 쿠키를 발급합니다.\n\n로그인 전에 GET /admin/csrf로 CSRF 토큰을 받아 함께 보내야 합니다.\n\n이후 백오피스 요청은 발급된 세션 쿠키로 보냅니다. 같은 IP에서 짧은 시간에 너무 많이 호출하면 429를 반환합니다.\n\n응답의 passwordChangeRequired가 true면 초기 비밀번호이거나 변경 주기가 지난 비밀번호입니다. 이 세션으로는 POST /admin/password와 POST /admin/logout(그리고 인증 없이 열린 GET /admin/csrf, POST /admin/login)만 호출할 수 있고, 다른 운영자 API는 403 AUT-APP-008을 반환합니다.",
         "operationId" : "login",
         "requestBody" : {
           "content" : {
@@ -4798,6 +4822,93 @@
           }
         ],
         "summary" : "운영자 로그아웃",
+        "tags" : [
+          "백오피스 인증"
+        ]
+      }
+    },
+    "/admin/password" : {
+      "post" : {
+        "description" : "로그인한 운영자가 자기 비밀번호를 바꿉니다.\n\n운영자 로그인과 CSRF 토큰이 필요합니다. 비밀번호를 바꿔야 하는 세션(로그인 응답의 passwordChangeRequired가 true)도 호출할 수 있습니다.\n\n성공하면 세션 ID를 새로 발급합니다(Set-Cookie). 이후 요청은 새 세션 쿠키로 보내야 하며, 세션은 정상 운영자 권한을 갖습니다. 세션의 최대 수명은 로그인 시각 기준 그대로입니다.\n\n현재 비밀번호가 틀리면 로그인 실패와 같은 횟수에 더해지고, 5회가 쌓이면 잠깁니다.",
+        "operationId" : "changePassword",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/OperatorPasswordChangeRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiResponseVoid"
+                }
+              }
+            },
+            "description" : "비밀번호를 바꿨습니다. 새 세션 쿠키가 발급됩니다."
+          },
+          "400" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "새 비밀번호가 작성 규칙에 맞지 않거나(AUT-VAL-005), 현재 비밀번호가 올바르지 않거나(AUT-APP-009), 새 비밀번호가 현재 비밀번호와 같습니다(AUT-APP-010). 값이 비어 있어도 400입니다."
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "세션이 없거나 만료되었습니다."
+          },
+          "403" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "운영자 권한이 없거나 CSRF 토큰이 유효하지 않습니다."
+          },
+          "423" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "비밀번호를 연속으로 틀려 잠긴 계정입니다. 잠시 후 다시 시도해 주세요."
+          },
+          "500" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiErrorResponse"
+                }
+              }
+            },
+            "description" : "서버 내부 오류가 발생했습니다."
+          }
+        },
+        "security" : [
+          {
+            "operatorSession" : [ ]
+          }
+        ],
+        "summary" : "운영자 비밀번호 변경",
         "tags" : [
           "백오피스 인증"
         ]

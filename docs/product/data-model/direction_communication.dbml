@@ -331,7 +331,8 @@ Table operator_credential [headercolor: #4E79A7] {
   password_hash varchar(255) [not null, note: '검증된 비밀번호 해시. 평문은 저장하지 않는다.']
   failed_attempt_count smallint [not null, default: 0, note: '연속 로그인 실패 횟수. 성공하면 0으로 되돌린다.']
   locked_until timestamptz [note: '잠금이 풀리는 시각. 잠겨 있지 않으면 NULL이다.']
-  password_updated_at timestamptz [not null, default: `clock_timestamp()`, note: '비밀번호 마지막 변경 시각. 초기 비밀번호 강제 변경 판단에 쓴다.']
+  password_updated_at timestamptz [not null, default: `clock_timestamp()`, note: '비밀번호 마지막 변경 시각. qello.auth.operator-password.max-age가 지나면 다음 로그인부터 변경을 요구한다(V35, #376).']
+  password_change_required boolean [not null, default: true, note: '초기 비밀번호 여부(V35, #376). 시드 발급은 TRUE, 운영자가 직접 바꾸면 FALSE. TRUE면 변경 전까지 운영자 API를 막는다.']
   last_login_at timestamptz [note: '마지막 로그인 성공 시각']
   created_at timestamptz [not null, default: `clock_timestamp()`, note: '행이 생성된 시각']
   updated_at timestamptz [not null, default: `clock_timestamp()`, note: '마지막으로 변경된 시각']
@@ -342,7 +343,7 @@ Table operator_credential [headercolor: #4E79A7] {
 
 
   Note: '''
-테이블 설명: 백오피스 운영자의 로그인 자격증명과 잠금 상태를 관리하는 테이블이다. 필요 이유: 계정 생명주기와 자격증명 생명주기의 변경 주기가 다르고, 일반 사용자가 운영자 때문에 존재하는 NULL 컬럼을 들고 다니지 않게 한다. (user_id, role) 복합 외래키로 USER 계정에 자격증명이 붙는 것을 DB가 거절한다. V5 migration에서 추가되었다.
+테이블 설명: 백오피스 운영자의 로그인 자격증명과 잠금 상태를 관리하는 테이블이다. 필요 이유: 계정 생명주기와 자격증명 생명주기의 변경 주기가 다르고, 일반 사용자가 운영자 때문에 존재하는 NULL 컬럼을 들고 다니지 않게 한다. (user_id, role) 복합 외래키로 USER 계정에 자격증명이 붙는 것을 DB가 거절한다. V5 migration에서 추가되었다. V35(#376)가 초기 비밀번호 판별 컬럼 password_change_required를 추가했다.
 
 Flyway CHECK constraints (SQL):
 ck_operator_credential_failed_attempt: CHECK (failed_attempt_count >= 0)
